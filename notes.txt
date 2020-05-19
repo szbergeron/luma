@@ -1,0 +1,54 @@
+
+// basic math
+/*pub AdditiveExpression: Expression = {
+    <lval:AdditiveExpression> "+" <rval:MultiplicativeExpression>,
+    <lval:AdditiveExpression> "-" <rval:MultiplicativeExpression>,
+};
+
+pub MultiplicativeExpression: Expression = {
+    <lval:MultiplicativeExpression> "+" <rval:CastExpression>,
+    <lval:MultiplicativeExpression> "-" <rval:CastExpression>,
+};
+
+pub CastExpression: Expression = {
+    <from:Expression> "as" <into:Type>,
+    ParentheticalExpression,
+};
+
+pub ParentheticalExpression: Expression = {
+    "(" <ival:Expression> ")",
+    AtomicExpression
+};
+
+pub AtomicExpression: Expression = {
+    Identifier,
+    IntegralLiteral,
+    FloatLiteral,
+};
+
+pub Identifier: Expression = {
+    r"[_a-zA-Z]?[_a-zA-Z0-9]*" => IdentifierExpression::from_str(<>),
+};
+
+pub IntegralLiteralExpression: Expression = 
+
+pub IntegralLiteral: &str = { // need to handle finding what type it coerces to, keep string form until coercion can be determined
+    r"[-]?[0-9][_0-9]*" => {
+        LiteralExpression::new( (<>).replace("_", "") );
+    }
+};
+
+pub FloatLiteral: Expression = {
+    //
+
+pub FloatLiteral: Expression = {
+    r"[0-9][_0-9]*" => (<>).replace(
+*/
+
+//pub DecimalIntegralLiteral: Expression = {
+//    r"[-]?[0-9][_0-9]*" => (<>).replace("_", "")
+//
+//pub FloatLiteral: Expression = {
+//    r"[-]?[
+
+//pub NamedFunctionDeclaration: 

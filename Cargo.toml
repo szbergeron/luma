@@ -1,0 +1,17 @@
+[package]
+name = "rsharp"
+version = "0.1.0"
+authors = ["Sawyer Bergeron <sawyerbergeron@gmail.com>"]
+edition = "2018"
+
+build = "build.rs"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+#lalrpop-util = "0.18.1"
+regex = "1"
+logos = "0.11.4"
+
+#[build-dependencies]
+#lalrpop = {version = "0.18.1", features = ["lexer"] }

@@ -1,0 +1,8 @@
+mod ns1 {
+    mod ns2 {
+    }
+
+    mod ns3 {
+        f
+    }
+}

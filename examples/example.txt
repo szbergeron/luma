@@ -1,0 +1,109 @@
+fn main() -> () {
+}
+
+fn control_flow() -> () {
+    let b: bool = true;
+    let c: bool = false;
+
+    if b { }
+    else { }
+
+    if b { }
+
+    if b { }
+    else if c { }
+
+    // need to impl pattern matching
+}
+
+fn declaration() -> () {
+    let a: bool = false;
+
+    let mut b: i64 = 50;
+
+    let c: i64 = if a 5 else 6;
+}
+
+fn incremental_type_construction(par: Mammal) -> Cat {
+    match par {
+        Cat => par,
+        _ => {
+            // need to construct type
+            par.Cat::meow ?= () -> {
+                println("meow");
+            }
+
+            par does Cat
+        }
+    }
+}
+
+type Cat {
+    collar: Collar,
+    health: float,
+    name: string,
+    toys: Vec<Squeak + Flash>,
+}
+
+impl Cat {
+    pub static fn new() -> &Cat {
+        alloc Cat {
+            collar: Collar::new("brown", "123 Fluffy St"),
+            health: 100,
+            name: "Fluffles",
+            toys: Vec::new(),
+        }
+    }
+
+    pub fn meow() -> () {
+        println("meow");
+    }
+}
+
+impl Species for Cat {
+    pub static fn speciesToString() -> string {
+        "Feline"
+    }
+}
+
+impl Mammal for Cat {
+    pub fn eat(food: CalorieCount + Healthiness) -> () {
+        self.health += food.calories();
+        self.health *= food.health_multiplier();
+    }
+
+    pub fn speak() -> () {
+        self.meow();
+    }
+}
+
+type Point {
+    x: float,
+    y: float,
+}
+
+impl Point {
+    pub static fn new(x: float, y: float) &Point {
+        alloc Point {x, y};
+    }
+}
+
+impl Point {
+}
+
+impl ops::Multiply for Point {
+    pub fn operator_multiply(other: &const Point) -> &Point {
+        alloc Point {
+            x: self.x * other.x,
+            y: self.y * other.y,
+        }
+    }
+
+impl ops::MultiplyAssign for Point {
+    pub fn operator_multiply(other: &const Point) -> &Point {
+        self.x = self.x * other.x;
+        self.y = self.y * other.y;
+
+        self
+    }
+}

@@ -1,0 +1,18 @@
+Grammar:
+
+ParseUnit => 
+    ParseUnit Declaration | ε
+
+Declaration => 
+    NamespaceDeclaration | StaticDeclaration | FunctionDeclaration
+
+NamespaceDeclaration =>
+    MOD IDENTIFIER LBRACE ParseUnit RBRACE
+
+FunctionDeclaration =>
+
+Tokens:
+MOD => "mod"
+IDENTIFIER => r"[a-zA-Z]{1}[a-zA-Z0-9_]*"
+LBRACE => "{"
+RBRACE => "}"
