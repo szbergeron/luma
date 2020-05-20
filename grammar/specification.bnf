@@ -7,12 +7,30 @@ Declaration =>
     NamespaceDeclaration | StaticDeclaration | FunctionDeclaration
 
 NamespaceDeclaration =>
-    MOD IDENTIFIER LBRACE ParseUnit RBRACE
+    PUB? MOD IDENTIFIER LBRACE ParseUnit RBRACE
+
+StaticDeclaration =>
+    PUB? LET MUT? Identifier [COLON TypeReference]? EQUALS Expression SEMICOLON
 
 FunctionDeclaration =>
+    PUB? FN Identifier LPAREN VariableDeclarationList RPAREN SARROW TypeReference Expression
+
+Expression =>
+    AssignmentExpression | BlockExpression | ArithmeticExpression | ArrayIndexExpression | 
+    
+
+Identifier => IDENTIFIER
+TypeReference => IDENTIFIER
 
 Tokens:
+PUB => "pub"
 MOD => "mod"
+MUT => "mut"
+LET => "let"
+FN => "fn"
+STATIC => "static"
+SEMICOLON => ";"
+COLON => ":"
 IDENTIFIER => r"[a-zA-Z]{1}[a-zA-Z0-9_]*"
 LBRACE => "{"
 RBRACE => "}"

@@ -1,8 +1,19 @@
+/* sfdjkldsf */
 mod ns1 {
     mod ns2 {
     }
 
     mod ns3 {
-        f
+        mod nfdsjkl {
+        }
+
+        /* sdfjklfsdjklsdf /* nested comment */ */
+        /* sdfjklafsdj */
+
+        mod ahkdf {
+        }
     }
+}
+
+mod ns4 {
 }

@@ -1,9 +1,12 @@
 use logos::Logos;
 
-#[derive(Logos, Debug, PartialEq, Clone, Copy)]
+#[derive(Logos, Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum Token {
     #[token("mod")]
     Module,
+
+    #[token("pub")]
+    Public,
 
     #[token("fn")]
     Function,
@@ -19,6 +22,9 @@ pub enum Token {
 
     #[token("while")]
     While,
+
+    #[token(";")]
+    Semicolon,
 
     #[token("{")]
     RBrace,
@@ -50,8 +56,8 @@ pub enum Token {
     #[token("**/")]
     RDocComment,
 
-    #[regex("//.*\n")]
-    LineCommentStart,
+    //#[regex("//.*\n")]
+    //LineCommentStart,
 
     /*#[token("\n")]
     Newline,*/
