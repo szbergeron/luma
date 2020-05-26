@@ -131,7 +131,7 @@ impl<'a> SymbolDeclaration<'a> {
 #[derive(Debug)]
 pub struct FunctionDeclaration<'a> {
     pub failed: bool,
-    pub expressions: Vec<Box<dyn Expression>>,
+    pub expressions: Vec<Box<dyn Expression<'a>>>,
     pub return_type: TypeReference<'a>,
     pub params: Vec<VariableDeclaration<'a>>,
 }
@@ -154,8 +154,61 @@ pub struct TypeReference<'a> {
     refers_to: Option<Box<dyn Type>>,
 }
 
+#[derive(Debug)]
+pub struct AssignmentExpression<'a> {
+    lhs: Box<dyn Expression<'a>>,
+    rhs: Box<dyn Expression<'a>>,
+}
+
+#[derive(Debug)]
+pub struct BinaryOperationExpression<'a> {
+    operation: BinaryOperation,
+    lhs: Box<dyn Expression<'a>>,
+    rhs: Box<dyn Expression<'a>>,
+}
+
+#[derive(Debug)]
+pub enum BinaryOperation {
+    Multiply,
+    Divide,
+    Add,
+    Subtract,
+    ArrayIndex,
+}
+
+#[derive(Debug)]
+pub enum UnaryOperation {
+    Negate,
+    Invert,
+    Dereference,
+}
+
+#[derive(Debug)]
+pub struct UnaryOperationExpression<'a> {
+    operation: UnaryOperation,
+    subexpr: Box<dyn Expression<'a>>,
+}
+
+#[derive(Debug)]
+pub struct TernarySelectorOperationExpression<'a> {
+    condition: Box<dyn Expression<'a>>,
+    first: Box<dyn Expression<'a>>,
+    second: Box<dyn Expression<'a>>,
+}
+
+#[derive(Debug)]
+pub struct Closure<'a> {
+    pub failed: bool,
+    pub expressions: Vec<Box<dyn Expression<'a>>>,
+    pub return_type: TypeReference<'a>,
+    pub params: Vec<VariableDeclaration<'a>>,
+    pub start: usize,
+    pub end: usize,
+}
+
+
 pub trait Type: std::fmt::Debug {
 }
 
-pub trait Expression: std::fmt::Debug {
+pub trait Expression<'a>: std::fmt::Debug {
 }

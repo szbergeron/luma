@@ -15,8 +15,69 @@ StaticDeclaration =>
 FunctionDeclaration =>
     PUB? FN Identifier LPAREN VariableDeclarationList RPAREN SARROW TypeReference Expression
 
-Expression =>
-    AssignmentExpression | BlockExpression | ArithmeticExpression | ArrayIndexExpression | 
+OuterExpression =>
+    AssignmentExpression | ComparisonExpression
+
+AssignmentExpression =>
+    LeftHandSide ASSIGN OuterExpression
+
+LeftHandSide =>
+    VariableAccess
+
+ComparisonExpression =>
+    ComparisonExpression LOGICAL_EQ AdditiveExpression |
+    ComparisonExpression LOGICAL_LT AdditiveExpression |
+    ComparisonExpression LOGICAL_GT AdditiveExpression |
+    ComparisonExpression LOGICAL_LTE AdditiveExpression |
+    ComparisonExpression LOGICAL_GTE AdditiveExpression |
+    ComparisonExpression LOGICAL_NE AdditiveExpression
+
+AdditiveExpression =>
+    AdditiveExpression PLUS MultiplicativeExpression |
+    AdditiveExpression DASH MultiplicativeExpression |
+    MultiplicativeExpression
+
+MultiplicativeExpression =>
+    MultiplicativeExpression ASTERISK UnaryExpression |
+    MultiplicativeExpression FSLASH UnaryExpression |
+    UnaryExpression
+
+UnaryExpression =>
+    DASH UnaryExpression |
+    BANG UnaryExpression |
+    CastExpression
+
+CastExpression =>
+    AtomicExpression AS TypeReference |
+    AtomicExpression
+
+AtomicExpression =>
+    ParentheticalExpression |
+    LiteralExpression |
+    VariableAccess
+
+ParentheticalExpression =>
+    LPAREN OuterExpression RPAREN
+
+LiteralExpression =>
+    IntegralLiteralExpression
+
+VariableAccess =>
+    MethodCall |
+    FieldAccess |
+    ArrayAccess |
+    Identifier
+
+FieldAccess =>
+    VariableAccess DOT Identifier
+
+MethodCall =>
+    VariableAccess DOT Identifier LPAREN ArgumentList RPAREN
+
+ArrayAccess =>
+    VariableAccess LBRACK OuterExpression RBRACK
+
+
     
 
 Identifier => IDENTIFIER
@@ -28,6 +89,20 @@ MOD => "mod"
 MUT => "mut"
 LET => "let"
 FN => "fn"
+AS => "as"
+ASSIGN => "="
+LOGICAL_EQ => "=="
+LOGICAL_LT => "<"
+LOGICAL_GT => ">"
+LOGICAL_LTE => "<="
+LOGICAL_GTE => ">="
+LOGICAL_NE => "!="
+PLUS => "+"
+DASH => "-"
+ASTERISK => "*"
+FSLASH => "/"
+BANG => "!"
+CARET => "^"
 STATIC => "static"
 SEMICOLON => ";"
 COLON => ":"

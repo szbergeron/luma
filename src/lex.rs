@@ -14,6 +14,9 @@ pub enum Token {
     #[token("if")]
     If,
 
+    #[token("as")]
+    As,
+
     #[token("else")]
     Else,
 
@@ -56,6 +59,27 @@ pub enum Token {
     #[token("**/")]
     RDocComment,
 
+    #[token("*")]
+    Asterisk,
+
+    #[token("/")]
+    FSlash,
+
+    #[token("-")]
+    Dash,
+
+    #[token("+")]
+    Plus,
+
+    #[token("=")]
+    Equals,
+
+    #[token("!")]
+    Bang,
+
+    #[token("|")]
+    Pipe,
+
     //#[regex("//.*\n")]
     //LineCommentStart,
 
@@ -83,4 +107,40 @@ pub enum Token {
     #[regex(r"[\t\f\n]+", logos::skip)]
     #[error]
     Error,
+}
+
+impl Token {
+    /*pub fn operator(&self) -> bool {
+        self.binary_operator() || self.unary_operator()
+    }
+
+    pub fn binary_operator(&self) -> bool {
+        match self {
+            Token::Asterisk | Token::FSlash | Token::Dash | Token::Plus | Token::Equals => true,
+            _ => false
+        }
+    }
+
+    pub fn unary_operator(&self) -> bool {
+        match self {
+            Token::Asterisk | Token::Dash | Token::Bang => true,
+            _ => false
+        }
+    }
+
+    pub fn prefix_operator(&self) -> bool {
+        match self {
+            Token::Asterisk | Token::Dash | Token::Bang => true,
+            _ => false
+        }
+    }
+
+    pub fn infix_binding_power(&self) -> Option<(u32, u32)> {
+        match self {
+            Token::Equals => Some((2, 1)),
+            Token::Plus | Token::Dash => Some((3, 4)),
+            Token::Asterisk | Token::FSlash => Some((5, 6)),
+            _ => None,
+        }
+    }*/
 }

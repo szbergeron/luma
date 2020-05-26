@@ -1,3 +1,4 @@
+#![feature(generic_associated_types)]
 //#[macro_use] extern crate lalrpop_util;
 
 //lalrpop_mod!(pub rsh);
@@ -11,6 +12,8 @@ pub mod lex;
 pub mod helper;
 pub mod parse;
 pub mod ast;
+pub mod lalrpop_lexer;
+pub mod parse_expr;
 
 fn main() {
     let args: Vec<String> = env::args().collect();

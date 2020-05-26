@@ -14,6 +14,8 @@ pub mod lex_wrap {
     pub struct TokenWrapper<'a> {
         pub token: crate::lex::Token,
         pub slice: &'a str,
+        pub start: usize,
+        pub end: usize,
 
     }
 
@@ -40,7 +42,7 @@ pub mod lex_wrap {
             let tok = self.lexer.next();
             println!("Advance finds token: {:?} with contents {}", tok, self.lexer.slice());
             match tok {
-                Some(tok) => self.cur = Ok(TokenWrapper { token: tok, slice: self.lexer.slice() }),
+                Some(tok) => self.cur = Ok(TokenWrapper { token: tok, slice: self.lexer.slice(), start: self.lexer.span().start, end: self.lexer.span().end }),
                 None => self.cur = Err(ParseResultError::EndOfFile),
             }
         }
