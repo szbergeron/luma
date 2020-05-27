@@ -11,6 +11,9 @@ pub mod constants {
 
 use crate::helper::lex_wrap::*;
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
 /*pub mod literal {
     pub enum */
 
@@ -127,20 +130,32 @@ impl<'a> SymbolDeclaration<'a> {
 }
 
 
+#[derive(Debug, Clone)]
+pub enum Expression<'a> {
+    Assignment(AssignmentExpression<'a>),
+    BinaryOperation(BinaryOperationExpression<'a>),
+    UnaryOperation(UnaryOperationExpression<'a>),
+    Comparison(ComparisonOperationExpression<'a>),
+    Identifier(IdentifierExpression<'a>),
+}
+
+
 
 #[derive(Debug)]
 pub struct FunctionDeclaration<'a> {
     pub failed: bool,
-    pub expressions: Vec<Box<dyn Expression<'a>>>,
+    //pub expressions: Vec<Box<dyn Expression<'a>>>,
+    pub expressions: Vec<Expression<'a>>,
     pub return_type: TypeReference<'a>,
     pub params: Vec<VariableDeclaration<'a>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct VariableDeclaration<'a> {
     pub failed: bool,
     pub name: &'a str,
-    pub var_expr: Option<Box<dyn Expression<'a>>>,
+    pub expressions: Vec<Expression<'a>>,
+    //pub var_expr: Option<Box<dyn Expression<'a>>>,
     pub var_type: Option<TypeReference<'a>>, // None indicates request for type inference
 }
 
@@ -148,34 +163,40 @@ pub struct VariableDeclaration<'a> {
     namespace: Namespace,
 }*/
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TypeReference<'a> {
     pub failed: bool,
     typename: &'a str,
-    refers_to: Option<Box<dyn Type>>,
+    refers_to: Option<Box<Type>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AssignmentExpression<'a> {
-    lhs: Box<dyn Expression<'a>>,
-    rhs: Box<dyn Expression<'a>>,
+    //lhs: Box<dyn Expression<'a>>,
+    //rhs: Box<dyn Expression<'a>>,
+    pub lhs: Box<Expression<'a>>,
+    pub rhs: Box<Expression<'a>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BinaryOperationExpression<'a> {
-    operation: BinaryOperation,
-    lhs: Box<dyn Expression<'a>>,
-    rhs: Box<dyn Expression<'a>>,
+    pub operation: BinaryOperation,
+    pub lhs: Box<Expression<'a>>,
+    pub rhs: Box<Expression<'a>>,
+    //lhs: Box<dyn Expression<'a>>,
+    //rhs: Box<dyn Expression<'a>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ComparisonOperationExpression<'a> {
-    operation: ComparisonOperation,
-    lhs: Box<dyn Expression<'a>>,
-    rhs: Box<dyn Expression<'a>>,
+    pub operation: ComparisonOperation,
+    //lhs: Box<dyn Expression<'a>>,
+    //rhs: Box<dyn Expression<'a>>,
+    pub lhs: Box<Expression<'a>>,
+    pub rhs: Box<Expression<'a>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ComparisonOperation {
     Equal,
     GreaterThan,
@@ -185,7 +206,7 @@ pub enum ComparisonOperation {
     NotEqual,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum BinaryOperation {
     Multiply,
     Divide,
@@ -193,45 +214,52 @@ pub enum BinaryOperation {
     Subtract,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum UnaryOperation {
     Negate,
     Invert,
     Dereference,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct UnaryOperationExpression<'a> {
-    operation: UnaryOperation,
-    subexpr: Box<dyn Expression<'a>>,
+    pub operation: UnaryOperation,
+    pub subexpr: Box<Expression<'a>>,
 }
 
 #[derive(Debug)]
 pub struct TernarySelectorOperationExpression<'a> {
-    condition: Box<dyn Expression<'a>>,
-    first: Box<dyn Expression<'a>>,
-    second: Box<dyn Expression<'a>>,
+    pub condition: Box<Expression<'a>>,
+    pub first: Box<Expression<'a>>,
+    pub second: Box<Expression<'a>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Closure<'a> {
     pub failed: bool,
-    pub expressions: Vec<Box<dyn Expression<'a>>>,
+    pub expressions: Vec<Expression<'a>>,
     pub return_type: TypeReference<'a>,
     pub params: Vec<VariableDeclaration<'a>>,
     pub start: usize,
     pub end: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct IdentifierExpression<'a> {
     pub name: &'a str,
 }
 
-pub trait Type: std::fmt::Debug {
+/*pub trait Type: std::fmt::Debug + std::clone::Clone {
+}*/
+
+#[derive(Debug, Clone)]
+pub enum Type {
+    IntegerLiteral,
+    FloatLiteral,
+    Class
 }
 
-pub trait Expression<'a>: std::fmt::Debug {
+/*pub trait Expression<'a>: std::fmt::Debug {
 }
 
 impl<'a> Expression<'a> for ComparisonOperationExpression<'a> {
@@ -241,4 +269,4 @@ impl<'a> Expression<'a> for BinaryOperationExpression<'a> {
 }
 
 impl<'a> Expression<'a> for IdentifierExpression<'a> {
-}
+}*/

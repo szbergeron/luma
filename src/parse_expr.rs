@@ -8,7 +8,7 @@ use std::collections::HashSet;
 
 use crate::parse::*;
 
-type ExpressionResult<'a> = Result<Box<dyn ast::Expression<'a>>, ParseResultError<'a>>;
+type ExpressionResult<'a> = Result<Box<ast::Expression<'a>>, ParseResultError<'a>>;
 
 /*pub fn variable_access<'a>(la: &mut LookaheadStream<'a>) -> ExpressionResult<'a> {
 }
@@ -100,6 +100,7 @@ impl<'a> LALRPopLexWrapper<'a> {
     }
 }
 
+#[derive(Debug, Clone)]
 pub enum LALRPopToken<'a> {
     Public,
     If,

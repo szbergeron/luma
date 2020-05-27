@@ -2,15 +2,19 @@ use std::str::FromStr;
 use crate::helper::lex_wrap::ParseResultError;
 use crate::parse_expr::LALRPopToken;
 use crate::ast;
+use crate::ast::ComparisonOperation;
+use crate::ast::BinaryOperation;
+use crate::ast::UnaryOperation;
+use crate::ast::Expression;
 
 
 grammar<'input>(input: &'input str);
 
 extern {
     type Location = usize;
-    type Error = ParseResultError<'a>;
+    type Error = ParseResultError<'input>;
 
-    enum Tok<'input> {
+    enum LALRPopToken<'input> {
         Identifier => LALRPopToken::Identifier(<&'input str>),
         UnknownIntegerLiteral => LALRPopToken::UnknownIntegerLiteral(<&'input str>),
         
@@ -44,62 +48,62 @@ extern {
     }
 }
 
-pub OuterExpression: Box<dyn Expression> = {
+pub OuterExpression: Box<Expression<'input>> = {
     <ae: AssignmentExpression> => ae,
     <ce: ComparisonExpression> => ce,
 }
 
-pub AssignmentExpression: Box<dyn Expression> = {
+pub AssignmentExpression: Box<Expression<'input>> = {
     <lhs: VariableAccess> Equals <oe: OuterExpression> =>
-        Box::new(ast::AssignmentExpression { lhs, rhs: oe }),
+        Box::new(Expression::Assignment(ast::AssignmentExpression { lhs, rhs: oe })),
 }
 
-ComparisonExpression: Box<dyn Expression> = {
+ComparisonExpression: Box<Expression<'input>> = {
     <lhs: ComparisonExpression> CmpEqual <rhs: AdditiveExpression> =>
-        Box::new(ast::ComparisonExpression { lhs, rhs, operation: ComparisonOperation::Equal }),
+        Box::new(Expression::Comparison(ast::ComparisonOperationExpression { lhs, rhs, operation: ComparisonOperation::Equal })),
     <lhs: ComparisonExpression> CmpLessThan <rhs: AdditiveExpression> =>
-        Box::new(ast::ComparisonExpression { lhs, rhs, operation: ComparisonOperation::LessThan }),
+        Box::new(Expression::Comparison(ast::ComparisonOperationExpression { lhs, rhs, operation: ComparisonOperation::LessThan })),
     <lhs: ComparisonExpression> CmpGreaterThan <rhs: AdditiveExpression> =>
-        Box::new(ast::ComparisonExpression { lhs, rhs, operation: ComparisonOperation::GreaterThan }),
+        Box::new(Expression::Comparison(ast::ComparisonOperationExpression { lhs, rhs, operation: ComparisonOperation::GreaterThan })),
     <lhs: ComparisonExpression> CmpLessThanOrEqual <rhs: AdditiveExpression> =>
-        Box::new(ast::ComparisonExpression { lhs, rhs, operation: ComparisonOperation::LessThanOrEqual }),
+        Box::new(Expression::Comparison(ast::ComparisonOperationExpression { lhs, rhs, operation: ComparisonOperation::LessThanOrEqual })),
     <lhs: ComparisonExpression> CmpGreaterThanOrEqual <rhs: AdditiveExpression> =>
-        Box::new(ast::ComparisonExpression { lhs, rhs, operation: ComparisonOperation::GreaterThanOrEqual }),
+        Box::new(Expression::Comparison(ast::ComparisonOperationExpression { lhs, rhs, operation: ComparisonOperation::GreaterThanOrEqual })),
     <ae: AdditiveExpression> => ae,
 }
 
-AdditiveExpression: Box<dyn Expression> = {
+AdditiveExpression: Box<Expression<'input>> = {
     <lhs: AdditiveExpression> Plus <rhs: MultiplicativeExpression> =>
-        Box::new(ast::BinaryOperationExpression { lhs, rhs, operation: BinaryOperation::Plus }),
+        Box::new(Expression::BinaryOperation(ast::BinaryOperationExpression { lhs, rhs, operation: BinaryOperation::Add })),
     <me: MultiplicativeExpression> => me,
 }
 
-MultiplicativeExpression: Box<dyn Expression> = {
+MultiplicativeExpression: Box<Expression<'input>> = {
     <lhs: MultiplicativeExpression> Asterisk <rhs: UnaryExpression> =>
-        Box::new(ast::BinaryOperationExpression { lhs, rhs, operation: BinaryOperation::Multiply }),
+        Box::new(Expression::BinaryOperation(ast::BinaryOperationExpression { lhs, rhs, operation: BinaryOperation::Multiply })),
     <ue: UnaryExpression> => ue,
 }
 
-UnaryExpression: Box<dyn Expression> = {
+UnaryExpression: Box<Expression<'input>> = {
     Dash <subexpr: UnaryExpression> =>
-        Box::new(ast::UnaryOperationExpression { subexpr, operation: UnaryOperation::Negate }),
+        Box::new(Expression::UnaryOperation(ast::UnaryOperationExpression { subexpr, operation: UnaryOperation::Negate })),
     <ce: CastExpression> => ce,
 }
 
-CastExpression: Box<dyn Expression> = {
+CastExpression: Box<Expression<'input>> = {
     <ae: AtomicExpression> => ae,
 }
 
-AtomicExpression: Box<dyn Expression> = {
+AtomicExpression: Box<Expression<'input>> = {
     <pe: ParentheticalExpression> => pe,
     <va: VariableAccess> => va,
     //<le: LiteralExpression> => le,
 }
 
-ParentheticalExpression: Box<dyn Expression> = {
+ParentheticalExpression: Box<Expression<'input>> = {
     LParen <oe: OuterExpression> RParen => oe,
 }
 
-VariableAccess: Box<dyn Expression> = {
-    Identifier => Box::new(IdentifierExpression { name: <> })
+VariableAccess: Box<Expression<'input>> = {
+    Identifier => Box::new(Expression::Identifier(ast::IdentifierExpression { name: <> })),
 }

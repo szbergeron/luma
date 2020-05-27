@@ -163,19 +163,19 @@ pub fn module_entry<'a>(lexer: &mut LookaheadStream<'a>) -> Result<ast::Namespac
 pub fn variable_declaration<'a>(lexer: &mut LookaheadStream<'a>) -> Result<ast::VariableDeclaration<'a>, ParseResultError<'a>> {
     let id = expect(lexer, Token::Identifier)?.slice;
     let expr = eat_if(lexer, Token::Identifier).map(|tw| {
-        let mut lw = crate::parse_expr::LALRPopLexWrapper { la: lexer, end_with: vec![Token::Semicolon] };
-        let expr = 
+        //let mut lw = crate::parse_expr::LALRPopLexWrapper { la: lexer, end_with: vec![Token::Semicolon] };
     });
     /*let expr = if_token(lexer, Token::Equals).then(|| {
         
     });*/
+    panic!()
 
-    Ok(ast::VariableDeclaration {
+    /*Ok(ast::VariableDeclaration {
         failed: false,
         name: id,
         var_expr: expr,
         var_type: None,
-    })
+    })*/
 }
 
 pub fn closure<'a>(la: &mut LookaheadStream<'a>) -> Result<ast::Closure<'a>, ParseResultError<'a>> {
@@ -204,7 +204,7 @@ pub fn expression_outer<'a>(la: &mut LookaheadStream<'a>) -> () {
     fn parse_expr<'a>(la: &mut LookaheadStream<'a>, min_bp: u8) -> Result<(), ParseResultError<'a>> {
         while let Ok(tw) = la.next() {
             let operators: Vec<Token> = Vec::new();
-            let operands: Vec<Box<dyn ast::Expression>> = Vec::new();
+            let operands: Vec<ast::Expression> = Vec::new();
             
             enum State {
                 //
@@ -253,7 +253,7 @@ pub fn expression_outer<'a>(la: &mut LookaheadStream<'a>) -> () {
     }
 }
 
-type ExpressionResult<'a> = Result<Box<dyn ast::Expression<'a>>, ParseResultError<'a>>;
+type ExpressionResult<'a> = Result<ast::Expression<'a>, ParseResultError<'a>>;
 
 /*pub fn outer_expression<'a>(la: &mut LookaheadStream<'a>, end_of_string: Token)
     -> Result<Box<dyn ast::Expression<'a>>, ParseResultError<'a>> {
