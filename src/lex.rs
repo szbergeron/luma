@@ -11,6 +11,9 @@ pub enum Token {
     #[token("fn")]
     Function,
 
+    #[token("let")]
+    Let,
+
     #[token("if")]
     If,
 
@@ -73,6 +76,24 @@ pub enum Token {
 
     #[token("=")]
     Equals,
+
+    #[token("==")]
+    CmpEqual,
+
+    #[token("<=")]
+    CmpLessThanOrEqual,
+
+    #[token(">=")]
+    CmpGreaterThanOrEqual,
+
+    #[token("<")]
+    CmpLessThan,
+
+    #[token(">")]
+    CmpGreaterThan,
+
+    #[token("?=")]
+    QueryAssign,
 
     #[token("!")]
     Bang,

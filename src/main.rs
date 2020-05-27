@@ -14,6 +14,11 @@ pub mod parse;
 pub mod ast;
 pub mod lalrpop_lexer;
 pub mod parse_expr;
+pub mod build_expr;
+pub mod grammar;
+
+#[macro_use] extern crate lalrpop_util;
+//lalrpop_mod!(pub grammar);
 
 fn main() {
     let args: Vec<String> = env::args().collect();

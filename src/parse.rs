@@ -1,4 +1,3 @@
-use logos::Logos;
 
 pub fn compile(contents: &str) {
     //let mut lex = crate::lex::Token::lexer(contents);
@@ -25,7 +24,7 @@ pub fn compile(contents: &str) {
 
 use crate::ast;
 use crate::lex::Token;
-use crate::helper::lex_wrap::Wrapper;
+
 use crate::helper::lex_wrap::TokenWrapper;
 use crate::helper::lex_wrap::ParseResultError;
 use crate::helper::lex_wrap::LookaheadStream;
@@ -83,7 +82,7 @@ pub fn global_declaration<'a>(la: &mut LookaheadStream<'a>) -> Result<ast::Symbo
     let has_pub = eat_if(la, Token::Public);
     let mut failed = false;
 
-    if let Ok(tw) = la.next() {
+    if let Ok(tw) = la.la(0) {
         let r = match tw.token {
             Token::Module => {
                 /*let mut m = module_entry(la);
@@ -96,9 +95,21 @@ pub fn global_declaration<'a>(la: &mut LookaheadStream<'a>) -> Result<ast::Symbo
                     Err(err) => Err(err),
                 }*/
                 //m.map(|ns| { ns.public = has_pub.is_some(); ns }).map(|ns| ast::SymbolDeclaration::NamespaceDeclaration(ns))
-                module_entry(la).map(|mut ns| {
-                    ns.public = has_pub.is_some(); ast::SymbolDeclaration::NamespaceDeclaration(ns)
-                }).map_err(|e| {
+                module_entry(la)
+                    .map(|mut ns| {
+                        ns.public = has_pub.is_some(); ast::SymbolDeclaration::NamespaceDeclaration(ns)
+                    })
+                    .map_err(|e| {
+                        failed = true;
+                        e
+                    })
+            },
+            Token::Let => {
+                variable_declaration(la)
+                    .map(|mut vd| {
+                        ast::SymbolDeclaration::StaticDeclaration(vd)
+                    })
+                    .map_err(|e| {
                     failed = true;
                     e
                 })
@@ -119,6 +130,7 @@ pub fn global_declaration<'a>(la: &mut LookaheadStream<'a>) -> Result<ast::Symbo
 }
 
 pub fn module_entry<'a>(lexer: &mut LookaheadStream<'a>) -> Result<ast::Namespace<'a>, ParseResultError<'a>> {
+    expect(lexer, Token::Module)?;
     println!("Module entry now");
     let id = expect(lexer, Token::Identifier)?.slice;
     expect(lexer, Token::RBrace)?;
@@ -146,6 +158,24 @@ pub fn module_entry<'a>(lexer: &mut LookaheadStream<'a>) -> Result<ast::Namespac
     } else {
         ParseResultError::
     }*/
+}
+
+pub fn variable_declaration<'a>(lexer: &mut LookaheadStream<'a>) -> Result<ast::VariableDeclaration<'a>, ParseResultError<'a>> {
+    let id = expect(lexer, Token::Identifier)?.slice;
+    let expr = eat_if(lexer, Token::Identifier).map(|tw| {
+        let mut lw = crate::parse_expr::LALRPopLexWrapper { la: lexer, end_with: vec![Token::Semicolon] };
+        let expr = 
+    });
+    /*let expr = if_token(lexer, Token::Equals).then(|| {
+        
+    });*/
+
+    Ok(ast::VariableDeclaration {
+        failed: false,
+        name: id,
+        var_expr: expr,
+        var_type: None,
+    })
 }
 
 pub fn closure<'a>(la: &mut LookaheadStream<'a>) -> Result<ast::Closure<'a>, ParseResultError<'a>> {
@@ -256,6 +286,44 @@ fn eat_if<'a>(la: &mut LookaheadStream<'a>, t: Token) -> Option<TokenWrapper<'a>
     expect(la, t).ok()
     //expect(t).map_or(|t| Some(t), None)
 }
+
+pub struct RunConditional<'a> {
+    pub run_if: Option<TokenWrapper<'a>>,
+}
+
+/*pub struct RunResult<'a, Output> {
+    parses: Option<TokenWrapper<'a>>,
+    result: Option<Output>,
+}
+
+impl<'a, Output> RunResult<'a, Output> {
+    pub fn then<F>(&self, func: F) -> RunResult<Output> where F: FnOnce(TokenWrapper<'a>) -> Output {
+        match self.parses {
+            Some(tw) => RunResult { result: Some(func(tw)), parses: self.parses },
+            None => RunResult { result: self.result, parses: self.parses },
+        }
+    }
+
+    pub fn otherwise<F>(&self, func: F) -> RunResult<Output> where F: FnOnce() -> () {
+        match self.parses {
+            Some(tw) => RunResult { result: self.result, parses: self.parses },
+            None => RunResult { result: 
+    }
+}*/ // this was getting to be probably not useful, likely only need simple then case anyway
+
+/*impl<'a> RunConditional<'a> {
+    pub fn then<F, T>(&self, func: F) -> Option<T> where F: FnOnce(TokenWrapper<'a>) -> T {
+        if self.run_if.is_some() {
+            Some(func(self.run_if))
+        } else {
+            None
+        }
+    }
+}
+
+fn if_token<'a>(la: &mut LookaheadStream<'a>, t: Token) -> RunConditional<'a> {
+    RunConditional { run_if: eat_if(la, t) }
+}*/
 
 fn expect<'a>(la: &mut LookaheadStream<'a>, t: Token) -> Result<TokenWrapper<'a>, ParseResultError<'a>> {
     println!("Expect asked for: {:?}", t);

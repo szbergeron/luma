@@ -140,6 +140,7 @@ pub struct FunctionDeclaration<'a> {
 pub struct VariableDeclaration<'a> {
     pub failed: bool,
     pub name: &'a str,
+    pub var_expr: Option<Box<dyn Expression<'a>>>,
     pub var_type: Option<TypeReference<'a>>, // None indicates request for type inference
 }
 
@@ -168,12 +169,28 @@ pub struct BinaryOperationExpression<'a> {
 }
 
 #[derive(Debug)]
+pub struct ComparisonOperationExpression<'a> {
+    operation: ComparisonOperation,
+    lhs: Box<dyn Expression<'a>>,
+    rhs: Box<dyn Expression<'a>>,
+}
+
+#[derive(Debug)]
+pub enum ComparisonOperation {
+    Equal,
+    GreaterThan,
+    LessThan,
+    GreaterThanOrEqual,
+    LessThanOrEqual,
+    NotEqual,
+}
+
+#[derive(Debug)]
 pub enum BinaryOperation {
     Multiply,
     Divide,
     Add,
     Subtract,
-    ArrayIndex,
 }
 
 #[derive(Debug)]
@@ -206,9 +223,22 @@ pub struct Closure<'a> {
     pub end: usize,
 }
 
+#[derive(Debug)]
+pub struct IdentifierExpression<'a> {
+    pub name: &'a str,
+}
 
 pub trait Type: std::fmt::Debug {
 }
 
 pub trait Expression<'a>: std::fmt::Debug {
+}
+
+impl<'a> Expression<'a> for ComparisonOperationExpression<'a> {
+}
+
+impl<'a> Expression<'a> for BinaryOperationExpression<'a> {
+}
+
+impl<'a> Expression<'a> for IdentifierExpression<'a> {
 }

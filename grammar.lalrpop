@@ -1,0 +1,105 @@
+use std::str::FromStr;
+use crate::helper::lex_wrap::ParseResultError;
+use crate::parse_expr::LALRPopToken;
+use crate::ast;
+
+
+grammar<'input>(input: &'input str);
+
+extern {
+    type Location = usize;
+    type Error = ParseResultError<'a>;
+
+    enum Tok<'input> {
+        Identifier => LALRPopToken::Identifier(<&'input str>),
+        UnknownIntegerLiteral => LALRPopToken::UnknownIntegerLiteral(<&'input str>),
+        
+
+        Public => LALRPopToken::Public,
+        If => LALRPopToken::If,
+        As => LALRPopToken::As,
+        Else => LALRPopToken::Else,
+        For => LALRPopToken::For,
+        While => LALRPopToken::While,
+        Semicolon => LALRPopToken::Semicolon,
+        RBrace => LALRPopToken::RBrace,
+        LBrace => LALRPopToken::LBrace,
+        RBracket => LALRPopToken::RBracket,
+        LBracket => LALRPopToken::LBracket,
+        RParen => LALRPopToken::RParen,
+        LParen => LALRPopToken::LParen,
+        Asterisk => LALRPopToken::Asterisk,
+        FSlash => LALRPopToken::FSlash,
+        Dash => LALRPopToken::Dash,
+        Plus => LALRPopToken::Plus,
+        Equals => LALRPopToken::Equals,
+        CmpEqual => LALRPopToken::CmpEqual,
+        CmpLessThan => LALRPopToken::CmpLessThan,
+        CmpGreaterThan => LALRPopToken::CmpGreaterThan,
+        CmpLessThanOrEqual => LALRPopToken::CmpLessThanOrEqual,
+        CmpGreaterThanOrEqual => LALRPopToken::CmpGreaterThanOrEqual,
+        Bang => LALRPopToken::Bang,
+        Pipe => LALRPopToken::Pipe,
+        Dot => LALRPopToken::Dot,
+    }
+}
+
+pub OuterExpression: Box<dyn Expression> = {
+    <ae: AssignmentExpression> => ae,
+    <ce: ComparisonExpression> => ce,
+}
+
+pub AssignmentExpression: Box<dyn Expression> = {
+    <lhs: VariableAccess> Equals <oe: OuterExpression> =>
+        Box::new(ast::AssignmentExpression { lhs, rhs: oe }),
+}
+
+ComparisonExpression: Box<dyn Expression> = {
+    <lhs: ComparisonExpression> CmpEqual <rhs: AdditiveExpression> =>
+        Box::new(ast::ComparisonExpression { lhs, rhs, operation: ComparisonOperation::Equal }),
+    <lhs: ComparisonExpression> CmpLessThan <rhs: AdditiveExpression> =>
+        Box::new(ast::ComparisonExpression { lhs, rhs, operation: ComparisonOperation::LessThan }),
+    <lhs: ComparisonExpression> CmpGreaterThan <rhs: AdditiveExpression> =>
+        Box::new(ast::ComparisonExpression { lhs, rhs, operation: ComparisonOperation::GreaterThan }),
+    <lhs: ComparisonExpression> CmpLessThanOrEqual <rhs: AdditiveExpression> =>
+        Box::new(ast::ComparisonExpression { lhs, rhs, operation: ComparisonOperation::LessThanOrEqual }),
+    <lhs: ComparisonExpression> CmpGreaterThanOrEqual <rhs: AdditiveExpression> =>
+        Box::new(ast::ComparisonExpression { lhs, rhs, operation: ComparisonOperation::GreaterThanOrEqual }),
+    <ae: AdditiveExpression> => ae,
+}
+
+AdditiveExpression: Box<dyn Expression> = {
+    <lhs: AdditiveExpression> Plus <rhs: MultiplicativeExpression> =>
+        Box::new(ast::BinaryOperationExpression { lhs, rhs, operation: BinaryOperation::Plus }),
+    <me: MultiplicativeExpression> => me,
+}
+
+MultiplicativeExpression: Box<dyn Expression> = {
+    <lhs: MultiplicativeExpression> Asterisk <rhs: UnaryExpression> =>
+        Box::new(ast::BinaryOperationExpression { lhs, rhs, operation: BinaryOperation::Multiply }),
+    <ue: UnaryExpression> => ue,
+}
+
+UnaryExpression: Box<dyn Expression> = {
+    Dash <subexpr: UnaryExpression> =>
+        Box::new(ast::UnaryOperationExpression { subexpr, operation: UnaryOperation::Negate }),
+    <ce: CastExpression> => ce,
+}
+
+CastExpression: Box<dyn Expression> = {
+    <ae: AtomicExpression> => ae,
+}
+
+AtomicExpression: Box<dyn Expression> = {
+    <pe: ParentheticalExpression> => pe,
+    <va: VariableAccess> => va,
+    //<le: LiteralExpression> => le,
+}
+
+ParentheticalExpression: Box<dyn Expression> = {
+    LParen <oe: OuterExpression> RParen => oe,
+}
+
+VariableAccess: Box<dyn Expression> = {
+    Identifier => Box::new(IdentifierExpression { name: <> })
+}

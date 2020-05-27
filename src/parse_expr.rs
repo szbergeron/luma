@@ -16,12 +16,12 @@ type ExpressionResult<'a> = Result<Box<dyn ast::Expression<'a>>, ParseResultErro
 pub fn atomic_expression<'a>(la: &mut LookaheadStream<'a>) -> ExpressionResult<'a> {
 }*/
 
-pub fn parse_expr<'a>(la: &mut LookaheadStream<'a>) -> ExpressionResult<'a> {
-}
+/*pub fn parse_expr<'a>(la: &mut LookaheadStream<'a>) -> ExpressionResult<'a> {
+}*/
 
 pub struct LALRPopLexWrapper<'a> {
     la: &'a mut LookaheadStream<'a>,
-    end_with: [Token], // use array instead of set as n will almost never be above 3, and often will be just 1
+    end_with: Vec<Token>, // use array instead of set as n will almost never be above 3, and often will be just 1
 }
 
 impl<'a> Iterator for LALRPopLexWrapper<'a> {
@@ -82,6 +82,12 @@ impl<'a> LALRPopLexWrapper<'a> {
             Token::Dash => LALRPopToken::Dash,
             Token::Plus => LALRPopToken::Plus,
             Token::Equals => LALRPopToken::Equals,
+            Token::CmpEqual => LALRPopToken::CmpEqual,
+            Token::CmpLessThan => LALRPopToken::CmpLessThan,
+            Token::CmpGreaterThan => LALRPopToken::CmpGreaterThan,
+            Token::CmpLessThanOrEqual => LALRPopToken::CmpLessThanOrEqual,
+            Token::CmpGreaterThanOrEqual => LALRPopToken::CmpGreaterThanOrEqual,
+            Token::QueryAssign => LALRPopToken::QueryAssign,
             Token::Bang => LALRPopToken::Bang,
             Token::Pipe => LALRPopToken::Pipe,
             Token::Dot => LALRPopToken::Dot,
@@ -113,6 +119,12 @@ pub enum LALRPopToken<'a> {
     Dash,
     Plus,
     Equals,
+    CmpEqual,
+    CmpLessThan,
+    CmpGreaterThan,
+    CmpLessThanOrEqual,
+    CmpGreaterThanOrEqual,
+    QueryAssign,
     Bang,
     Pipe,
     Dot,
