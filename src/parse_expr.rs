@@ -20,8 +20,16 @@ pub fn atomic_expression<'a>(la: &mut LookaheadStream<'a>) -> ExpressionResult<'
 }*/
 
 pub struct LALRPopLexWrapper<'a> {
-    la: &'a mut LookaheadStream<'a>,
-    end_with: Vec<Token>, // use array instead of set as n will almost never be above 3, and often will be just 1
+    pub la: LookaheadStream<'a>,
+    pub end_with: Vec<Token>, // use array instead of set as n will almost never be above 3, and often will be just 1
+}
+
+impl<'a> LALRPopLexWrapper<'a> {
+    pub fn new(la: LookaheadStream<'a>, end_with: Vec<Token>) -> LALRPopLexWrapper<'a> {
+        LALRPopLexWrapper {
+            la, end_with
+        }
+    }
 }
 
 impl<'a> Iterator for LALRPopLexWrapper<'a> {
@@ -31,7 +39,7 @@ impl<'a> Iterator for LALRPopLexWrapper<'a> {
         while let Ok(tw) = self.la.la(0) {
             return match tw.token {
                 Token::Pipe => {
-                    let c = closure(self.la);
+                    let c = closure(&mut self.la);
                     match c {
                         Ok(c) => {
                             let start = c.start;
@@ -44,9 +52,12 @@ impl<'a> Iterator for LALRPopLexWrapper<'a> {
                     }
                 },
                 other => {
+                    println!("LALRPopLexWrapper got other of {:?}", other);
                     if self.end_with.contains(&other) {
+                        println!("LALRPopLexWrapper returns None with other {:?}", other);
                         None
                     } else {
+                        println!("LALRPopLexWrapper returns Some with ends_with {:?} and other {:?}", self.end_with, other);
                         self.la.next();
                         //Some((0, to_lp_token(tw), 0))
                         Some(Self::to_lp_token(tw))

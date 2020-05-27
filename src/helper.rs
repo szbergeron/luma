@@ -2,6 +2,7 @@
 
 pub mod lex_wrap {
     use logos::Logos;
+    use std::rc::Rc;
 
     type ParseResult<'a> = Result<TokenWrapper<'a>, ParseResultError<'a>>;
 
@@ -71,8 +72,9 @@ pub mod lex_wrap {
         }*/
     }
 
+    #[derive(Clone)]
     pub struct LookaheadStream<'a> {
-        tokens: Vec<TokenWrapper<'a>>,
+        tokens: Rc<Vec<TokenWrapper<'a>>>,
         index: usize,
     }
 
@@ -84,9 +86,25 @@ pub mod lex_wrap {
             }
 
             LookaheadStream {
-                tokens: v,
+                tokens: Rc::new(v),
                 index: 0,
             }
+        }
+
+        pub fn seek_to(&mut self, index: usize) {
+            self.index = index;
+        }
+
+        pub fn seek_by(&mut self, offset: isize) {
+            self.index = (self.index as isize + offset) as usize;
+        }
+
+        pub fn index(&self) -> usize {
+            self.index
+        }
+
+        pub fn ffwd(&mut self, other: &LookaheadStream<'a>) {
+            self.seek_to(other.index());
         }
 
         pub fn next(&mut self) -> ParseResult<'a> {

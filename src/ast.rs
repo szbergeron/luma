@@ -44,6 +44,19 @@ impl<'a> Namespace<'a> {
 
 }
 
+impl<'a> VariableDeclaration<'a> {
+    pub fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+        let _ = writeln!(
+            f,
+            "{}StaticDeclaration that parsed {} with name {} comes from expression {:?}",
+            indent(depth),
+            self.failed,
+            self.name,
+            self.var_expr,
+            );
+    }
+}
+
 /*impl<'a> std::fmt::Debug for Namespace<'a> {
     fn fmt(&self, &mut f: std::fmt::Formatter) -> std::fmt::Result {
         write! /**/
@@ -122,7 +135,7 @@ impl<'a> SymbolDeclaration<'a> {
     pub fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         match self {
             //Self::FunctionDeclaration(fd) => fd.display(f, depth),
-            //Self::StaticDeclaration(sd) => sd.display(f, depth),
+            Self::StaticDeclaration(sd) => sd.display(f, depth),
             Self::NamespaceDeclaration(ns) => ns.display(f, depth),
             _ => {},
         }
@@ -137,6 +150,7 @@ pub enum Expression<'a> {
     UnaryOperation(UnaryOperationExpression<'a>),
     Comparison(ComparisonOperationExpression<'a>),
     Identifier(IdentifierExpression<'a>),
+    IntegerLiteral(IntegerLiteralExpression<'a>),
 }
 
 
@@ -154,8 +168,9 @@ pub struct FunctionDeclaration<'a> {
 pub struct VariableDeclaration<'a> {
     pub failed: bool,
     pub name: &'a str,
-    pub expressions: Vec<Expression<'a>>,
+    //pub expressions: Vec<Expression<'a>>,
     //pub var_expr: Option<Box<dyn Expression<'a>>>,
+    pub var_expr: Option<Box<Expression<'a>>>,
     pub var_type: Option<TypeReference<'a>>, // None indicates request for type inference
 }
 
@@ -247,6 +262,11 @@ pub struct Closure<'a> {
 #[derive(Debug, Clone)]
 pub struct IdentifierExpression<'a> {
     pub name: &'a str,
+}
+
+#[derive(Debug, Clone)]
+pub struct IntegerLiteralExpression<'a> {
+    pub contents: &'a str,
 }
 
 /*pub trait Type: std::fmt::Debug + std::clone::Clone {

@@ -161,21 +161,46 @@ pub fn module_entry<'a>(lexer: &mut LookaheadStream<'a>) -> Result<ast::Namespac
 }
 
 pub fn variable_declaration<'a>(lexer: &mut LookaheadStream<'a>) -> Result<ast::VariableDeclaration<'a>, ParseResultError<'a>> {
+    println!("Got a variable declaration, looking...");
+    let Let = expect(lexer, Token::Let)?;
     let id = expect(lexer, Token::Identifier)?.slice;
-    let expr = eat_if(lexer, Token::Identifier).map(|tw| {
-        //let mut lw = crate::parse_expr::LALRPopLexWrapper { la: lexer, end_with: vec![Token::Semicolon] };
-    });
+    let equals = eat_if(lexer, Token::Equals);
+    println!("Equals is: {:?}", equals);
+
+    let sent_lexer = lexer.clone();
+    let mut lw = crate::parse_expr::LALRPopLexWrapper::new(lexer.clone(), vec![Token::Semicolon]);
+
+    let expr = match equals {
+        Some(_) => {
+            println!("Handing off to lalrpop to parse expr");
+            let parser = crate::grammar::OuterExpressionParser::new();
+            let result = parser.parse("", &mut lw).unwrap();
+            //Some(ast::Expression::Variable(result))
+            Some(result)
+        },
+        None => None,
+    };
+
+    lexer.ffwd(&lw.la);
+
+    expect(lexer, Token::Semicolon)?;
+
+    /*let expr = expr.map(|_| {
+        let mut lw = crate::parse_expr::LALRPopLexWrapper { la: lexer, end_with: vec![Token::Semicolon] };
+        let mut parser = crate::grammar::OuterExpressionParser::new();
+        //crate::grammar::
+    });*/
     /*let expr = if_token(lexer, Token::Equals).then(|| {
         
     });*/
-    panic!()
+    //panic!()
 
-    /*Ok(ast::VariableDeclaration {
+    Ok(ast::VariableDeclaration {
         failed: false,
         name: id,
         var_expr: expr,
         var_type: None,
-    })*/
+    })
 }
 
 pub fn closure<'a>(la: &mut LookaheadStream<'a>) -> Result<ast::Closure<'a>, ParseResultError<'a>> {

@@ -1,11 +1,11 @@
-#![feature(generic_associated_types)]
+//#![feature(generic_associated_types)]
 //#[macro_use] extern crate lalrpop_util;
 
 //lalrpop_mod!(pub rsh);
 
 use std::env;
 use std::fs;
-use logos::Logos;
+//use logos::Logos;
 
 //mod lib;
 pub mod lex;

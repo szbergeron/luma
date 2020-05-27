@@ -75,12 +75,16 @@ ComparisonExpression: Box<Expression<'input>> = {
 AdditiveExpression: Box<Expression<'input>> = {
     <lhs: AdditiveExpression> Plus <rhs: MultiplicativeExpression> =>
         Box::new(Expression::BinaryOperation(ast::BinaryOperationExpression { lhs, rhs, operation: BinaryOperation::Add })),
+    <lhs: AdditiveExpression> Dash <rhs: MultiplicativeExpression> =>
+        Box::new(Expression::BinaryOperation(ast::BinaryOperationExpression { lhs, rhs, operation: BinaryOperation::Subtract })),
     <me: MultiplicativeExpression> => me,
 }
 
 MultiplicativeExpression: Box<Expression<'input>> = {
     <lhs: MultiplicativeExpression> Asterisk <rhs: UnaryExpression> =>
         Box::new(Expression::BinaryOperation(ast::BinaryOperationExpression { lhs, rhs, operation: BinaryOperation::Multiply })),
+    <lhs: MultiplicativeExpression> FSlash <rhs: UnaryExpression> =>
+        Box::new(Expression::BinaryOperation(ast::BinaryOperationExpression { lhs, rhs, operation: BinaryOperation::Divide })),
     <ue: UnaryExpression> => ue,
 }
 
@@ -97,7 +101,7 @@ CastExpression: Box<Expression<'input>> = {
 AtomicExpression: Box<Expression<'input>> = {
     <pe: ParentheticalExpression> => pe,
     <va: VariableAccess> => va,
-    //<le: LiteralExpression> => le,
+    <le: LiteralExpression> => le,
 }
 
 ParentheticalExpression: Box<Expression<'input>> = {
@@ -106,4 +110,8 @@ ParentheticalExpression: Box<Expression<'input>> = {
 
 VariableAccess: Box<Expression<'input>> = {
     Identifier => Box::new(Expression::Identifier(ast::IdentifierExpression { name: <> })),
+}
+
+LiteralExpression: Box<Expression<'input>> = {
+    UnknownIntegerLiteral => Box::new(Expression::IntegerLiteral(ast::IntegerLiteralExpression { contents: <> })),
 }
