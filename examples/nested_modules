@@ -10,8 +10,14 @@ mod ns1 {
         /* sdfjklfsdjklsdf /* nested comment */ */
         /* sdfjklafsdj */
 
+        // /* weird comment test case
+        */
+
         mod ahkdf {
         }
+
+        // unmatched close comment
+        */
     }
 }
 

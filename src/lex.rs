@@ -29,8 +29,32 @@ pub enum Token {
     #[token("while")]
     While,
 
+    #[token("anon")]
+    Lambda,
+
     #[token(";")]
     Semicolon,
+
+    #[token(":")]
+    Colon,
+
+    #[token("%")]
+    Modulo,
+
+    #[token("&&")]
+    LogicalAnd,
+
+    #[token("||")]
+    LogicalOr,
+
+    #[token("&")]
+    And,
+
+    #[token("^")]
+    Caret,
+
+    #[token("#")]
+    Pound,
 
     #[token("{")]
     RBrace,
@@ -101,6 +125,12 @@ pub enum Token {
     #[token("|")]
     Pipe,
 
+    #[token("->")]
+    ThinArrow,
+
+    #[token("=>")]
+    ThickArrow,
+
     //#[regex("//.*\n")]
     //LineCommentStart,
 
@@ -122,10 +152,16 @@ pub enum Token {
     #[token("\t", logos::skip)]
     Tab,
 
+    #[token("\n")]
+    Newline,
+
+    #[token("//")]
+    LineCommentStart,
+
     /*#[regex(".*")]
     CommentContents,*/
 
-    #[regex(r"[\t\f\n]+", logos::skip)]
+    #[regex(r"[\t\f]+", logos::skip)]
     #[error]
     Error,
 }

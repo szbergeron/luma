@@ -81,8 +81,26 @@ pub mod lex_wrap {
     impl<'a> LookaheadStream<'a> {
         pub fn new(w: &mut Wrapper<'a>) -> LookaheadStream<'a> {
             let mut v = Vec::new();
-            while let Ok(tw) = w.next() {
-                v.push(tw);
+            let mut comment_level = 0;
+            let mut inside_line_comment = false;
+            while let Ok(tw) = w.next() { // handle comments
+                use crate::lex::Token;
+                match tw.token {
+                    Token::LineCommentStart => { inside_line_comment = true; continue; },
+                    Token::Newline => { inside_line_comment = false; continue; },
+                    Token::LBlockComment | Token::LDocComment => { comment_level += 1; continue; },
+                    Token::RBlockComment | Token::RDocComment => {
+                        if comment_level > 0 {
+                            comment_level -= 1; // will cause syntax error in else during parse
+                        }
+
+                        continue;
+                    },
+                    _ => {},
+                }
+                if !inside_line_comment && comment_level == 0 {
+                    v.push(tw);
+                }
             }
 
             LookaheadStream {

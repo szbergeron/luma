@@ -8,6 +8,8 @@ use std::collections::HashSet;
 
 use crate::parse::*;
 
+use crate::parse_helper::*;
+
 type ExpressionResult<'a> = Result<Box<ast::Expression<'a>>, ParseResultError<'a>>;
 
 /*pub fn variable_access<'a>(la: &mut LookaheadStream<'a>) -> ExpressionResult<'a> {
@@ -19,26 +21,76 @@ pub fn atomic_expression<'a>(la: &mut LookaheadStream<'a>) -> ExpressionResult<'
 /*pub fn parse_expr<'a>(la: &mut LookaheadStream<'a>) -> ExpressionResult<'a> {
 }*/
 
-pub struct LALRPopLexWrapper<'a> {
-    pub la: LookaheadStream<'a>,
+pub fn parse_expr<'a>(la: &mut LookaheadStream<'a>) -> ExpressionResult<'a> {
+    let mut lhs = atomic_expression(la)?;
+
+    while let Ok(tw) = la.next() {
+        match tw.token {
+            Token::Dot => {
+                let access = object_access(la)?;
+                match access {
+                    //Field(name, span) => ast::Expression::
+                }
+            }
+        }
+    }
+
+    panic!()
+}
+
+enum ObjectAccess<'a> {
+    Field(&'a str),
+    Method(&'a str, Vec<Box<ast::Expression<'a>>>),
+}
+
+pub fn object_access<'a>(la: &mut LookaheadStream<'a>) -> Result<ObjectAccess<'a>, ParseResultError<'a>> {
+    panic!()
+}
+
+pub fn atomic_expression<'a>(la: &mut LookaheadStream<'a>) -> ExpressionResult<'a> {
+    if let Ok(tw) = la.next() {
+        match tw.token {
+            Token::Identifier => {
+                Ok(Box::new(ast::Expression::identifier(tw.slice)))
+            },
+            Token::UnknownIntegerLiteral => {
+                Ok(Box::new(ast::Expression::int_literal(tw.slice)))
+            },
+            Token::LParen => {
+                let inner = parse_expr(la)?;
+                expect(la, Token::RParen)?;
+
+                Ok(inner)
+            },
+            _ => {
+                Err(ParseResultError::UnexpectedToken(tw))
+            }
+        }
+    } else {
+        Err(ParseResultError::EndOfFile)
+    }
+}
+
+pub struct LALRPopLexWrapper<'a, 'b> {
+    pub la: &'b mut LookaheadStream<'a>,
     pub end_with: Vec<Token>, // use array instead of set as n will almost never be above 3, and often will be just 1
 }
 
-impl<'a> LALRPopLexWrapper<'a> {
-    pub fn new(la: LookaheadStream<'a>, end_with: Vec<Token>) -> LALRPopLexWrapper<'a> {
+impl<'a, 'b> LALRPopLexWrapper<'a, 'b> {
+    pub fn new(la: &'b mut LookaheadStream<'a>, end_with: Vec<Token>) -> LALRPopLexWrapper<'a, 'b> {
         LALRPopLexWrapper {
             la, end_with
         }
     }
 }
 
-impl<'a> Iterator for LALRPopLexWrapper<'a> {
+impl<'a, 'b> Iterator for LALRPopLexWrapper<'a, 'b> {
     type Item = Result<(usize, LALRPopToken<'a>, usize), ParseResultError<'a>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         while let Ok(tw) = self.la.la(0) {
             return match tw.token {
-                Token::Pipe => {
+                Token::Lambda => {
                     let c = closure(&mut self.la);
                     match c {
                         Ok(c) => {
@@ -70,7 +122,7 @@ impl<'a> Iterator for LALRPopLexWrapper<'a> {
     }
 }
 
-impl<'a> LALRPopLexWrapper<'a> {
+impl<'a, 'b> LALRPopLexWrapper<'a, 'b> {
     fn to_lp_token(tw: TokenWrapper<'a>) -> Result<(usize, LALRPopToken<'a>, usize), ParseResultError<'a>> {
         let start = tw.start;
         let end = tw.end;

@@ -30,6 +30,15 @@ use crate::helper::lex_wrap::ParseResultError;
 use crate::helper::lex_wrap::LookaheadStream;
 use std::collections::HashSet;
 
+use crate::parse_helper::*;
+
+use crate::grammar::*;
+
+lazy_static! {
+    static ref expression_parser: OuterExpressionParser = OuterExpressionParser::new();
+    //static ref type_parser: OuterExpressionParser = 
+}
+
 type TokenResult<'a> = Result<TokenWrapper<'a>, ParseResultError<'a>>;
 
 pub fn entry<'a>(la: &mut LookaheadStream<'a>) -> Result<ast::ParseUnit<'a>, ParseResultError<'a>> {
@@ -42,7 +51,7 @@ pub fn entry<'a>(la: &mut LookaheadStream<'a>) -> Result<ast::ParseUnit<'a>, Par
         println!("In entry while, got tw {:?}", tw);
         let r = match tw.token {
             //Token::Module => Ok(ast::SymbolDeclaration::NamespaceDeclaration(module_entry(la)?)),
-            Token::LBlockComment => { block_comment(la); continue },
+            //Token::LBlockComment => { block_comment(la); continue },
             Token::LBrace => break,
             _ => {
                 la.backtrack();
@@ -78,6 +87,29 @@ pub fn entry<'a>(la: &mut LookaheadStream<'a>) -> Result<ast::ParseUnit<'a>, Par
     Ok(ast::ParseUnit { declarations, failed })
 }
 
+/*pub fn function_declaration<'a>(la: &mut LookaheadStream<'a>) -> Result<ast::FunctionDeclaration<'a>, ParseResultError<'a>> {
+    expect(la, Token::Function)?;
+    let parameters = paren_param_list(la)?;
+    let return_type_arrow = eat_if(la, Token::ThinArrow);
+    let return_type = match return_type_arrow {
+        Some(_) => parse_type(la)?,
+        None => ast::TypeReference::unit(),
+    };
+}
+
+pub fn paren_param_list<'a>(la: &mut LookaheadStream<'a>) -> Result<Vec<ast::VariableDeclaration<'a>>, ParseResultError<'a>> {
+    //
+}
+
+pub fn param_list<'a>(la: &mut LookaheadStream<'a>) -> Result<Vec<ast::VariableDeclaration<'a>>, ParseResultError<'a>> {
+}
+
+pub fn type_list<'a>(la: &mut LookaheadStream<'a>) -> Result<Vec<ast::TypeReference<'a>>, ParseResultError<'a>> {
+}
+
+pub fn parse_type<'a>(la: &mut LookaheadStream<'a>) -> Result<ast::TypeReference<'a>, ParseResultError<'a>> {
+}*/
+
 pub fn global_declaration<'a>(la: &mut LookaheadStream<'a>) -> Result<ast::SymbolDeclaration<'a>, ParseResultError<'a>> {
     let has_pub = eat_if(la, Token::Public);
     let mut failed = false;
@@ -95,7 +127,7 @@ pub fn global_declaration<'a>(la: &mut LookaheadStream<'a>) -> Result<ast::Symbo
                     Err(err) => Err(err),
                 }*/
                 //m.map(|ns| { ns.public = has_pub.is_some(); ns }).map(|ns| ast::SymbolDeclaration::NamespaceDeclaration(ns))
-                module_entry(la)
+                namespace(la)
                     .map(|mut ns| {
                         ns.public = has_pub.is_some(); ast::SymbolDeclaration::NamespaceDeclaration(ns)
                     })
@@ -107,7 +139,7 @@ pub fn global_declaration<'a>(la: &mut LookaheadStream<'a>) -> Result<ast::Symbo
             Token::Let => {
                 variable_declaration(la)
                     .map(|mut vd| {
-                        ast::SymbolDeclaration::StaticDeclaration(vd)
+                        ast::SymbolDeclaration::VariableDeclaration(vd)
                     })
                     .map_err(|e| {
                     failed = true;
@@ -129,7 +161,7 @@ pub fn global_declaration<'a>(la: &mut LookaheadStream<'a>) -> Result<ast::Symbo
     //panic!()
 }
 
-pub fn module_entry<'a>(lexer: &mut LookaheadStream<'a>) -> Result<ast::Namespace<'a>, ParseResultError<'a>> {
+pub fn namespace<'a>(lexer: &mut LookaheadStream<'a>) -> Result<ast::Namespace<'a>, ParseResultError<'a>> {
     expect(lexer, Token::Module)?;
     println!("Module entry now");
     let id = expect(lexer, Token::Identifier)?.slice;
@@ -162,26 +194,38 @@ pub fn module_entry<'a>(lexer: &mut LookaheadStream<'a>) -> Result<ast::Namespac
 
 pub fn variable_declaration<'a>(lexer: &mut LookaheadStream<'a>) -> Result<ast::VariableDeclaration<'a>, ParseResultError<'a>> {
     println!("Got a variable declaration, looking...");
-    let Let = expect(lexer, Token::Let)?;
+    let _let = expect(lexer, Token::Let)?;
     let id = expect(lexer, Token::Identifier)?.slice;
+    let maybe_typeref = eat_if(lexer, Token::Colon);
+    println!("Typeref colon: {:?}", maybe_typeref);
+
+    let tr = match maybe_typeref {
+        Some(_) => {
+            println!("Got colon, expecting identifier. LookAhead is: {:?}", lexer.la(0));
+            Some(ast::TypeReference { failed: false, typename: expect(lexer, Token::Identifier)?.slice, refers_to: None })
+        },
+        None => None,
+    };
+
     let equals = eat_if(lexer, Token::Equals);
     println!("Equals is: {:?}", equals);
 
-    let sent_lexer = lexer.clone();
-    let mut lw = crate::parse_expr::LALRPopLexWrapper::new(lexer.clone(), vec![Token::Semicolon]);
+    //let sent_lexer = lexer.clone();
+    let mut lw = crate::parse_expr::LALRPopLexWrapper::new(lexer, vec![Token::Semicolon]);
+
 
     let expr = match equals {
         Some(_) => {
             println!("Handing off to lalrpop to parse expr");
-            let parser = crate::grammar::OuterExpressionParser::new();
-            let result = parser.parse("", &mut lw).unwrap();
+            //let parser = crate::grammar::OuterExpressionParser::new();
+            let result = expression_parser.parse("", &mut lw).unwrap();
             //Some(ast::Expression::Variable(result))
             Some(result)
         },
         None => None,
     };
 
-    lexer.ffwd(&lw.la);
+    //lexer.ffwd(&lw.la);
 
     expect(lexer, Token::Semicolon)?;
 
@@ -199,7 +243,7 @@ pub fn variable_declaration<'a>(lexer: &mut LookaheadStream<'a>) -> Result<ast::
         failed: false,
         name: id,
         var_expr: expr,
-        var_type: None,
+        var_type: tr,
     })
 }
 
@@ -211,7 +255,7 @@ pub fn syntactic_block(_lexer: &mut LookaheadStream) {
 }
 
 // no result from comments
-pub fn block_comment(la: &mut LookaheadStream) -> () {
+/*pub fn block_comment(la: &mut LookaheadStream) -> () {
     while let Ok(tw) = la.next() {
         match tw.token {
             Token::LBlockComment => block_comment(la),
@@ -219,7 +263,7 @@ pub fn block_comment(la: &mut LookaheadStream) -> () {
             _ => continue,
         }
     }
-}
+}*/
 
 // I really hate myself for this, but I'm going to potentially try both grammar based
 // precedence and pratt parsing since both seem not great
@@ -295,73 +339,3 @@ pub fn parenthetical<'a>(la: &mut LookaheadStream<'a>)
 
 //fn find<'a>(lexer: &mut Wrapper<'a>, t: Token
 
-fn eat_through<'a>(la: &mut LookaheadStream<'a>, toks: Vec<Token>) {
-    let s: HashSet<Token> = toks.into_iter().collect();
-
-    while let Ok(tw) = la.next() {
-        if s.contains(&tw.token) {
-            break;
-        } else {
-            continue;
-        }
-    }
-}
-
-fn eat_if<'a>(la: &mut LookaheadStream<'a>, t: Token) -> Option<TokenWrapper<'a>> {
-    expect(la, t).ok()
-    //expect(t).map_or(|t| Some(t), None)
-}
-
-pub struct RunConditional<'a> {
-    pub run_if: Option<TokenWrapper<'a>>,
-}
-
-/*pub struct RunResult<'a, Output> {
-    parses: Option<TokenWrapper<'a>>,
-    result: Option<Output>,
-}
-
-impl<'a, Output> RunResult<'a, Output> {
-    pub fn then<F>(&self, func: F) -> RunResult<Output> where F: FnOnce(TokenWrapper<'a>) -> Output {
-        match self.parses {
-            Some(tw) => RunResult { result: Some(func(tw)), parses: self.parses },
-            None => RunResult { result: self.result, parses: self.parses },
-        }
-    }
-
-    pub fn otherwise<F>(&self, func: F) -> RunResult<Output> where F: FnOnce() -> () {
-        match self.parses {
-            Some(tw) => RunResult { result: self.result, parses: self.parses },
-            None => RunResult { result: 
-    }
-}*/ // this was getting to be probably not useful, likely only need simple then case anyway
-
-/*impl<'a> RunConditional<'a> {
-    pub fn then<F, T>(&self, func: F) -> Option<T> where F: FnOnce(TokenWrapper<'a>) -> T {
-        if self.run_if.is_some() {
-            Some(func(self.run_if))
-        } else {
-            None
-        }
-    }
-}
-
-fn if_token<'a>(la: &mut LookaheadStream<'a>, t: Token) -> RunConditional<'a> {
-    RunConditional { run_if: eat_if(la, t) }
-}*/
-
-fn expect<'a>(la: &mut LookaheadStream<'a>, t: Token) -> Result<TokenWrapper<'a>, ParseResultError<'a>> {
-    println!("Expect asked for: {:?}", t);
-    if let Ok(tw) = la.next() {
-        match tw.token {
-            tt if tt == t => Ok(tw),
-            _ => {
-                la.backtrack();
-
-                Err(ParseResultError::UnexpectedToken(tw))
-            },
-        }
-    } else {
-        Err(ParseResultError::EndOfFile)
-    }
-}

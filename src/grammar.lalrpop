@@ -53,7 +53,7 @@ pub OuterExpression: Box<Expression<'input>> = {
     <ce: ComparisonExpression> => ce,
 }
 
-pub AssignmentExpression: Box<Expression<'input>> = {
+AssignmentExpression: Box<Expression<'input>> = {
     <lhs: VariableAccess> Equals <oe: OuterExpression> =>
         Box::new(Expression::Assignment(ast::AssignmentExpression { lhs, rhs: oe })),
 }
@@ -91,11 +91,19 @@ MultiplicativeExpression: Box<Expression<'input>> = {
 UnaryExpression: Box<Expression<'input>> = {
     Dash <subexpr: UnaryExpression> =>
         Box::new(Expression::UnaryOperation(ast::UnaryOperationExpression { subexpr, operation: UnaryOperation::Negate })),
+    Bang <subexpr: UnaryExpression> =>
+        Box::new(Expression::UnaryOperation(ast::UnaryOperationExpression { subexpr, operation: UnaryOperation::Invert })),
+    Asterisk <subexpr: UnaryExpression> =>
+        Box::new(Expression::UnaryOperation(ast::UnaryOperationExpression { subexpr, operation: UnaryOperation::Dereference })),
     <ce: CastExpression> => ce,
 }
 
 CastExpression: Box<Expression<'input>> = {
     <ae: AtomicExpression> => ae,
+    <ae: AtomicExpression> As <id: Identifier> => {
+        let tr = Box::new(ast::TypeReference { failed: false, typename: id, refers_to: None });
+        Box::new(Expression::Cast(ast::CastExpression { subexpr: ae, typeref: tr }))
+    }
 }
 
 AtomicExpression: Box<Expression<'input>> = {
@@ -109,7 +117,7 @@ ParentheticalExpression: Box<Expression<'input>> = {
 }
 
 VariableAccess: Box<Expression<'input>> = {
-    Identifier => Box::new(Expression::Identifier(ast::IdentifierExpression { name: <> })),
+    Identifier => Box::new(Expression::Identifier(ast::IdentifierExpression { name: <>, node_type: None })),
 }
 
 LiteralExpression: Box<Expression<'input>> = {

@@ -1,7 +1,11 @@
 //#![feature(generic_associated_types)]
 //#[macro_use] extern crate lalrpop_util;
+#![feature(associated_type_defaults)]
 
 //lalrpop_mod!(pub rsh);
+
+#[macro_use]
+extern crate lazy_static;
 
 use std::env;
 use std::fs;
@@ -15,6 +19,7 @@ pub mod ast;
 pub mod lalrpop_lexer;
 pub mod parse_expr;
 pub mod build_expr;
+pub mod parse_helper;
 
 #[macro_use] extern crate lalrpop_util;
 lalrpop_mod!(pub grammar);
