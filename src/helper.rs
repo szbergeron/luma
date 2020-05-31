@@ -76,6 +76,8 @@ pub mod lex_wrap {
     pub struct LookaheadStream<'a> {
         tokens: Rc<Vec<TokenWrapper<'a>>>,
         index: usize,
+
+        //latest: Option<TokenWrapper<'a>>,
     }
 
     impl<'a> LookaheadStream<'a> {
@@ -106,8 +108,17 @@ pub mod lex_wrap {
             LookaheadStream {
                 tokens: Rc::new(v),
                 index: 0,
+                //latest: None,
             }
         }
+
+        /*pub fn after(&self) -> Option<usize> {
+            self.latest.map(|tw| tw.end)
+        }
+
+        pub fn before(&self) -> Option<usize> {
+            self.latest.map(|tw| tw.start)
+        }*/
 
         pub fn seek_to(&mut self, index: usize) {
             self.index = index;
@@ -128,6 +139,7 @@ pub mod lex_wrap {
         pub fn next(&mut self) -> ParseResult<'a> {
             //self.tokens[self.index]
             let r = self.la(0);
+            //self.latest = Some(r);
 
             //self.index += 1;
             self.advance();

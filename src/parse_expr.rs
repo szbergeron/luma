@@ -10,7 +10,7 @@ use crate::parse::*;
 
 use crate::parse_helper::*;
 
-type ExpressionResult<'a> = Result<Box<ast::Expression<'a>>, ParseResultError<'a>>;
+type ExpressionResult<'a> = Result<Box<ast::ExpressionWrapper<'a>>, ParseResultError<'a>>;
 
 /*pub fn variable_access<'a>(la: &mut LookaheadStream<'a>) -> ExpressionResult<'a> {
 }
@@ -30,15 +30,17 @@ pub fn parse_expr<'a>(la: &mut LookaheadStream<'a>) -> ExpressionResult<'a> {
                 let access = object_access(la)?;
                 match access {
                     //Field(name, span) => ast::Expression::
+                    _ => todo!(),
                 }
             }
+            _ => todo!(),
         }
     }
 
     panic!()
 }
 
-enum ObjectAccess<'a> {
+pub enum ObjectAccess<'a> {
     Field(&'a str),
     Method(&'a str, Vec<Box<ast::Expression<'a>>>),
 }
@@ -51,10 +53,10 @@ pub fn atomic_expression<'a>(la: &mut LookaheadStream<'a>) -> ExpressionResult<'
     if let Ok(tw) = la.next() {
         match tw.token {
             Token::Identifier => {
-                Ok(Box::new(ast::Expression::identifier(tw.slice)))
+                Ok(Box::new(ast::ExpressionWrapper::identifier_expression(tw)))
             },
             Token::UnknownIntegerLiteral => {
-                Ok(Box::new(ast::Expression::int_literal(tw.slice)))
+                Ok(Box::new(ast::ExpressionWrapper::integer_literal_expression(tw)))
             },
             Token::LParen => {
                 let inner = parse_expr(la)?;
@@ -163,7 +165,7 @@ impl<'a, 'b> LALRPopLexWrapper<'a, 'b> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum LALRPopToken<'a> {
     Public,
     If,

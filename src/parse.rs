@@ -30,14 +30,16 @@ use crate::helper::lex_wrap::ParseResultError;
 use crate::helper::lex_wrap::LookaheadStream;
 use std::collections::HashSet;
 
+use crate::parse_expr::*;
+
 use crate::parse_helper::*;
 
-use crate::grammar::*;
+//use crate::grammar::*;
 
-lazy_static! {
+/*lazy_static! {
     static ref expression_parser: OuterExpressionParser = OuterExpressionParser::new();
     //static ref type_parser: OuterExpressionParser = 
-}
+}*/
 
 type TokenResult<'a> = Result<TokenWrapper<'a>, ParseResultError<'a>>;
 
@@ -45,9 +47,12 @@ pub fn entry<'a>(la: &mut LookaheadStream<'a>) -> Result<ast::ParseUnit<'a>, Par
     //let mut declarations
     let mut declarations: Vec<Result<ast::SymbolDeclaration<'a>, ParseResultError<'a>>> = Vec::new();
 
+    let start = la.la(0).map_or(0, |tw| tw.start);
+
     let mut failed = false;
 
     while let Ok(tw) = la.next() {
+
         println!("In entry while, got tw {:?}", tw);
         let r = match tw.token {
             //Token::Module => Ok(ast::SymbolDeclaration::NamespaceDeclaration(module_entry(la)?)),
@@ -83,8 +88,10 @@ pub fn entry<'a>(la: &mut LookaheadStream<'a>) -> Result<ast::ParseUnit<'a>, Par
         declarations.push(r);
     }
     println!("Entry returns, declarations are: {:?}", declarations);
+
+    let end = la.la(-1).map_or(start, |tw| tw.start);
     
-    Ok(ast::ParseUnit { declarations, failed })
+    Ok(ast::ParseUnit { declarations, node_info: ast::NodeInfo::from_indices(failed, start, end) })
 }
 
 /*pub fn function_declaration<'a>(la: &mut LookaheadStream<'a>) -> Result<ast::FunctionDeclaration<'a>, ParseResultError<'a>> {
@@ -129,7 +136,7 @@ pub fn global_declaration<'a>(la: &mut LookaheadStream<'a>) -> Result<ast::Symbo
                 //m.map(|ns| { ns.public = has_pub.is_some(); ns }).map(|ns| ast::SymbolDeclaration::NamespaceDeclaration(ns))
                 namespace(la)
                     .map(|mut ns| {
-                        ns.public = has_pub.is_some(); ast::SymbolDeclaration::NamespaceDeclaration(ns)
+                        ns.set_public(has_pub.is_some()); ast::SymbolDeclaration::NamespaceDeclaration(ns)
                     })
                     .map_err(|e| {
                         failed = true;
@@ -162,6 +169,8 @@ pub fn global_declaration<'a>(la: &mut LookaheadStream<'a>) -> Result<ast::Symbo
 }
 
 pub fn namespace<'a>(lexer: &mut LookaheadStream<'a>) -> Result<ast::Namespace<'a>, ParseResultError<'a>> {
+    let start = lexer.la(0).map_or(0, |tw| tw.start);
+
     expect(lexer, Token::Module)?;
     println!("Module entry now");
     let id = expect(lexer, Token::Identifier)?.slice;
@@ -170,9 +179,13 @@ pub fn namespace<'a>(lexer: &mut LookaheadStream<'a>) -> Result<ast::Namespace<'
     //expect(lexer, Token::RBrace)?;
     println!("Module entry finds id: {:?}", id);
 
+    let end = lexer.la(-1).map_or(0, |tw| tw.end);
+
     let failed = pu.is_err();
 
-    Ok(ast::Namespace { name: Some(id), contents: pu.ok(), failed, public: false })
+    let node_info = ast::NodeInfo::from_indices(true, start, end);
+
+    Ok(ast::Namespace { name: Some(id), contents: pu, public: false, node_info })
 
     /*fn module_name<'a>(lexer: &mut Wrapper<'a>) -> TokenResult<'a> {
         expect(lexer, Token::Identifier)
@@ -194,6 +207,8 @@ pub fn namespace<'a>(lexer: &mut LookaheadStream<'a>) -> Result<ast::Namespace<'
 
 pub fn variable_declaration<'a>(lexer: &mut LookaheadStream<'a>) -> Result<ast::VariableDeclaration<'a>, ParseResultError<'a>> {
     println!("Got a variable declaration, looking...");
+    let start = lexer.la(0).map_or(0, |tw| tw.start);
+
     let _let = expect(lexer, Token::Let)?;
     let id = expect(lexer, Token::Identifier)?.slice;
     let maybe_typeref = eat_if(lexer, Token::Colon);
@@ -202,16 +217,23 @@ pub fn variable_declaration<'a>(lexer: &mut LookaheadStream<'a>) -> Result<ast::
     let tr = match maybe_typeref {
         Some(_) => {
             println!("Got colon, expecting identifier. LookAhead is: {:?}", lexer.la(0));
-            Some(ast::TypeReference { failed: false, typename: expect(lexer, Token::Identifier)?.slice, refers_to: None })
+            let t = expect(lexer, Token::Identifier)?;
+
+            let node_info = ast::NodeInfo::from_indices(true, t.start, t.end);
+
+            Some(ast::TypeReference { node_info, typename: t.slice, refers_to: None })
         },
         None => None,
     };
 
+
     let equals = eat_if(lexer, Token::Equals);
     println!("Equals is: {:?}", equals);
 
+    let var_expr = parse_expr(lexer)?;
+
     //let sent_lexer = lexer.clone();
-    let mut lw = crate::parse_expr::LALRPopLexWrapper::new(lexer, vec![Token::Semicolon]);
+    /*let mut lw = crate::parse_expr::LALRPopLexWrapper::new(lexer, vec![Token::Semicolon]);
 
 
     let expr = match equals {
@@ -225,9 +247,11 @@ pub fn variable_declaration<'a>(lexer: &mut LookaheadStream<'a>) -> Result<ast::
         None => None,
     };
 
-    //lexer.ffwd(&lw.la);
+    //lexer.ffwd(&lw.la);*/
 
     expect(lexer, Token::Semicolon)?;
+
+    let end = lexer.la(-1).map_or(start, |tw| tw.start);
 
     /*let expr = expr.map(|_| {
         let mut lw = crate::parse_expr::LALRPopLexWrapper { la: lexer, end_with: vec![Token::Semicolon] };
@@ -238,11 +262,13 @@ pub fn variable_declaration<'a>(lexer: &mut LookaheadStream<'a>) -> Result<ast::
         
     });*/
     //panic!()
+    
+    let node_info = ast::NodeInfo::from_indices(true, start, end);
 
     Ok(ast::VariableDeclaration {
-        failed: false,
+        node_info,
         name: id,
-        var_expr: expr,
+        var_expr: Some(var_expr),
         var_type: tr,
     })
 }
@@ -273,7 +299,7 @@ pub fn expression_outer<'a>(la: &mut LookaheadStream<'a>) -> () {
     fn parse_expr<'a>(la: &mut LookaheadStream<'a>, min_bp: u8) -> Result<(), ParseResultError<'a>> {
         while let Ok(tw) = la.next() {
             let operators: Vec<Token> = Vec::new();
-            let operands: Vec<ast::Expression> = Vec::new();
+            let operands: Vec<Box<dyn ast::Expression>> = Vec::new();
             
             enum State {
                 //
@@ -322,7 +348,7 @@ pub fn expression_outer<'a>(la: &mut LookaheadStream<'a>) -> () {
     }
 }
 
-type ExpressionResult<'a> = Result<ast::Expression<'a>, ParseResultError<'a>>;
+type ExpressionResult<'a> = Result<ast::ExpressionWrapper<'a>, ParseResultError<'a>>;
 
 /*pub fn outer_expression<'a>(la: &mut LookaheadStream<'a>, end_of_string: Token)
     -> Result<Box<dyn ast::Expression<'a>>, ParseResultError<'a>> {
