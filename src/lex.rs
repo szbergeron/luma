@@ -32,6 +32,12 @@ pub enum Token {
     #[token("anon")]
     Lambda,
 
+    #[token("return")]
+    Return,
+
+    #[token("break")]
+    Break,
+
     #[token(";")]
     Semicolon,
 
@@ -101,6 +107,9 @@ pub enum Token {
     #[token("=")]
     Equals,
 
+    #[token("!=")]
+    CmpNotEqual,
+
     #[token("==")]
     CmpEqual,
 
@@ -119,6 +128,9 @@ pub enum Token {
     #[token("?=")]
     QueryAssign,
 
+    #[token("?")]
+    QuestionMark,
+
     #[token("!")]
     Bang,
 
@@ -130,6 +142,12 @@ pub enum Token {
 
     #[token("=>")]
     ThickArrow,
+
+    #[token(">>")]
+    ShiftRight,
+
+    #[token("<<")]
+    ShiftLeft,
 
     //#[regex("//.*\n")]
     //LineCommentStart,

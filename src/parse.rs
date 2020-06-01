@@ -118,7 +118,7 @@ pub fn parse_type<'a>(la: &mut LookaheadStream<'a>) -> Result<ast::TypeReference
 }*/
 
 pub fn global_declaration<'a>(la: &mut LookaheadStream<'a>) -> Result<ast::SymbolDeclaration<'a>, ParseResultError<'a>> {
-    let has_pub = eat_if(la, Token::Public);
+    let has_pub = eat_if_matches(la, Token::Public);
     let mut failed = false;
 
     if let Ok(tw) = la.la(0) {
@@ -211,7 +211,7 @@ pub fn variable_declaration<'a>(lexer: &mut LookaheadStream<'a>) -> Result<ast::
 
     let _let = expect(lexer, Token::Let)?;
     let id = expect(lexer, Token::Identifier)?.slice;
-    let maybe_typeref = eat_if(lexer, Token::Colon);
+    let maybe_typeref = eat_if_matches(lexer, Token::Colon);
     println!("Typeref colon: {:?}", maybe_typeref);
 
     let tr = match maybe_typeref {
@@ -227,7 +227,7 @@ pub fn variable_declaration<'a>(lexer: &mut LookaheadStream<'a>) -> Result<ast::
     };
 
 
-    let equals = eat_if(lexer, Token::Equals);
+    let equals = eat_if_matches(lexer, Token::Equals);
     println!("Equals is: {:?}", equals);
 
     let var_expr = parse_expr(lexer)?;

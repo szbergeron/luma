@@ -2,6 +2,7 @@ use super::base::*;
 use super::types;
 
 use crate::helper::lex_wrap::TokenWrapper;
+use crate::lex::Token;
 
 pub trait Expression<'a>: AstNode<'a> {
     fn expr_type(&self) -> Box<dyn types::Type>;
@@ -52,7 +53,16 @@ impl<'a> IntoAstNode<'a> for ExpressionWrapper<'a> {
     fn as_node(&self) -> &dyn AstNode<'a> {
         match self {
             Self::Assignment(e) => e,
-            _ => todo!(),
+            Self::BinaryOperation(e) => e,
+            Self::UnaryOperation(e) => e,
+            Self::Comparison(e) => e,
+            Self::IntegerLiteral(e) => e,
+            Self::Identifier(e) => e,
+            Self::Cast(e) => e,
+            _ => {
+                println!("No implemented as_node handler for type {:?}", self);
+                todo!();
+            },
         }
     }
 
@@ -69,6 +79,22 @@ pub struct AssignmentExpression<'a> {
     pub lhs: Box<ExpressionWrapper<'a>>,
     pub rhs: Box<ExpressionWrapper<'a>>,
     //pub span: Span<'a>,
+}
+
+impl<'a> AssignmentExpression<'a> {
+    pub fn new_expr(
+        node_info: NodeInfo,
+        lhs: Box<ExpressionWrapper<'a>>,
+        rhs: Box<ExpressionWrapper<'a>>,
+    ) -> Box<ExpressionWrapper<'a>> {
+        Box::new(
+            ExpressionWrapper::Assignment(
+                AssignmentExpression {
+                    node_info, lhs, rhs,
+                }
+            )
+        )
+    }
 }
 
 impl<'a> AstNode<'a> for AssignmentExpression<'a> {
@@ -96,6 +122,24 @@ pub struct BinaryOperationExpression<'a> {
     //lhs: Box<dyn Expression<'a>>,
     //rhs: Box<dyn Expression<'a>>,
     //pub span: Span<'a>,
+}
+
+impl<'a> BinaryOperationExpression<'a> {
+    pub fn new_expr(
+        node_info: NodeInfo,
+        operation: Token,
+        lhs: Box<ExpressionWrapper<'a>>,
+        rhs: Box<ExpressionWrapper<'a>>,
+    ) -> Box<ExpressionWrapper<'a>> {
+        let operation = BinaryOperation::from_token(operation).expect("tried to build binop from bad operator token");
+        Box::new(
+            ExpressionWrapper::BinaryOperation(
+                BinaryOperationExpression {
+                    node_info, lhs, rhs, operation,
+                }
+            )
+        )
+    }
 }
 
 impl<'a> AstNode<'a> for BinaryOperationExpression<'a> {
@@ -160,11 +204,36 @@ pub enum BinaryOperation {
     Subtract,
 }
 
+impl BinaryOperation {
+    pub fn from_token(t: Token) -> Option<BinaryOperation> {
+        match t {
+            Token::Asterisk => Some(Self::Multiply),
+            Token::FSlash => Some(Self::Divide),
+            Token::Plus => Some(Self::Add),
+            Token::Dash => Some(Self::Subtract),
+            _ => None
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum UnaryOperation {
     Negate,
     Invert,
     Dereference,
+    Reference,
+}
+
+impl UnaryOperation {
+    pub fn from_token(t: Token) -> Option<UnaryOperation> {
+        match t {
+            Token::Asterisk => Some(Self::Dereference),
+            Token::Bang => Some(Self::Invert),
+            Token::Dash => Some(Self::Negate),
+            Token::And => Some(Self::Reference),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -174,6 +243,18 @@ pub struct FieldAccess<'a> {
     pub on: Box<ExpressionWrapper<'a>>,
     //pub span: Span<'a>,
     pub field: &'a str,
+}
+
+impl<'a> FieldAccess<'a> {
+    pub fn new_expr(node_info: NodeInfo, field: &'a str, on: Box<ExpressionWrapper<'a>>) -> Box<ExpressionWrapper<'a>> {
+        Box::new(
+            ExpressionWrapper::FieldAccess(
+                FieldAccess {
+                    node_info, field, on,
+                }
+            )
+        )
+    }
 }
 
 #[derive(Debug)]
@@ -193,6 +274,23 @@ pub struct UnaryOperationExpression<'a> {
     pub operation: UnaryOperation,
     pub subexpr: Box<ExpressionWrapper<'a>>,
     //pub span: Span<'a>,
+}
+
+impl<'a> UnaryOperationExpression<'a> {
+    pub fn new_expr(
+        node_info: NodeInfo,
+        operation: Token,
+        subexpr: Box<ExpressionWrapper<'a>>,
+    ) -> Box<ExpressionWrapper<'a>> {
+        let operation = UnaryOperation::from_token(operation).expect("tried to build unop from bad operator token");
+        Box::new(
+            ExpressionWrapper::UnaryOperation(
+                UnaryOperationExpression {
+                    node_info, subexpr, operation,
+                }
+            )
+        )
+    }
 }
 
 impl<'a> AstNode<'a> for UnaryOperationExpression<'a> {
@@ -216,8 +314,25 @@ pub struct CastExpression<'a> {
     node_info: NodeInfo,
 
     pub subexpr: Box<ExpressionWrapper<'a>>,
-    pub typeref: Box<types::TypeReference<'a>>,
+    pub typeref: Box<ExpressionWrapper<'a>>,
+    //pub typeref: Box<types::TypeReference<'a>>,
     //pub span: Span<'a>,
+}
+
+impl<'a> CastExpression<'a> {
+    pub fn new_expr(
+        node_info: NodeInfo,
+        lhs: Box<ExpressionWrapper<'a>>,
+        rhs: Box<ExpressionWrapper<'a>>,
+    ) -> Box<ExpressionWrapper<'a>> {
+        Box::new(
+            ExpressionWrapper::Cast(
+                CastExpression {
+                    node_info, subexpr: lhs, typeref: rhs
+                }
+            )
+        )
+    }
 }
 
 impl<'a> AstNode<'a> for CastExpression<'a> {
@@ -233,7 +348,7 @@ impl<'a> AstNode<'a> for CastExpression<'a> {
             "{}To type",
             indent(depth+1),
             );
-        self.typeref.display(f, depth+2);
+        self.typeref.as_node().display(f, depth+2);
     }
 
     fn node_info(&self) -> NodeInfo {

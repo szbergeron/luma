@@ -144,6 +144,8 @@ pub mod lex_wrap {
             //self.index += 1;
             self.advance();
 
+            //println!("LookaheadStream advances, takes token {:?}", r);
+
             r
             //self.tokens.get(self.index).map_or(Err(ParseResultError::EndOfFile), |&t| Ok(t))
         }
@@ -162,12 +164,13 @@ pub mod lex_wrap {
         }
 
         pub fn advance(&mut self) {
+            //println!("LookaheadStream advances over token {:?}", self.la(0));
             self.index += 1;
         }
 
         pub fn la(&self, offset: isize) -> ParseResult<'a> {
             let index = self.index as isize + offset;
-            println!("Lookahead asked for index {}", index);
+            //println!("Lookahead asked for index {}", index);
             if index < 0 {
                 Err(ParseResultError::NotYetParsed)
             } else {
@@ -177,7 +180,7 @@ pub mod lex_wrap {
                         Err(ParseResultError::EndOfFile),
                         |&t| Ok(t));
 
-                println!("la gives result: {:?}", r);
+                //println!("la gives result: {:?}", r);
 
                 r
             }

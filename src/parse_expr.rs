@@ -1,6 +1,6 @@
 use crate::ast;
 use crate::lex::Token;
-use crate::helper::lex_wrap::Wrapper;
+
 use crate::helper::lex_wrap::TokenWrapper;
 use crate::helper::lex_wrap::ParseResultError;
 use crate::helper::lex_wrap::LookaheadStream;
@@ -9,6 +9,9 @@ use std::collections::HashSet;
 use crate::parse::*;
 
 use crate::parse_helper::*;
+
+use ast::expressions::*;
+use ast::base::*;
 
 type ExpressionResult<'a> = Result<Box<ast::ExpressionWrapper<'a>>, ParseResultError<'a>>;
 
@@ -22,32 +25,211 @@ pub fn atomic_expression<'a>(la: &mut LookaheadStream<'a>) -> ExpressionResult<'
 }*/
 
 pub fn parse_expr<'a>(la: &mut LookaheadStream<'a>) -> ExpressionResult<'a> {
-    let mut lhs = atomic_expression(la)?;
+    println!("parse expr called");
+    //let mut lhs = access_expression(la)?;
+    let r = parse_expr_inner(la, 0, 1);
 
-    while let Ok(tw) = la.next() {
+    println!("Parse_expr produces {:?}", r);
+
+    r
+
+    /*while let Ok(tw) = la.la(0) {
         match tw.token {
-            Token::Dot => {
-                let access = object_access(la)?;
+            /*Token::Dot => {
+                let access = object_access(la, lhs)?;
                 match access {
                     //Field(name, span) => ast::Expression::
                     _ => todo!(),
                 }
-            }
+            }*/
             _ => todo!(),
+        }
+    }*/
+}
+
+pub fn parse_expr_inner<'a>(la: &mut LookaheadStream<'a>, min_bp: u32, level: usize) -> ExpressionResult<'a> {
+    let t1 = la.la(0)?;
+    println!("{}parse_expr_inner called, current lookahead token is {:?}, {}", indent(level), t1.token, t1.slice);
+    let mut lhs = match t1.token {
+        Token::LParen => {
+            expect(la, Token::LParen)?;
+            let r = parse_expr_inner(la, 0, level + 1);
+            expect(la, Token::RParen)?;
+
+            r?
+        },
+        t if prefix_binding_power(t).is_some() => {
+            la.advance();
+
+            let bp = prefix_binding_power(t).expect("bp should already be Some from match guard");
+            let rhs = parse_expr_inner(la, bp, level + 1)?;
+            let start = t1.start;
+            let end = rhs.as_node().end().expect("parsed rhs has no end?");
+            let node_info = ast::NodeInfo::from_indices(true, start, end);
+
+            build_unary(node_info, t, rhs)
+        },
+        //
+        other => {
+            access_expression(la)?
+        },
+    };
+
+    println!("{}parse_expr_inner got lhs of {:?}", indent(level), lhs);
+    println!();
+
+    loop {
+        //let operator = la.la(0)?;
+        let operator = eat_if(la, |t| infix_binding_power(t.token));
+        println!("{}consumes operator {:?}", indent(level), operator);
+        //if let Some(bp) = post
+        if let Some(((l_bp, r_bp), tw)) = operator {
+            if l_bp < min_bp {
+                la.backtrack();
+                println!("{}binding power too weak, breaks", indent(level));
+                break;
+            } else {
+                println!("{}asking for an rhs", indent(level));
+                let rhs = parse_expr_inner(la, r_bp, level + 1)?;
+                let start = lhs.as_node().start().expect("parsed lhs has no start?");
+                let end = rhs.as_node().end().expect("parsed rhs has no end?");
+                let node_info = ast::NodeInfo::from_indices(true, start, end);
+                lhs = build_binary(node_info, tw.token, lhs, rhs);
+                continue;
+            }
+        } else {
+            break;
         }
     }
 
-    panic!()
+    Ok(lhs)
 }
 
-pub enum ObjectAccess<'a> {
+fn build_unary<'a>(node_info: NodeInfo, t: Token, lhs: Box<ast::ExpressionWrapper<'a>>)
+    -> Box<ast::ExpressionWrapper<'a>> {
+
+    match t {
+        Token::And | Token::Asterisk | Token::Dash | Token::Bang => {
+            UnaryOperationExpression::new_expr(node_info, t, lhs)
+        },
+        _ => {
+            println!("got unexpected token {:?}", t);
+            panic!("Programming error: no way to build binary expression from given token");
+        }
+    }
+}
+
+fn build_binary<'a>(node_info: NodeInfo, t: Token, lhs: Box<ast::ExpressionWrapper<'a>>, rhs: Box<ast::ExpressionWrapper<'a>>)
+    -> Box<ast::ExpressionWrapper<'a>> {
+
+
+    match t {
+        Token::Plus | Token::Dash | Token::Asterisk | Token::FSlash => {
+            BinaryOperationExpression::new_expr(node_info, t, lhs, rhs)
+        },
+        Token::As => {
+            CastExpression::new_expr(node_info, lhs, rhs)
+        },
+        _ => {
+            println!("got unexpected token {:?}", t);
+            panic!("Programming error: no way to build binary expression from given token");
+        },
+    }
+}
+
+pub enum DotAccess<'a> {
     Field(&'a str),
-    Method(&'a str, Vec<Box<ast::Expression<'a>>>),
+    Method(&'a str, Vec<Box<ast::ExpressionWrapper<'a>>>),
 }
 
-pub fn object_access<'a>(la: &mut LookaheadStream<'a>) -> Result<ObjectAccess<'a>, ParseResultError<'a>> {
-    panic!()
+use ast::IntoAstNode;
+
+pub fn object_access<'a>(la: &mut LookaheadStream<'a>, innerexp: Box<ast::ExpressionWrapper<'a>>) -> ExpressionResult<'a> {
+    let _dot = expect(la, Token::Dot)?;
+
+    let name = expect(la, Token::Identifier)?;
+
+    match eat_if_matches(la, Token::LParen) {
+        Some(_) => {
+            todo!()
+        },
+        None => {
+            let start = innerexp.as_node().start().expect("object_access was given an improperly parsed innerexp");
+            let end = name.end;
+            let field = name.slice;
+            let node_info = ast::NodeInfo::from_indices(true, start, end);
+            //Ok(DotAccess::Field(name.slice))
+            //Ok(Box::new(ast::FieldAccess { node_info, field, on: innerexp }))
+            Ok(ast::FieldAccess::new_expr(node_info, field, innerexp))
+        }
+    }
 }
+
+pub fn access_expression<'a>(la: &mut LookaheadStream<'a>) -> ExpressionResult<'a> {
+    let mut base = atomic_expression(la);
+    //println!("atomic expr produces base of {:?}", base);
+    //println!();
+    let mut base = base?;
+    /*loop {
+        
+    }*/
+    while let Ok(tw) = la.la(0) {
+        match tw.token {
+            Token::Dot => {
+                let access = object_access(la, base)?;
+                base = access;
+            },
+            Token::LBracket => {
+                todo!("array access not yet implemented")
+            }
+            Token::QuestionMark => {
+                todo!("err short circuit not yet implemented")
+            }
+            _ => {
+                break;
+            }
+        }
+    }
+
+    /*println!();
+    println!("access expression crated from {:?}", base);
+    println!();*/
+
+    Ok(base)
+}
+
+/*pub fn additive_expression<'a>(la: &mut LookaheadStream<'a>) -> ExpressionResult<'a> {
+    //let mut lhs = 
+    let mut t = 5;
+    let mut to = 6;
+
+    todo!()
+}
+
+pub fn assignment_expression<'a>(la: &mut LookaheadStream<'a>) -> ExpressionResult<'a> {
+    let mut lhs = access_expression(la)?;
+
+    while let Ok(tw) = la.la(0) {
+        match tw.token {
+            Token::Equals => {
+                la.advance();
+                let rhs = assignment_expression(la)?;
+                let start = lhs.as_node().start().expect("assignment_expression found malformed lhs that passed Err bubbling");
+                let end = rhs.as_node().end().expect("assignment_expression found malformed rhs that passed Err bubbling");
+                let node_info = ast::NodeInfo::from_indices(true, start, end);
+                let node = ast::AssignmentExpression::new_expr(node_info, lhs, rhs);
+                lhs = node;
+            },
+            Token::Asterisk | Token::FSlash | Token::Plus | Token::Dash => {
+            },
+            _ => {
+                break; // parsed to something that doesn't make sense as part of an expression
+            }
+        }
+    }
+
+    Ok(lhs)
+}*/
 
 pub fn atomic_expression<'a>(la: &mut LookaheadStream<'a>) -> ExpressionResult<'a> {
     if let Ok(tw) = la.next() {
@@ -64,6 +246,7 @@ pub fn atomic_expression<'a>(la: &mut LookaheadStream<'a>) -> ExpressionResult<'
 
                 Ok(inner)
             },
+            // Token::If, Token::Match,
             _ => {
                 Err(ParseResultError::UnexpectedToken(tw))
             }
@@ -121,6 +304,67 @@ impl<'a, 'b> Iterator for LALRPopLexWrapper<'a, 'b> {
         }
 
         None
+    }
+}
+
+pub fn prefix_binding_power(t: Token) -> Option<u32> {
+    match t {
+        Token::Plus
+            | Token::Dash
+            | Token::Asterisk
+            | Token::Bang
+            | Token::And
+            => Some(100),
+
+        _ => None,
+    }
+}
+
+pub fn infix_binding_power(t: Token) -> Option<(u32, u32)> {
+    match t {
+        Token::As
+            => Some((1, 300)),
+
+        Token::Equals
+            => Some((200, 2)),
+
+        Token::LogicalOr
+            => Some((3, 4)),
+
+        Token::LogicalAnd
+            => Some((5, 6)),
+
+        Token::CmpEqual
+            | Token::CmpLessThan
+            | Token::CmpGreaterThan
+            | Token::CmpLessThanOrEqual
+            | Token::CmpGreaterThanOrEqual
+            | Token::CmpNotEqual
+            => Some((7, 8)),
+
+        Token::Pipe
+            => Some((9, 10)),
+
+        Token::Caret
+            => Some((11, 12)),
+
+        Token::And
+            => Some((13, 14)),
+
+        Token::ShiftLeft
+            | Token::ShiftRight
+            => Some((15, 16)),
+
+        Token::Plus
+            | Token::Dash
+            => Some((17, 18)),
+
+        Token::Asterisk
+            | Token::FSlash
+            | Token::Modulo
+            => Some((19, 20)),
+
+        _ => None,
     }
 }
 
