@@ -1,7 +1,7 @@
 use super::base::*;
 use super::types;
 
-use crate::helper::lex_wrap::TokenWrapper;
+use crate::helper::lex_wrap::{TokenWrapper, ParseResultError};
 use crate::lex::Token;
 
 pub trait Expression<'a>: AstNode<'a> {
@@ -19,6 +19,8 @@ pub enum ExpressionWrapper<'a> {
     IntegerLiteral(IntegerLiteralExpression<'a>),
     MethodCall(MethodCall<'a>),
     FieldAccess(FieldAccess<'a>),
+    Statement(StatementExpression<'a>),
+    Block(BlockExpression<'a>),
 }
 
 impl<'a> ExpressionWrapper<'a> {
@@ -59,6 +61,8 @@ impl<'a> IntoAstNode<'a> for ExpressionWrapper<'a> {
             Self::IntegerLiteral(e) => e,
             Self::Identifier(e) => e,
             Self::Cast(e) => e,
+            Self::Statement(e) => e,
+            Self::Block(e) => e,
             _ => {
                 println!("No implemented as_node handler for type {:?}", self);
                 todo!();
@@ -68,6 +72,87 @@ impl<'a> IntoAstNode<'a> for ExpressionWrapper<'a> {
 
     fn as_node_mut(&mut self) -> &mut dyn AstNode<'a> {
         todo!()
+    }
+}
+
+#[derive(Debug)]
+pub struct StatementExpression<'a> {
+    node_info: NodeInfo,
+
+    subexpr: Box<ExpressionWrapper<'a>>,
+}
+
+impl<'a> StatementExpression<'a> {
+    pub fn new_expr(
+        node_info: NodeInfo,
+        subexpr: Box<ExpressionWrapper<'a>>,
+    ) -> Box<ExpressionWrapper<'a>> {
+        Box::new(
+            ExpressionWrapper::Statement(
+                StatementExpression {
+                    node_info, subexpr,
+                }
+            )
+        )
+    }
+}
+
+impl<'a> AstNode<'a> for StatementExpression<'a> {
+    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+        let _ = writeln!(
+            f,
+            "{}StatementExpression with child expression:",
+            indent(depth),
+            );
+        [&self.subexpr].iter().for_each(|expr| expr.as_node().display(f, depth+1));
+    }
+
+    fn node_info(&self) -> NodeInfo {
+        self.node_info
+    }
+}
+
+#[derive(Debug)]
+pub struct BlockExpression<'a> {
+    pub node_info: NodeInfo,
+
+    pub contents: Vec<Result<Box<ExpressionWrapper<'a>>, ParseResultError<'a>>>,
+}
+
+impl<'a> AstNode<'a> for BlockExpression<'a> {
+    fn node_info(&self) -> NodeInfo {
+        self.node_info
+    }
+
+    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+
+        findent(f, depth);
+        let _ = writeln!(f, "BlockExpression {} with children:", self.node_info());
+
+        self.contents
+            .iter()
+            .for_each(|elem| {
+                      elem
+                          .iter()
+                          .for_each(
+                                |elem| elem.as_node().display(f, depth+1)
+                          )
+            });
+    }
+}
+
+impl<'a> BlockExpression<'a> {
+    pub fn new_expr(
+        node_info: NodeInfo,
+        contents: Vec<Result<Box<ExpressionWrapper<'a>>, ParseResultError<'a>>>,
+    ) -> Box<ExpressionWrapper<'a>> {
+        Box::new(
+            ExpressionWrapper::Block(
+                BlockExpression {
+                    node_info, contents,
+                }
+            )
+        )
     }
 }
 

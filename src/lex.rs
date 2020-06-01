@@ -63,10 +63,10 @@ pub enum Token {
     Pound,
 
     #[token("{")]
-    RBrace,
+    LBrace,
 
     #[token("}")]
-    LBrace,
+    RBrace,
 
     #[token("[")]
     RBracket,

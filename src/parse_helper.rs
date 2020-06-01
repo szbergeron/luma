@@ -18,6 +18,19 @@ pub fn eat_through<'a>(la: &mut LookaheadStream<'a>, toks: Vec<Token>) {
     }
 }
 
+pub fn eat_to<'a>(la: &mut LookaheadStream<'a>, toks: Vec<Token>) {
+    let s: HashSet<Token> = toks.into_iter().collect();
+
+    while let Ok(tw) = la.la(0) {
+        if s.contains(&tw.token) {
+            break;
+        } else {
+            la.advance();
+            continue;
+        }
+    }
+}
+
 pub fn eat_if_matches<'a>(la: &mut LookaheadStream<'a>, t: Token) -> Option<TokenWrapper<'a>> {
     expect(la, t).ok()
     //expect(t).map_or(|t| Some(t), None)

@@ -47,6 +47,55 @@ pub fn parse_expr<'a>(la: &mut LookaheadStream<'a>) -> ExpressionResult<'a> {
     }*/
 }
 
+pub fn syntactic_block<'a>(lexer: &mut LookaheadStream<'a>) -> ExpressionResult<'a> {
+    expect(lexer, Token::LBrace)?;
+    let mut declarations: Vec<Result<Box<ast::ExpressionWrapper<'a>>, ParseResultError<'a>>> = Vec::new();
+    let start = lexer.la(0).map_or(0, |tw| tw.start);
+
+    let mut failed = false;
+
+    loop {
+        match lexer.la(0)?.token {
+            Token::RBrace => {
+                break;
+            },
+            Token::Semicolon => {
+                // empty
+            },
+            _ => {
+                let e = parse_expr(lexer);
+
+                let final_exp = e.map(|exp| {
+                    match eat_if_matches(lexer, Token::Semicolon) {
+                        Some(semi) => {
+                            let start = exp.as_node().start().map_or(0, |v| v);
+                            let end = semi.end;
+                            let node_info = ast::NodeInfo::from_indices(true, start, end);
+                            ast::StatementExpression::new_expr(node_info, exp)
+                        },
+                        None => exp,
+                    }
+                }).map_err(|err| {
+                    failed = true;
+                    eat_to(lexer, vec![Token::Semicolon, Token::RBrace]);
+                    err
+                });
+
+                declarations.push(final_exp);
+
+            },
+        }
+    }
+
+    let end = lexer.la(-1).map_or(start, |tw| tw.start);
+
+    let node_info = ast::NodeInfo::from_indices(failed, start, end);
+
+    expect(lexer, Token::RBrace)?;
+
+    Ok(ast::BlockExpression::new_expr(node_info, declarations))
+}
+
 pub fn parse_expr_inner<'a>(la: &mut LookaheadStream<'a>, min_bp: u32, level: usize) -> ExpressionResult<'a> {
     let t1 = la.la(0)?;
     println!("{}parse_expr_inner called, current lookahead token is {:?}, {}", indent(level), t1.token, t1.slice);
@@ -58,6 +107,11 @@ pub fn parse_expr_inner<'a>(la: &mut LookaheadStream<'a>, min_bp: u32, level: us
 
             r?
         },
+        Token::LBrace => {
+            let r = syntactic_block(la);
+
+            r?
+        }
         t if prefix_binding_power(t).is_some() => {
             la.advance();
 
@@ -70,7 +124,7 @@ pub fn parse_expr_inner<'a>(la: &mut LookaheadStream<'a>, min_bp: u32, level: us
             build_unary(node_info, t, rhs)
         },
         //
-        other => {
+        _other => {
             access_expression(la)?
         },
     };
@@ -129,6 +183,9 @@ fn build_binary<'a>(node_info: NodeInfo, t: Token, lhs: Box<ast::ExpressionWrapp
         },
         Token::As => {
             CastExpression::new_expr(node_info, lhs, rhs)
+        },
+        Token::Equals => {
+            AssignmentExpression::new_expr(node_info, lhs, rhs)
         },
         _ => {
             println!("got unexpected token {:?}", t);

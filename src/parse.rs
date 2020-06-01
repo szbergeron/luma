@@ -57,7 +57,7 @@ pub fn entry<'a>(la: &mut LookaheadStream<'a>) -> Result<ast::ParseUnit<'a>, Par
         let r = match tw.token {
             //Token::Module => Ok(ast::SymbolDeclaration::NamespaceDeclaration(module_entry(la)?)),
             //Token::LBlockComment => { block_comment(la); continue },
-            Token::LBrace => break,
+            Token::RBrace => break,
             _ => {
                 la.backtrack();
                 let r = global_declaration(la);
@@ -174,7 +174,7 @@ pub fn namespace<'a>(lexer: &mut LookaheadStream<'a>) -> Result<ast::Namespace<'
     expect(lexer, Token::Module)?;
     println!("Module entry now");
     let id = expect(lexer, Token::Identifier)?.slice;
-    expect(lexer, Token::RBrace)?;
+    expect(lexer, Token::LBrace)?;
     let pu = entry(lexer);
     //expect(lexer, Token::RBrace)?;
     println!("Module entry finds id: {:?}", id);
@@ -277,9 +277,6 @@ pub fn closure<'a>(la: &mut LookaheadStream<'a>) -> Result<ast::Closure<'a>, Par
     panic!()
 }
 
-pub fn syntactic_block(_lexer: &mut LookaheadStream) {
-}
-
 // no result from comments
 /*pub fn block_comment(la: &mut LookaheadStream) -> () {
     while let Ok(tw) = la.next() {
@@ -348,7 +345,7 @@ pub fn expression_outer<'a>(la: &mut LookaheadStream<'a>) -> () {
     }
 }
 
-type ExpressionResult<'a> = Result<ast::ExpressionWrapper<'a>, ParseResultError<'a>>;
+//type ExpressionResult<'a> = Result<ast::ExpressionWrapper<'a>, ParseResultError<'a>>;
 
 /*pub fn outer_expression<'a>(la: &mut LookaheadStream<'a>, end_of_string: Token)
     -> Result<Box<dyn ast::Expression<'a>>, ParseResultError<'a>> {
