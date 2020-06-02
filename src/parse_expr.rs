@@ -47,6 +47,29 @@ pub fn parse_expr<'a>(la: &mut LookaheadStream<'a>) -> ExpressionResult<'a> {
     }*/
 }
 
+pub fn parse_if_then_else<'a>(la: &mut LookaheadStream<'a>) -> ExpressionResult<'a> {
+    let start = expect(la, Token::If)?.start;
+    let if_exp = parse_expr(la)?;
+    let then_exp = parse_expr(la)?;
+    let (else_exp, end) = if eat_if_matches(la, Token::Else).is_some() {
+        let exp = parse_expr(la)?;
+        let end = exp.as_node().end().expect("successfully parsed else had no end");
+
+        (exp, end)
+
+    } else {
+        let exp = BlockExpression::new_expr(ast::NodeInfo::Builtin, Vec::new());
+        let end = then_exp.as_node().end().expect("then had no end?");
+
+        (exp, end)
+
+    };
+
+    let node_info = ast::NodeInfo::from_indices(true, start, end);
+
+    Ok(IfThenElseExpression::new_expr(node_info, if_exp, then_exp, else_exp))
+}
+
 pub fn syntactic_block<'a>(lexer: &mut LookaheadStream<'a>) -> ExpressionResult<'a> {
     expect(lexer, Token::LBrace)?;
     let mut declarations: Vec<Result<Box<ast::ExpressionWrapper<'a>>, ParseResultError<'a>>> = Vec::new();
@@ -111,7 +134,12 @@ pub fn parse_expr_inner<'a>(la: &mut LookaheadStream<'a>, min_bp: u32, level: us
             let r = syntactic_block(la);
 
             r?
-        }
+        },
+        Token::If => {
+            let r = parse_if_then_else(la);
+
+            r?
+        },
         t if prefix_binding_power(t).is_some() => {
             la.advance();
 

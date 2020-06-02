@@ -21,6 +21,7 @@ pub enum ExpressionWrapper<'a> {
     FieldAccess(FieldAccess<'a>),
     Statement(StatementExpression<'a>),
     Block(BlockExpression<'a>),
+    IfThenElse(IfThenElseExpression<'a>),
 }
 
 impl<'a> ExpressionWrapper<'a> {
@@ -63,6 +64,7 @@ impl<'a> IntoAstNode<'a> for ExpressionWrapper<'a> {
             Self::Cast(e) => e,
             Self::Statement(e) => e,
             Self::Block(e) => e,
+            Self::IfThenElse(e) => e,
             _ => {
                 println!("No implemented as_node handler for type {:?}", self);
                 todo!();
@@ -105,6 +107,52 @@ impl<'a> AstNode<'a> for StatementExpression<'a> {
             indent(depth),
             );
         [&self.subexpr].iter().for_each(|expr| expr.as_node().display(f, depth+1));
+    }
+
+    fn node_info(&self) -> NodeInfo {
+        self.node_info
+    }
+}
+
+#[derive(Debug)]
+pub struct IfThenElseExpression<'a> {
+    node_info: NodeInfo,
+
+    if_exp: Box<ExpressionWrapper<'a>>,
+    then_exp: Box<ExpressionWrapper<'a>>,
+    else_exp: Box<ExpressionWrapper<'a>>,
+}
+
+impl<'a> IfThenElseExpression<'a> {
+    pub fn new_expr(
+        node_info: NodeInfo,
+        if_exp: Box<ExpressionWrapper<'a>>,
+        then_exp: Box<ExpressionWrapper<'a>>,
+        else_exp: Box<ExpressionWrapper<'a>>,
+    ) -> Box<ExpressionWrapper<'a>> {
+        Box::new(
+            ExpressionWrapper::IfThenElse(
+                IfThenElseExpression {
+                    node_info, if_exp, then_exp, else_exp,
+                }
+            )
+        )
+    }
+}
+
+impl<'a> AstNode<'a> for IfThenElseExpression<'a> {
+    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+        let _ = writeln!(
+            f,
+            "{}IfThenElseExpression:",
+            indent(depth),
+            );
+        let _ = writeln!(f, "{}If:", indent(depth+1));
+        self.if_exp.as_node().display(f, depth+2);
+        let _ = writeln!(f, "{}Then:", indent(depth+1));
+        self.then_exp.as_node().display(f, depth+2);
+        let _ = writeln!(f, "{}Else:", indent(depth+1));
+        self.else_exp.as_node().display(f, depth+2);
     }
 
     fn node_info(&self) -> NodeInfo {

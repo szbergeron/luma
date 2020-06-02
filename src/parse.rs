@@ -51,7 +51,36 @@ pub fn entry<'a>(la: &mut LookaheadStream<'a>) -> Result<ast::ParseUnit<'a>, Par
 
     let mut failed = false;
 
-    while let Ok(tw) = la.next() {
+    while let Ok(tw) = la.la(0) {
+        let r = match tw.token {
+            Token::RBrace => break,
+            _ => {
+                //
+                let r = global_declaration(la);
+
+                match r.is_ok() {
+                    false => {
+                        failed = true;
+                        /*while let Ok(twi) = la.next() {
+                            match twi.token {
+                                Token::LBrace | Token::Semicolon => break,
+                                _ => continue,
+                            }
+
+                        }*/
+                        eat_through(la, vec![Token::RBrace, Token::Semicolon]);
+                    },
+                    true => {},
+                }
+
+                r
+            }
+        };
+
+        declarations.push(r);
+    }
+
+    /*while let Ok(tw) = la.next() {
 
         println!("In entry while, got tw {:?}", tw);
         let r = match tw.token {
@@ -86,8 +115,8 @@ pub fn entry<'a>(la: &mut LookaheadStream<'a>) -> Result<ast::ParseUnit<'a>, Par
         println!("Got a semantic thing in entry: {:?}", r);
 
         declarations.push(r);
-    }
-    println!("Entry returns, declarations are: {:?}", declarations);
+    }*/
+    //println!("Entry returns, declarations are: {:?}", declarations);
 
     let end = la.la(-1).map_or(start, |tw| tw.start);
     
@@ -149,12 +178,22 @@ pub fn global_declaration<'a>(la: &mut LookaheadStream<'a>) -> Result<ast::Symbo
                         ast::SymbolDeclaration::VariableDeclaration(vd)
                     })
                     .map_err(|e| {
-                    failed = true;
-                    e
-                })
+                        failed = true;
+                        e
+                    })
+            },
+            Token::Function => {
+                function_declaration(la)
+                    .map(|mut fd| {
+                        ast::SymbolDeclaration::FunctionDeclaration(fd)
+                    })
+                    .map_err(|e| {
+                        failed = true;
+                        e
+                    })
             },
             _ => {
-                eat_through(la, vec![Token::RBrace, Token::Semicolon]);
+                eat_to(la, vec![Token::RBrace, Token::Semicolon]);
 
                 Err(ParseResultError::UnexpectedToken(tw))
             }
@@ -176,6 +215,7 @@ pub fn namespace<'a>(lexer: &mut LookaheadStream<'a>) -> Result<ast::Namespace<'
     let id = expect(lexer, Token::Identifier)?.slice;
     expect(lexer, Token::LBrace)?;
     let pu = entry(lexer);
+    expect(lexer, Token::RBrace)?;
     //expect(lexer, Token::RBrace)?;
     println!("Module entry finds id: {:?}", id);
 
@@ -183,7 +223,7 @@ pub fn namespace<'a>(lexer: &mut LookaheadStream<'a>) -> Result<ast::Namespace<'
 
     let failed = pu.is_err();
 
-    let node_info = ast::NodeInfo::from_indices(true, start, end);
+    let node_info = ast::NodeInfo::from_indices(failed, start, end);
 
     Ok(ast::Namespace { name: Some(id), contents: pu, public: false, node_info })
 
@@ -203,6 +243,9 @@ pub fn namespace<'a>(lexer: &mut LookaheadStream<'a>) -> Result<ast::Namespace<'
     } else {
         ParseResultError::
     }*/
+}
+
+pub fn function_declaration<'a>(lexer: &mut LookaheadStream<'a>) -> Result<ast::FunctionDeclaration<'a>, ParseResultError<'a>> {
 }
 
 pub fn variable_declaration<'a>(lexer: &mut LookaheadStream<'a>) -> Result<ast::VariableDeclaration<'a>, ParseResultError<'a>> {
