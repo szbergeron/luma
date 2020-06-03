@@ -24,6 +24,7 @@ pub mod lex_wrap {
     pub enum ParseResultError<'a> {
         EndOfFile,
         NotYetParsed,
+        ExpectedExpressionNotPresent,
         UnexpectedToken(TokenWrapper<'a>),
         //
     }

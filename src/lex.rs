@@ -80,6 +80,9 @@ pub enum Token {
     #[token(")")]
     RParen,
 
+    #[token(",")]
+    Comma,
+
     #[token("/*")]
     LBlockComment,
 
@@ -160,6 +163,9 @@ pub enum Token {
 
     #[regex("[a-zA-Z][a-zA-Z0-9_]*")]
     Identifier, // get content with lex.slice()
+
+    #[regex("[_]")]
+    Underscore,
 
     #[regex("[0-9]+")]
     UnknownIntegerLiteral,

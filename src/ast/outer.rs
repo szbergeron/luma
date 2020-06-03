@@ -88,10 +88,12 @@ impl<'a> AstNode<'a> for ParseUnit<'a> {
 #[derive(Debug)]
 pub struct FunctionDeclaration<'a> {
     pub node_info: NodeInfo,
+    pub name: &'a str,
 
-    pub expressions: Vec<Box<dyn Expression<'a>>>,
+    //pub expressions: Vec<Box<dyn Expression<'a>>>,
+    pub body: Box<ExpressionWrapper<'a>>,
     pub return_type: TypeReference<'a>,
-    pub params: Vec<VariableDeclaration<'a>>,
+    pub params: Vec<(super::IdentifierExpression<'a>, super::TypeReference<'a>)>,
 }
 
 impl<'a> AstNode<'a> for FunctionDeclaration<'a> {
@@ -100,7 +102,38 @@ impl<'a> AstNode<'a> for FunctionDeclaration<'a> {
     }
 
     fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
-        panic!()
+        let _ = writeln!(
+            f,
+            "{}FunctionDeclaration that parsed {} with name {} and rtype {:?} takes",
+            indent(depth),
+            self.node_info(),
+            self.name,
+            self.return_type,
+            );
+
+        let _ = writeln!(
+            f,
+            "{}Parameters:",
+            indent(depth+1),
+            );
+
+        //write!(f, "{}", indent(depth + 1));
+        for vd in self.params.iter() {
+            let _ = writeln!(
+                f,
+                "{}Parameter: {} of type {:?}",
+                indent(depth+2),
+                vd.0.name,
+                vd.1,
+            );
+        }
+        let _ = writeln!(
+            f,
+            "{}And body:",
+            indent(depth+1),
+            );
+
+        self.body.as_node().display(f, depth+2);
     }
 }
 
@@ -165,6 +198,7 @@ impl<'a> SymbolDeclaration<'a> {
             //Self::FunctionDeclaration(fd) => fd.display(f, depth),
             Self::VariableDeclaration(sd) => sd.display(f, depth),
             Self::NamespaceDeclaration(ns) => ns.display(f, depth),
+            Self::FunctionDeclaration(fd) => fd.display(f, depth),
             _ => panic!("can't display something"),
         }
     }

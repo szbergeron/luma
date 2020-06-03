@@ -1,4 +1,5 @@
 use super::base::*;
+use super::outer::*;
 use super::types;
 
 use crate::helper::lex_wrap::{TokenWrapper, ParseResultError};
@@ -22,6 +23,7 @@ pub enum ExpressionWrapper<'a> {
     Statement(StatementExpression<'a>),
     Block(BlockExpression<'a>),
     IfThenElse(IfThenElseExpression<'a>),
+    LetExpression(VariableDeclaration<'a>),
 }
 
 impl<'a> ExpressionWrapper<'a> {
@@ -31,7 +33,7 @@ impl<'a> ExpressionWrapper<'a> {
             start: 0,
             end: 0,
         };*/
-        
+
         let node_info = NodeInfo::from_token(&input, true);
 
         let inner = IntegerLiteralExpression { contents: input.slice, node_info };
@@ -65,6 +67,7 @@ impl<'a> IntoAstNode<'a> for ExpressionWrapper<'a> {
             Self::Statement(e) => e,
             Self::Block(e) => e,
             Self::IfThenElse(e) => e,
+            Self::LetExpression(e) => e,
             _ => {
                 println!("No implemented as_node handler for type {:?}", self);
                 todo!();
@@ -513,7 +516,7 @@ pub struct Closure<'a> {
 
 #[derive(Debug)]
 pub struct IdentifierExpression<'a> {
-    node_info: NodeInfo,
+    pub node_info: NodeInfo,
 
     pub name: &'a str,
     pub node_type: Option<types::TypeReference<'a>>,

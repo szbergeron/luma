@@ -31,9 +31,23 @@ pub fn eat_to<'a>(la: &mut LookaheadStream<'a>, toks: Vec<Token>) {
     }
 }
 
-pub fn eat_if_matches<'a>(la: &mut LookaheadStream<'a>, t: Token) -> Option<TokenWrapper<'a>> {
+pub fn eat_match<'a>(la: &mut LookaheadStream<'a>, t: Token) -> Option<TokenWrapper<'a>> {
     expect(la, t).ok()
     //expect(t).map_or(|t| Some(t), None)
+}
+
+pub fn eat_match_in<'a>(la: &mut LookaheadStream<'a>, t: &[Token]) -> Option<TokenWrapper<'a>> {
+    if let Ok(tw) = la.la(0) {
+        if t.contains(&tw.token) {
+            la.advance();
+
+            Some(tw)
+        } else {
+            None
+        }
+    } else {
+        None
+    }
 }
 
 pub fn eat_if<'a, F, T>(la: &mut LookaheadStream<'a>, f: F) -> Option<(T, TokenWrapper<'a>)>

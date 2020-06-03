@@ -51,7 +51,7 @@ pub fn parse_if_then_else<'a>(la: &mut LookaheadStream<'a>) -> ExpressionResult<
     let start = expect(la, Token::If)?.start;
     let if_exp = parse_expr(la)?;
     let then_exp = parse_expr(la)?;
-    let (else_exp, end) = if eat_if_matches(la, Token::Else).is_some() {
+    let (else_exp, end) = if eat_match(la, Token::Else).is_some() {
         let exp = parse_expr(la)?;
         let end = exp.as_node().end().expect("successfully parsed else had no end");
 
@@ -83,13 +83,23 @@ pub fn syntactic_block<'a>(lexer: &mut LookaheadStream<'a>) -> ExpressionResult<
                 break;
             },
             Token::Semicolon => {
+                lexer.advance();
                 // empty
+            },
+            Token::Let => {
+                let r = variable_declaration(lexer);
+
+                let exp = r
+                    .map(|vd| Box::new(ast::ExpressionWrapper::LetExpression(vd)))
+                    .map_err(|e| { failed = true; e });
+
+                declarations.push(exp);
             },
             _ => {
                 let e = parse_expr(lexer);
 
                 let final_exp = e.map(|exp| {
-                    match eat_if_matches(lexer, Token::Semicolon) {
+                    match eat_match(lexer, Token::Semicolon) {
                         Some(semi) => {
                             let start = exp.as_node().start().map_or(0, |v| v);
                             let end = semi.end;
@@ -234,7 +244,7 @@ pub fn object_access<'a>(la: &mut LookaheadStream<'a>, innerexp: Box<ast::Expres
 
     let name = expect(la, Token::Identifier)?;
 
-    match eat_if_matches(la, Token::LParen) {
+    match eat_match(la, Token::LParen) {
         Some(_) => {
             todo!()
         },
