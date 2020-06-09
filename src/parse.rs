@@ -308,20 +308,21 @@ pub fn type_reference<'a>(
 
 pub fn function_param_list<'a>(
     lexer: &mut LookaheadStream<'a>,
-) -> Result<Vec<(ast::IdentifierExpression<'a>, ast::TypeReference<'a>)>, ParseResultError<'a>> {
-    let mut rvec: Vec<(ast::IdentifierExpression<'a>, ast::TypeReference<'a>)> = Vec::new();
-    while let Some(id) = eat_match(lexer, Token::Identifier) {
+) -> Result<Vec<(Box<ast::ExpressionWrapper<'a>>, ast::TypeReference<'a>)>, ParseResultError<'a>> {
+    let mut rvec: Vec<(Box<ast::ExpressionWrapper<'a>>, ast::TypeReference<'a>)> = Vec::new();
+    //while let Some(id) = eat_match(lexer, Token::Identifier) {
+    while let Ok(a) = atomic_expression(lexer) {
         expect(lexer, Token::Colon)?;
-        let id_nodeinfo = ast::NodeInfo::from_token(&id, true);
-        let id = ast::IdentifierExpression {
+        //let id_nodeinfo = ast::NodeInfo::from_token(&id, true);
+        /*let id = ast::IdentifierExpression {
             node_info: id_nodeinfo,
             name: id.slice,
             node_type: None,
-        };
+        };*/
         //let id = ast::ExpressionWrapper::identifier_expression(id);
         let tr = type_reference(lexer)?;
 
-        let r = (id, tr);
+        let r = (a, tr);
 
         rvec.push(r);
 
@@ -371,7 +372,7 @@ pub fn variable_declaration<'a>(
     let start = lexer.la(0).map_or(0, |tw| tw.start);
 
     let _let = expect(lexer, Token::Let)?;
-    let lhs = parse_pattern(lexer)?;
+    let lhs = parse_access(lexer, None)?;
     //let id = expect(lexer, Token::Identifier)?.slice;
     let maybe_typeref = eat_match(lexer, Token::Colon);
     println!("Typeref colon: {:?}", maybe_typeref);

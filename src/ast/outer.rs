@@ -93,7 +93,7 @@ pub struct FunctionDeclaration<'a> {
     //pub expressions: Vec<Box<dyn Expression<'a>>>,
     pub body: Box<ExpressionWrapper<'a>>,
     pub return_type: TypeReference<'a>,
-    pub params: Vec<(super::IdentifierExpression<'a>, super::TypeReference<'a>)>,
+    pub params: Vec<(Box<super::ExpressionWrapper<'a>>, super::TypeReference<'a>)>,
 }
 
 impl<'a> AstNode<'a> for FunctionDeclaration<'a> {
@@ -121,11 +121,12 @@ impl<'a> AstNode<'a> for FunctionDeclaration<'a> {
         for vd in self.params.iter() {
             let _ = writeln!(
                 f,
-                "{}Parameter: {} of type {:?}",
+                "{}Parameter of type {:?} which comes from expression:",
                 indent(depth+2),
-                vd.0.name,
                 vd.1,
             );
+
+            vd.0.as_node().display(f, depth+3);
         }
         let _ = writeln!(
             f,

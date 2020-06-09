@@ -26,15 +26,15 @@ pub fn atomic_expression<'a>(la: &mut LookaheadStream<'a>) -> ExpressionResult<'
 /*pub fn parse_expr<'a>(la: &mut LookaheadStream<'a>) -> ExpressionResult<'a> {
 }*/
 
-pub fn parse_pattern<'a>(la: &mut LookaheadStream<'a>, on: Option<Box<ExpressionWrapper<'a>>>) -> ExpressionResult<'a> {
+pub fn parse_pattern<'a>(la: &mut LookaheadStream<'a>) -> Result<Pattern<'a>, ParseResultError<'a>> {
     // can be a single literal or tuple, and each tuple is a set of expressions
     println!("parsing a pattern");
-    expect(la, Token::LParen);
+    let start = expect(la, Token::LParen)?.start;
 
-    let mut exprs = Vec::new();
+    let mut expressions = Vec::new();
 
     while let Ok(expr) = parse_expr(la) {
-        exprs.push(expr);
+        expressions.push(expr);
 
         match eat_match(la, Token::Comma) {
             Some(_comma) => continue,
@@ -42,9 +42,13 @@ pub fn parse_pattern<'a>(la: &mut LookaheadStream<'a>, on: Option<Box<Expression
         }
     }
 
-    expect(la, Token::RParen);
+    let end = expect(la, Token::RParen)?.end;
 
-    todo!()
+    let node_info = NodeInfo::from_indices(true, start, end);
+
+    Ok(Pattern { node_info, expressions })
+
+    //Ok(Pattern::new_expr(node_info, exprs))
 }
 
 /*pub fn parse_slice<'a>(la: &mut LookaheadStream<'a>, on: Option<Box<ExpressionWrapper<'a>>>) -> 
@@ -62,15 +66,17 @@ pub fn parse_array_literal<'a>(la: &mut LookaheadStream<'a>) -> ExpressionResult
 
 // scopedname can null derive so no parse error can occur
 pub fn scoped_name<'a>(la: &mut LookaheadStream<'a>) -> Box<ScopedName<'a>> {
+    println!("parsing a scoped name");
     //let node_info = NodeInfo::from_indices(true, la.la(0).map(|tw| tw.start).unwrap_or(0)
     //let node_info = la.la(0)?.map(|tw| NodeInfo::from_indices(true, tw.start, tw.start));
-    let r = Box::new(ScopedName { scope: Vec::new(), silent: true, node_info: NodeInfo::Builtin });
+    let mut r = Box::new(ScopedName { scope: Vec::new(), silent: true, node_info: NodeInfo::Builtin });
 
     let mut start = None;
     let mut end = None;
 
     match eat_match(la, Token::DoubleColon) {
         Some(dc) => {
+            println!("scoped_name ate a doublecolon");
             r.scope.push("global");
             r.silent = false;
             start = Some(dc.start);
@@ -80,6 +86,7 @@ pub fn scoped_name<'a>(la: &mut LookaheadStream<'a>) -> Box<ScopedName<'a>> {
     }
 
     while let Some(id) = eat_match(la, Token::Identifier) {
+        println!("scoped_name eats an id: {}", id.slice);
         r.scope.push(id.slice);
         r.silent = false;
 
@@ -108,6 +115,7 @@ pub fn scoped_name<'a>(la: &mut LookaheadStream<'a>) -> Box<ScopedName<'a>> {
 }
 
 pub fn parse_access<'a>(la: &mut LookaheadStream<'a>, on: Option<Box<ExpressionWrapper<'a>>>) -> ExpressionResult<'a> {
+    println!("parse_access called with lookahead {:?}", la.la(0));
     /*
      * Follows pattern:
      *     Namespace1::NamespaceN::Access &| (Pattern) . Repeat_Chain
@@ -123,31 +131,36 @@ pub fn parse_access<'a>(la: &mut LookaheadStream<'a>, on: Option<Box<ExpressionW
 
     // first access has no specified "self" unless it is an object itself.
 
-    let either: EitherAnd<Span, Span> = EitherAnd::Neither;
+    let mut either: EitherAnd<Span, Span> = EitherAnd::Neither;
 
     let base = scoped_name(la);
 
     match base.node_info.as_parsed() {
         Some(pni) => {
-            either.with_a(pni.span);
+            either = either.with_a(pni.span);
+            println!("was able to successfully parse a scoped name");
+            println!("lookahead is: {:?}", la.la(0));
+            println!("base is: {:?}", base);
         },
         _ => {},
     }
 
     let b_pattern = match base.silent {
         true => {
+            println!("base was silent");
             Some(parse_pattern(la)?)
         },
         false => {
+            println!("base was not silent");
             parse_pattern(la).ok()
         },
     };
 
-    match b_pattern {
+    match &b_pattern {
         Some(p) => {
-            match p.as_node().node_info().as_parsed() {
+            match p.node_info().as_parsed() {
                 Some(pni) => {
-                    either.with_b(pni.span);
+                    either = either.with_b(pni.span);
                 },
                 _ => {},
             }
@@ -157,7 +170,7 @@ pub fn parse_access<'a>(la: &mut LookaheadStream<'a>, on: Option<Box<ExpressionW
 
     // invisible invariant: either base or b_pattern has to be Some, or both
 
-    let (mut start, mut end) = match either {
+    let (start, end) = match either {
         EitherAnd::Neither => panic!("Somehow got neither a pattern nor a base"),
         EitherAnd::A(a) => (a.start, a.end),
         EitherAnd::B(b) => (b.start, b.end),
@@ -285,7 +298,7 @@ pub fn parse_expr_inner<'a>(la: &mut LookaheadStream<'a>, min_bp: u32, level: us
     let t1 = la.la(0)?;
     println!("{}parse_expr_inner called, current lookahead token is {:?}, {}", indent(level), t1.token, t1.slice);
     let mut lhs = match t1.token {
-        Token::LParen | Token::DoubleColon | Token::Identifier => {
+        /*Token::LParen | Token::DoubleColon | Token::Identifier => { // handled as an atomic
             //let r = parse_tuple_literal(la);
             /*expect(la, Token::LParen)?;
             let r = parse_expr_inner(la, 0, level + 1);
@@ -293,7 +306,7 @@ pub fn parse_expr_inner<'a>(la: &mut LookaheadStream<'a>, min_bp: u32, level: us
             let r = parse_access(la, None);
 
             r?
-        },
+        },*/
         Token::LBracket => {
             let r = parse_array_literal(la);
 
@@ -322,7 +335,7 @@ pub fn parse_expr_inner<'a>(la: &mut LookaheadStream<'a>, min_bp: u32, level: us
         },
         //
         _other => {
-            access_expression(la)?
+            atomic_expression(la)?
         },
     };
 
@@ -405,7 +418,7 @@ fn build_unary<'a>(node_info: NodeInfo, t: Token, lhs: Box<ast::ExpressionWrappe
         },
         _ => {
             println!("got unexpected token {:?}", t);
-            panic!("Programming error: no way to build binary expression from given token");
+            panic!("Programming error: no way to build unary expression from given token");
         }
     }
 }
@@ -424,6 +437,10 @@ fn build_binary<'a>(node_info: NodeInfo, t: Token, lhs: Box<ast::ExpressionWrapp
         Token::Equals => {
             AssignmentExpression::new_expr(node_info, lhs, rhs)
         },
+        Token::Dot => {
+            println!("lhs and rhs are: {:?} DOT {:?}", lhs, rhs);
+            panic!()
+        },
         _ => {
             println!("got unexpected token {:?}", t);
             panic!("Programming error: no way to build binary expression from given token");
@@ -438,7 +455,7 @@ pub enum DotAccess<'a> {
 
 use ast::IntoAstNode;
 
-pub fn object_access<'a>(la: &mut LookaheadStream<'a>, innerexp: Box<ast::ExpressionWrapper<'a>>) -> ExpressionResult<'a> {
+/*pub fn object_access<'a>(la: &mut LookaheadStream<'a>, innerexp: Box<ast::ExpressionWrapper<'a>>) -> ExpressionResult<'a> {
     let _dot = expect(la, Token::Dot)?;
 
     let name = expect(la, Token::Identifier)?;
@@ -457,9 +474,9 @@ pub fn object_access<'a>(la: &mut LookaheadStream<'a>, innerexp: Box<ast::Expres
             Ok(ast::FieldAccess::new_expr(node_info, field, innerexp))
         }
     }
-}
+}*/
 
-pub fn access_expression<'a>(la: &mut LookaheadStream<'a>) -> ExpressionResult<'a> {
+/*pub fn access_expression<'a>(la: &mut LookaheadStream<'a>) -> ExpressionResult<'a> {
     let mut base = atomic_expression(la);
     //println!("atomic expr produces base of {:?}", base);
     //println!();
@@ -490,7 +507,7 @@ pub fn access_expression<'a>(la: &mut LookaheadStream<'a>) -> ExpressionResult<'
     println!();*/
 
     Ok(base)
-}
+}*/
 
 /*pub fn additive_expression<'a>(la: &mut LookaheadStream<'a>) -> ExpressionResult<'a> {
     //let mut lhs = 
@@ -528,16 +545,16 @@ pub fn assignment_expression<'a>(la: &mut LookaheadStream<'a>) -> ExpressionResu
 pub fn atomic_expression<'a>(la: &mut LookaheadStream<'a>) -> ExpressionResult<'a> {
     if let Ok(tw) = la.next() {
         match tw.token {
-            Token::Identifier => {
+            /*Token::Identifier => {
                 // need to check if pattern/function-call or simply variable reference
                 //Ok(Box::new(ast::ExpressionWrapper::identifier_expression(tw)))
                 la.backtrack();
 
-                parse_chain(la)
+                parse_access(la, None)
                 
                 //todo!()
                 //Ok(ast::IdentifierExpression:
-            },
+            },*/
             Token::UnknownIntegerLiteral => {
                 Ok(ast::ExpressionWrapper::literal_expression(tw))
             },
@@ -547,15 +564,20 @@ pub fn atomic_expression<'a>(la: &mut LookaheadStream<'a>) -> ExpressionResult<'
             Token::Underscore => {
                 Ok(ast::ExpressionWrapper::wildcard(tw))
             },
-            Token::LParen => {
+            Token::LParen | Token::DoubleColon | Token::Identifier => {
+                la.backtrack();
+                parse_access(la, None)
+            },
+
+            /*Token::LParen => {
                 la.backtrack(); // ate into pattern
 
-                parse_pattern(la)
+                //parse_pattern(la)
                 /*let inner = parse_expr(la)?;
                 expect(la, Token::RParen)?;
 
                 Ok(inner)*/
-            },
+            },*/
             // Token::If, Token::Match,
             _ => {
                 Err(ParseResultError::UnexpectedToken(tw))

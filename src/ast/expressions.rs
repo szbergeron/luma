@@ -16,7 +16,6 @@ pub enum ExpressionWrapper<'a> {
     UnaryOperation(UnaryOperationExpression<'a>),
     Comparison(ComparisonOperationExpression<'a>),
     Cast(CastExpression<'a>),
-    Identifier(IdentifierExpression<'a>),
     Literal(LiteralExpression<'a>),
     MethodCall(MethodCall<'a>),
     Access(AccessExpression<'a>),
@@ -45,7 +44,7 @@ impl<'a> ExpressionWrapper<'a> {
         inner
     }
 
-    pub fn identifier_expression(input: TokenWrapper<'a>) -> Box<ExpressionWrapper<'a>> {
+    /*pub fn identifier_expression(input: TokenWrapper<'a>) -> Box<ExpressionWrapper<'a>> {
         let node_info = NodeInfo::from_token(&input, true);
 
         let inner = IdentifierExpression {
@@ -56,7 +55,7 @@ impl<'a> ExpressionWrapper<'a> {
         };
 
         Box::new(ExpressionWrapper::Identifier(inner))
-    }
+    }*/
 
     pub fn wildcard(input: TokenWrapper<'a>) -> Box<ExpressionWrapper<'a>> {
         let node_info = NodeInfo::from_token(&input, true);
@@ -75,13 +74,14 @@ impl<'a> IntoAstNode<'a> for ExpressionWrapper<'a> {
             Self::UnaryOperation(e) => e,
             Self::Comparison(e) => e,
             Self::Literal(e) => e,
-            Self::Identifier(e) => e,
             Self::Cast(e) => e,
             Self::Statement(e) => e,
             Self::Block(e) => e,
             Self::IfThenElse(e) => e,
             Self::LetExpression(e) => e,
             Self::Pattern(e) => e,
+            Self::Access(e) => e,
+            Self::Wildcard(e) => e,
             _ => {
                 println!("No implemented as_node handler for type {:?}", self);
                 todo!();
@@ -168,11 +168,11 @@ impl<'a> AstNode<'a> for StatementExpression<'a> {
 
 #[derive(Debug)]
 pub struct Pattern<'a> {
-    node_info: NodeInfo,
+    pub node_info: NodeInfo,
 
     //on: &'a str,
 
-    expressions: Vec<Box<ExpressionWrapper<'a>>>,
+    pub expressions: Vec<Box<ExpressionWrapper<'a>>>,
 }
 
 impl<'a> Pattern<'a> {
@@ -469,18 +469,46 @@ pub struct AccessExpression<'a> {
     //pub field: &'a str,
 
     pub scope: Box<ScopedName<'a>>,
-    pub pattern: Option<Box<ExpressionWrapper<'a>>>,
+    pub pattern: Option<Pattern<'a>>,
 }
 
 impl<'a> AccessExpression<'a> {
-    pub fn new_expr(node_info: NodeInfo, field: &'a str, on: Box<ExpressionWrapper<'a>>) -> Box<ExpressionWrapper<'a>> {
+    pub fn new_expr(node_info: NodeInfo, on: Option<Box<ExpressionWrapper<'a>>>, scope: Box<ScopedName<'a>>, pattern: Option<Pattern<'a>>) -> Box<ExpressionWrapper<'a>> {
         Box::new(
             ExpressionWrapper::Access(
                 AccessExpression {
-                    node_info, field, on,
+                    node_info, scope, on, pattern,
                 }
             )
         )
+    }
+}
+
+impl<'a> AstNode<'a> for AccessExpression<'a> {
+    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+        let _ = writeln!(
+            f,
+            "{}AccessExpression parsed {} in scope {:?} has subexpr and pattern:",
+            indent(depth),
+            self.node_info,
+            self.scope,
+            );
+        //self.pattern.display(f, depth+1)
+        //[&self.subexpr].iter().for_each(|expr| expr.as_node().display(f, depth+1));
+
+        match &self.on {
+            Some(e) => e.as_node().display(f, depth+1),
+            None => { let _ = writeln!(f, "{}No subexpr", indent(depth+1)); },
+        }
+
+        match &self.pattern {
+            Some(p) => p.expressions.iter().for_each(|expr| expr.as_node().display(f, depth+1)),
+            None => { let _ = writeln!(f, "{}No pattern", indent(depth+1)); },
+        }
+    }
+
+    fn node_info(&self) -> NodeInfo {
+        self.node_info
     }
 }
 
@@ -605,7 +633,7 @@ pub struct Closure<'a> {
     //pub span: Span<'a>,
 }
 
-#[derive(Debug)]
+/*#[derive(Debug)]
 pub struct IdentifierExpression<'a> {
     pub node_info: NodeInfo,
 
@@ -629,7 +657,7 @@ impl<'a> AstNode<'a> for IdentifierExpression<'a> {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
-}
+}*/
 
 #[derive(Debug)]
 #[allow(non_camel_case_types)]
