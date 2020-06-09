@@ -301,10 +301,10 @@ pub fn type_reference<'a>(
     }
 }
 
-pub fn pattern<'a>(lexer: &mut LookaheadStream<'a>) -> () {
+/*pub fn pattern<'a>(lexer: &mut LookaheadStream<'a>) ->  {
     // match <Identifier?><MaybeParenthesized: Patterns, Pattern>
     //
-}
+}*/
 
 pub fn function_param_list<'a>(
     lexer: &mut LookaheadStream<'a>,
@@ -371,7 +371,8 @@ pub fn variable_declaration<'a>(
     let start = lexer.la(0).map_or(0, |tw| tw.start);
 
     let _let = expect(lexer, Token::Let)?;
-    let id = expect(lexer, Token::Identifier)?.slice;
+    let lhs = parse_pattern(lexer)?;
+    //let id = expect(lexer, Token::Identifier)?.slice;
     let maybe_typeref = eat_match(lexer, Token::Colon);
     println!("Typeref colon: {:?}", maybe_typeref);
 
@@ -435,7 +436,7 @@ pub fn variable_declaration<'a>(
 
     Ok(ast::VariableDeclaration {
         node_info,
-        name: id,
+        lhs,
         var_expr: Some(var_expr),
         var_type: tr,
     })

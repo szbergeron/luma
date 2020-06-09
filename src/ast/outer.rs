@@ -141,7 +141,8 @@ impl<'a> AstNode<'a> for FunctionDeclaration<'a> {
 pub struct VariableDeclaration<'a> {
     pub node_info: NodeInfo,
     
-    pub name: &'a str,
+    //pub name: &'a str,
+    pub lhs: Box<ExpressionWrapper<'a>>,
     pub var_expr: Option<Box<ExpressionWrapper<'a>>>,
     pub var_type: Option<TypeReference<'a>>, // None indicates request for type inference
 }
@@ -154,18 +155,35 @@ impl<'a> AstNode<'a> for VariableDeclaration<'a> {
     fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let _ = writeln!(
             f,
-            "{}VariableDeclaration that parsed {} with name {} and type {:?} comes from expression:",
+            "{}VariableDeclaration that parsed {} has lhs:",
             indent(depth),
             self.node_info(),
-            self.name,
+            );
+        self.lhs.as_node().display(f, depth+2);
+        let _ = writeln!(
+            f,
+            "{}And type {:?} comes from expression:",
+            indent(depth+1),
             self.var_type,
             );
+
         match &self.var_expr {
-            Some(e) => e.as_node().display(f, depth+1),
-            None => { let _ = writeln!(f, "{} unassigned", indent(depth+1)); },
+            Some(e) => e.as_node().display(f, depth+2),
+            None => { let _ = writeln!(f, "{} unassigned", indent(depth+2)); },
         }
     }
 }
+
+#[derive(Debug)]
+pub struct ScopedName<'a> {
+    pub node_info: NodeInfo,
+
+    pub scope: Vec<&'a str>,
+
+    pub silent: bool,
+}
+
+
 
 #[derive(Debug)]
 pub enum SymbolDeclaration<'a> {

@@ -20,8 +20,8 @@ pub type CodeLocation = usize;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Span {
-    start: usize,
-    end: usize,
+    pub start: usize,
+    pub end: usize,
 }
 
 impl std::fmt::Display for Span {
@@ -38,8 +38,8 @@ pub enum NodeInfo {
 
 #[derive(Debug, Clone, Copy)]
 pub struct ParsedNodeInfo {
-    span: Span,
-    parsed: bool,
+    pub span: Span,
+    pub parsed: bool,
 }
 
 impl NodeInfo {

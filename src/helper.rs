@@ -1,5 +1,46 @@
 //use crate::lex;
 
+pub enum EitherAnd<A, B> {
+    A(A),
+    B(B),
+    Both(A, B),
+    Neither,
+}
+
+impl<A, B> EitherAnd<A, B> {
+    pub fn with_a(self, a: A) -> EitherAnd<A, B> {
+        match self {
+            Self::A(_) | Self::Neither => Self::A(a),
+            Self::B(b) => Self::Both(a, b),
+            Self::Both(_, b) => Self::Both(a, b),
+        }
+    }
+
+    pub fn with_b(self, b: B) -> EitherAnd<A, B> {
+        match self {
+            Self::A(a) => Self::Both(a, b),
+            Self::B(_) | Self::Neither => Self::B(b),
+            Self::Both(a, _) => Self::Both(a, b),
+        }
+    }
+
+    pub fn a(&self) -> Option<&A> {
+        match self {
+            Self::A(a) => Some(&a),
+            Self::B(_) | Self::Neither => None,
+            Self::Both(a, _) => Some(&a),
+        }
+    }
+
+    pub fn b(&self) -> Option<&B> {
+        match self {
+            Self::A(_) | Self::Neither => None,
+            Self::B(b) => Some(&b),
+            Self::Both(_, b) => Some(&b),
+        }
+    }
+}
+
 pub mod lex_wrap {
     use logos::Logos;
     use std::rc::Rc;

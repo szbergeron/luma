@@ -1,5 +1,6 @@
 use logos::Logos;
 
+#[allow(non_camel_case_types)]
 #[derive(Logos, Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum Token {
     #[token("mod")]
@@ -38,11 +39,20 @@ pub enum Token {
     #[token("break")]
     Break,
 
+    #[token("true")]
+    True,
+
+    #[token("false")]
+    False,
+
     #[token(";")]
     Semicolon,
 
     #[token(":")]
     Colon,
+
+    #[token("::")]
+    DoubleColon,
 
     #[token("%")]
     Modulo,
@@ -152,6 +162,12 @@ pub enum Token {
     #[token("<<")]
     ShiftLeft,
 
+    #[token("\\t")]
+    EscapeTab,
+
+    #[token("\\n")]
+    EscapeNewline,
+
     //#[regex("//.*\n")]
     //LineCommentStart,
 
@@ -170,6 +186,42 @@ pub enum Token {
     #[regex("[0-9]+")]
     UnknownIntegerLiteral,
 
+    #[regex("[0-9]+u128")]
+    u128Literal,
+
+    #[regex("[0-9]+u64")]
+    u64Literal,
+
+    #[regex("[0-9]+u32")]
+    u32Literal,
+
+    #[regex("[0-9]+u16")]
+    u16Literal,
+
+    #[regex("[0-9]+u8")]
+    u8Literal,
+
+    #[regex("[0-9]+i128")]
+    i128Literal,
+
+    #[regex("[0-9]+i64")]
+    i64Literal,
+
+    #[regex("[0-9]+i32")]
+    i32Literal,
+
+    #[regex("[0-9]+i16")]
+    i16Literal,
+
+    #[regex("[0-9]+i8")]
+    i8Literal,
+
+    #[regex("[0-9]+f64")]
+    f64Literal,
+
+    #[regex("[0-9]+f32")]
+    f32Literal,
+
     #[token(" ", logos::skip)]
     Space,
 
@@ -182,8 +234,8 @@ pub enum Token {
     #[token("//")]
     LineCommentStart,
 
-    /*#[regex(".*")]
-    CommentContents,*/
+    #[regex(r#""([^"\\]|\\t|\\u|\\n|\\")*""#)]
+    StringLiteral,
 
     #[regex(r"[\t\f]+", logos::skip)]
     #[error]
@@ -224,4 +276,15 @@ impl Token {
             _ => None,
         }
     }*/
+}
+
+#[test]
+fn string_literal() {
+    let pstring = "\"test string literal with keywords like fn mod and \\n\"";
+    let mut lex = Token::lexer(pstring);
+    let t = lex.next();
+    assert!(matches!(t, Some(Token::StringLiteral)));
+    assert_eq!(lex.slice(), pstring);
+    //println!("{}", lex.slice());
+    assert!(matches!(lex.next(), None));
 }
