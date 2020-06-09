@@ -9,7 +9,7 @@ use std::collections::HashSet;
 
 use crate::parse::*;
 
-use crate::parse_helper::*;
+//use crate::parse_helper::*;
 
 use ast::expressions::*;
 use ast::base::*;
@@ -26,30 +26,33 @@ pub fn atomic_expression<'a>(la: &mut LookaheadStream<'a>) -> ExpressionResult<'
 /*pub fn parse_expr<'a>(la: &mut LookaheadStream<'a>) -> ExpressionResult<'a> {
 }*/
 
-pub fn parse_pattern<'a>(la: &mut LookaheadStream<'a>) -> Result<Pattern<'a>, ParseResultError<'a>> {
-    // can be a single literal or tuple, and each tuple is a set of expressions
-    println!("parsing a pattern");
-    let start = expect(la, Token::LParen)?.start;
+impl<'a, 'b> Parser<'a, 'b> {
+    pub fn parse_pattern<'a>(la: &mut LookaheadStream<'a>) -> Result<Pattern<'a>, ParseResultError<'a>> {
+        // can be a single literal or tuple, and each tuple is a set of expressions
+        println!("parsing a pattern");
+        let start = expect(la, Token::LParen)?.start;
 
-    let mut expressions = Vec::new();
+        let mut expressions = Vec::new();
 
-    while let Ok(expr) = parse_expr(la) {
-        expressions.push(expr);
+        while let Ok(expr) = parse_expr(la) {
+            expressions.push(expr);
 
-        match eat_match(la, Token::Comma) {
-            Some(_comma) => continue,
-            None => break,
+            match eat_match(la, Token::Comma) {
+                Some(_comma) => continue,
+                None => break,
+            }
         }
+
+        let end = expect(la, Token::RParen)?.end;
+
+        let node_info = NodeInfo::from_indices(true, start, end);
+
+        Ok(Pattern { node_info, expressions })
+
+        //Ok(Pattern::new_expr(node_info, exprs))
     }
-
-    let end = expect(la, Token::RParen)?.end;
-
-    let node_info = NodeInfo::from_indices(true, start, end);
-
-    Ok(Pattern { node_info, expressions })
-
-    //Ok(Pattern::new_expr(node_info, exprs))
 }
+
 
 /*pub fn parse_slice<'a>(la: &mut LookaheadStream<'a>, on: Option<Box<ExpressionWrapper<'a>>>) -> 
     Result<EitherAnd<ExpressionWrapper<'a>, ExpressionWrapper<'a>>, ParseResultError<'a>> {
@@ -358,7 +361,7 @@ pub fn parse_expr_inner<'a>(la: &mut LookaheadStream<'a>, min_bp: u32, level: us
                 let start = lhs.as_node().start().expect("parsed lhs has no start?");
                 let end = rhs.as_node().end().expect("parsed rhs has no end?");
                 let node_info = ast::NodeInfo::from_indices(true, start, end);
-                lhs = build_binary(node_info, tw.token, lhs, rhs);
+                lhs = build_binary(node_info, tw.token, lhs, rhs)?;
                 continue;
             }
         } else if let Some(tw) = eat_match_in(la, &[Token::LParen, Token::LBracket, Token::Identifier, Token::DoubleColon]) {
@@ -424,22 +427,35 @@ fn build_unary<'a>(node_info: NodeInfo, t: Token, lhs: Box<ast::ExpressionWrappe
 }
 
 fn build_binary<'a>(node_info: NodeInfo, t: Token, lhs: Box<ast::ExpressionWrapper<'a>>, rhs: Box<ast::ExpressionWrapper<'a>>)
-    -> Box<ast::ExpressionWrapper<'a>> {
+    //-> Box<ast::ExpressionWrapper<'a>> {
+    -> ExpressionResult<'a> {
 
 
     match t {
         Token::Plus | Token::Dash | Token::Asterisk | Token::FSlash => {
-            BinaryOperationExpression::new_expr(node_info, t, lhs, rhs)
+            Ok(BinaryOperationExpression::new_expr(node_info, t, lhs, rhs))
         },
         Token::As => {
-            CastExpression::new_expr(node_info, lhs, rhs)
+            Ok(CastExpression::new_expr(node_info, lhs, rhs))
         },
         Token::Equals => {
-            AssignmentExpression::new_expr(node_info, lhs, rhs)
+            Ok(AssignmentExpression::new_expr(node_info, lhs, rhs))
         },
         Token::Dot => {
             println!("lhs and rhs are: {:?} DOT {:?}", lhs, rhs);
-            panic!()
+            let rhs = match *rhs {
+                ExpressionWrapper::Access(mut ae) => {
+                    ae.on = Some(lhs);
+
+                    Box::new(ExpressionWrapper::Access(ae))
+                },
+                _ => return Err(ParseResultError::SemanticIssue(
+                    "Can not perform a dot-access with non-access RHS.
+                    RHS must be of the form (ScopedIdentifier &| Pattern).
+                    Offending RHS occurs at span", rhs.as_node().start().unwrap_or(0), rhs.as_node().end().unwrap_or(0))),
+            };
+
+            Ok(rhs)
         },
         _ => {
             println!("got unexpected token {:?}", t);

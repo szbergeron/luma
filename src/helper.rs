@@ -67,6 +67,7 @@ pub mod lex_wrap {
         NotYetParsed,
         ExpectedExpressionNotPresent,
         UnexpectedToken(TokenWrapper<'a>),
+        SemanticIssue(&'a str, usize, usize),
         //
     }
 
