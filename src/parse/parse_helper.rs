@@ -5,72 +5,92 @@ use crate::helper::lex_wrap::TokenWrapper;
 use crate::helper::lex_wrap::ParseResultError;
 use crate::helper::lex_wrap::LookaheadStream;
 use std::collections::HashSet;
+use crate::parse::*;
 
-pub fn eat_through<'a>(la: &mut LookaheadStream<'a>, toks: Vec<Token>) {
-    let s: HashSet<Token> = toks.into_iter().collect();
+impl<'b, 'a> Parser<'b, 'a> {
+    pub fn eat_through(&mut self, toks: Vec<Token>) {
+        let s: HashSet<Token> = toks.into_iter().collect();
 
-    while let Ok(tw) = la.next() {
-        if s.contains(&tw.token) {
-            break;
-        } else {
-            continue;
+        while let Ok(tw) = self.lex.next() {
+            if s.contains(&tw.token) {
+                break;
+            } else {
+                continue;
+            }
         }
     }
-}
 
-pub fn eat_to<'a>(la: &mut LookaheadStream<'a>, toks: Vec<Token>) {
-    let s: HashSet<Token> = toks.into_iter().collect();
+    pub fn eat_to(&mut self, toks: Vec<Token>) {
+        let s: HashSet<Token> = toks.into_iter().collect();
 
-    while let Ok(tw) = la.la(0) {
-        if s.contains(&tw.token) {
-            break;
-        } else {
-            la.advance();
-            continue;
+        while let Ok(tw) = self.lex.la(0) {
+            if s.contains(&tw.token) {
+                break;
+            } else {
+                self.lex.advance();
+                continue;
+            }
         }
     }
-}
 
-pub fn eat_match<'a>(la: &mut LookaheadStream<'a>, t: Token) -> Option<TokenWrapper<'a>> {
-    expect(la, t).ok()
-    //expect(t).map_or(|t| Some(t), None)
-}
+    pub fn eat_match(&mut self, t: Token) -> Option<TokenWrapper<'a>> {
+        self.expect(t).ok()
+        //expect(t).map_or(|t| Some(t), None)
+    }
 
-pub fn eat_match_in<'a>(la: &mut LookaheadStream<'a>, t: &[Token]) -> Option<TokenWrapper<'a>> {
-    if let Ok(tw) = la.la(0) {
-        if t.contains(&tw.token) {
-            la.advance();
+    pub fn eat_match_in(&mut self, t: &[Token]) -> Option<TokenWrapper<'a>> {
+        if let Ok(tw) = self.lex.la(0) {
+            if t.contains(&tw.token) {
+                self.lex.advance();
 
-            Some(tw)
+                Some(tw)
+            } else {
+                None
+            }
         } else {
             None
         }
-    } else {
-        None
     }
-}
 
-pub fn eat_if<'a, F, T>(la: &mut LookaheadStream<'a>, f: F) -> Option<(T, TokenWrapper<'a>)>
-    where F: FnOnce(TokenWrapper<'a>) -> Option<T>
-{
-    match la.la(0) {
-        Ok(tw) => {
-            let result_f = f(tw);
-            let result = match result_f {
-                Some(r) => Some((r, tw)),
-                None => None,
-            };
-            if result.is_some() {
-                la.advance();
+    pub fn eat_if<F, T>(&mut self, f: F) -> Option<(T, TokenWrapper<'a>)>
+        where F: FnOnce(TokenWrapper<'a>) -> Option<T>
+    {
+        match self.lex.la(0) {
+            Ok(tw) => {
+                let result_f = f(tw);
+                let result = match result_f {
+                    Some(r) => Some((r, tw)),
+                    None => None,
+                };
+                if result.is_some() {
+                    self.lex.advance();
+                }
+
+                result
+            },
+            Err(_) => None
+        }
+        //expect(la, t).ok()
+        //expect(t).map_or(|t| Some(t), None)
+    }
+
+    pub fn expect(&mut self, t: Token) -> Result<TokenWrapper<'a>, ParseResultError<'a>> {
+        println!("Expect asked for: {:?}", t);
+        if let Ok(tw) = self.lex.next() {
+            match tw.token {
+                tt if tt == t => Ok(tw),
+                _ => {
+                    self.lex.backtrack();
+
+                    Err(ParseResultError::UnexpectedToken(tw, vec![t]))
+                },
             }
-
-            result
-        },
-        Err(_) => None
+        } else {
+            Err(ParseResultError::EndOfFile)
+        }
     }
-    //expect(la, t).ok()
-    //expect(t).map_or(|t| Some(t), None)
 }
+
 
 pub struct RunConditional<'a> {
     pub run_if: Option<TokenWrapper<'a>>,
@@ -109,19 +129,3 @@ impl<'a, Output> RunResult<'a, Output> {
 fn if_token<'a>(la: &mut LookaheadStream<'a>, t: Token) -> RunConditional<'a> {
     RunConditional { run_if: eat_if(la, t) }
 }*/
-
-pub fn expect<'a>(la: &mut LookaheadStream<'a>, t: Token) -> Result<TokenWrapper<'a>, ParseResultError<'a>> {
-    println!("Expect asked for: {:?}", t);
-    if let Ok(tw) = la.next() {
-        match tw.token {
-            tt if tt == t => Ok(tw),
-            _ => {
-                la.backtrack();
-
-                Err(ParseResultError::UnexpectedToken(tw))
-            },
-        }
-    } else {
-        Err(ParseResultError::EndOfFile)
-    }
-}

@@ -9,7 +9,11 @@ pub fn compile(contents: &str) {
         //println!("Slice is: {:?}", token.slice);
     }*/
 
-    let r = entry(&mut scanner);
+    let mut parser = Parser::new(&mut scanner);
+
+    let r = parser.entry();
+
+    parser.print_errors(contents);
     //r.iter().for_each(|result|
     match r {
         Ok(punit) => {
@@ -43,222 +47,129 @@ use crate::parse::*;
 
 type TokenResult<'a> = Result<TokenWrapper<'a>, ParseResultError<'a>>;
 
-pub fn entry<'a>(la: &mut LookaheadStream<'a>) -> Result<ast::ParseUnit<'a>, ParseResultError<'a>> {
-    //let mut declarations
-    let mut declarations: Vec<Result<ast::SymbolDeclaration<'a>, ParseResultError<'a>>> =
-        Vec::new();
+impl<'b, 'a> Parser<'b, 'a> {
 
-    let start = la.la(0).map_or(0, |tw| tw.start);
+    pub fn entry(&mut self) -> Result<ast::ParseUnit<'a>, ParseResultError<'a>> {
+        //let mut declarations
+        let mut declarations: Vec<Result<ast::SymbolDeclaration<'a>, ParseResultError<'a>>> =
+            Vec::new();
 
-    let mut failed = false;
+        let start = self.lex.la(0).map_or(0, |tw| tw.start);
 
-    while let Ok(tw) = la.la(0) {
-        let r = match tw.token {
-            Token::RBrace => break,
-            _ => {
-                //
-                let r = global_declaration(la);
+        let mut failed = false;
 
-                match r.is_ok() {
-                    false => {
-                        failed = true;
-                        /*while let Ok(twi) = la.next() {
-                            match twi.token {
-                                Token::LBrace | Token::Semicolon => break,
-                                _ => continue,
-                            }
+        while let Ok(tw) = self.lex.la(0) {
+            let r = match tw.token {
+                Token::RBrace => break,
+                _ => {
+                    //
+                    let r = self.global_declaration();
 
-                        }*/
-                        eat_through(la, vec![Token::RBrace, Token::Semicolon]);
-                    }
-                    true => {}
+                    let r = match r {
+                        Err(e) => {
+                            failed = true;
+                            self.report_err(e.clone());
+                            self.eat_through(vec![Token::RBrace, Token::Semicolon]);
+
+                            Err(e)
+                        }
+                        Ok(ok) => Ok(ok),
+                    };
+
+                    r
                 }
+            };
 
-                r
-            }
-        };
+            declarations.push(r);
+        }
 
-        declarations.push(r);
+        let end = self.lex.la(-1).map_or(start, |tw| tw.start);
+
+        Ok(ast::ParseUnit {
+            declarations,
+            node_info: ast::NodeInfo::from_indices(failed, start, end),
+        })
     }
 
-    /*while let Ok(tw) = la.next() {
+    pub fn global_declaration(&mut self) -> Result<ast::SymbolDeclaration<'a>, ParseResultError<'a>> {
+        let has_pub = self.eat_match(Token::Public);
+        let mut failed = false;
 
-        println!("In entry while, got tw {:?}", tw);
-        let r = match tw.token {
-            //Token::Module => Ok(ast::SymbolDeclaration::NamespaceDeclaration(module_entry(la)?)),
-            //Token::LBlockComment => { block_comment(la); continue },
-            Token::RBrace => break,
-            _ => {
-                la.backtrack();
-                let r = global_declaration(la);
-
-                match r.is_ok() {
-                    false => {
-                        failed = true;
-                        /*while let Ok(twi) = la.next() {
-                            match twi.token {
-                                Token::LBrace | Token::Semicolon => break,
-                                _ => continue,
-                            }
-
-                        }*/
-                        eat_through(la, vec![Token::RBrace, Token::Semicolon]);
-                    },
-                    true => {},
+        if let Ok(tw) = self.lex.la(0) {
+            let r = match tw.token {
+                Token::Module => {
+                    self.namespace()
+                        .map(|mut ns| {
+                            ns.set_public(has_pub.is_some());
+                            ast::SymbolDeclaration::NamespaceDeclaration(ns)
+                        })
+                        .map_err(|e| {
+                            failed = true;
+                            e
+                        })
                 }
-
-                r
-
-                //Err(ParseResultError::UnexpectedToken(tw))
-            }
-            //_ => panic!("Failed to parse! Got token: {:?}", tw),
-        };
-        println!("Got a semantic thing in entry: {:?}", r);
-
-        declarations.push(r);
-    }*/
-    //println!("Entry returns, declarations are: {:?}", declarations);
-
-    let end = la.la(-1).map_or(start, |tw| tw.start);
-
-    Ok(ast::ParseUnit {
-        declarations,
-        node_info: ast::NodeInfo::from_indices(failed, start, end),
-    })
-}
-
-/*pub fn function_declaration<'a>(la: &mut LookaheadStream<'a>) -> Result<ast::FunctionDeclaration<'a>, ParseResultError<'a>> {
-    expect(la, Token::Function)?;
-    let parameters = paren_param_list(la)?;
-    let return_type_arrow = eat_if(la, Token::ThinArrow);
-    let return_type = match return_type_arrow {
-        Some(_) => parse_type(la)?,
-        None => ast::TypeReference::unit(),
-    };
-}
-
-pub fn paren_param_list<'a>(la: &mut LookaheadStream<'a>) -> Result<Vec<ast::VariableDeclaration<'a>>, ParseResultError<'a>> {
-    //
-}
-
-pub fn param_list<'a>(la: &mut LookaheadStream<'a>) -> Result<Vec<ast::VariableDeclaration<'a>>, ParseResultError<'a>> {
-}
-
-pub fn type_list<'a>(la: &mut LookaheadStream<'a>) -> Result<Vec<ast::TypeReference<'a>>, ParseResultError<'a>> {
-}
-
-pub fn parse_type<'a>(la: &mut LookaheadStream<'a>) -> Result<ast::TypeReference<'a>, ParseResultError<'a>> {
-}*/
-
-pub fn global_declaration<'a>(
-    la: &mut LookaheadStream<'a>,
-) -> Result<ast::SymbolDeclaration<'a>, ParseResultError<'a>> {
-    let has_pub = eat_match(la, Token::Public);
-    let mut failed = false;
-
-    if let Ok(tw) = la.la(0) {
-        let r = match tw.token {
-            Token::Module => {
-                /*let mut m = module_entry(la);
-                match m {
-                    Ok(mut ns) => {
-                        ns.public = has_pub.is_some();
-
-                        Ok(ast::SymbolDeclaration::NamespaceDeclaration(ns))
-                    },
-                    Err(err) => Err(err),
-                }*/
-                //m.map(|ns| { ns.public = has_pub.is_some(); ns }).map(|ns| ast::SymbolDeclaration::NamespaceDeclaration(ns))
-                namespace(la)
-                    .map(|mut ns| {
-                        ns.set_public(has_pub.is_some());
-                        ast::SymbolDeclaration::NamespaceDeclaration(ns)
-                    })
+                Token::Let => self.variable_declaration()
+                    .map(|mut vd| ast::SymbolDeclaration::VariableDeclaration(vd))
                     .map_err(|e| {
                         failed = true;
                         e
-                    })
-            }
-            Token::Let => variable_declaration(la)
-                .map(|mut vd| ast::SymbolDeclaration::VariableDeclaration(vd))
-                .map_err(|e| {
-                    failed = true;
-                    e
-                }),
-            Token::Function => function_declaration(la)
-                .map(|mut fd| ast::SymbolDeclaration::FunctionDeclaration(fd))
-                .map_err(|e| {
-                    failed = true;
-                    e
-                }),
-            _ => {
-                eat_to(la, vec![Token::RBrace, Token::Semicolon]);
+                    }),
+                Token::Function => self.function_declaration()
+                    .map(|mut fd| ast::SymbolDeclaration::FunctionDeclaration(fd))
+                    .map_err(|e| {
+                        failed = true;
+                        e
+                    }),
+                _ => {
+                    self.eat_to(vec![Token::RBrace, Token::Semicolon]);
 
-                Err(ParseResultError::UnexpectedToken(tw))
-            }
-        };
+                    self.err(ParseResultError::UnexpectedToken(tw, vec![Token::Module, Token::Let, Token::Function]))
+                }
+            };
 
-        r
-    } else {
-        Err(ParseResultError::EndOfFile)
+            r
+        } else {
+            Err(ParseResultError::EndOfFile)
+        }
+
+        //panic!()
     }
 
-    //panic!()
-}
+    pub fn namespace(
+        &mut self,
+    ) -> Result<ast::Namespace<'a>, ParseResultError<'a>> {
+        let start = self.lex.la(0).map_or(0, |tw| tw.start);
 
-pub fn namespace<'a>(
-    lexer: &mut LookaheadStream<'a>,
-) -> Result<ast::Namespace<'a>, ParseResultError<'a>> {
-    let start = lexer.la(0).map_or(0, |tw| tw.start);
+        self.expect(Token::Module)?;
+        println!("Module entry now");
+        let id = self.expect(Token::Identifier)?.slice;
+        self.expect(Token::LBrace)?;
+        let pu = self.entry();
+        self.expect(Token::RBrace)?;
+        println!("Module entry finds id: {:?}", id);
 
-    expect(lexer, Token::Module)?;
-    println!("Module entry now");
-    let id = expect(lexer, Token::Identifier)?.slice;
-    expect(lexer, Token::LBrace)?;
-    let pu = entry(lexer);
-    expect(lexer, Token::RBrace)?;
-    //expect(lexer, Token::RBrace)?;
-    println!("Module entry finds id: {:?}", id);
+        let end = self.lex.la(-1).map_or(0, |tw| tw.end);
 
-    let end = lexer.la(-1).map_or(0, |tw| tw.end);
+        let failed = pu.is_err();
 
-    let failed = pu.is_err();
+        let node_info = ast::NodeInfo::from_indices(failed, start, end);
 
-    let node_info = ast::NodeInfo::from_indices(failed, start, end);
-
-    Ok(ast::Namespace {
-        name: Some(id),
-        contents: pu,
-        public: false,
-        node_info,
-    })
-
-    /*fn module_name<'a>(lexer: &mut Wrapper<'a>) -> TokenResult<'a> {
-        expect(lexer, Token::Identifier)
+        Ok(ast::Namespace {
+            name: Some(id),
+            contents: pu,
+            public: false,
+            node_info,
+        })
     }
 
-    fn module_lbrace<'a>(lexer: &mut Wrapper<'a>) -> TokenResult<'a> {
-        expect(lexer, Token::LBrace)
-    }
-
-    fn module_*/
-
-    //module_name(lexer)
-    /*if let Token::Identifier = lexer::next_semantic_token() {
-    } else {
-        ParseResultError::
-    }*/
-}
-
-pub fn type_reference<'a>(
-    lexer: &mut LookaheadStream<'a>,
-) -> Result<ast::TypeReference<'a>, ParseResultError<'a>> {
-    fn inner<'a>(lexer: &mut LookaheadStream<'a>) -> Result<Option<ast::TypeReference<'a>>, ParseResultError<'a>> {
-        let typename = eat_match(lexer, Token::Identifier);
+    fn type_reference_inner(
+        &mut self
+    ) -> Result<Option<ast::TypeReference<'a>>, ParseResultError<'a>> {
+        let typename = self.eat_match(Token::Identifier);
         match typename {
             None => Ok(None),
             Some(tn) => {
-                let type_param_open = eat_match(lexer, Token::CmpLessThan);
+                let type_param_open = self.eat_match(Token::CmpLessThan);
                 let start = tn.start;
                 let mut end = tn.end;
                 let type_param_list: Vec<ast::TypeReference> = match type_param_open {
@@ -266,15 +177,15 @@ pub fn type_reference<'a>(
                     Some(_arrow) => {
                         let mut params = Vec::new();
 
-                        while let Ok(Some(tr)) = inner(lexer) {
+                        while let Ok(Some(tr)) = self.type_reference_inner() {
                             params.push(tr);
-                            match eat_match(lexer, Token::Comma) {
+                            match self.eat_match(Token::Comma) {
                                 None => break,
                                 Some(_) => continue,
                             }
                         }
 
-                        end = expect(lexer, Token::CmpGreaterThan)?.end;
+                        end = self.expect(Token::CmpGreaterThan)?.end;
 
                         params
                     },
@@ -294,242 +205,136 @@ pub fn type_reference<'a>(
         }
     }
 
-    match inner(lexer) {
-        Err(e) => Err(e),
-        Ok(None) => Err(ParseResultError::ExpectedExpressionNotPresent),
-        Ok(Some(tr)) => Ok(tr),
-    }
-}
-
-/*pub fn pattern<'a>(lexer: &mut LookaheadStream<'a>) ->  {
-    // match <Identifier?><MaybeParenthesized: Patterns, Pattern>
-    //
-}*/
-
-pub fn function_param_list<'a>(
-    lexer: &mut LookaheadStream<'a>,
-) -> Result<Vec<(Box<ast::ExpressionWrapper<'a>>, ast::TypeReference<'a>)>, ParseResultError<'a>> {
-    let mut rvec: Vec<(Box<ast::ExpressionWrapper<'a>>, ast::TypeReference<'a>)> = Vec::new();
-    //while let Some(id) = eat_match(lexer, Token::Identifier) {
-    while let Ok(a) = atomic_expression(lexer) {
-        expect(lexer, Token::Colon)?;
-        //let id_nodeinfo = ast::NodeInfo::from_token(&id, true);
-        /*let id = ast::IdentifierExpression {
-            node_info: id_nodeinfo,
-            name: id.slice,
-            node_type: None,
-        };*/
-        //let id = ast::ExpressionWrapper::identifier_expression(id);
-        let tr = type_reference(lexer)?;
-
-        let r = (a, tr);
-
-        rvec.push(r);
-
-        match eat_match(lexer, Token::Comma) {
-            Some(_) => continue,
-            None => break,
+    pub fn type_reference(
+        &mut self
+    ) -> Result<ast::TypeReference<'a>, ParseResultError<'a>> {
+        let index = self.lex.la(0).map(|tw| tw.start).unwrap_or(0);
+        match self.type_reference_inner() {
+            Err(e) => Err(e),
+            Ok(None) => Err(ParseResultError::SemanticIssue("expected a type reference expression, but none was found", index, index)),
+            Ok(Some(tr)) => Ok(tr),
         }
     }
 
-    Ok(rvec)
-}
+    pub fn function_param_list(
+        &mut self
+    ) -> Result<Vec<(Box<ast::ExpressionWrapper<'a>>, ast::TypeReference<'a>)>, ParseResultError<'a>> {
+        let mut rvec: Vec<(Box<ast::ExpressionWrapper<'a>>, ast::TypeReference<'a>)> = Vec::new();
+        while let Ok(a) = self.atomic_expression() {
+            self.expect(Token::Colon)?;
+            let tr = self.type_reference()?;
 
+            let r = (a, tr);
 
-pub fn function_declaration<'a>(
-    lexer: &mut LookaheadStream<'a>,
-) -> Result<ast::FunctionDeclaration<'a>, ParseResultError<'a>> {
-    let start = expect(lexer, Token::Function)?.start;
-    let function_name = expect(lexer, Token::Identifier)?;
-    expect(lexer, Token::LParen)?;
-    let params = function_param_list(lexer)?;
-    expect(lexer, Token::RParen)?;
+            rvec.push(r);
 
-    expect(lexer, Token::ThinArrow)?;
-    let return_type = type_reference(lexer)?;
-
-    let body = parse_expr(lexer)?;
-
-    let end = body.as_node().start().expect("Some(_) body has None end");
-
-    let node_info = ast::NodeInfo::from_indices(true, start, end);
-
-    Ok(ast::FunctionDeclaration {
-        node_info,
-        body,
-        params,
-        return_type,
-        name: function_name.slice,
-    })
-
-    //todo!("function declarations not handled yet")
-}
-
-pub fn variable_declaration<'a>(
-    lexer: &mut LookaheadStream<'a>,
-) -> Result<ast::VariableDeclaration<'a>, ParseResultError<'a>> {
-    println!("Got a variable declaration, looking...");
-    let start = lexer.la(0).map_or(0, |tw| tw.start);
-
-    let _let = expect(lexer, Token::Let)?;
-    let lhs = parse_access(lexer, None)?;
-    //let id = expect(lexer, Token::Identifier)?.slice;
-    let maybe_typeref = eat_match(lexer, Token::Colon);
-    println!("Typeref colon: {:?}", maybe_typeref);
-
-    let tr = match maybe_typeref {
-        Some(_) => {
-            println!(
-                "Got colon, expecting identifier. LookAhead is: {:?}",
-                lexer.la(0)
-            );
-            /*let t = expect(lexer, Token::Identifier)?;
-
-            let node_info = ast::NodeInfo::from_indices(true, t.start, t.end);
-
-            Some(ast::TypeReference {
-                node_info,
-                typename: t.slice,
-                refers_to: None,
-            })*/
-            Some(type_reference(lexer)?)
-        }
-        None => None,
-    };
-
-    let equals = eat_match(lexer, Token::Equals);
-    println!("Equals is: {:?}", equals);
-
-    let var_expr = parse_expr(lexer)?;
-
-    //let sent_lexer = lexer.clone();
-    /*let mut lw = crate::parse_expr::LALRPopLexWrapper::new(lexer, vec![Token::Semicolon]);
-
-
-    let expr = match equals {
-        Some(_) => {
-            println!("Handing off to lalrpop to parse expr");
-            //let parser = crate::grammar::OuterExpressionParser::new();
-            let result = expression_parser.parse("", &mut lw).unwrap();
-            //Some(ast::Expression::Variable(result))
-            Some(result)
-        },
-        None => None,
-    };
-
-    //lexer.ffwd(&lw.la);*/
-
-    expect(lexer, Token::Semicolon)?;
-
-    let end = lexer.la(-1).map_or(start, |tw| tw.start);
-
-    /*let expr = expr.map(|_| {
-        let mut lw = crate::parse_expr::LALRPopLexWrapper { la: lexer, end_with: vec![Token::Semicolon] };
-        let mut parser = crate::grammar::OuterExpressionParser::new();
-        //crate::grammar::
-    });*/
-    /*let expr = if_token(lexer, Token::Equals).then(|| {
-
-    });*/
-    //panic!()
-
-    let node_info = ast::NodeInfo::from_indices(true, start, end);
-
-    Ok(ast::VariableDeclaration {
-        node_info,
-        lhs,
-        var_expr: Some(var_expr),
-        var_type: tr,
-    })
-}
-
-pub fn closure<'a>(la: &mut LookaheadStream<'a>) -> Result<ast::Closure<'a>, ParseResultError<'a>> {
-    panic!()
-}
-
-// no result from comments
-/*pub fn block_comment(la: &mut LookaheadStream) -> () {
-    while let Ok(tw) = la.next() {
-        match tw.token {
-            Token::LBlockComment => block_comment(la),
-            Token::RBlockComment => return,
-            _ => continue,
-        }
-    }
-}*/
-
-// I really hate myself for this, but I'm going to potentially try both grammar based
-// precedence and pratt parsing since both seem not great
-pub fn expression_outer<'a>(la: &mut LookaheadStream<'a>) -> () {
-    parse_expr(la, 0);
-
-    fn parse_expr<'a>(
-        la: &mut LookaheadStream<'a>,
-        min_bp: u8,
-    ) -> Result<(), ParseResultError<'a>> {
-        while let Ok(tw) = la.next() {
-            let operators: Vec<Token> = Vec::new();
-            let operands: Vec<Box<dyn ast::Expression>> = Vec::new();
-
-            enum State {
-                //
+            match self.eat_match(Token::Comma) {
+                Some(_) => continue,
+                None => break,
             }
         }
 
-        panic!()
+        Ok(rvec)
+    }
 
-        /*if let Ok(mut lhs) = {
-            let token = la.next()?;
-            match token.token {
-                Token::LParen => {
+
+    pub fn function_declaration(
+        &mut self
+    ) -> Result<ast::FunctionDeclaration<'a>, ParseResultError<'a>> {
+        let start = self.expect(Token::Function)?.start;
+        let function_name = self.expect(Token::Identifier)?;
+        self.expect(Token::LParen)?;
+        let params = self.function_param_list()?;
+        self.expect(Token::RParen)?;
+
+        self.expect(Token::ThinArrow)?;
+        let return_type = self.type_reference()?;
+
+        let body = self.parse_expr()?;
+
+        let end = body.as_node().start().expect("Some(_) body has None end");
+
+        let node_info = ast::NodeInfo::from_indices(true, start, end);
+
+        Ok(ast::FunctionDeclaration {
+            node_info,
+            body,
+            params,
+            return_type,
+            name: function_name.slice,
+        })
+    }
+
+    pub fn variable_declaration(
+        &mut self
+    ) -> Result<ast::VariableDeclaration<'a>, ParseResultError<'a>> {
+        println!("Got a variable declaration, looking...");
+        let start = self.lex.la(0).map_or(0, |tw| tw.start);
+
+        let _let = self.expect(Token::Let)?;
+        let lhs = self.parse_access_base(None)?;
+        //let id = expect(lexer, Token::Identifier)?.slice;
+        let maybe_typeref = self.eat_match(Token::Colon);
+        println!("Typeref colon: {:?}", maybe_typeref);
+
+        let tr = match maybe_typeref {
+            Some(_) => {
+                println!(
+                    "Got colon, expecting identifier. LookAhead is: {:?}",
+                    self.lex.la(0)
+                );
+                Some(self.type_reference()?)
+            }
+            None => None,
+        };
+
+        let equals = self.eat_match(Token::Equals);
+        println!("Equals is: {:?}", equals);
+        let var_expr = match equals {
+            Some(_eq) => Some(self.parse_expr()?),
+            None => None,
+        };
+
+        //let var_expr = self.parse_expr()?;
+
+        self.expect(Token::Semicolon)?;
+
+        let end = self.lex.la(-1).map_or(start, |tw| tw.start);
+
+        let node_info = ast::NodeInfo::from_indices(true, start, end);
+
+        Ok(ast::VariableDeclaration {
+            node_info,
+            lhs,
+            var_expr,
+            var_type: tr,
+        })
+    }
+
+    pub fn closure(&mut self) -> Result<ast::Closure<'a>, ParseResultError<'a>> {
+        panic!()
+    }
+
+    // I really hate myself for this, but I'm going to potentially try both grammar based
+    // precedence and pratt parsing since both seem not great
+    /*pub fn expression_outer(&mut self) -> () {
+        parse_expr(la, 0);
+
+        fn parse_expr<'a>(
+            la: &mut LookaheadStream<'a>,
+            min_bp: u8,
+        ) -> Result<(), ParseResultError<'a>> {
+            while let Ok(tw) = la.next() {
+                let operators: Vec<Token> = Vec::new();
+                let operands: Vec<Box<dyn ast::Expression>> = Vec::new();
+
+                enum State {
                     //
-                },
-                Token::UnknownIntegerLiteral => {},
-                t if t.prefix_operator() => {},
-                _ => {
-                    la.backtrack();
-                    ParseResultError::UnexpectedToken(token)
                 }
             }
 
-            /*if token.token.prefix_operator() {
-                let bp = token.token.prefix_binding_power();
-            }*/
-        } {
-            Err(ParseResultError::NotYetParsed)
-        } else {
-            if let Ok(tw) = la.la(0) {
-                Err(ParseResultError::UnexpectedToken(tw))
-            } else {
-                Err(ParseResultError::EndOfFile)
-            }
-        }*/
+            panic!()
+        }
+    }*/
 
-        /*while let Ok(tw) = la.next() {
-            if tw.token.binary_operator() {
-                let (l_bp, r_bp) = tw.token.infix_binding_power().expect("Token had no binding power");
-            } else if tw.token.unary_operator() {
-            } else {
-                la.backtrack();
-                return Err(ParseResultError::UnexpectedToken(tw));
-            }
-        }*/
-    }
 }
-
-//type ExpressionResult<'a> = Result<ast::ExpressionWrapper<'a>, ParseResultError<'a>>;
-
-/*pub fn outer_expression<'a>(la: &mut LookaheadStream<'a>, end_of_string: Token)
-    -> Result<Box<dyn ast::Expression<'a>>, ParseResultError<'a>> {
-}
-
-pub fn parenthetical<'a>(la: &mut LookaheadStream<'a>)
-    -> ExpressionResult<'a>
-{
-    let r = outer_expression(la, Token::RParen)?;
-    expect(la, Token::RParen)?;
-
-    Ok(r)
-}*/
-
-//fn find<'a>(lexer: &mut Wrapper<'a>, t: Token

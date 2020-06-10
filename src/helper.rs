@@ -61,14 +61,13 @@ pub mod lex_wrap {
 
     }
 
-    #[derive(Debug, Clone, Copy)]
+    #[derive(Debug, Clone)]
     pub enum ParseResultError<'a> {
         EndOfFile,
         NotYetParsed,
-        ExpectedExpressionNotPresent,
-        UnexpectedToken(TokenWrapper<'a>),
+        //ExpectedExpressionNotPresent,
+        UnexpectedToken(TokenWrapper<'a>, Vec<crate::lex::Token>),
         SemanticIssue(&'a str, usize, usize),
-        //
     }
 
     impl<'a> Wrapper<'a> {
