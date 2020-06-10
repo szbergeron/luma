@@ -1,6 +1,5 @@
 use super::base::*;
 use super::types::*;
-use super::expressions::Expression;
 use super::expressions::ExpressionWrapper;
 
 use crate::helper::lex_wrap::ParseResultError;
@@ -218,7 +217,6 @@ impl<'a> SymbolDeclaration<'a> {
             Self::VariableDeclaration(sd) => sd.display(f, depth),
             Self::NamespaceDeclaration(ns) => ns.display(f, depth),
             Self::FunctionDeclaration(fd) => fd.display(f, depth),
-            _ => panic!("can't display something"),
         }
     }
 }

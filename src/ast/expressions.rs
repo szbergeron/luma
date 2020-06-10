@@ -22,6 +22,7 @@ pub enum ExpressionWrapper<'a> {
     Statement(StatementExpression<'a>),
     Block(BlockExpression<'a>),
     IfThenElse(IfThenElseExpression<'a>),
+    While(WhileExpression<'a>),
     LetExpression(VariableDeclaration<'a>),
     Pattern(Pattern<'a>),
     Wildcard(WildcardExpression),
@@ -198,6 +199,48 @@ impl<'a> AstNode<'a> for Pattern<'a> {
             indent(depth),
             );
         self.expressions.iter().for_each(|expr| expr.as_node().display(f, depth+1));
+    }
+
+    fn node_info(&self) -> NodeInfo {
+        self.node_info
+    }
+}
+
+#[derive(Debug)]
+pub struct WhileExpression<'a> {
+    node_info: NodeInfo,
+
+    if_exp: Box<ExpressionWrapper<'a>>,
+    then_exp: Box<ExpressionWrapper<'a>>,
+}
+
+impl<'a> WhileExpression<'a> {
+    pub fn new_expr(
+        node_info: NodeInfo,
+        if_exp: Box<ExpressionWrapper<'a>>,
+        then_exp: Box<ExpressionWrapper<'a>>,
+    ) -> Box<ExpressionWrapper<'a>> {
+        Box::new(
+            ExpressionWrapper::While(
+                WhileExpression {
+                    node_info, if_exp, then_exp,
+                }
+            )
+        )
+    }
+}
+
+impl<'a> AstNode<'a> for WhileExpression<'a> {
+    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+        let _ = writeln!(
+            f,
+            "{}IfThenElseExpression:",
+            indent(depth),
+            );
+        let _ = writeln!(f, "{}While:", indent(depth+1));
+        self.if_exp.as_node().display(f, depth+2);
+        let _ = writeln!(f, "{}Do:", indent(depth+1));
+        self.then_exp.as_node().display(f, depth+2);
     }
 
     fn node_info(&self) -> NodeInfo {

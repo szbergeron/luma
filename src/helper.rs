@@ -83,7 +83,7 @@ pub mod lex_wrap {
 
         pub fn advance(&mut self) -> () {
             let tok = self.lexer.next();
-            println!("Advance finds token: {:?} with contents {}", tok, self.lexer.slice());
+            //println!("Advance finds token: {:?} with contents {}", tok, self.lexer.slice());
             match tok {
                 Some(tok) => self.cur = Ok(TokenWrapper { token: tok, slice: self.lexer.slice(), start: self.lexer.span().start, end: self.lexer.span().end }),
                 None => self.cur = Err(ParseResultError::EndOfFile),

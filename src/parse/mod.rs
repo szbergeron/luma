@@ -6,7 +6,6 @@ pub use parse_base::*;
 pub use parse_expr::*;
 pub use parse_helper::*;
 
-use crate::helper::lex_wrap::TokenWrapper;
 use crate::helper::lex_wrap::ParseResultError;
 use crate::helper::lex_wrap::LookaheadStream;
 
@@ -29,7 +28,7 @@ impl<'b, 'a> Parser<'b, 'a> {
     }
 
     pub fn report_err(&mut self, err: ParseResultError<'a>) {
-        println!("REPORTED AN ERROR");
+        //println!("REPORTED AN ERROR");
         self.errors.push(err);
     }
 
@@ -46,70 +45,65 @@ impl<'b, 'a> Parser<'b, 'a> {
         r
     }
 
-    pub fn print_context(&self, start: usize, end: usize, input: &'a str) {
-            //let newline_indices = 
-        let mut newline_before = 0;
-        for (index, character) in input.char_indices() {
-            match character {
-                '\n' => {
-                    if index > start {
-                        break;
-                    } else {
-                        newline_before = index + 1;
-                        continue;
-                    }
-                },
-                _ => continue,
-            }
-        }
+    pub fn print_context<'map>(&self, start: usize, end: usize, map: &'map rangemap::RangeMap<usize, (usize, &'a str, usize)>) {
+        //println!("start {} end {}", start, end);
+        let (linestart_index, start_line, _lineend_index) = map.get(&start).unwrap();
 
-        let mut newline_after = input.len() - 1;
-        for (index, character) in input.char_indices().rev() {
-            match character {
-                '\n' => {
-                    if index < end {
-                        break;
-                    } else {
-                        newline_after = index;
-                        continue;
-                    }
-                },
-                _ => continue,
-            }
-        }
+        let start = start - linestart_index;
+        let end = end - linestart_index;
 
-        //let mut desired_start = start;
-        //let desired_start = (start as isize - 10).max(0) as usize;
-        //let desired_end = (end as isize + 10) as usize;
-        //let context_start = (input.len() - 1).min(desired_start);
-        //let context_end = (input.len() - 1).min(desired_end);
-        let context_start = newline_before;
-        let context_end = newline_after;
-        //println!("cs and ce are {} and {}", context_start, context_end);
-        let slice = &input[context_start..context_end];
+        //println!("after correction: {}, {}", start, end);
 
-        //println!("{}", "Error context:".bold());
-        //println!();
-        println!("{}", slice.blue().bold());
+        println!("{}", start_line.blue().bold());
 
-        for i in context_start..context_end {
+        for i in 0..start_line.len() {
             if i < end && i >= start {
                 print!("{}", "^".red());
             } else {
-                print!(" ");
+                print!("{}", "―".red());
             }
         }
         println!();
     }
 
+    pub fn print_bar(&self) {
+            println!();
+            if let Some((w, _)) = term_size::dimensions() {
+                for _ in 0..w {
+                    print!("{}", "―".cyan());
+                }
+            }
+            println!();
+    }
+
+    pub fn build_line_map(&self, input: &'a str) -> rangemap::RangeMap<usize, (usize, &'a str, usize)> {
+        let mut index = 0;
+
+        let mut map = rangemap::RangeMap::new();
+
+        for line in input.lines() {
+            let start = index;
+            index += line.len() + 1;
+            let end = index;
+
+            map.insert(start..end, (start, line, end));
+        }
+
+        map
+    }
+
     pub fn print_errors(&self, input: &'a str) {
+        let linemap = self.build_line_map(input);
+
         println!();
         println!("{}", "Errors:".red());
         if self.errors.len() == 0 {
             println!("{}", "No errors reported".blue());
         }
+        self.print_bar();
         println!();
         for e in self.errors.iter() {
+            println!();
             match e {
                 ParseResultError::EndOfFile => {
                     eprintln!("Unexpected End of File");
@@ -118,7 +112,7 @@ impl<'b, 'a> Parser<'b, 'a> {
                     panic!("Programming error, unexplored region of ast has error for us?");
                 },
                 ParseResultError::UnexpectedToken(t, expected) => {
-                    self.print_context(t.start, t.end, input);
+                    self.print_context(t.start, t.end, &linemap);
                     eprintln!("Got unexpected token of type {:?}. Expected one of {:?}. Token with slice \"{}\" was encountered around ({}, {})",
                         t.token,
                         expected,
@@ -128,7 +122,7 @@ impl<'b, 'a> Parser<'b, 'a> {
                     );
                 },
                 ParseResultError::SemanticIssue(issue, start, end) => {
-                    self.print_context(*start, *end, input);
+                    self.print_context(*start, *end, &linemap);
                     eprintln!("Encountered a semantic issue: {}. This issue was realized around the character range ({}, {})",
                         issue,
                         start,
@@ -137,6 +131,9 @@ impl<'b, 'a> Parser<'b, 'a> {
                 }
             }
             println!();
+
+            self.print_bar();
+
             println!();
         }
         println!();

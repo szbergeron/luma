@@ -1,9 +1,7 @@
-use crate::ast;
 use crate::lex::Token;
 
 use crate::helper::lex_wrap::TokenWrapper;
 use crate::helper::lex_wrap::ParseResultError;
-use crate::helper::lex_wrap::LookaheadStream;
 use std::collections::HashSet;
 use crate::parse::*;
 
@@ -70,12 +68,9 @@ impl<'b, 'a> Parser<'b, 'a> {
             },
             Err(_) => None
         }
-        //expect(la, t).ok()
-        //expect(t).map_or(|t| Some(t), None)
     }
 
     pub fn expect(&mut self, t: Token) -> Result<TokenWrapper<'a>, ParseResultError<'a>> {
-        println!("Expect asked for: {:?}", t);
         if let Ok(tw) = self.lex.next() {
             match tw.token {
                 tt if tt == t => Ok(tw),
@@ -95,37 +90,3 @@ impl<'b, 'a> Parser<'b, 'a> {
 pub struct RunConditional<'a> {
     pub run_if: Option<TokenWrapper<'a>>,
 }
-
-/*pub struct RunResult<'a, Output> {
-    parses: Option<TokenWrapper<'a>>,
-    result: Option<Output>,
-}
-
-impl<'a, Output> RunResult<'a, Output> {
-    pub fn then<F>(&self, func: F) -> RunResult<Output> where F: FnOnce(TokenWrapper<'a>) -> Output {
-        match self.parses {
-            Some(tw) => RunResult { result: Some(func(tw)), parses: self.parses },
-            None => RunResult { result: self.result, parses: self.parses },
-        }
-    }
-
-    pub fn otherwise<F>(&self, func: F) -> RunResult<Output> where F: FnOnce() -> () {
-        match self.parses {
-            Some(tw) => RunResult { result: self.result, parses: self.parses },
-            None => RunResult { result: 
-    }
-}*/ // this was getting to be probably not useful, likely only need simple then case anyway
-
-/*impl<'a> RunConditional<'a> {
-    pub fn then<F, T>(&self, func: F) -> Option<T> where F: FnOnce(TokenWrapper<'a>) -> T {
-        if self.run_if.is_some() {
-            Some(func(self.run_if))
-        } else {
-            None
-        }
-    }
-}
-
-fn if_token<'a>(la: &mut LookaheadStream<'a>, t: Token) -> RunConditional<'a> {
-    RunConditional { run_if: eat_if(la, t) }
-}*/

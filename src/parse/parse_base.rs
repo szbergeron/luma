@@ -28,24 +28,13 @@ pub fn compile(contents: &str) {
 use crate::ast;
 use crate::lex::Token;
 
-use crate::helper::lex_wrap::LookaheadStream;
+//use crate::helper::lex_wrap::LookaheadStream;
 use crate::helper::lex_wrap::ParseResultError;
-use crate::helper::lex_wrap::TokenWrapper;
-use std::collections::HashSet;
+//use crate::helper::lex_wrap::TokenWrapper;
+//use std::collections::HashSet;
 use ast::IntoAstNode;
 
 use crate::parse::*;
-
-//use crate::parse_helper::*;
-
-//use crate::grammar::*;
-
-/*lazy_static! {
-    static ref expression_parser: OuterExpressionParser = OuterExpressionParser::new();
-    //static ref type_parser: OuterExpressionParser =
-}*/
-
-type TokenResult<'a> = Result<TokenWrapper<'a>, ParseResultError<'a>>;
 
 impl<'b, 'a> Parser<'b, 'a> {
 
@@ -109,13 +98,13 @@ impl<'b, 'a> Parser<'b, 'a> {
                         })
                 }
                 Token::Let => self.variable_declaration()
-                    .map(|mut vd| ast::SymbolDeclaration::VariableDeclaration(vd))
+                    .map(|vd| ast::SymbolDeclaration::VariableDeclaration(vd))
                     .map_err(|e| {
                         failed = true;
                         e
                     }),
                 Token::Function => self.function_declaration()
-                    .map(|mut fd| ast::SymbolDeclaration::FunctionDeclaration(fd))
+                    .map(|fd| ast::SymbolDeclaration::FunctionDeclaration(fd))
                     .map_err(|e| {
                         failed = true;
                         e
@@ -131,8 +120,6 @@ impl<'b, 'a> Parser<'b, 'a> {
         } else {
             Err(ParseResultError::EndOfFile)
         }
-
-        //panic!()
     }
 
     pub fn namespace(
@@ -141,12 +128,10 @@ impl<'b, 'a> Parser<'b, 'a> {
         let start = self.lex.la(0).map_or(0, |tw| tw.start);
 
         self.expect(Token::Module)?;
-        println!("Module entry now");
         let id = self.expect(Token::Identifier)?.slice;
         self.expect(Token::LBrace)?;
         let pu = self.entry();
         self.expect(Token::RBrace)?;
-        println!("Module entry finds id: {:?}", id);
 
         let end = self.lex.la(-1).map_or(0, |tw| tw.end);
 
@@ -211,7 +196,7 @@ impl<'b, 'a> Parser<'b, 'a> {
         let index = self.lex.la(0).map(|tw| tw.start).unwrap_or(0);
         match self.type_reference_inner() {
             Err(e) => Err(e),
-            Ok(None) => Err(ParseResultError::SemanticIssue("expected a type reference expression, but none was found", index, index)),
+            Ok(None) => Err(ParseResultError::SemanticIssue("expected a type reference expression, but none was found", index, index + 1)),
             Ok(Some(tr)) => Ok(tr),
         }
     }
@@ -256,6 +241,8 @@ impl<'b, 'a> Parser<'b, 'a> {
 
         let node_info = ast::NodeInfo::from_indices(true, start, end);
 
+        //let _ = self.eat_match(Token::Semicolon);
+
         Ok(ast::FunctionDeclaration {
             node_info,
             body,
@@ -268,28 +255,21 @@ impl<'b, 'a> Parser<'b, 'a> {
     pub fn variable_declaration(
         &mut self
     ) -> Result<ast::VariableDeclaration<'a>, ParseResultError<'a>> {
-        println!("Got a variable declaration, looking...");
         let start = self.lex.la(0).map_or(0, |tw| tw.start);
 
         let _let = self.expect(Token::Let)?;
         let lhs = self.parse_access_base(None)?;
         //let id = expect(lexer, Token::Identifier)?.slice;
         let maybe_typeref = self.eat_match(Token::Colon);
-        println!("Typeref colon: {:?}", maybe_typeref);
 
         let tr = match maybe_typeref {
             Some(_) => {
-                println!(
-                    "Got colon, expecting identifier. LookAhead is: {:?}",
-                    self.lex.la(0)
-                );
                 Some(self.type_reference()?)
             }
             None => None,
         };
 
         let equals = self.eat_match(Token::Equals);
-        println!("Equals is: {:?}", equals);
         let var_expr = match equals {
             Some(_eq) => Some(self.parse_expr()?),
             None => None,
@@ -314,27 +294,4 @@ impl<'b, 'a> Parser<'b, 'a> {
     pub fn closure(&mut self) -> Result<ast::Closure<'a>, ParseResultError<'a>> {
         panic!()
     }
-
-    // I really hate myself for this, but I'm going to potentially try both grammar based
-    // precedence and pratt parsing since both seem not great
-    /*pub fn expression_outer(&mut self) -> () {
-        parse_expr(la, 0);
-
-        fn parse_expr<'a>(
-            la: &mut LookaheadStream<'a>,
-            min_bp: u8,
-        ) -> Result<(), ParseResultError<'a>> {
-            while let Ok(tw) = la.next() {
-                let operators: Vec<Token> = Vec::new();
-                let operands: Vec<Box<dyn ast::Expression>> = Vec::new();
-
-                enum State {
-                    //
-                }
-            }
-
-            panic!()
-        }
-    }*/
-
 }
