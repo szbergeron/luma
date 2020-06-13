@@ -1,20 +1,12 @@
 pub fn compile(contents: &str) {
-    //let mut lex = crate::lex::Token::lexer(contents);
     let mut lex = crate::helper::lex_wrap::Wrapper::new(contents);
     let mut scanner = crate::helper::lex_wrap::LookaheadStream::new(&mut lex);
-    //let mut lex = crate::helper::
-
-    /*while let Ok(token) = lex.next_token() {
-        println!("Got token: {:?}", token);
-        //println!("Slice is: {:?}", token.slice);
-    }*/
 
     let mut parser = Parser::new(&mut scanner);
 
     let r = parser.entry();
 
     parser.print_errors(contents);
-    //r.iter().for_each(|result|
     match r {
         Ok(punit) => {
             println!("Gets AST of: {}", punit);
@@ -29,7 +21,7 @@ use crate::ast;
 use crate::lex::Token;
 
 //use crate::helper::lex_wrap::LookaheadStream;
-use crate::helper::lex_wrap::ParseResultError;
+use crate::helper::lex_wrap::{CodeLocation, ParseResultError};
 //use crate::helper::lex_wrap::TokenWrapper;
 //use std::collections::HashSet;
 use ast::IntoAstNode;
@@ -37,13 +29,12 @@ use ast::IntoAstNode;
 use crate::parse::*;
 
 impl<'b, 'a> Parser<'b, 'a> {
-
     pub fn entry(&mut self) -> Result<ast::ParseUnit<'a>, ParseResultError<'a>> {
         //let mut declarations
         let mut declarations: Vec<Result<ast::SymbolDeclaration<'a>, ParseResultError<'a>>> =
             Vec::new();
 
-        let start = self.lex.la(0).map_or(0, |tw| tw.start);
+        let start = self.lex.la(0).map_or(CodeLocation::Builtin, |tw| tw.start);
 
         let mut failed = false;
 
@@ -80,39 +71,39 @@ impl<'b, 'a> Parser<'b, 'a> {
         })
     }
 
-    pub fn global_declaration(&mut self) -> Result<ast::SymbolDeclaration<'a>, ParseResultError<'a>> {
+    pub fn global_declaration(
+        &mut self,
+    ) -> Result<ast::SymbolDeclaration<'a>, ParseResultError<'a>> {
         let has_pub = self.eat_match(Token::Public);
         let mut failed = false;
 
         if let Ok(tw) = self.lex.la(0) {
             let r = match tw.token {
-                Token::Module => {
-                    self.namespace()
-                        .map(|mut ns| {
-                            ns.set_public(has_pub.is_some());
-                            ast::SymbolDeclaration::NamespaceDeclaration(ns)
-                        })
-                        .map_err(|e| {
-                            failed = true;
-                            e
-                        })
-                }
-                Token::Let => self.variable_declaration()
-                    .map(|vd| ast::SymbolDeclaration::VariableDeclaration(vd))
+                Token::Module => self
+                    .namespace()
+                    .map(|mut ns| {
+                        ns.set_public(has_pub.is_some());
+                        ast::SymbolDeclaration::NamespaceDeclaration(ns)
+                    })
                     .map_err(|e| {
                         failed = true;
                         e
                     }),
-                Token::Function => self.function_declaration()
+                Token::Function => self
+                    .function_declaration()
                     .map(|fd| ast::SymbolDeclaration::FunctionDeclaration(fd))
                     .map_err(|e| {
                         failed = true;
                         e
                     }),
+                // TODO: maybe add global variable declaration?
                 _ => {
                     self.eat_to(vec![Token::RBrace, Token::Semicolon]);
 
-                    self.err(ParseResultError::UnexpectedToken(tw, vec![Token::Module, Token::Let, Token::Function]))
+                    self.err(ParseResultError::UnexpectedToken(
+                        tw,
+                        vec![Token::Module, Token::Let, Token::Function],
+                    ))
                 }
             };
 
@@ -122,10 +113,8 @@ impl<'b, 'a> Parser<'b, 'a> {
         }
     }
 
-    pub fn namespace(
-        &mut self,
-    ) -> Result<ast::Namespace<'a>, ParseResultError<'a>> {
-        let start = self.lex.la(0).map_or(0, |tw| tw.start);
+    pub fn namespace(&mut self) -> Result<ast::Namespace<'a>, ParseResultError<'a>> {
+        let start = self.lex.la(0).map_or(CodeLocation::Builtin, |tw| tw.start);
 
         self.expect(Token::Module)?;
         let id = self.expect(Token::Identifier)?.slice;
@@ -133,7 +122,7 @@ impl<'b, 'a> Parser<'b, 'a> {
         let pu = self.entry();
         self.expect(Token::RBrace)?;
 
-        let end = self.lex.la(-1).map_or(0, |tw| tw.end);
+        let end = self.lex.la(-1).map_or(CodeLocation::Builtin, |tw| tw.end);
 
         let failed = pu.is_err();
 
@@ -148,7 +137,7 @@ impl<'b, 'a> Parser<'b, 'a> {
     }
 
     fn type_reference_inner(
-        &mut self
+        &mut self,
     ) -> Result<Option<ast::TypeReference<'a>>, ParseResultError<'a>> {
         let typename = self.eat_match(Token::Identifier);
         match typename {
@@ -173,7 +162,7 @@ impl<'b, 'a> Parser<'b, 'a> {
                         end = self.expect(Token::CmpGreaterThan)?.end;
 
                         params
-                    },
+                    }
                 };
 
                 let node_info = ast::NodeInfo::from_indices(true, start, end);
@@ -182,7 +171,7 @@ impl<'b, 'a> Parser<'b, 'a> {
                     typename: tn.slice,
                     type_parameters: type_param_list,
                     refers_to: None,
-                    node_info
+                    node_info,
                 };
 
                 Ok(Some(tr))
@@ -190,20 +179,27 @@ impl<'b, 'a> Parser<'b, 'a> {
         }
     }
 
-    pub fn type_reference(
-        &mut self
-    ) -> Result<ast::TypeReference<'a>, ParseResultError<'a>> {
-        let index = self.lex.la(0).map(|tw| tw.start).unwrap_or(0);
+    pub fn type_reference(&mut self) -> Result<ast::TypeReference<'a>, ParseResultError<'a>> {
+        let index = self
+            .lex
+            .la(0)
+            .map(|tw| tw.start)
+            .unwrap_or(CodeLocation::Builtin);
         match self.type_reference_inner() {
             Err(e) => Err(e),
-            Ok(None) => Err(ParseResultError::SemanticIssue("expected a type reference expression, but none was found", index, index + 1)),
+            Ok(None) => Err(ParseResultError::SemanticIssue(
+                "expected a type reference expression, but none was found",
+                index,
+                index.offset_by(0, 1),
+            )),
             Ok(Some(tr)) => Ok(tr),
         }
     }
 
     pub fn function_param_list(
-        &mut self
-    ) -> Result<Vec<(Box<ast::ExpressionWrapper<'a>>, ast::TypeReference<'a>)>, ParseResultError<'a>> {
+        &mut self,
+    ) -> Result<Vec<(Box<ast::ExpressionWrapper<'a>>, ast::TypeReference<'a>)>, ParseResultError<'a>>
+    {
         let mut rvec: Vec<(Box<ast::ExpressionWrapper<'a>>, ast::TypeReference<'a>)> = Vec::new();
         while let Ok(a) = self.atomic_expression() {
             self.expect(Token::Colon)?;
@@ -222,9 +218,8 @@ impl<'b, 'a> Parser<'b, 'a> {
         Ok(rvec)
     }
 
-
     pub fn function_declaration(
-        &mut self
+        &mut self,
     ) -> Result<ast::FunctionDeclaration<'a>, ParseResultError<'a>> {
         let start = self.expect(Token::Function)?.start;
         let function_name = self.expect(Token::Identifier)?;
@@ -249,45 +244,6 @@ impl<'b, 'a> Parser<'b, 'a> {
             params,
             return_type,
             name: function_name.slice,
-        })
-    }
-
-    pub fn variable_declaration(
-        &mut self
-    ) -> Result<ast::VariableDeclaration<'a>, ParseResultError<'a>> {
-        let start = self.lex.la(0).map_or(0, |tw| tw.start);
-
-        let _let = self.expect(Token::Let)?;
-        let lhs = self.parse_access_base(None)?;
-        //let id = expect(lexer, Token::Identifier)?.slice;
-        let maybe_typeref = self.eat_match(Token::Colon);
-
-        let tr = match maybe_typeref {
-            Some(_) => {
-                Some(self.type_reference()?)
-            }
-            None => None,
-        };
-
-        let equals = self.eat_match(Token::Equals);
-        let var_expr = match equals {
-            Some(_eq) => Some(self.parse_expr()?),
-            None => None,
-        };
-
-        //let var_expr = self.parse_expr()?;
-
-        self.expect(Token::Semicolon)?;
-
-        let end = self.lex.la(-1).map_or(start, |tw| tw.start);
-
-        let node_info = ast::NodeInfo::from_indices(true, start, end);
-
-        Ok(ast::VariableDeclaration {
-            node_info,
-            lhs,
-            var_expr,
-            var_type: tr,
         })
     }
 

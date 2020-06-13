@@ -23,8 +23,9 @@ pub enum ExpressionWrapper<'a> {
     Block(BlockExpression<'a>),
     IfThenElse(IfThenElseExpression<'a>),
     While(WhileExpression<'a>),
-    LetExpression(VariableDeclaration<'a>),
+    LetExpression(LetExpression<'a>),
     Pattern(Pattern<'a>),
+    Return(ReturnExpression<'a>),
     Wildcard(WildcardExpression),
 }
 
@@ -83,6 +84,8 @@ impl<'a> IntoAstNode<'a> for ExpressionWrapper<'a> {
             Self::Pattern(e) => e,
             Self::Access(e) => e,
             Self::Wildcard(e) => e,
+            Self::While(e) => e,
+            Self::Return(e) => e,
             _ => {
                 println!("No implemented as_node handler for type {:?}", self);
                 todo!();
@@ -339,10 +342,49 @@ impl<'a> BlockExpression<'a> {
 }
 
 #[derive(Debug)]
+pub struct LetExpression<'a> {
+    node_info: NodeInfo,
+
+    pub into: Box<ExpressionWrapper<'a>>,
+}
+
+impl<'a> LetExpression<'a> {
+    pub fn new_expr(
+        node_info: NodeInfo,
+         into: Box<ExpressionWrapper<'a>>,
+    ) -> Box<ExpressionWrapper<'a>> {
+        Box::new(
+            ExpressionWrapper::LetExpression(
+                LetExpression {
+                    node_info, into
+                }
+            )
+        )
+    }
+}
+
+impl<'a> AstNode<'a> for LetExpression<'a> {
+    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+        let _ = writeln!(
+            f,
+            "{}LetExpression that comes from assignment:",
+            indent(depth),
+            );
+        [&self.into].iter().for_each(|expr| expr.as_node().display(f, depth+1));
+    }
+
+    fn node_info(&self) -> NodeInfo {
+        self.node_info
+    }
+}
+
+#[derive(Debug)]
 pub struct AssignmentExpression<'a> {
     node_info: NodeInfo,
     //lhs: Box<dyn Expression<'a>>,
     //rhs: Box<dyn Expression<'a>>,
+    //pub is_let_expression: bool,
+
     pub lhs: Box<ExpressionWrapper<'a>>,
     pub rhs: Box<ExpressionWrapper<'a>>,
     //pub span: Span<'a>,
@@ -353,11 +395,12 @@ impl<'a> AssignmentExpression<'a> {
         node_info: NodeInfo,
         lhs: Box<ExpressionWrapper<'a>>,
         rhs: Box<ExpressionWrapper<'a>>,
+        //is_let_expression: bool,
     ) -> Box<ExpressionWrapper<'a>> {
         Box::new(
             ExpressionWrapper::Assignment(
                 AssignmentExpression {
-                    node_info, lhs, rhs,
+                    node_info, lhs, rhs, //is_let_expression,
                 }
             )
         )
@@ -370,6 +413,7 @@ impl<'a> AstNode<'a> for AssignmentExpression<'a> {
             f,
             "{}AssignmentExpression with child expressions:",
             indent(depth),
+            //if self.is_let_expression { "is" } else { "is not" },
             );
         [&self.lhs, &self.rhs].iter().for_each(|expr| expr.as_node().display(f, depth+1));
     }
@@ -437,6 +481,24 @@ pub struct ComparisonOperationExpression<'a> {
     //pub span: Span<'a>,
 }
 
+impl<'a> ComparisonOperationExpression<'a> {
+    pub fn new_expr(
+        node_info: NodeInfo,
+        operation: Token,
+        lhs: Box<ExpressionWrapper<'a>>,
+        rhs: Box<ExpressionWrapper<'a>>,
+    ) -> Box<ExpressionWrapper<'a>> {
+        let operation = ComparisonOperation::from_token(operation).expect("tried to build binop from bad operator token");
+        Box::new(
+            ExpressionWrapper::Comparison(
+                ComparisonOperationExpression {
+                    node_info, lhs, rhs, operation,
+                }
+            )
+        )
+    }
+}
+
 impl<'a> AstNode<'a> for ComparisonOperationExpression<'a> {
     fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let _ = writeln!(
@@ -461,6 +523,20 @@ pub enum ComparisonOperation {
     GreaterThanOrEqual,
     LessThanOrEqual,
     NotEqual,
+}
+
+impl ComparisonOperation {
+    pub fn from_token(t: Token) -> Option<ComparisonOperation> {
+        match t {
+            Token::CmpEqual => Some(Self::Equal),
+            Token::CmpGreaterThan => Some(Self::GreaterThan),
+            Token::CmpLessThan => Some(Self::LessThan),
+            Token::CmpGreaterThanOrEqual => Some(Self::GreaterThanOrEqual),
+            Token::CmpLessThanOrEqual => Some(Self::LessThanOrEqual),
+            Token::CmpNotEqual => Some(Self::NotEqual),
+            _ => None
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -612,7 +688,8 @@ pub struct CastExpression<'a> {
     node_info: NodeInfo,
 
     pub subexpr: Box<ExpressionWrapper<'a>>,
-    pub typeref: Box<ExpressionWrapper<'a>>,
+    //pub typeref: Box<ExpressionWrapper<'a>>,
+    pub typeref: Box<super::TypeReference<'a>>,
     //pub typeref: Box<types::TypeReference<'a>>,
     //pub span: Span<'a>,
 }
@@ -621,15 +698,53 @@ impl<'a> CastExpression<'a> {
     pub fn new_expr(
         node_info: NodeInfo,
         lhs: Box<ExpressionWrapper<'a>>,
-        rhs: Box<ExpressionWrapper<'a>>,
+        typeref: Box<super::TypeReference<'a>>,
     ) -> Box<ExpressionWrapper<'a>> {
         Box::new(
             ExpressionWrapper::Cast(
                 CastExpression {
-                    node_info, subexpr: lhs, typeref: rhs
+                    node_info, subexpr: lhs, typeref,
                 }
             )
         )
+    }
+}
+
+#[derive(Debug)]
+pub struct ReturnExpression<'a> {
+    node_info: NodeInfo,
+
+    pub subexpr: Box<ExpressionWrapper<'a>>,
+}
+
+impl<'a> ReturnExpression<'a> {
+    pub fn new_expr(
+        node_info: NodeInfo,
+        subexpr: Box<ExpressionWrapper<'a>>,
+    ) -> Box<ExpressionWrapper<'a>> {
+        //let operation = UnaryOperation::from_token(operation).expect("tried to build unop from bad operator token");
+        Box::new(
+            ExpressionWrapper::Return(
+                ReturnExpression {
+                    node_info, subexpr,
+                }
+            )
+        )
+    }
+}
+
+impl<'a> AstNode<'a> for ReturnExpression<'a> {
+    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+        let _ = writeln!(
+            f,
+            "{}ReturnExpression with operation child expression:",
+            indent(depth),
+            );
+        [&self.subexpr].iter().for_each(|expr| expr.as_node().display(f, depth+1));
+    }
+
+    fn node_info(&self) -> NodeInfo {
+        self.node_info
     }
 }
 
@@ -646,7 +761,7 @@ impl<'a> AstNode<'a> for CastExpression<'a> {
             "{}To type",
             indent(depth+1),
             );
-        self.typeref.as_node().display(f, depth+2);
+        self.typeref.display(f, depth+2);
     }
 
     fn node_info(&self) -> NodeInfo {
@@ -670,7 +785,7 @@ pub struct Closure<'a> {
 
     pub expressions: Vec<Box<ExpressionWrapper<'a>>>,
     pub return_type: types::TypeReference<'a>,
-    pub params: Vec<super::outer::VariableDeclaration<'a>>,
+    pub params: Vec<Box<ExpressionWrapper<'a>>>, // should all be irrefutable patterns
     pub start: usize,
     pub end: usize,
     //pub span: Span<'a>,

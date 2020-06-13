@@ -1,7 +1,7 @@
 use crate::ast;
 use crate::lex::Token;
 
-use crate::helper::lex_wrap::ParseResultError;
+use crate::helper::lex_wrap::{ParseResultError, CodeLocation};
 use crate::helper::EitherAnd;
 
 use crate::parse::*;
@@ -133,7 +133,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         on: Box<ExpressionWrapper<'a>>,
     ) -> ExpressionResult<'a> {
         let p = self.parse_pattern()?;
-        let start = on.as_node().start().unwrap_or(0);
+        let start = on.as_node().start().unwrap_or(CodeLocation::Builtin);
 
         let node_info = NodeInfo::from_indices(true, start, p.end().unwrap_or(start));
 
@@ -261,7 +261,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         self.expect(Token::LBrace)?;
         let mut declarations: Vec<Result<Box<ast::ExpressionWrapper<'a>>, ParseResultError<'a>>> =
             Vec::new();
-        let start = self.lex.la(0).map_or(0, |tw| tw.start);
+        let start = self.lex.la(0).map_or(CodeLocation::Builtin, |tw| tw.start);
 
         let mut failed = false;
 
@@ -274,7 +274,7 @@ impl<'a, 'b> Parser<'a, 'b> {
                     self.lex.advance();
                     // empty
                 }
-                Token::Let => {
+                /*Token::Let => {
                     let r = self.variable_declaration();
 
                     let exp = r
@@ -287,14 +287,14 @@ impl<'a, 'b> Parser<'a, 'b> {
                         });
 
                     declarations.push(exp);
-                }
+                }*/
                 _ => {
                     let e = self.parse_expr();
 
                     let final_exp = e
                         .map(|exp| match self.eat_match(Token::Semicolon) {
                             Some(semi) => {
-                                let start = exp.as_node().start().map_or(0, |v| v);
+                                let start = exp.as_node().start().map_or(CodeLocation::Builtin, |v| v);
                                 let end = semi.end;
                                 let node_info = ast::NodeInfo::from_indices(true, start, end);
                                 ast::StatementExpression::new_expr(node_info, exp)
@@ -308,6 +308,8 @@ impl<'a, 'b> Parser<'a, 'b> {
                             self.eat_to(vec![Token::Semicolon, Token::RBrace]);
                             err
                         });
+
+                    //self.expect(Token::Semicolon)?; // TODO: eval if this is required
 
                     declarations.push(final_exp);
                 }
@@ -347,6 +349,10 @@ impl<'a, 'b> Parser<'a, 'b> {
                 r?
             }
             /*Token::Let => {
+                let pattern = self.parse_atomic(0, level);
+
+            }*/
+            /*Token::Let => {
                 let r = self.variable_declaration();
 
                 r?
@@ -368,8 +374,18 @@ impl<'a, 'b> Parser<'a, 'b> {
         };
 
         loop {
-            let operator = self.eat_if(|t| infix_binding_power(t.token));
-            if let Some(((l_bp, r_bp), tw)) = operator {
+            if let Some(_colon) = self.eat_match(Token::Colon) {
+                todo!("Type constraints not implemented yet")
+            } else if let Some(_as) = self.eat_match(Token::As) {
+                let typeref: Box<ast::TypeReference<'a>> = Box::new(self.type_reference()?);
+                let start = lhs.as_node().start().expect("parsed lhs did not have a start");
+                let end = typeref.end().expect("parsed typeref did not have an end");
+                let node_info = NodeInfo::from_indices(true, start, end);
+                lhs = ast::CastExpression::new_expr(node_info, lhs, typeref);
+                continue;
+
+            } else if let Some(((l_bp, r_bp), tw)) = self.eat_if(|t| infix_binding_power(t.token)) {
+                //if let Some(((l_bp, r_bp), tw)) = operator {
                 if l_bp < min_bp {
                     self.lex.backtrack();
                     break;
@@ -411,6 +427,8 @@ impl<'a, 'b> Parser<'a, 'b> {
             Token::And | Token::Asterisk | Token::Dash | Token::Bang => {
                 UnaryOperationExpression::new_expr(node_info, t, lhs)
             }
+            Token::Let => LetExpression::new_expr(node_info, lhs),
+            Token::Return => ReturnExpression::new_expr(node_info, lhs),
             _ => {
                 println!("got unexpected token {:?}", t);
                 panic!("Programming error: no way to build unary expression from given token");
@@ -429,7 +447,7 @@ impl<'a, 'b> Parser<'a, 'b> {
             Token::Plus | Token::Dash | Token::Asterisk | Token::FSlash => {
                 Ok(BinaryOperationExpression::new_expr(node_info, t, lhs, rhs))
             }
-            Token::As => Ok(CastExpression::new_expr(node_info, lhs, rhs)),
+            //Token::As => Ok(CastExpression::new_expr(node_info, lhs, rhs)),
             Token::Equals => Ok(AssignmentExpression::new_expr(node_info, lhs, rhs)),
             Token::Dot => {
                 let rhs = match *rhs {
@@ -443,8 +461,8 @@ impl<'a, 'b> Parser<'a, 'b> {
                             "Can not perform a dot-access with non-access RHS.
                         RHS must be of the form (ScopedIdentifier &| Pattern).
                         Offending RHS occurs at span",
-                            rhs.as_node().start().unwrap_or(0),
-                            rhs.as_node().end().unwrap_or(0),
+                            rhs.as_node().start().unwrap_or(CodeLocation::Builtin),
+                            rhs.as_node().end().unwrap_or(CodeLocation::Builtin),
                         );
 
                         //self.errors.push(err);
@@ -457,6 +475,14 @@ impl<'a, 'b> Parser<'a, 'b> {
 
                 Ok(rhs)
             }
+            Token::CmpEqual
+            | Token::CmpLessThan
+            | Token::CmpGreaterThan
+            | Token::CmpLessThanOrEqual
+            | Token::CmpGreaterThanOrEqual
+            | Token::CmpNotEqual => Ok(ComparisonOperationExpression::new_expr(
+                node_info, t, lhs, rhs,
+            )),
             _ => {
                 println!("got unexpected token {:?}", t);
                 panic!("Programming error: no way to build binary expression from given token");
@@ -473,8 +499,22 @@ pub enum DotAccess<'a> {
 use ast::IntoAstNode;
 pub fn prefix_binding_power(t: Token) -> Option<u32> {
     match t {
-        Token::Plus | Token::Dash | Token::Asterisk | Token::Bang | Token::And => Some(100),
+        Token::Plus
+        | Token::Dash
+        | Token::Asterisk
+        | Token::Bang
+        | Token::And
+        | Token::Let
+        | Token::Return => Some(100),
 
+        _ => None,
+    }
+}
+
+pub fn postfix_binding_power(t: Token) -> Option<u32> {
+    match t {
+        Token::As => Some(1),
+        Token::Colon => Some(1),
         _ => None,
     }
 }

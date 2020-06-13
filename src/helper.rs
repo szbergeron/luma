@@ -49,16 +49,53 @@ pub mod lex_wrap {
 
     pub struct Wrapper<'a> {
         lexer: logos::Lexer<'a, crate::lex::Token>,
-        cur: Result<TokenWrapper<'a>, ParseResultError<'a>>, 
+        cur: Result<TokenWrapper<'a>, ParseResultError<'a>>,
+
+        current_line: isize,
+        last_newline_absolute: usize,
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    pub enum CodeLocation {
+        Parsed(Loc),
+        Builtin,
+    }
+
+    impl CodeLocation {
+        pub fn offset_by(&self, line: isize, offset: isize) -> CodeLocation {
+            match self {
+                Self::Builtin => Self::Builtin,
+                Self::Parsed(l) => Self::Parsed(Loc {
+                    line: l.line + line,
+                    offset: l.offset + offset,
+                }),
+            }
+        }
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    pub struct Loc {
+        //pub absolute: usize,
+        pub line: isize,
+        pub offset: isize,
+    }
+
+    impl std::fmt::Display for CodeLocation {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                Self::Parsed(l) => write!(f, "({}:{})", l.line, l.offset),
+                Self::Builtin => write!(f, "(builtin)"),
+            }
+            //write!(f, "({}:{})", self.line, self.offset)
+        }
     }
 
     #[derive(Debug, Clone, Copy)]
     pub struct TokenWrapper<'a> {
         pub token: crate::lex::Token,
         pub slice: &'a str,
-        pub start: usize,
-        pub end: usize,
-
+        pub start: CodeLocation,
+        pub end: CodeLocation,
     }
 
     #[derive(Debug, Clone)]
@@ -67,14 +104,30 @@ pub mod lex_wrap {
         NotYetParsed,
         //ExpectedExpressionNotPresent,
         UnexpectedToken(TokenWrapper<'a>, Vec<crate::lex::Token>),
-        SemanticIssue(&'a str, usize, usize),
+        SemanticIssue(&'a str, CodeLocation, CodeLocation),
+    }
+
+    impl<'a> ParseResultError<'a> {
+        pub fn add_expect(&mut self, toks: &[crate::lex::Token]) {
+            match self {
+                Self::UnexpectedToken(_tw, v) => {
+                    v.extend(toks);
+                }
+                _ => {}
+            }
+        }
     }
 
     impl<'a> Wrapper<'a> {
         pub fn new(input: &'a str) -> Wrapper<'a> {
             let lex = crate::lex::Token::lexer(input);
 
-            Wrapper { lexer: lex, cur: Err(ParseResultError::NotYetParsed) }
+            Wrapper {
+                lexer: lex,
+                cur: Err(ParseResultError::NotYetParsed),
+                last_newline_absolute: 0,
+                current_line: 1,
+            }
         }
 
         pub fn peek(&mut self) -> ParseResult<'a> {
@@ -83,9 +136,47 @@ pub mod lex_wrap {
 
         pub fn advance(&mut self) -> () {
             let tok = self.lexer.next();
-            //println!("Advance finds token: {:?} with contents {}", tok, self.lexer.slice());
             match tok {
-                Some(tok) => self.cur = Ok(TokenWrapper { token: tok, slice: self.lexer.slice(), start: self.lexer.span().start, end: self.lexer.span().end }),
+                Some(tok) => {
+                    let (startloc, endloc) = match tok {
+                        crate::lex::Token::Newline => {
+                            let sp = self.lexer.span();
+
+                            let start = Loc {
+                                line: self.current_line,
+                                offset: (sp.start - self.last_newline_absolute) as isize,
+                            };
+
+                            self.current_line += 1;
+                            self.last_newline_absolute = sp.end;
+
+                            let end = Loc {
+                                line: self.current_line,
+                                offset: (sp.end - self.last_newline_absolute) as isize,
+                            };
+
+                            (start, end)
+                        }
+                        _ => {
+                            let sp = self.lexer.span();
+                            let start = Loc {
+                                line: self.current_line,
+                                offset: (sp.start - self.last_newline_absolute) as isize,
+                            };
+                            let end = Loc {
+                                line: self.current_line,
+                                offset: (sp.end - self.last_newline_absolute) as isize,
+                            };
+                            (start, end)
+                        }
+                    };
+                    self.cur = Ok(TokenWrapper {
+                        token: tok,
+                        slice: self.lexer.slice(),
+                        start: CodeLocation::Parsed(startloc),
+                        end: CodeLocation::Parsed(endloc),
+                    })
+                }
                 None => self.cur = Err(ParseResultError::EndOfFile),
             }
         }
@@ -93,32 +184,13 @@ pub mod lex_wrap {
         pub fn next(&mut self) -> ParseResult<'a> {
             self.advance();
             self.peek()
-            /*if let Ok(wrapper) = self.peek() {
-                Ok(TokenWrapper { token: other, slice: self.lexer.slice
-
-            self.peek()*/
         }
-
-        /*pub fn next_semantic_token(&mut self) -> Result<TokenWrapper<'a>, ParseResultError> {
-            /*self.advance();
-            while let Ok(wrapper) = self.peek() {
-                println!("nst finds a: {:?}", wrapper);
-                match wrapper.token {
-                    crate::lex::Token::Newline => { self.advance(); continue },
-                    other => return Ok(TokenWrapper { token: other, slice: self.lexer.slice() } ),
-                }
-            }*/
-            panic!("HELP");
-
-            Err(ParseResultError::EndOfFile)
-        }*/
     }
 
     #[derive(Clone)]
     pub struct LookaheadStream<'a> {
         tokens: Rc<Vec<TokenWrapper<'a>>>,
         index: usize,
-
         //latest: Option<TokenWrapper<'a>>,
     }
 
@@ -127,20 +199,30 @@ pub mod lex_wrap {
             let mut v = Vec::new();
             let mut comment_level = 0;
             let mut inside_line_comment = false;
-            while let Ok(tw) = w.next() { // handle comments
+            while let Ok(tw) = w.next() {
+                // handle comments
                 use crate::lex::Token;
                 match tw.token {
-                    Token::LineCommentStart => { inside_line_comment = true; continue; },
-                    Token::Newline => { inside_line_comment = false; continue; },
-                    Token::LBlockComment | Token::LDocComment => { comment_level += 1; continue; },
+                    Token::LineCommentStart => {
+                        inside_line_comment = true;
+                        continue;
+                    }
+                    Token::Newline => {
+                        inside_line_comment = false;
+                        continue;
+                    }
+                    Token::LBlockComment | Token::LDocComment => {
+                        comment_level += 1;
+                        continue;
+                    }
                     Token::RBlockComment | Token::RDocComment => {
                         if comment_level > 0 {
                             comment_level -= 1; // will cause syntax error in else during parse
                         }
 
                         continue;
-                    },
-                    _ => {},
+                    }
+                    _ => {}
                 }
                 if !inside_line_comment && comment_level == 0 {
                     v.push(tw);
@@ -153,14 +235,6 @@ pub mod lex_wrap {
                 //latest: None,
             }
         }
-
-        /*pub fn after(&self) -> Option<usize> {
-            self.latest.map(|tw| tw.end)
-        }
-
-        pub fn before(&self) -> Option<usize> {
-            self.latest.map(|tw| tw.start)
-        }*/
 
         pub fn seek_to(&mut self, index: usize) {
             self.index = index;
@@ -186,10 +260,7 @@ pub mod lex_wrap {
             //self.index += 1;
             self.advance();
 
-            //println!("LookaheadStream advances, takes token {:?}", r);
-
             r
-            //self.tokens.get(self.index).map_or(Err(ParseResultError::EndOfFile), |&t| Ok(t))
         }
 
         pub fn prev(&mut self) -> ParseResult<'a> {
@@ -206,21 +277,18 @@ pub mod lex_wrap {
         }
 
         pub fn advance(&mut self) {
-            //println!("LookaheadStream advances over token {:?}", self.la(0));
             self.index += 1;
         }
 
         pub fn la(&self, offset: isize) -> ParseResult<'a> {
             let index = self.index as isize + offset;
-            //println!("Lookahead asked for index {}", index);
             if index < 0 {
                 Err(ParseResultError::NotYetParsed)
             } else {
-                let r = self.tokens
+                let r = self
+                    .tokens
                     .get(index as usize)
-                    .map_or(
-                        Err(ParseResultError::EndOfFile),
-                        |&t| Ok(t));
+                    .map_or(Err(ParseResultError::EndOfFile), |&t| Ok(t));
 
                 //println!("la gives result: {:?}", r);
 

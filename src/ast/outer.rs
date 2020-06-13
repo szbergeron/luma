@@ -137,7 +137,7 @@ impl<'a> AstNode<'a> for FunctionDeclaration<'a> {
     }
 }
 
-#[derive(Debug)]
+/*#[derive(Debug)]
 pub struct VariableDeclaration<'a> {
     pub node_info: NodeInfo,
     
@@ -172,7 +172,7 @@ impl<'a> AstNode<'a> for VariableDeclaration<'a> {
             None => { let _ = writeln!(f, "{} unassigned", indent(depth+2)); },
         }
     }
-}
+}*/
 
 #[derive(Debug)]
 pub struct ScopedName<'a> {
@@ -188,24 +188,25 @@ pub struct ScopedName<'a> {
 #[derive(Debug)]
 pub enum SymbolDeclaration<'a> {
     FunctionDeclaration(FunctionDeclaration<'a>),
-    VariableDeclaration(VariableDeclaration<'a>),
     NamespaceDeclaration(Namespace<'a>),
+    ExpressionDeclaration(Box<ExpressionWrapper<'a>>),
+    //VariableDeclaration(VariableDeclaration<'a>),
 }
 
 impl<'a> IntoAstNode<'a> for SymbolDeclaration<'a> {
     fn as_node_mut(&mut self) -> &mut dyn AstNode<'a> {
         match self {
             Self::FunctionDeclaration(fd) => fd,
-            Self::VariableDeclaration(vd) => vd,
             Self::NamespaceDeclaration(nd) => nd,
+            Self::ExpressionDeclaration(ed) => ed.as_node_mut(),
         }
     }
 
     fn as_node(&self) -> &dyn AstNode<'a> {
         match self {
             Self::FunctionDeclaration(fd) => fd,
-            Self::VariableDeclaration(vd) => vd,
             Self::NamespaceDeclaration(nd) => nd,
+            Self::ExpressionDeclaration(ed) => ed.as_node(),
         }
     }
 }
@@ -214,9 +215,9 @@ impl<'a> SymbolDeclaration<'a> {
     pub fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         match self {
             //Self::FunctionDeclaration(fd) => fd.display(f, depth),
-            Self::VariableDeclaration(sd) => sd.display(f, depth),
-            Self::NamespaceDeclaration(ns) => ns.display(f, depth),
             Self::FunctionDeclaration(fd) => fd.display(f, depth),
+            Self::NamespaceDeclaration(ns) => ns.display(f, depth),
+            Self::ExpressionDeclaration(sd) => sd.as_node().display(f, depth),
         }
     }
 }

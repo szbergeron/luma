@@ -1,12 +1,12 @@
 use super::expressions;
-use crate::helper::lex_wrap::TokenWrapper;
+use crate::helper::lex_wrap::{TokenWrapper, CodeLocation};
 
 pub fn indent(ind: usize) -> String {
     let mut s: String = "|".to_string();
 
     for _ in 0..ind {
         //s.push('\t');
-        s.push_str("  ");
+        s.push_str(" |");
     }
 
     s
@@ -16,12 +16,12 @@ pub fn findent(f: &mut std::fmt::Formatter<'_>, depth: usize) {
     write!(f, "{}", indent(depth)).unwrap();
 }
 
-pub type CodeLocation = usize;
+//pub type CodeLocation = Loc;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Span {
-    pub start: usize,
-    pub end: usize,
+    pub start: CodeLocation,
+    pub end: CodeLocation,
 }
 
 impl std::fmt::Display for Span {
@@ -62,7 +62,7 @@ impl NodeInfo {
         NodeInfo::Parsed(inner)
     }
 
-    pub fn from_indices(parsed: bool, start: usize, end: usize) -> NodeInfo {
+    pub fn from_indices(parsed: bool, start: CodeLocation, end: CodeLocation) -> NodeInfo {
         let inner = ParsedNodeInfo {
             span: Span {
                 start,
