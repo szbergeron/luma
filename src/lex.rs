@@ -45,6 +45,9 @@ pub enum Token {
     #[token("false")]
     False,
 
+    #[token("struct")]
+    Struct,
+
     #[token(";")]
     Semicolon,
 

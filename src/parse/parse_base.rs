@@ -1,21 +1,3 @@
-pub fn compile(contents: &str) {
-    let mut lex = crate::helper::lex_wrap::Wrapper::new(contents);
-    let mut scanner = crate::helper::lex_wrap::LookaheadStream::new(&mut lex);
-
-    let mut parser = Parser::new(&mut scanner);
-
-    let r = parser.entry();
-
-    parser.print_errors(contents);
-    match r {
-        Ok(punit) => {
-            println!("Gets AST of: {}", punit);
-        }
-        Err(err) => {
-            println!("Failed to parse with error: {:?}", err);
-        }
-    }
-}
 
 use crate::ast;
 use crate::lex::Token;
@@ -25,13 +7,14 @@ use crate::helper::lex_wrap::{CodeLocation, ParseResultError};
 //use crate::helper::lex_wrap::TokenWrapper;
 //use std::collections::HashSet;
 use ast::IntoAstNode;
+use std::sync::{Arc, RwLock};
 
 use crate::parse::*;
 
 impl<'b, 'a> Parser<'b, 'a> {
     pub fn entry(&mut self) -> Result<ast::ParseUnit<'a>, ParseResultError<'a>> {
         //let mut declarations
-        let mut declarations: Vec<Result<ast::SymbolDeclaration<'a>, ParseResultError<'a>>> =
+        let mut declarations: Vec<Arc<RwLock<Result<ast::SymbolDeclaration<'a>, ParseResultError<'a>>>>> =
             Vec::new();
 
         let start = self.lex.la(0).map_or(CodeLocation::Builtin, |tw| tw.start);
@@ -56,7 +39,7 @@ impl<'b, 'a> Parser<'b, 'a> {
                         Ok(ok) => Ok(ok),
                     };
 
-                    r
+                    Arc::new(RwLock::new(r))
                 }
             };
 
@@ -69,6 +52,20 @@ impl<'b, 'a> Parser<'b, 'a> {
             declarations,
             node_info: ast::NodeInfo::from_indices(failed, start, end),
         })
+    }
+
+    pub fn parse_struct_declaration(
+        &mut self,
+    ) -> Result<(), ParseResultError<'a>> {
+        let start = self.expect(Token::Struct)?.start;
+        let id = self.expect(Token::Identifier)?.slice;
+        self.expect(Token::LBrace)?;
+
+        let end = self.expect(Token::RBrace)?.end;
+
+        let node_info = ast::NodeInfo::from_indices(true, start, end);
+
+        Ok(())
     }
 
     pub fn global_declaration(

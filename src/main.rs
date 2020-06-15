@@ -19,6 +19,8 @@ pub mod ast;
 pub mod lalrpop_lexer;
 //pub mod parse_expr;
 pub mod build_expr;
+pub mod compile;
+pub mod check;
 //pub mod parse_helper;
 
 //#[macro_use] extern crate lalrpop_util;
@@ -30,7 +32,7 @@ fn main() {
     let files = &args[1..];
     for file in files {
         let contents = fs::read_to_string(file).expect("Couldn't read source code file");
-        parse::compile(&contents[..]); // maybe create compilationcontext to pass here?
+        compile::compile(&contents[..]); // maybe create compilationcontext to pass here?
     }
     //
     //let mut lex = Token::lexer(

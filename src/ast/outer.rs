@@ -3,6 +3,10 @@ use super::types::*;
 use super::expressions::ExpressionWrapper;
 
 use crate::helper::lex_wrap::ParseResultError;
+//use std::rc::Rc;
+use std::sync::Arc;
+//use std::cell::RefCell;
+use std::sync::RwLock;
 
 #[derive(Debug)]
 pub struct Namespace<'a> {
@@ -42,7 +46,7 @@ impl<'a> AstNode<'a> for Namespace<'a> {
 pub struct ParseUnit<'a> {
     pub node_info: NodeInfo,
 
-    pub declarations: Vec<Result<SymbolDeclaration<'a>, ParseResultError<'a>>>,
+    pub declarations: Vec<Arc<RwLock<Result<SymbolDeclaration<'a>, ParseResultError<'a>>>>>,
 }
 
 impl<'a> std::fmt::Display for ParseUnit<'a> {
@@ -71,7 +75,8 @@ impl<'a> AstNode<'a> for ParseUnit<'a> {
         self.declarations
             .iter()
             .for_each(|elem| {
-                      elem
+                      elem.read()
+                          .expect("locking error within parsunit display")
                           .iter()
                           .for_each(
                                 |elem| elem.display(f, depth+1)
@@ -135,6 +140,15 @@ impl<'a> AstNode<'a> for FunctionDeclaration<'a> {
 
         self.body.as_node().display(f, depth+2);
     }
+}
+
+#[derive(Debug)]
+pub struct StructDeclaration<'a> {
+    pub node_info: NodeInfo,
+
+    pub public: bool,
+    pub name: &'a str,
+    pub fields: Vec<(&'a str, TypeReference<'a>)>,
 }
 
 /*#[derive(Debug)]
