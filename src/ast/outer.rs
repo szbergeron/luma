@@ -92,6 +92,8 @@ impl<'a> AstNode<'a> for ParseUnit<'a> {
 #[derive(Debug)]
 pub struct FunctionDeclaration<'a> {
     pub node_info: NodeInfo,
+
+    pub public: bool,
     pub name: &'a str,
 
     //pub expressions: Vec<Box<dyn Expression<'a>>>,
@@ -148,7 +150,47 @@ pub struct StructDeclaration<'a> {
 
     pub public: bool,
     pub name: &'a str,
-    pub fields: Vec<(&'a str, TypeReference<'a>)>,
+    pub typeparams: Vec<&'a str>,
+    pub fields: Vec<(&'a str, TypeReference<'a>, Option<Box<super::ExpressionWrapper<'a>>>)>,
+}
+
+impl<'a> AstNode<'a> for StructDeclaration<'a> {
+    fn node_info(&self) -> NodeInfo {
+        self.node_info
+    }
+
+    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+        let _ = writeln!(
+            f,
+            "{}StructDeclaration that parsed {} with name {} has fields:",
+            indent(depth),
+            self.node_info(),
+            self.name,
+            );
+
+        //write!(f, "{}", indent(depth + 1));
+        for (name, tr, exp) in self.fields.iter() {
+            let _ = write!(
+                f,
+                "{}{} : {:?} = ",
+                indent(depth+1),
+                name,
+                tr,
+            );
+            match exp {
+                None => {
+                    let _ = writeln!(
+                        f,
+                        "<undefined>",
+                    );
+                },
+                Some(exp) => {
+                    let _ = writeln!(f);
+                    exp.as_node().display(f, depth+2);
+                }
+            }
+        }
+    }
 }
 
 /*#[derive(Debug)]
@@ -189,12 +231,37 @@ impl<'a> AstNode<'a> for VariableDeclaration<'a> {
 }*/
 
 #[derive(Debug)]
-pub struct ScopedName<'a> {
+pub struct ScopedNameReference<'a> {
     pub node_info: NodeInfo,
 
     pub scope: Vec<&'a str>,
 
     pub silent: bool,
+}
+
+impl<'a> ScopedNameReference<'a> {
+    pub fn to_raw_scope(&self) -> ScopedName<'a> {
+        ScopedName::new(self.scope.clone())
+    }
+}
+
+/*impl<'a> std::cmp::PartialEq for ScopedNameReference<'a> {
+    fn eq(&self, other: &ScopedNameReference) -> bool {
+        other.scope == self.scope
+    }
+}*/
+
+#[derive(Debug, PartialEq, Hash)]
+pub struct ScopedName<'a> {
+    pub scope: Vec<&'a str>,
+}
+
+impl<'a> ScopedName<'a> {
+    pub fn new(s: Vec<&'a str>) -> ScopedName<'a> {
+        ScopedName {
+            scope: s
+        }
+    }
 }
 
 
@@ -203,6 +270,7 @@ pub struct ScopedName<'a> {
 pub enum SymbolDeclaration<'a> {
     FunctionDeclaration(FunctionDeclaration<'a>),
     NamespaceDeclaration(Namespace<'a>),
+    StructDeclaration(StructDeclaration<'a>),
     ExpressionDeclaration(Box<ExpressionWrapper<'a>>),
     //VariableDeclaration(VariableDeclaration<'a>),
 }
@@ -212,6 +280,7 @@ impl<'a> IntoAstNode<'a> for SymbolDeclaration<'a> {
         match self {
             Self::FunctionDeclaration(fd) => fd,
             Self::NamespaceDeclaration(nd) => nd,
+            Self::StructDeclaration(sd) => sd,
             Self::ExpressionDeclaration(ed) => ed.as_node_mut(),
         }
     }
@@ -220,6 +289,7 @@ impl<'a> IntoAstNode<'a> for SymbolDeclaration<'a> {
         match self {
             Self::FunctionDeclaration(fd) => fd,
             Self::NamespaceDeclaration(nd) => nd,
+            Self::StructDeclaration(sd) => sd,
             Self::ExpressionDeclaration(ed) => ed.as_node(),
         }
     }
@@ -231,7 +301,17 @@ impl<'a> SymbolDeclaration<'a> {
             //Self::FunctionDeclaration(fd) => fd.display(f, depth),
             Self::FunctionDeclaration(fd) => fd.display(f, depth),
             Self::NamespaceDeclaration(ns) => ns.display(f, depth),
+            Self::StructDeclaration(sd) => sd.display(f, depth),
             Self::ExpressionDeclaration(sd) => sd.as_node().display(f, depth),
+        }
+    }
+
+    pub fn mark_public(&mut self) {
+        match self {
+            Self::FunctionDeclaration(fd) => fd.public = true,
+            Self::NamespaceDeclaration(fd) => fd.public = true,
+            Self::StructDeclaration(fd) => fd.public = true,
+            Self::ExpressionDeclaration(fd) => (),
         }
     }
 }

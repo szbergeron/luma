@@ -6,7 +6,7 @@ pub fn indent(ind: usize) -> String {
 
     for _ in 0..ind {
         //s.push('\t');
-        s.push_str(" |");
+        s.push_str("  ");
     }
 
     s

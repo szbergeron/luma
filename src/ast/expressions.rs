@@ -587,12 +587,12 @@ pub struct AccessExpression<'a> {
     //pub span: Span<'a>,
     //pub field: &'a str,
 
-    pub scope: Box<ScopedName<'a>>,
+    pub scope: Box<ScopedNameReference<'a>>,
     pub pattern: Option<Pattern<'a>>,
 }
 
 impl<'a> AccessExpression<'a> {
-    pub fn new_expr(node_info: NodeInfo, on: Option<Box<ExpressionWrapper<'a>>>, scope: Box<ScopedName<'a>>, pattern: Option<Pattern<'a>>) -> Box<ExpressionWrapper<'a>> {
+    pub fn new_expr(node_info: NodeInfo, on: Option<Box<ExpressionWrapper<'a>>>, scope: Box<ScopedNameReference<'a>>, pattern: Option<Pattern<'a>>) -> Box<ExpressionWrapper<'a>> {
         Box::new(
             ExpressionWrapper::Access(
                 AccessExpression {

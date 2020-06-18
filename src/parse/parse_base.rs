@@ -56,16 +56,54 @@ impl<'b, 'a> Parser<'b, 'a> {
 
     pub fn parse_struct_declaration(
         &mut self,
-    ) -> Result<(), ParseResultError<'a>> {
+    ) -> Result<ast::StructDeclaration<'a>, ParseResultError<'a>> {
         let start = self.expect(Token::Struct)?.start;
         let id = self.expect(Token::Identifier)?.slice;
+        let mut typeparams = Vec::new();
+        if let Some(_lt) = self.eat_match(Token::CmpLessThan) {
+            while let Some(id) = self.eat_match(Token::CmpLessThan) {
+                typeparams.push(id.slice);
+                if let Some(_comma) = self.eat_match(Token::Comma) {
+                    continue;
+                } else {
+                    break;
+                }
+            }
+            self.expect(Token::CmpGreaterThan)?;
+        }
         self.expect(Token::LBrace)?;
+
+        let mut fields = Vec::new();
+
+        while let Some(field) = self.eat_match(Token::Identifier) {
+            self.expect(Token::Colon)?;
+            let field_type = self.type_reference()?;
+            let expr = if self.eat_match(Token::Equals).is_some() {
+                Some(self.parse_expr()?)
+            } else {
+                None
+            };
+
+            fields.push((field.slice, field_type, expr));
+
+            if let Some(_comma) = self.eat_match(Token::Comma) {
+                continue;
+            } else {
+                break;
+            }
+        }
 
         let end = self.expect(Token::RBrace)?.end;
 
         let node_info = ast::NodeInfo::from_indices(true, start, end);
 
-        Ok(())
+        Ok(ast::StructDeclaration {
+            node_info,
+            typeparams,
+            fields,
+            name: id,
+            public: false,
+        })
     }
 
     pub fn global_declaration(
@@ -94,6 +132,13 @@ impl<'b, 'a> Parser<'b, 'a> {
                         e
                     }),
                 // TODO: maybe add global variable declaration?
+                Token::Struct => self
+                    .parse_struct_declaration()
+                    .map(|sd| ast::SymbolDeclaration::StructDeclaration(sd))
+                    .map_err(|e| {
+                        failed = true;
+                        e
+                    }),
                 _ => {
                     self.eat_to(vec![Token::RBrace, Token::Semicolon]);
 
@@ -241,6 +286,7 @@ impl<'b, 'a> Parser<'b, 'a> {
             params,
             return_type,
             name: function_name.slice,
+            public: false,
         })
     }
 

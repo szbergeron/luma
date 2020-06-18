@@ -53,8 +53,8 @@ impl<'a, 'b> Parser<'a, 'b> {
         todo!()
     }
 
-    pub fn scoped_name(&mut self) -> Box<ScopedName<'a>> {
-        let mut r = Box::new(ScopedName {
+    pub fn scoped_name(&mut self) -> Box<ScopedNameReference<'a>> {
+        let mut r = Box::new(ScopedNameReference {
             scope: Vec::new(),
             silent: true,
             node_info: NodeInfo::Builtin,
@@ -137,7 +137,7 @@ impl<'a, 'b> Parser<'a, 'b> {
 
         let node_info = NodeInfo::from_indices(true, start, p.end().unwrap_or(start));
 
-        let scope = ScopedName {
+        let scope = ScopedNameReference {
             silent: true,
             scope: Vec::new(),
             node_info: NodeInfo::Builtin,
@@ -544,7 +544,7 @@ pub fn infix_binding_power(t: Token) -> Option<(u32, u32)> {
 
         Token::And => Some((13, 14)),
 
-        Token::ShiftLeft | Token::ShiftRight => Some((15, 16)),
+        //Token::ShiftLeft | Token::ShiftRight => Some((15, 16)),
 
         Token::Plus | Token::Dash => Some((17, 18)),
 

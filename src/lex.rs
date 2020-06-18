@@ -159,11 +159,11 @@ pub enum Token {
     #[token("=>")]
     ThickArrow,
 
-    #[token(">>")]
-    ShiftRight,
+    //#[token(">>")]
+    //ShiftRight,
 
-    #[token("<<")]
-    ShiftLeft,
+    //#[token("<<")]
+    //ShiftLeft,
 
     #[token("\\t")]
     EscapeTab,

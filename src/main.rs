@@ -21,6 +21,7 @@ pub mod lalrpop_lexer;
 pub mod build_expr;
 pub mod compile;
 pub mod check;
+pub mod mid_repr;
 //pub mod parse_helper;
 
 //#[macro_use] extern crate lalrpop_util;
