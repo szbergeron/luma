@@ -14,7 +14,7 @@ pub struct Namespace<'a> {
 
     pub public: bool,
     pub name: Option<&'a str>,
-    pub contents: Result<ParseUnit<'a>, ParseResultError<'a>>,
+    pub contents: Result<OuterScope<'a>, ParseResultError<'a>>,
 }
 
 impl<'a> Namespace<'a> {
@@ -43,13 +43,13 @@ impl<'a> AstNode<'a> for Namespace<'a> {
 }
 
 #[derive(Debug)]
-pub struct ParseUnit<'a> {
+pub struct OuterScope<'a> {
     pub node_info: NodeInfo,
 
     pub declarations: Vec<Arc<RwLock<Result<SymbolDeclaration<'a>, ParseResultError<'a>>>>>,
 }
 
-impl<'a> std::fmt::Display for ParseUnit<'a> {
+impl<'a> std::fmt::Display for OuterScope<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let r = write!(f, "\n");
 
@@ -59,7 +59,7 @@ impl<'a> std::fmt::Display for ParseUnit<'a> {
     }
 }
 
-impl<'a> AstNode<'a> for ParseUnit<'a> {
+impl<'a> AstNode<'a> for OuterScope<'a> {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }

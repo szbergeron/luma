@@ -30,11 +30,18 @@ pub mod mid_repr;
 fn main() {
     let args: Vec<String> = env::args().collect();
     println!("Args: {:?}", args);
-    let files = &args[1..];
+    let sliced: Vec<&str> = args.iter().map(|s| &s[..]).collect();
+    //sliced.remove(0);
+
+    let sliced: &[&str] = &sliced[1..];
+    println!("stripped args: {:?}", sliced);
+
+    compile::launch(sliced);
+    /*let files = &args[1..];
     for file in files {
-        let contents = fs::read_to_string(file).expect("Couldn't read source code file");
-        compile::compile(&contents[..]); // maybe create compilationcontext to pass here?
-    }
+        //let contents = fs::read_to_string(file).expect("Couldn't read source code file");
+        //compile::compile(&contents[..]); // maybe create compilationcontext to pass here?
+    }*/
     //
     //let mut lex = Token::lexer(
 }

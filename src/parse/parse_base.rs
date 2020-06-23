@@ -12,7 +12,7 @@ use std::sync::{Arc, RwLock};
 use crate::parse::*;
 
 impl<'b, 'a> Parser<'b, 'a> {
-    pub fn entry(&mut self) -> Result<ast::ParseUnit<'a>, ParseResultError<'a>> {
+    pub fn entry(&mut self) -> Result<ast::OuterScope<'a>, ParseResultError<'a>> {
         //let mut declarations
         let mut declarations: Vec<Arc<RwLock<Result<ast::SymbolDeclaration<'a>, ParseResultError<'a>>>>> =
             Vec::new();
@@ -48,7 +48,7 @@ impl<'b, 'a> Parser<'b, 'a> {
 
         let end = self.lex.la(-1).map_or(start, |tw| tw.start);
 
-        Ok(ast::ParseUnit {
+        Ok(ast::OuterScope {
             declarations,
             node_info: ast::NodeInfo::from_indices(failed, start, end),
         })
