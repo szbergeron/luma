@@ -264,6 +264,24 @@ impl<'a> ScopedName<'a> {
     }
 }
 
+#[derive(Debug)]
+pub struct StaticVariableDeclaration<'a> {
+    pub node_info: NodeInfo,
+
+    pub public: bool,
+    pub expression: Box<ExpressionWrapper<'a>>,
+}
+
+impl<'a> AstNode<'a> for StaticVariableDeclaration<'a> {
+    fn node_info(&self) -> NodeInfo {
+        self.node_info
+    }
+
+    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+        self.expression.as_node().display(f, depth);
+    }
+}
+
 
 
 #[derive(Debug)]
@@ -271,7 +289,7 @@ pub enum SymbolDeclaration<'a> {
     FunctionDeclaration(FunctionDeclaration<'a>),
     NamespaceDeclaration(Namespace<'a>),
     StructDeclaration(StructDeclaration<'a>),
-    ExpressionDeclaration(Box<ExpressionWrapper<'a>>),
+    ExpressionDeclaration(StaticVariableDeclaration<'a>),
     //VariableDeclaration(VariableDeclaration<'a>),
 }
 
@@ -281,7 +299,7 @@ impl<'a> IntoAstNode<'a> for SymbolDeclaration<'a> {
             Self::FunctionDeclaration(fd) => fd,
             Self::NamespaceDeclaration(nd) => nd,
             Self::StructDeclaration(sd) => sd,
-            Self::ExpressionDeclaration(ed) => ed.as_node_mut(),
+            Self::ExpressionDeclaration(ed) => ed,
         }
     }
 
@@ -290,7 +308,7 @@ impl<'a> IntoAstNode<'a> for SymbolDeclaration<'a> {
             Self::FunctionDeclaration(fd) => fd,
             Self::NamespaceDeclaration(nd) => nd,
             Self::StructDeclaration(sd) => sd,
-            Self::ExpressionDeclaration(ed) => ed.as_node(),
+            Self::ExpressionDeclaration(ed) => ed,
         }
     }
 }
@@ -302,7 +320,7 @@ impl<'a> SymbolDeclaration<'a> {
             Self::FunctionDeclaration(fd) => fd.display(f, depth),
             Self::NamespaceDeclaration(ns) => ns.display(f, depth),
             Self::StructDeclaration(sd) => sd.display(f, depth),
-            Self::ExpressionDeclaration(sd) => sd.as_node().display(f, depth),
+            Self::ExpressionDeclaration(sd) => sd.display(f, depth),
         }
     }
 
@@ -311,7 +329,25 @@ impl<'a> SymbolDeclaration<'a> {
             Self::FunctionDeclaration(fd) => fd.public = true,
             Self::NamespaceDeclaration(fd) => fd.public = true,
             Self::StructDeclaration(fd) => fd.public = true,
-            Self::ExpressionDeclaration(fd) => (),
+            Self::ExpressionDeclaration(fd) => fd.public = true,
+        }
+    }
+
+    pub fn is_public(&self) -> bool {
+        match self {
+            Self::FunctionDeclaration(fd) => fd.public,
+            Self::NamespaceDeclaration(fd) => fd.public,
+            Self::StructDeclaration(fd) => fd.public,
+            Self::ExpressionDeclaration(fd) => fd.public,
+        }
+    }
+
+    pub fn symbol_name(&self) -> Option<&'a str> {
+        match self {
+            Self::FunctionDeclaration(fd) => Some(fd.name),
+            Self::NamespaceDeclaration(ns) => ns.name,
+            Self::StructDeclaration(sd) => Some(sd.name),
+            Self::ExpressionDeclaration(ed) => None,
         }
     }
 }

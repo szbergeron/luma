@@ -1,4 +1,8 @@
 //use crate::lex;
+use std::sync::{Arc, RwLock};
+use std::path::PathBuf;
+use crate::ast::*;
+use std::fs;
 
 pub enum EitherAnd<A, B> {
     A(A),
@@ -41,6 +45,95 @@ impl<A, B> EitherAnd<A, B> {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum Error<'a> {
+    DuplicateDefinition {
+        duplicate_symbol: Arc<RwLock<SymbolDeclaration<'a>>>,
+        existing_symbol: Arc<RwLock<SymbolDeclaration<'a>>>,
+    },
+}
+
+pub type PathId = usize;
+pub type PathIdMapHandle = Arc<RwLock<PathIdMap>>;
+
+pub struct FileHandle {
+    id: usize,
+    location: PathBuf,
+    scope: Vec<String>,
+    contents: Option<Arc<String>>,
+}
+
+impl FileHandle {
+    pub fn new(p: PathBuf, scope: Vec<String>, id: usize) -> FileHandle {
+        FileHandle {
+            location: p,
+            scope,
+            id,
+            contents: None,
+        }
+    }
+
+    pub fn open(&mut self) -> std::io::Result<Arc<String>> {
+        match self.contents.clone() {
+            Some(contents) => Ok(contents.clone()),
+            None => {
+                let content_string = fs::read_to_string(self.location.clone())?;
+                let content_rc = Arc::new(content_string);
+                let result = content_rc.clone();
+                self.contents = Some(content_rc);
+
+                Ok(result)
+
+            }
+        }
+    }
+
+    pub fn close(&mut self) {
+        self.contents = None; // any remaining Rcs will need to drop before string drops
+    }
+
+    pub fn path(&self) -> &PathBuf {
+        &self.location
+    }
+}
+
+pub struct PathIdMap {
+    paths: Vec<Option<FileHandle>>,
+}
+
+impl PathIdMap {
+    pub fn new() -> Arc<RwLock<PathIdMap>> {
+        let v = vec![None];
+        Arc::new(RwLock::new(PathIdMap { paths: v }))
+    }
+
+    pub fn push_path(&mut self, p: PathBuf, scope: Vec<String>) -> PathId {
+        let id = self.paths.len();
+        self.paths.push(Some(FileHandle::new(p, scope, id)));
+
+        id
+    }
+
+    pub fn get_path(&self, id: PathId) -> Option<&PathBuf> {
+        match self.paths.get(id) {
+            Some(Some(p)) => Some(p.path()),
+            Some(None) => None,
+            None => None,
+        }
+    }
+
+    pub fn get_file(&self, id: PathId) -> Option<&FileHandle> {
+        match self.paths.get(id) {
+            Some(Some(f)) => Some(f),
+            _ => None,
+        }
+    }
+
+    pub fn get_handles(&self) -> &[Option<FileHandle>] {
+        &self.paths[..]
+    }
+}
+
 pub mod lex_wrap {
     use logos::Logos;
     use std::rc::Rc;
@@ -53,6 +146,7 @@ pub mod lex_wrap {
 
         current_line: isize,
         last_newline_absolute: usize,
+        file_id: usize,
     }
 
     #[derive(Debug, Clone, Copy)]
@@ -68,6 +162,7 @@ pub mod lex_wrap {
                 Self::Parsed(l) => Self::Parsed(Loc {
                     line: l.line + line,
                     offset: l.offset + offset,
+                    file_id: l.file_id,
                 }),
             }
         }
@@ -78,6 +173,7 @@ pub mod lex_wrap {
         //pub absolute: usize,
         pub line: isize,
         pub offset: isize,
+        pub file_id: usize,
     }
 
     impl std::fmt::Display for CodeLocation {
@@ -119,7 +215,7 @@ pub mod lex_wrap {
     }
 
     impl<'a> Wrapper<'a> {
-        pub fn new(input: &'a str) -> Wrapper<'a> {
+        pub fn new(input: &'a str, file_id: usize) -> Wrapper<'a> {
             let lex = crate::lex::Token::lexer(input);
 
             Wrapper {
@@ -127,6 +223,7 @@ pub mod lex_wrap {
                 cur: Err(ParseResultError::NotYetParsed),
                 last_newline_absolute: 0,
                 current_line: 1,
+                file_id,
             }
         }
 
@@ -145,6 +242,7 @@ pub mod lex_wrap {
                             let start = Loc {
                                 line: self.current_line,
                                 offset: (sp.start - self.last_newline_absolute) as isize,
+                                file_id: self.file_id,
                             };
 
                             self.current_line += 1;
@@ -153,6 +251,7 @@ pub mod lex_wrap {
                             let end = Loc {
                                 line: self.current_line,
                                 offset: (sp.end - self.last_newline_absolute) as isize,
+                                file_id: self.file_id,
                             };
 
                             (start, end)
@@ -162,10 +261,12 @@ pub mod lex_wrap {
                             let start = Loc {
                                 line: self.current_line,
                                 offset: (sp.start - self.last_newline_absolute) as isize,
+                                file_id: self.file_id,
                             };
                             let end = Loc {
                                 line: self.current_line,
                                 offset: (sp.end - self.last_newline_absolute) as isize,
+                                file_id: self.file_id,
                             };
                             (start, end)
                         }

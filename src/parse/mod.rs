@@ -8,6 +8,7 @@ pub use parse_helper::*;
 
 use crate::helper::lex_wrap::LookaheadStream;
 use crate::helper::lex_wrap::{CodeLocation, ParseResultError};
+use crate::helper::*;
 
 use colored::*;
 
@@ -152,9 +153,10 @@ impl<'b, 'a> Parser<'b, 'a> {
         map
     }*/
 
-    pub fn print_errors(&self, input: &'a str) {
+    pub fn print_errors(&self, input: &'a str, path_handle: PathIdMapHandle) {
         //let linemap = self.build_line_map(input);
         let lines: Vec<&'a str> = input.lines().collect();
+        let read_borrow = path_handle.read().unwrap();
 
         println!();
         println!("{}", "Errors:".red());

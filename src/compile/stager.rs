@@ -10,17 +10,26 @@ use std::process;
 use crossbeam::unbounded;
 use std::collections::VecDeque;
 use rayon::prelude::*;
+use crate::helper::*;
 
-pub fn parse_unit(file_scope: Vec<String>, base_path: PathBuf, cflags: &CFlags) {
-    let contents = &fs::read_to_string(base_path).expect("could not read contents of target file")[..];
-    let mut lex = Wrapper::new(contents);
+pub fn parse_unit(file_scope: Vec<String>, base_path: PathId, path_handle: PathIdMapHandle, cflags: &CFlags) {
+    let path = path_handle.read().unwrap().get_path(base_path).expect("path ID not registered").clone();
+    println!("parsing {:?} which has a file scope of {:?}", path, file_scope);
+    // clone because we don't want to keep lock open, and this should be rather cheap in the scheme
+    // of things
+    // TODO: eval if this even matters
+
+    let contents = &fs::read_to_string(path).expect("could not read contents of target file")[..];
+    let mut lex = Wrapper::new(contents, base_path);
     let mut scanner = LookaheadStream::new(&mut lex);
 
     let mut parser = Parser::new(&mut scanner);
 
     let p = parser.entry();
 
-    parser.print_errors(contents);
+    if !cflags.eflags.silence_errors {
+        parser.print_errors(contents, path_handle);
+    }
 
 
     //
@@ -48,6 +57,7 @@ pub fn parse_unit(file_scope: Vec<String>, base_path: PathBuf, cflags: &CFlags) 
 pub struct EFlags {
     pub warnings_as_errors: bool,
     pub silence_warnings_below_level: i32,
+    pub silence_errors: bool,
 }
 
 #[derive(Default)]
@@ -88,6 +98,7 @@ pub fn launch(args: &[&str]) {
             "-i" => state = State::ExpectInput,
             "-Cthreads" => state = State::ExpectThreadCount,
             "-Dtree" => cflags.dump_tree = true,
+            "-Esilent" => cflags.eflags.silence_errors = true,
             //"-Olib" => cflags.output_library = true,
             //"-Obin" => cflags.output_binary = true,
             other => {
@@ -128,12 +139,15 @@ pub fn launch(args: &[&str]) {
     let (s1, r) = unbounded();
     thread::spawn(move || path_exp(inputs.into_iter().collect(), s1));
 
-    while let Ok(Some((sn, p))) = r.recv() {
-        pool.install(|| {
-            parse_unit(sn, p, &cflags);
-        });
-    }
+    let paths = PathIdMap::new();
 
+    while let Ok(Some((sn, p))) = r.recv() {
+        let pid = paths.write().unwrap().push_path(p, sn);
+        let ph = paths.clone();
+        /*pool.install(|| {
+            parse_unit(sn, pid, ph, &cflags);
+        });*/
+    }
 }
 
 pub fn path_exp(paths: Vec<PathBuf>, s: crossbeam::Sender<Option<(Vec<String>, PathBuf)>>) {

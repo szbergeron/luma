@@ -1,6 +1,7 @@
 //#![feature(generic_associated_types)]
 //#[macro_use] extern crate lalrpop_util;
 //#![feature(associated_type_defaults)]
+#![feature(option_expect_none)]
 
 //lalrpop_mod!(pub rsh);
 
