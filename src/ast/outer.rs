@@ -328,7 +328,7 @@ impl<'a> SymbolDeclaration<'a> {
             Self::FunctionDeclaration(fd) => Some(fd.name),
             Self::NamespaceDeclaration(ns) => ns.name,
             Self::StructDeclaration(sd) => Some(sd.name),
-            Self::ExpressionDeclaration(ed) => None,
+            Self::ExpressionDeclaration(_ed) => None,
         }
     }
 }

@@ -58,6 +58,7 @@ use crate::mid_repr::ScopeContext;
 pub type PathId = usize;
 pub type PathIdMapHandle<'a> = Arc<RwLock<PathIdMap<'a>>>;
 
+#[allow(dead_code)]
 pub struct FileHandle<'a> {
     id: usize,
     context: Arc<RwLock<ScopeContext<'a>>>,

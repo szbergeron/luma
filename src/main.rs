@@ -3,6 +3,7 @@
 //#![feature(associated_type_defaults)]
 #![feature(option_expect_none)]
 
+#[allow(unused_imports)]
 #[macro_use]
 extern crate static_assertions;
 
@@ -12,7 +13,7 @@ extern crate static_assertions;
 //extern crate lazy_static;
 
 use std::env;
-use std::fs;
+//use std::fs;
 //use logos::Logos;
 
 //mod lib;

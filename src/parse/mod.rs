@@ -170,7 +170,7 @@ impl<'b, 'a> Parser<'b, 'a> {
     pub fn print_errors(&self, input: &'a str, path_handle: PathIdMapHandle) {
         //let linemap = self.build_line_map(input);
         let lines: Vec<&'a str> = input.lines().collect();
-        let read_borrow = path_handle.read().unwrap();
+        let _read_borrow = path_handle.read().unwrap();
 
         println!();
         println!("{}", "Errors:".red());

@@ -1,16 +1,16 @@
 use crate::ast;
-use crate::helper::lex_wrap::{LookaheadStream, ParseResultError, Wrapper};
+use crate::helper::lex_wrap::{LookaheadStream, Wrapper};
 use crate::helper::*;
 use crate::parse::Parser;
-use crossbeam::unbounded;
 use rayon::prelude::*;
 use std::collections::HashSet;
 use std::collections::VecDeque;
-use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process;
-use std::thread;
+
+use crate::mid_repr::ScopeContext;
+use std::sync::{Arc, RwLock};
 
 pub fn parse_unit(
     file_scope: Vec<String>,
@@ -81,15 +81,12 @@ pub struct CFlags {
 }
 
 pub fn launch(args: &[&str]) {
-    //let args: Vec<String> = env::args().collect();
-    //let args = prefix;
-
     enum State {
         ExpectInput,
         ExpectOutput,
         ExpectThreadCount,
-        ExpectWarnFlags,
-        ExpectErrorFlags,
+        _ExpectWarnFlags,
+        _ExpectErrorFlags,
     }
 
     let mut state = State::ExpectInput;
@@ -149,14 +146,14 @@ pub fn launch(args: &[&str]) {
         println!("input file with path '{:#?}'", p);
     }
 
-    let (error_sender, error_reciever) = crossbeam::unbounded();
+    let (error_sender, _error_reciever) = crossbeam::unbounded();
 
     //static_assertions::assert_impl_all!(&mut [std::option::Option<crate::helper::FileHandle<'_>>]: rayon::iter::IntoParallelIterator);
     //static_assertions::assert_impl_all!(for<'data> &'data mut [Option<FileHandle<'data>>]: rayon::iter::IntoParallelIterator);
     //static_assertions::assert_impl_all!(FileHandle<'_>: Send);
 
     // start spawning the parser threads
-    let pool = rayon::ThreadPoolBuilder::new()
+    let _pool = rayon::ThreadPoolBuilder::new()
         .num_threads(cflags.thread_count)
         .build()
         .expect("couldn't build thread pool");
@@ -165,9 +162,9 @@ pub fn launch(args: &[&str]) {
 
     let handles = pmap.get_handles();
 
-    handles.iter_mut().for_each(|file| {
+    handles.par_iter_mut().for_each(|file| {
         if let Some(fh) = file {
-            let contents = fh.open();
+            let _contents = fh.open();
         }
     });
 
@@ -175,10 +172,6 @@ pub fn launch(args: &[&str]) {
 
     //std::mem::drop(pmap);
 }
-
-use crate::ast::*;
-use crate::mid_repr::ScopeContext;
-use std::sync::{Arc, RwLock};
 
 pub fn explore_paths<'error>(
     paths: Vec<PathBuf>,
@@ -246,8 +239,8 @@ pub fn explore_paths<'error>(
     pmap
 }
 
-pub fn prepass<'a>(p: &mut ast::OuterScope<'a>) {}
+pub fn prepass<'a>(_p: &mut ast::OuterScope<'a>) {}
 
-pub fn analyze<'a>(p: &mut ast::OuterScope<'a>) {}
+pub fn analyze<'a>(_p: &mut ast::OuterScope<'a>) {}
 
-pub fn tollvm<'a>(p: &mut ast::OuterScope<'a>, _filename: &str) {}
+pub fn tollvm<'a>(_p: &mut ast::OuterScope<'a>, _filename: &str) {}

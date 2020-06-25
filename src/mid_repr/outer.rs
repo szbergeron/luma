@@ -1,9 +1,9 @@
-use crate::ast::OuterScope;
+//use crate::ast::OuterScope;
 use crate::ast::*;
 use crate::helper::Error;
-use chashmap::{CHashMap, ReadGuard, WriteGuard};
-use crossbeam::unbounded;
-use std::collections::HashMap;
+use chashmap::CHashMap;
+//use crossbeam::unbounded;
+//use std::collections::HashMap;
 use std::sync::{Arc, RwLock, Weak};
 
 /*pub struct SymbolDB<'a> {
@@ -14,6 +14,7 @@ use std::sync::{Arc, RwLock, Weak};
 impl<'a> SymbolDB<'a> {
 }*/
 
+#[allow(dead_code)]
 pub struct ScopeContext<'a> {
     scope: Vec<String>,
     public: bool,
@@ -118,7 +119,7 @@ impl<'a> ScopeContext<'a> {
 
     //pub fn get_weakref(&self,
 
-    pub fn import(&mut self, sn: ScopedName<'a>) {}
+    pub fn import(&mut self, _sn: ScopedName<'a>) {}
 }
 
 /*pub struct FullyQualifiedScopedName<'a> {
