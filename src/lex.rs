@@ -164,7 +164,6 @@ pub enum Token {
 
     //#[token("<<")]
     //ShiftLeft,
-
     #[token("\\t")]
     EscapeTab,
 
@@ -176,7 +175,6 @@ pub enum Token {
 
     /*#[token("\n")]
     Newline,*/
-
     #[token(".")]
     Dot,
 

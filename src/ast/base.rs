@@ -1,5 +1,5 @@
 use super::expressions;
-use crate::helper::lex_wrap::{TokenWrapper, CodeLocation};
+use crate::helper::lex_wrap::{CodeLocation, TokenWrapper};
 
 pub fn indent(ind: usize) -> String {
     let mut s: String = "|".to_string();
@@ -64,10 +64,7 @@ impl NodeInfo {
 
     pub fn from_indices(parsed: bool, start: CodeLocation, end: CodeLocation) -> NodeInfo {
         let inner = ParsedNodeInfo {
-            span: Span {
-                start,
-                end,
-            },
+            span: Span { start, end },
             parsed,
         };
 
@@ -78,7 +75,16 @@ impl NodeInfo {
 impl std::fmt::Display for NodeInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Parsed(info) => write!(f, "parsed {} over {}", if info.parsed { "successfully" } else { "unsuccessfully" }, info.span),
+            Self::Parsed(info) => write!(
+                f,
+                "parsed {} over {}",
+                if info.parsed {
+                    "successfully"
+                } else {
+                    "unsuccessfully"
+                },
+                info.span
+            ),
             Self::Builtin => write!(f, "buildin"),
         }
     }

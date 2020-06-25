@@ -1,7 +1,7 @@
 use crate::ast;
 use crate::lex::Token;
 
-use crate::helper::lex_wrap::{ParseResultError, CodeLocation};
+use crate::helper::lex_wrap::{CodeLocation, ParseResultError};
 use crate::helper::EitherAnd;
 
 use crate::parse::*;
@@ -294,7 +294,8 @@ impl<'a, 'b> Parser<'a, 'b> {
                     let final_exp = e
                         .map(|exp| match self.eat_match(Token::Semicolon) {
                             Some(semi) => {
-                                let start = exp.as_node().start().map_or(CodeLocation::Builtin, |v| v);
+                                let start =
+                                    exp.as_node().start().map_or(CodeLocation::Builtin, |v| v);
                                 let end = semi.end;
                                 let node_info = ast::NodeInfo::from_indices(true, start, end);
                                 ast::StatementExpression::new_expr(node_info, exp)
@@ -378,12 +379,14 @@ impl<'a, 'b> Parser<'a, 'b> {
                 todo!("Type constraints not implemented yet")
             } else if let Some(_as) = self.eat_match(Token::As) {
                 let typeref: Box<ast::TypeReference<'a>> = Box::new(self.type_reference()?);
-                let start = lhs.as_node().start().expect("parsed lhs did not have a start");
+                let start = lhs
+                    .as_node()
+                    .start()
+                    .expect("parsed lhs did not have a start");
                 let end = typeref.end().expect("parsed typeref did not have an end");
                 let node_info = NodeInfo::from_indices(true, start, end);
                 lhs = ast::CastExpression::new_expr(node_info, lhs, typeref);
                 continue;
-
             } else if let Some(((l_bp, r_bp), tw)) = self.eat_if(|t| infix_binding_power(t.token)) {
                 //if let Some(((l_bp, r_bp), tw)) = operator {
                 if l_bp < min_bp {
@@ -545,7 +548,6 @@ pub fn infix_binding_power(t: Token) -> Option<(u32, u32)> {
         Token::And => Some((13, 14)),
 
         //Token::ShiftLeft | Token::ShiftRight => Some((15, 16)),
-
         Token::Plus | Token::Dash => Some((17, 18)),
 
         Token::Asterisk | Token::FSlash | Token::Modulo => Some((19, 20)),

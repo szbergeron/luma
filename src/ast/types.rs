@@ -27,7 +27,12 @@ impl<'a> TypeReference<'a> {
             literal: "()",
         };*/
 
-        TypeReference { typename: "()", refers_to: None, node_info: ast::NodeInfo::Builtin, type_parameters: Vec::new() }
+        TypeReference {
+            typename: "()",
+            refers_to: None,
+            node_info: ast::NodeInfo::Builtin,
+            type_parameters: Vec::new(),
+        }
     }
 
     /*pub fn from_name(name: &'a str) -> TypeReference<'a> {
@@ -58,12 +63,12 @@ impl<'a> AstNode<'a> for TypeReference<'a> {
         }
         let _ = write!(f, ">");
         /*let _ = writeln!(
-            f,
-            "{}Typereference with typename {} that refers to type {:?}",
-            indent(depth),
-            self.typename,
-            self.refers_to,
-            );*/
+        f,
+        "{}Typereference with typename {} that refers to type {:?}",
+        indent(depth),
+        self.typename,
+        self.refers_to,
+        );*/
     }
 
     fn node_info(&self) -> NodeInfo {

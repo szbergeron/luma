@@ -55,7 +55,13 @@ impl<'b, 'a> Parser<'b, 'a> {
         r
     }
 
-    pub fn print_fmt_line(&self, line_num: isize, pad: usize, line: &str, highlight: Option<(usize, usize)>) {
+    pub fn print_fmt_line(
+        &self,
+        line_num: isize,
+        pad: usize,
+        line: &str,
+        highlight: Option<(usize, usize)>,
+    ) {
         // do indentation
         println!();
         print!(" {line:<pad$} | ", line = line_num, pad = pad);
@@ -78,7 +84,6 @@ impl<'b, 'a> Parser<'b, 'a> {
 
     //pub fn print_context<'map>(&self, start: usize, end: usize, map: &'map rangemap::RangeMap<usize, (usize, &'a str, usize)>) {
     pub fn print_context(&self, start: CodeLocation, end: CodeLocation, lines: &Vec<&'a str>) {
-        
         // print context lines before
 
         match (start, end) {
@@ -110,11 +115,20 @@ impl<'b, 'a> Parser<'b, 'a> {
                             print!("{}", "―".red());
                         }
                     }*/
+                    
                     let hl = if line_num >= start.line && line_num <= end.line {
-                        let start = if line_num > start.line { 0 } else { start.offset as usize };
-                        let end = if line_num < end.line { line.len() } else { end.offset as usize };
+                        let start = if line_num > start.line {
+                            0
+                        } else {
+                            start.offset as usize
+                        };
+                        let end = if line_num < end.line {
+                            line.len()
+                        } else {
+                            end.offset as usize
+                        };
                         Some((start, end))
-                        //Some((0, 0))
+                    //Some((0, 0))
                     } else {
                         None
                     };

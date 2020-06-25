@@ -16,15 +16,15 @@ use std::fs;
 //use logos::Logos;
 
 //mod lib;
-pub mod lex;
-pub mod helper;
-pub mod parse;
 pub mod ast;
+pub mod helper;
 pub mod lalrpop_lexer;
+pub mod lex;
+pub mod parse;
 //pub mod parse_expr;
 pub mod build_expr;
-pub mod compile;
 pub mod check;
+pub mod compile;
 pub mod mid_repr;
 //pub mod parse_helper;
 

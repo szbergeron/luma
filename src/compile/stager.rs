@@ -151,7 +151,6 @@ pub fn launch(args: &[&str]) {
 
     let (error_sender, error_reciever) = crossbeam::unbounded();
 
-
     //static_assertions::assert_impl_all!(&mut [std::option::Option<crate::helper::FileHandle<'_>>]: rayon::iter::IntoParallelIterator);
     //static_assertions::assert_impl_all!(for<'data> &'data mut [Option<FileHandle<'data>>]: rayon::iter::IntoParallelIterator);
     //static_assertions::assert_impl_all!(FileHandle<'_>: Send);
@@ -161,7 +160,6 @@ pub fn launch(args: &[&str]) {
         .num_threads(cflags.thread_count)
         .build()
         .expect("couldn't build thread pool");
-
 
     let mut pmap = explore_paths(inputs.into_iter().collect(), error_sender);
 
@@ -228,12 +226,11 @@ pub fn explore_paths<'error>(
             base_scope.push(stem);
 
             let context = Arc::new(RwLock::new(ScopeContext::new(
-                        error_sink.clone(),
-                        base_scope.clone(),
-                        Some(Arc::downgrade(&global_context)),
-                        Some(Arc::downgrade(&parent)),
-                        )));
-
+                error_sink.clone(),
+                base_scope.clone(),
+                Some(Arc::downgrade(&global_context)),
+                Some(Arc::downgrade(&parent)),
+            )));
 
             for subpath in path
                 .read_dir()

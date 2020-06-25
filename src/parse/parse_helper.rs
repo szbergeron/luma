@@ -1,9 +1,9 @@
 use crate::lex::Token;
 
-use crate::helper::lex_wrap::TokenWrapper;
 use crate::helper::lex_wrap::ParseResultError;
-use std::collections::HashSet;
+use crate::helper::lex_wrap::TokenWrapper;
 use crate::parse::*;
+use std::collections::HashSet;
 
 impl<'b, 'a> Parser<'b, 'a> {
     pub fn eat_through(&mut self, toks: Vec<Token>) {
@@ -51,7 +51,8 @@ impl<'b, 'a> Parser<'b, 'a> {
     }
 
     pub fn eat_if<F, T>(&mut self, f: F) -> Option<(T, TokenWrapper<'a>)>
-        where F: FnOnce(TokenWrapper<'a>) -> Option<T>
+    where
+        F: FnOnce(TokenWrapper<'a>) -> Option<T>,
     {
         match self.lex.la(0) {
             Ok(tw) => {
@@ -65,8 +66,8 @@ impl<'b, 'a> Parser<'b, 'a> {
                 }
 
                 result
-            },
-            Err(_) => None
+            }
+            Err(_) => None,
         }
     }
 
@@ -78,14 +79,13 @@ impl<'b, 'a> Parser<'b, 'a> {
                     self.lex.backtrack();
 
                     Err(ParseResultError::UnexpectedToken(tw, vec![t]))
-                },
+                }
             }
         } else {
             Err(ParseResultError::EndOfFile)
         }
     }
 }
-
 
 pub struct RunConditional<'a> {
     pub run_if: Option<TokenWrapper<'a>>,

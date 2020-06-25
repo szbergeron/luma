@@ -1,6 +1,6 @@
 use super::base::*;
-use super::types::*;
 use super::expressions::ExpressionWrapper;
+use super::types::*;
 
 use crate::helper::lex_wrap::ParseResultError;
 //use std::rc::Rc;
@@ -36,9 +36,11 @@ impl<'a> AstNode<'a> for Namespace<'a> {
             self.name.unwrap_or("<unnamed>"),
             self.public,
             self.node_info,
-            );
+        );
 
-        self.contents.iter().for_each(|contents| contents.display(f, depth+1));
+        self.contents
+            .iter()
+            .for_each(|contents| contents.display(f, depth + 1));
     }
 }
 
@@ -72,16 +74,12 @@ impl<'a> AstNode<'a> for OuterScope<'a> {
         findent(f, depth);
         let _ = writeln!(f, "ParseUnit {} with children:", self.node_info());
 
-        self.declarations
-            .iter()
-            .for_each(|elem| {
-                      elem.read()
-                          .expect("locking error within parsunit display")
-                          .iter()
-                          .for_each(
-                                |elem| elem.display(f, depth+1)
-                          )
-            });
+        self.declarations.iter().for_each(|elem| {
+            elem.read()
+                .expect("locking error within parsunit display")
+                .iter()
+                .for_each(|elem| elem.display(f, depth + 1))
+        });
 
         /*for dec in self.declarations {
             dec.display(f, depth + 1);
@@ -115,32 +113,24 @@ impl<'a> AstNode<'a> for FunctionDeclaration<'a> {
             self.node_info(),
             self.name,
             self.return_type,
-            );
+        );
 
-        let _ = writeln!(
-            f,
-            "{}Parameters:",
-            indent(depth+1),
-            );
+        let _ = writeln!(f, "{}Parameters:", indent(depth + 1),);
 
         //write!(f, "{}", indent(depth + 1));
         for vd in self.params.iter() {
             let _ = writeln!(
                 f,
                 "{}Parameter of type {:?} which comes from expression:",
-                indent(depth+2),
+                indent(depth + 2),
                 vd.1,
             );
 
-            vd.0.as_node().display(f, depth+3);
+            vd.0.as_node().display(f, depth + 3);
         }
-        let _ = writeln!(
-            f,
-            "{}And body:",
-            indent(depth+1),
-            );
+        let _ = writeln!(f, "{}And body:", indent(depth + 1),);
 
-        self.body.as_node().display(f, depth+2);
+        self.body.as_node().display(f, depth + 2);
     }
 }
 
@@ -151,7 +141,11 @@ pub struct StructDeclaration<'a> {
     pub public: bool,
     pub name: &'a str,
     pub typeparams: Vec<&'a str>,
-    pub fields: Vec<(&'a str, TypeReference<'a>, Option<Box<super::ExpressionWrapper<'a>>>)>,
+    pub fields: Vec<(
+        &'a str,
+        TypeReference<'a>,
+        Option<Box<super::ExpressionWrapper<'a>>>,
+    )>,
 }
 
 impl<'a> AstNode<'a> for StructDeclaration<'a> {
@@ -166,27 +160,18 @@ impl<'a> AstNode<'a> for StructDeclaration<'a> {
             indent(depth),
             self.node_info(),
             self.name,
-            );
+        );
 
         //write!(f, "{}", indent(depth + 1));
         for (name, tr, exp) in self.fields.iter() {
-            let _ = write!(
-                f,
-                "{}{} : {:?} = ",
-                indent(depth+1),
-                name,
-                tr,
-            );
+            let _ = write!(f, "{}{} : {:?} = ", indent(depth + 1), name, tr,);
             match exp {
                 None => {
-                    let _ = writeln!(
-                        f,
-                        "<undefined>",
-                    );
-                },
+                    let _ = writeln!(f, "<undefined>",);
+                }
                 Some(exp) => {
                     let _ = writeln!(f);
-                    exp.as_node().display(f, depth+2);
+                    exp.as_node().display(f, depth + 2);
                 }
             }
         }
@@ -196,7 +181,7 @@ impl<'a> AstNode<'a> for StructDeclaration<'a> {
 /*#[derive(Debug)]
 pub struct VariableDeclaration<'a> {
     pub node_info: NodeInfo,
-    
+
     //pub name: &'a str,
     pub lhs: Box<ExpressionWrapper<'a>>,
     pub var_expr: Option<Box<ExpressionWrapper<'a>>>,
@@ -258,9 +243,7 @@ pub struct ScopedName<'a> {
 
 impl<'a> ScopedName<'a> {
     pub fn new(s: Vec<&'a str>) -> ScopedName<'a> {
-        ScopedName {
-            scope: s
-        }
+        ScopedName { scope: s }
     }
 }
 
@@ -281,8 +264,6 @@ impl<'a> AstNode<'a> for StaticVariableDeclaration<'a> {
         self.expression.as_node().display(f, depth);
     }
 }
-
-
 
 #[derive(Debug)]
 pub enum SymbolDeclaration<'a> {

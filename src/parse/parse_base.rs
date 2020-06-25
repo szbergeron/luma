@@ -1,4 +1,3 @@
-
 use crate::ast;
 use crate::lex::Token;
 
@@ -14,8 +13,9 @@ use crate::parse::*;
 impl<'b, 'a> Parser<'b, 'a> {
     pub fn entry(&mut self) -> Result<ast::OuterScope<'a>, ParseResultError<'a>> {
         //let mut declarations
-        let mut declarations: Vec<Arc<RwLock<Result<ast::SymbolDeclaration<'a>, ParseResultError<'a>>>>> =
-            Vec::new();
+        let mut declarations: Vec<
+            Arc<RwLock<Result<ast::SymbolDeclaration<'a>, ParseResultError<'a>>>>,
+        > = Vec::new();
 
         let start = self.lex.la(0).map_or(CodeLocation::Builtin, |tw| tw.start);
 

@@ -1,8 +1,8 @@
 //use crate::lex;
-use std::sync::{Arc, RwLock};
-use std::path::PathBuf;
 use crate::ast::*;
 use std::fs;
+use std::path::PathBuf;
+use std::sync::{Arc, RwLock};
 
 pub enum EitherAnd<A, B> {
     A(A),
@@ -67,7 +67,11 @@ pub struct FileHandle<'a> {
 }
 
 impl<'a> FileHandle<'a> {
-    pub fn new(p: PathBuf, /*scope: Vec<String>,*/ id: usize, context: Arc<RwLock<ScopeContext<'a>>>) -> FileHandle {
+    pub fn new(
+        p: PathBuf,
+        /*scope: Vec<String>,*/ id: usize,
+        context: Arc<RwLock<ScopeContext<'a>>>,
+    ) -> FileHandle {
         FileHandle {
             location: p,
             //scope,
@@ -87,7 +91,6 @@ impl<'a> FileHandle<'a> {
                 self.contents = Some(content_rc);
 
                 Ok(result)
-
             }
         }
     }
@@ -120,7 +123,11 @@ impl<'a> PathIdMap<'a> {
         PathIdMap { paths: v }
     }
 
-    pub fn push_path(&mut self, p: PathBuf, /*scope: Vec<String>,*/ context: Arc<RwLock<ScopeContext<'a>>>) -> PathId {
+    pub fn push_path(
+        &mut self,
+        p: PathBuf,
+        /*scope: Vec<String>,*/ context: Arc<RwLock<ScopeContext<'a>>>,
+    ) -> PathId {
         let id = self.paths.len();
         self.paths.push(Some(FileHandle::new(p, id, context)));
 
@@ -142,7 +149,7 @@ impl<'a> PathIdMap<'a> {
         }
     }
 
-    pub fn get_handles(&mut self) -> &mut[Option<FileHandle<'a>>] {
+    pub fn get_handles(&mut self) -> &mut [Option<FileHandle<'a>>] {
         &mut self.paths[..]
     }
 }

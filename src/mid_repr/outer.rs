@@ -80,7 +80,8 @@ impl<'a> ScopeContext<'a> {
                         "should never be replacing an export, would be a duplicate symbol",
                     );
             }
-            self.imported_symbols.insert(String::from(sname), Arc::downgrade(&nref)); // can silently replace to shadow here
+            self.imported_symbols
+                .insert(String::from(sname), Arc::downgrade(&nref)); // can silently replace to shadow here
             self.defined_symbols.insert(String::from(sname), nref);
         }
 
@@ -103,10 +104,13 @@ impl<'a> ScopeContext<'a> {
         }
     }
 
-
     pub fn add_child_context(&mut self, child: Arc<RwLock<ScopeContext<'a>>>) {
         let child_guard = child.read().unwrap();
-        let last_string = child_guard.scope.last().expect("child had no last scope string").clone();
+        let last_string = child_guard
+            .scope
+            .last()
+            .expect("child had no last scope string")
+            .clone();
         drop(child_guard);
 
         self.inner_contexts.insert(last_string, child);
