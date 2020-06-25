@@ -3,6 +3,9 @@
 //#![feature(associated_type_defaults)]
 #![feature(option_expect_none)]
 
+#[macro_use]
+extern crate static_assertions;
+
 //lalrpop_mod!(pub rsh);
 
 //#[macro_use]

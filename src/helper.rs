@@ -53,22 +53,26 @@ pub enum Error<'a> {
     },
 }
 
-pub type PathId = usize;
-pub type PathIdMapHandle = Arc<RwLock<PathIdMap>>;
+use crate::mid_repr::ScopeContext;
 
-pub struct FileHandle {
+pub type PathId = usize;
+pub type PathIdMapHandle<'a> = Arc<RwLock<PathIdMap<'a>>>;
+
+pub struct FileHandle<'a> {
     id: usize,
+    context: Arc<RwLock<ScopeContext<'a>>>,
     location: PathBuf,
-    scope: Vec<String>,
+    //scope: Vec<String>,
     contents: Option<Arc<String>>,
 }
 
-impl FileHandle {
-    pub fn new(p: PathBuf, scope: Vec<String>, id: usize) -> FileHandle {
+impl<'a> FileHandle<'a> {
+    pub fn new(p: PathBuf, /*scope: Vec<String>,*/ id: usize, context: Arc<RwLock<ScopeContext<'a>>>) -> FileHandle {
         FileHandle {
             location: p,
-            scope,
+            //scope,
             id,
+            context,
             contents: None,
         }
     }
@@ -95,21 +99,30 @@ impl FileHandle {
     pub fn path(&self) -> &PathBuf {
         &self.location
     }
+
+    pub fn context(&self) -> Arc<RwLock<ScopeContext<'a>>> {
+        self.context.clone()
+    }
 }
 
-pub struct PathIdMap {
-    paths: Vec<Option<FileHandle>>,
+pub struct PathIdMap<'a> {
+    paths: Vec<Option<FileHandle<'a>>>,
 }
 
-impl PathIdMap {
-    pub fn new() -> Arc<RwLock<PathIdMap>> {
-        let v = vec![None];
-        Arc::new(RwLock::new(PathIdMap { paths: v }))
+impl<'a> PathIdMap<'a> {
+    pub fn new_locked() -> Arc<RwLock<PathIdMap<'a>>> {
+        Arc::new(RwLock::new(Self::new()))
     }
 
-    pub fn push_path(&mut self, p: PathBuf, scope: Vec<String>) -> PathId {
+    pub fn new() -> PathIdMap<'a> {
+        let v = vec![None];
+
+        PathIdMap { paths: v }
+    }
+
+    pub fn push_path(&mut self, p: PathBuf, /*scope: Vec<String>,*/ context: Arc<RwLock<ScopeContext<'a>>>) -> PathId {
         let id = self.paths.len();
-        self.paths.push(Some(FileHandle::new(p, scope, id)));
+        self.paths.push(Some(FileHandle::new(p, id, context)));
 
         id
     }
@@ -122,15 +135,15 @@ impl PathIdMap {
         }
     }
 
-    pub fn get_file(&self, id: PathId) -> Option<&FileHandle> {
+    pub fn get_file(&self, id: PathId) -> Option<&FileHandle<'a>> {
         match self.paths.get(id) {
             Some(Some(f)) => Some(f),
             _ => None,
         }
     }
 
-    pub fn get_handles(&self) -> &[Option<FileHandle>] {
-        &self.paths[..]
+    pub fn get_handles(&mut self) -> &mut[Option<FileHandle<'a>>] {
+        &mut self.paths[..]
     }
 }
 

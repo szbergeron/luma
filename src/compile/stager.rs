@@ -1,20 +1,33 @@
+use crate::ast;
+use crate::helper::lex_wrap::{LookaheadStream, ParseResultError, Wrapper};
+use crate::helper::*;
+use crate::parse::Parser;
+use crossbeam::unbounded;
+use rayon::prelude::*;
+use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::thread;
-use crate::parse::Parser;
-use crate::helper::lex_wrap::{Wrapper, LookaheadStream, ParseResultError};
-use crate::ast;
-use std::collections::HashSet;
 use std::process;
-use crossbeam::unbounded;
-use std::collections::VecDeque;
-use rayon::prelude::*;
-use crate::helper::*;
+use std::thread;
 
-pub fn parse_unit(file_scope: Vec<String>, base_path: PathId, path_handle: PathIdMapHandle, cflags: &CFlags) {
-    let path = path_handle.read().unwrap().get_path(base_path).expect("path ID not registered").clone();
-    println!("parsing {:?} which has a file scope of {:?}", path, file_scope);
+pub fn parse_unit(
+    file_scope: Vec<String>,
+    base_path: PathId,
+    path_handle: PathIdMapHandle,
+    cflags: &CFlags,
+) {
+    let path = path_handle
+        .read()
+        .unwrap()
+        .get_path(base_path)
+        .expect("path ID not registered")
+        .clone();
+    println!(
+        "parsing {:?} which has a file scope of {:?}",
+        path, file_scope
+    );
     // clone because we don't want to keep lock open, and this should be rather cheap in the scheme
     // of things
     // TODO: eval if this even matters
@@ -30,7 +43,6 @@ pub fn parse_unit(file_scope: Vec<String>, base_path: PathId, path_handle: PathI
     if !cflags.eflags.silence_errors {
         parser.print_errors(contents, path_handle);
     }
-
 
     //
     match p {
@@ -107,7 +119,10 @@ pub fn launch(args: &[&str]) {
                         // should be a file or directory in this case
                         let path = Path::new(other);
                         let canonicalized = path.canonicalize().unwrap_or_else(|_| {
-                            println!("Invalid compiler argument: got '{}' but was expecting a path", other);
+                            println!(
+                                "Invalid compiler argument: got '{}' but was expecting a path",
+                                other
+                            );
                             process::exit(-1)
                         });
                         let _inserted = match state {
@@ -115,7 +130,7 @@ pub fn launch(args: &[&str]) {
                             State::ExpectOutput => outputs.insert(canonicalized),
                             _ => panic!("state was expecting a path then it wasn't"),
                         }; // maybe check for duplicates here?
-                    },
+                    }
                     State::ExpectThreadCount => {
                         let count: usize = other.parse().unwrap_or_else(|_| {
                             println!("Expected a thread count, instead got '{}'", other);
@@ -134,50 +149,108 @@ pub fn launch(args: &[&str]) {
         println!("input file with path '{:#?}'", p);
     }
 
+    let (error_sender, error_reciever) = crossbeam::unbounded();
+
+
+    //static_assertions::assert_impl_all!(&mut [std::option::Option<crate::helper::FileHandle<'_>>]: rayon::iter::IntoParallelIterator);
+    //static_assertions::assert_impl_all!(for<'data> &'data mut [Option<FileHandle<'data>>]: rayon::iter::IntoParallelIterator);
+    //static_assertions::assert_impl_all!(FileHandle<'_>: Send);
+
     // start spawning the parser threads
-    let pool = rayon::ThreadPoolBuilder::new().num_threads(cflags.thread_count).build().expect("couldn't build thread pool");
-    let (s1, r) = unbounded();
-    thread::spawn(move || path_exp(inputs.into_iter().collect(), s1));
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(cflags.thread_count)
+        .build()
+        .expect("couldn't build thread pool");
 
-    let paths = PathIdMap::new();
 
-    while let Ok(Some((sn, p))) = r.recv() {
-        let pid = paths.write().unwrap().push_path(p, sn);
-        let ph = paths.clone();
-        /*pool.install(|| {
-            parse_unit(sn, pid, ph, &cflags);
-        });*/
-    }
+    let mut pmap = explore_paths(inputs.into_iter().collect(), error_sender);
+
+    let handles = pmap.get_handles();
+
+    handles.iter_mut().for_each(|file| {
+        if let Some(fh) = file {
+            let contents = fh.open();
+        }
+    });
+
+    //std::mem::drop(handles);
+
+    //std::mem::drop(pmap);
 }
 
-pub fn path_exp(paths: Vec<PathBuf>, s: crossbeam::Sender<Option<(Vec<String>, PathBuf)>>) {
+use crate::ast::*;
+use crate::mid_repr::ScopeContext;
+use std::sync::{Arc, RwLock};
+
+pub fn explore_paths<'error>(
+    paths: Vec<PathBuf>,
+    error_sink: crossbeam::Sender<Error<'error>>,
+) -> PathIdMap<'error> {
     let mut vd = VecDeque::new();
+
+    let global_context = Arc::new(RwLock::new(ScopeContext::new(
+        error_sink.clone(),
+        vec![String::from("crate")],
+        None,
+        None,
+    )));
+
     for p in paths.into_iter() {
-        vd.push_back((Vec::new(), p));
+        vd.push_back((vec![String::from("crate")], p, global_context.clone()));
     }
+
+    let mut pmap = PathIdMap::new();
+
     while !vd.is_empty() {
-        let (mut sn, p) = vd.pop_front().expect("paths was not empty but has no front");
-        if p.is_file() {
-            s.send(Some((sn, p))).expect("couldn't send");
-        } else if p.is_dir() {
-            sn.push(p.file_stem().expect("couldn't get file stem of entry in directory").to_string_lossy().into());
-            for subpath in p.read_dir().expect("couldn't read a directory in passed trees") {
+        let (scope, path, parent) = vd
+            .pop_front()
+            .expect("paths was not empty but had no front");
+        let mut base_scope = scope.clone();
+        let stem: String = path
+            .file_stem()
+            .expect("couldn't get file stem for a file")
+            .to_string_lossy()
+            .into();
+
+        if path.is_file() {
+            if let Some(ext) = path.extension() {
+                if ext.to_string_lossy().to_string() == "rsh" {
+                    let context = Arc::new(RwLock::new(ScopeContext::new(
+                        error_sink.clone(),
+                        base_scope,
+                        Some(Arc::downgrade(&global_context)),
+                        Some(Arc::downgrade(&parent)),
+                    )));
+                    pmap.push_path(path, context);
+                }
+            }
+        } else if path.is_dir() {
+            base_scope.push(stem);
+
+            let context = Arc::new(RwLock::new(ScopeContext::new(
+                        error_sink.clone(),
+                        base_scope.clone(),
+                        Some(Arc::downgrade(&global_context)),
+                        Some(Arc::downgrade(&parent)),
+                        )));
+
+
+            for subpath in path
+                .read_dir()
+                .expect("couldn't read a directory in passed trees")
+            {
                 if let Ok(subpath) = subpath {
-                    vd.push_back((sn.iter().cloned().collect(), subpath.path()));
+                    vd.push_back((base_scope.clone(), subpath.path(), context.clone()));
                 }
             }
         }
     }
 
-    s.send(None).expect("couldn't send end notify");
-
+    pmap
 }
 
-pub fn prepass<'a>(p: &mut ast::OuterScope<'a>) {
-}
+pub fn prepass<'a>(p: &mut ast::OuterScope<'a>) {}
 
-pub fn analyze<'a>(p: &mut ast::OuterScope<'a>) {
-}
+pub fn analyze<'a>(p: &mut ast::OuterScope<'a>) {}
 
-pub fn tollvm<'a>(p: &mut ast::OuterScope<'a>, _filename: &str) {
-}
+pub fn tollvm<'a>(p: &mut ast::OuterScope<'a>, _filename: &str) {}
