@@ -16,39 +16,33 @@ impl<'a> SymbolDB<'a> {
 
 #[derive(Debug)]
 #[allow(dead_code)]
-pub struct ScopeContext<'declarations, 'error> {
+pub struct ScopeContext<'input> {
     scope: Vec<String>,
     public: bool,
-    super_context: Option<Weak<RwLock<ScopeContext<'declarations, 'error>>>>,
+    super_context: Option<Weak<RwLock<ScopeContext<'input>>>>,
 
-    global_context: Option<Weak<RwLock<ScopeContext<'declarations, 'error>>>>,
+    global_context: Option<Weak<RwLock<ScopeContext<'input>>>>,
 
-    inner_contexts: CHashMap<String, Arc<RwLock<ScopeContext<'declarations, 'error>>>>,
+    inner_contexts: CHashMap<String, Arc<RwLock<ScopeContext<'input>>>>,
 
-    exported_symbols: CHashMap<String, Weak<RwLock<SymbolDeclaration<'declarations>>>>,
+    exported_symbols: CHashMap<String, Weak<RwLock<SymbolDeclaration<'input>>>>,
 
-    imported_symbols: CHashMap<String, Weak<RwLock<SymbolDeclaration<'declarations>>>>,
+    imported_symbols: CHashMap<String, Weak<RwLock<SymbolDeclaration<'input>>>>,
 
-    defined_symbols: CHashMap<String, Arc<RwLock<SymbolDeclaration<'declarations>>>>,
+    defined_symbols: CHashMap<String, Arc<RwLock<SymbolDeclaration<'input>>>>,
 
-    error_sink: crossbeam::Sender<Error<'error>>,
+    error_sink: crossbeam::Sender<Error<'input>>,
 }
 
 use std::mem::drop;
 
-/*trait RefDefinition<T> where T: {
-}
-
-impl<'a> RefDefinition<RwLock<ScopeContext<'a>>> {
-}*/
-
-impl<'declarations, 'error> ScopeContext<'declarations, 'error> {
+impl<'input> ScopeContext<'input> {
     pub fn new(
-        error_sink: crossbeam::Sender<Error<'error>>,
+        error_sink: crossbeam::Sender<Error<'input>>,
         scope: Vec<String>,
-        global: Option<Weak<RwLock<ScopeContext<'declarations, 'error>>>>,
-        parent: Option<Weak<RwLock<ScopeContext<'declarations, 'error>>>>,
-    ) -> ScopeContext<'declarations, 'error> {
+        global: Option<Weak<RwLock<ScopeContext<'input>>>>,
+        parent: Option<Weak<RwLock<ScopeContext<'input>>>>,
+    ) -> ScopeContext<'input> {
         ScopeContext {
             scope,
             public: true,
@@ -62,8 +56,14 @@ impl<'declarations, 'error> ScopeContext<'declarations, 'error> {
         }
     }
 
-    pub fn add_definition<'declaration>(&mut self, d: Arc<RwLock<SymbolDeclaration<'declaration>>>) -> bool
-        where 'declaration: 'declarations {
+    pub fn on_root(&mut self, outer: &OuterScope<'input>) {
+        for dec in outer.declarations.iter() {
+            //let dg = dec.read().unwrap();
+            self.add_definition(dec.clone());
+        }
+    }
+
+    pub fn add_definition(&mut self, d: Arc<RwLock<SymbolDeclaration<'input>>>) -> bool {
         let g = d.read().unwrap();
         let is_exported = g.is_public();
         let sname = g
@@ -114,7 +114,7 @@ impl<'declarations, 'error> ScopeContext<'declarations, 'error> {
         }
     }*/
 
-    pub fn add_child_context(&mut self, child: Arc<RwLock<ScopeContext<'declarations, 'error>>>) {
+    pub fn add_child_context(&mut self, child: Arc<RwLock<ScopeContext<'input>>>) {
         let child_guard = child.read().unwrap();
         let last_string = child_guard
             .scope

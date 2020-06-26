@@ -1,5 +1,5 @@
 use crate::ast;
-use crate::helper::lex_wrap::{LookaheadStream, Wrapper, ParseResultError};
+use crate::helper::lex_wrap::{LookaheadStream, ParseResultError, Wrapper};
 use crate::helper::*;
 use crate::parse::Parser;
 use rayon::prelude::*;
@@ -16,14 +16,15 @@ use crate::ast::*;
 
 pub fn parse_unit<'file>(
     handle: FileHandleRef<'file>,
+    context: &ScopeContext<'file>,
     cflags: &CFlags,
 ) -> Result<OuterScope<'file>, ParseResultError<'file>> {
     /*let path = path_handle
-        .read()
-        .unwrap()
-        .get_path(base_path)
-        .expect("path ID not registered")
-        .clone();*/
+    .read()
+    .unwrap()
+    .get_path(base_path)
+    .expect("path ID not registered")
+    .clone();*/
     /*println!(
         "parsing {:?} which has a file scope of {:?}",
         path, file_scope
@@ -150,6 +151,9 @@ pub fn launch(args: &[&str]) {
         println!("input file with path '{:#?}'", p);
     }
 
+    let mut path_map = PathIdMap::new();
+    let mut scope_map = ScopeIdMap::new();
+
     let (error_sender, _error_reciever) = crossbeam::unbounded();
 
     //static_assertions::assert_impl_all!(&mut [std::option::Option<crate::helper::FileHandle<'_>>]: rayon::iter::IntoParallelIterator);
@@ -162,55 +166,69 @@ pub fn launch(args: &[&str]) {
         .build()
         .expect("couldn't build thread pool");
 
-    let mut pmap = explore_paths(inputs.into_iter().collect(), error_sender);
+    for path in inputs.iter() {
+        println!("pushing path {:?}", path);
+        path_map.push_path(path.clone());
+    }
 
-    let handles = pmap.get_handles();
+    explore_paths(&mut path_map, &mut scope_map, error_sender);
 
-    /*handles.par_iter_mut().filter(|&mut file| {
-        if let Some(file) = file.as_mut() {
-            file.open()
-        } else {
-            false
-        }
-    });*/
+    println!("scope map: {:?}", scope_map.handles());
+
+    //let handles = pmap.get_handles();
 
     println!("going to iter and open files");
 
-    handles.par_iter_mut().for_each(|file| {
-        if let Some(f) = file {
+    path_map.handles_mut().par_iter_mut().for_each(|file| {
+        /*if let Some(f) = file {
             println!("opening a file");
             f.open();
-        }
+        }*/
+        //println!("opening file {:?}", file.path());
+        file.open();
+        println!("opened file {:?}", file.path());
+        //println!("opened file");
     });
 
-    println!("handles: {:?}", handles);
+    //println!("opened files");
 
-    println!("going to parse files");
+    //let handles_and_contexts
 
     let mut outers = Vec::new();
-    handles.par_iter().map(|file| {
-        println!("iter over file");
-        if let Some(fh) = file {
-            println!("file was some, going to parse: {:?}", fh.location);
-            //let contents = fh.open();
-            //parse_unit(Vec::new(), file.id, pmap
-            let outer_maybe = parse_unit(fh.as_ref(), &cflags);
-            Some(outer_maybe)
-        } else {
-            println!("a file was none");
-            None
-        }
-    }).collect_into_vec(&mut outers);
 
-    println!("parsed files");
+    //println!("scope map: {:?}", scope_map.handles());
+    //println!("\n");
+    //println!("path map: {:?}", path_map.handles());
 
-    let outers = outers.par_iter_mut();
-    outers.zip(handles.par_iter()).for_each(|(outer, handle)| {
-        if let Some(Ok(root)) = outer.as_mut() {
-            let context = handle.as_ref().unwrap().context();
-            root.prepass(&context)
-        }
-    });
+    path_map
+        .handles()
+        .par_iter()
+        .zip(scope_map.handles().par_iter())
+        .map(|(file, scope)| {
+            //println!("parsing a file");
+            if let Some(handle_ref) = file.as_ref() {
+                let r = parse_unit(handle_ref, &*scope.read().unwrap(), &cflags);
+                r
+            } else {
+                Ok(OuterScope::new(NodeInfo::Builtin, Vec::new()))
+                //println!("offending file is {:?}", file.path());
+                //panic!("couldn't read from an opened file");
+            }
+        })
+        .collect_into_vec(&mut outers);
+
+    outers
+        .par_iter()
+        .zip(path_map.handles().par_iter())
+        .zip(scope_map.handles_mut().par_iter_mut())
+        .for_each(|((outer, handle), scope_context)| {
+            if handle.path().is_file() {
+                if let Ok(root) = outer.as_ref() {
+                    let mut scope_guard = scope_context.write().unwrap();
+                    scope_guard.on_root(root);
+                }
+            }
+        });
 
     //let mut outers = outers.into_par_iter().as_mut();
 
@@ -223,10 +241,14 @@ pub fn launch(args: &[&str]) {
     //}).collect(); // only want to drive to completion here
 }
 
-pub fn explore_paths<'error>(
-    paths: Vec<PathBuf>,
-    error_sink: crossbeam::Sender<Error<'error>>,
-) -> PathIdMap<'error> {
+pub fn explore_paths<'input, 'context>(
+    pidm: &mut PathIdMap,
+    sidm: &mut ScopeIdMap<'input>,
+    error_sink: crossbeam::Sender<Error<'input>>,
+) -> ()
+where
+    'input: 'context,
+{
     let mut vd = VecDeque::new();
 
     let global_context = Arc::new(RwLock::new(ScopeContext::new(
@@ -236,17 +258,21 @@ pub fn explore_paths<'error>(
         None,
     )));
 
-    for p in paths.into_iter() {
+    sidm.set_global(global_context.clone());
+
+    //let scopes = ScopeIdMap::new();
+
+    for p in pidm.drain() {
         vd.push_back((vec![String::from("crate")], p, global_context.clone()));
     }
 
-    let mut pmap = PathIdMap::new();
-
     while !vd.is_empty() {
-        let (scope, path, parent) = vd
+        let (scope, handle, parent) = vd
             .pop_front()
             .expect("paths was not empty but had no front");
         let mut base_scope = scope.clone();
+        let path = handle.path().clone();
+
         let stem: String = path
             .file_stem()
             .expect("couldn't get file stem for a file")
@@ -262,7 +288,10 @@ pub fn explore_paths<'error>(
                         Some(Arc::downgrade(&global_context)),
                         Some(Arc::downgrade(&parent)),
                     )));
-                    pmap.push_path(path, context);
+                    println!("pushing a file to pmap");
+                    println!("context: {:?}", context);
+                    pidm.push_path(path);
+                    sidm.push_scope(context);
                 }
             }
         } else if path.is_dir() {
@@ -275,18 +304,26 @@ pub fn explore_paths<'error>(
                 Some(Arc::downgrade(&parent)),
             )));
 
+            println!("pushing a dir to pmap");
+            println!("context: {:?}", context);
+            pidm.push_path(path.clone());
+            sidm.push_scope(context.clone());
+
             for subpath in path
                 .read_dir()
                 .expect("couldn't read a directory in passed trees")
             {
                 if let Ok(subpath) = subpath {
-                    vd.push_back((base_scope.clone(), subpath.path(), context.clone()));
+                    let new_handle = FileHandle::new(subpath.path(), None);
+                    vd.push_back((base_scope.clone(), new_handle, context.clone()));
                 }
             }
         }
     }
 
-    pmap
+    for (id, handle) in pidm.handles_mut().iter_mut().enumerate() {
+        handle.set_id(id);
+    }
 }
 
 pub fn prepass<'a>(_p: &mut ast::OuterScope<'a>) {}

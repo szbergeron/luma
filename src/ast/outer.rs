@@ -54,7 +54,7 @@ pub struct OuterScope<'a> {
 }
 
 impl<'a> OuterScope<'a> {
-    pub fn prepass<'context>(&self, context: &Arc<RwLock<ScopeContext<'context, 'context>>>) where 'a: 'context {
+    /*pub fn prepass<'context>(&self, context: &Arc<RwLock<ScopeContext<'context, 'context>>>) where 'a: 'context {
         let mut context = context.write().unwrap();
         for dec in self.declarations.iter() {
             let dg = dec.read().unwrap();
@@ -63,6 +63,12 @@ impl<'a> OuterScope<'a> {
         }
 
         std::mem::drop(context);
+    }*/
+
+    pub fn new(node_info: NodeInfo, declarations: Vec<Arc<RwLock<SymbolDeclaration<'a>>>>) -> OuterScope<'a> {
+        OuterScope {
+            node_info, declarations,
+        }
     }
 }
 
