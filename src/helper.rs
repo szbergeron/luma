@@ -58,20 +58,27 @@ use crate::mid_repr::ScopeContext;
 pub type PathId = usize;
 pub type PathIdMapHandle<'a> = Arc<RwLock<PathIdMap<'a>>>;
 
+#[derive(Clone, Copy)]
+pub struct FileHandleRef<'a> {
+    pub id: usize,
+    pub contents: &'a str,
+}
+
+#[derive(Debug)]
 #[allow(dead_code)]
 pub struct FileHandle<'a> {
-    id: usize,
-    context: Arc<RwLock<ScopeContext<'a>>>,
-    location: PathBuf,
+    pub id: usize,
+    pub context: Arc<RwLock<ScopeContext<'a, 'a>>>,
+    pub location: PathBuf,
     //scope: Vec<String>,
-    contents: Option<Arc<String>>,
+    contents: Option<String>,
 }
 
 impl<'a> FileHandle<'a> {
     pub fn new(
         p: PathBuf,
         /*scope: Vec<String>,*/ id: usize,
-        context: Arc<RwLock<ScopeContext<'a>>>,
+        context: Arc<RwLock<ScopeContext<'a, 'a>>>,
     ) -> FileHandle {
         FileHandle {
             location: p,
@@ -82,17 +89,44 @@ impl<'a> FileHandle<'a> {
         }
     }
 
-    pub fn open(&mut self) -> std::io::Result<Arc<String>> {
+    pub fn open(&mut self) -> bool {
         match self.contents.clone() {
-            Some(contents) => Ok(contents.clone()),
+            Some(_contents) => { true }
             None => {
-                let content_string = fs::read_to_string(self.location.clone())?;
-                let content_rc = Arc::new(content_string);
-                let result = content_rc.clone();
-                self.contents = Some(content_rc);
-
-                Ok(result)
+                let content_maybe = fs::read_to_string(self.location.clone());
+                if let Ok(contents) = content_maybe {
+                    self.contents = Some(contents);
+                    return true;
+                } else {
+                    return false;
+                }
+                //let content_rc = Arc::new(content_string);
+                //let result = content_rc.clone();
+                //self.contents = Some(content_rc);
             }
+        }
+    }
+
+    /*pub fn slice(&self) -> Option<&str> {
+        /*if self.contents.is_some() {
+            //Some(&self.contents.unwrap()[..])
+            Some(&self.contents[..])
+        } else {
+            None
+        }*/
+        Some(&self.contents[..])
+        /*match self.contents.clone() {
+            Some(contents) => Some( &contents[..]),
+            None => None,
+        }*/
+    }*/
+
+    pub fn as_ref(&self) -> FileHandleRef {
+        //self.open();
+
+        FileHandleRef {
+            id: self.id,
+            contents: self.contents.as_ref().expect("file not open").as_str(),
         }
     }
 
@@ -104,7 +138,7 @@ impl<'a> FileHandle<'a> {
         &self.location
     }
 
-    pub fn context(&self) -> Arc<RwLock<ScopeContext<'a>>> {
+    pub fn context(&self) -> Arc<RwLock<ScopeContext<'a, 'a>>> {
         self.context.clone()
     }
 }
@@ -127,7 +161,7 @@ impl<'a> PathIdMap<'a> {
     pub fn push_path(
         &mut self,
         p: PathBuf,
-        /*scope: Vec<String>,*/ context: Arc<RwLock<ScopeContext<'a>>>,
+        /*scope: Vec<String>,*/ context: Arc<RwLock<ScopeContext<'a, 'a>>>,
     ) -> PathId {
         let id = self.paths.len();
         self.paths.push(Some(FileHandle::new(p, id, context)));

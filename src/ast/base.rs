@@ -90,7 +90,7 @@ impl std::fmt::Display for NodeInfo {
     }
 }
 
-pub trait AstNode<'a>: std::fmt::Debug {
+pub trait AstNode<'a>: std::fmt::Debug + Send + Sync {
     fn node_info(&self) -> NodeInfo;
     //fn start(&self) -> CodeLocation;
     //fn end(&self) -> CodeLocation;

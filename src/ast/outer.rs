@@ -7,6 +7,7 @@ use crate::helper::lex_wrap::ParseResultError;
 use std::sync::Arc;
 //use std::cell::RefCell;
 use std::sync::RwLock;
+use crate::mid_repr::*;
 
 #[derive(Debug)]
 pub struct Namespace<'a> {
@@ -48,7 +49,21 @@ impl<'a> AstNode<'a> for Namespace<'a> {
 pub struct OuterScope<'a> {
     pub node_info: NodeInfo,
 
-    pub declarations: Vec<Arc<RwLock<Result<SymbolDeclaration<'a>, ParseResultError<'a>>>>>,
+    //pub declarations: Vec<Arc<RwLock<Result<SymbolDeclaration<'a>, ParseResultError<'a>>>>>,
+    pub declarations: Vec<Arc<RwLock<SymbolDeclaration<'a>>>>,
+}
+
+impl<'a> OuterScope<'a> {
+    pub fn prepass<'context>(&self, context: &Arc<RwLock<ScopeContext<'context, 'context>>>) where 'a: 'context {
+        let mut context = context.write().unwrap();
+        for dec in self.declarations.iter() {
+            let dg = dec.read().unwrap();
+            let cdec = dec.clone();
+            context.add_definition(cdec);
+        }
+
+        std::mem::drop(context);
+    }
 }
 
 impl<'a> std::fmt::Display for OuterScope<'a> {
@@ -77,8 +92,9 @@ impl<'a> AstNode<'a> for OuterScope<'a> {
         self.declarations.iter().for_each(|elem| {
             elem.read()
                 .expect("locking error within parsunit display")
-                .iter()
-                .for_each(|elem| elem.display(f, depth + 1))
+                //.iter()
+                //.for_each(|elem| elem.display(f, depth + 1))
+                .display(f, depth+1)
         });
 
         /*for dec in self.declarations {

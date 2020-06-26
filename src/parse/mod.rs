@@ -12,37 +12,38 @@ use crate::helper::*;
 
 use colored::*;
 
-pub struct Parser<'b, 'a>
-where
-    'b: 'a,
+//use std::io::{self, Write};
+
+pub struct Parser<'input, 'lexer>
+    where 'input: 'lexer
 {
-    lex: &'b mut LookaheadStream<'a>,
-    errors: Vec<ParseResultError<'a>>,
+    lex: &'lexer mut LookaheadStream<'input>,
+    errors: Vec<ParseResultError<'input>>,
 }
 
-impl<'b, 'a> Parser<'b, 'a> {
-    pub fn new(lex: &'b mut LookaheadStream<'a>) -> Parser<'b, 'a> {
+impl<'input, 'lexer> Parser<'input, 'lexer> {
+    pub fn new(lex: &'lexer mut LookaheadStream<'input>) -> Parser<'input, 'lexer> {
         Parser {
             lex,
             errors: Vec::new(),
         }
     }
 
-    pub fn err<T>(&mut self, err: ParseResultError<'a>) -> Result<T, ParseResultError<'a>> {
+    pub fn err<T>(&mut self, err: ParseResultError<'input>) -> Result<T, ParseResultError<'input>> {
         self.errors.push(err.clone());
 
         Err(err)
     }
 
-    pub fn report_err(&mut self, err: ParseResultError<'a>) {
+    pub fn report_err(&mut self, err: ParseResultError<'input>) {
         //println!("REPORTED AN ERROR");
         self.errors.push(err);
     }
 
     pub fn cpe<T>(
         &mut self,
-        r: Result<T, ParseResultError<'a>>,
-    ) -> Result<T, ParseResultError<'a>> {
+        r: Result<T, ParseResultError<'input>>,
+    ) -> Result<T, ParseResultError<'input>> {
         let r = match r {
             Err(e) => {
                 self.errors.push(e.clone());
@@ -83,7 +84,7 @@ impl<'b, 'a> Parser<'b, 'a> {
     }
 
     //pub fn print_context<'map>(&self, start: usize, end: usize, map: &'map rangemap::RangeMap<usize, (usize, &'a str, usize)>) {
-    pub fn print_context(&self, start: CodeLocation, end: CodeLocation, lines: &Vec<&'a str>) {
+    pub fn print_context(&self, start: CodeLocation, end: CodeLocation, lines: &Vec<&str>) {
         // print context lines before
 
         match (start, end) {
@@ -167,10 +168,18 @@ impl<'b, 'a> Parser<'b, 'a> {
         map
     }*/
 
-    pub fn print_errors(&self, input: &'a str, path_handle: PathIdMapHandle) {
+
+    pub fn print_errors(&self, handle: FileHandleRef) {
         //let linemap = self.build_line_map(input);
-        let lines: Vec<&'a str> = input.lines().collect();
-        let _read_borrow = path_handle.read().unwrap();
+        //let input: std::sync::Arc<String> = handle.get().unwrap();
+        //let input = handle.slice().unwrap();
+        let input = handle.contents;
+        let lines_iter = input.lines();
+        //let v: Vec<&str> = lines.collect();
+        let lines: Vec<&str> = lines_iter.collect();
+        //let _read_borrow = path_handle.read().unwrap();
+        let stdout = std::io::stdout();
+        let mut handle = stdout.lock();
 
         println!();
         println!("{}", "Errors:".red());
@@ -199,7 +208,7 @@ impl<'b, 'a> Parser<'b, 'a> {
                     );
                 }
                 ParseResultError::SemanticIssue(issue, start, end) => {
-                    self.print_context(*start, *end, &lines);
+                    //self.print_context(*start, *end, &lines);
                     eprintln!("Encountered a semantic issue: {}. This issue was realized around the character range ({}, {})",
                         issue,
                         start,
@@ -214,5 +223,7 @@ impl<'b, 'a> Parser<'b, 'a> {
             println!();
         }
         println!();
+
+        std::mem::drop(handle);
     }
 }

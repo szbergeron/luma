@@ -5,7 +5,7 @@ use crate::helper::lex_wrap::TokenWrapper;
 use crate::parse::*;
 use std::collections::HashSet;
 
-impl<'b, 'a> Parser<'b, 'a> {
+impl<'input, 'lexer> Parser<'input, 'lexer> {
     pub fn eat_through(&mut self, toks: Vec<Token>) {
         let s: HashSet<Token> = toks.into_iter().collect();
 
@@ -31,12 +31,12 @@ impl<'b, 'a> Parser<'b, 'a> {
         }
     }
 
-    pub fn eat_match(&mut self, t: Token) -> Option<TokenWrapper<'a>> {
+    pub fn eat_match(&mut self, t: Token) -> Option<TokenWrapper<'input>> {
         self.expect(t).ok()
         //expect(t).map_or(|t| Some(t), None)
     }
 
-    pub fn eat_match_in(&mut self, t: &[Token]) -> Option<TokenWrapper<'a>> {
+    pub fn eat_match_in(&mut self, t: &[Token]) -> Option<TokenWrapper<'input>> {
         if let Ok(tw) = self.lex.la(0) {
             if t.contains(&tw.token) {
                 self.lex.advance();
@@ -50,9 +50,9 @@ impl<'b, 'a> Parser<'b, 'a> {
         }
     }
 
-    pub fn eat_if<F, T>(&mut self, f: F) -> Option<(T, TokenWrapper<'a>)>
+    pub fn eat_if<F, T>(&mut self, f: F) -> Option<(T, TokenWrapper<'input>)>
     where
-        F: FnOnce(TokenWrapper<'a>) -> Option<T>,
+        F: FnOnce(TokenWrapper<'input>) -> Option<T>,
     {
         match self.lex.la(0) {
             Ok(tw) => {
@@ -71,7 +71,7 @@ impl<'b, 'a> Parser<'b, 'a> {
         }
     }
 
-    pub fn expect(&mut self, t: Token) -> Result<TokenWrapper<'a>, ParseResultError<'a>> {
+    pub fn expect(&mut self, t: Token) -> Result<TokenWrapper<'input>, ParseResultError<'input>> {
         if let Ok(tw) = self.lex.next() {
             match tw.token {
                 tt if tt == t => Ok(tw),
@@ -87,6 +87,6 @@ impl<'b, 'a> Parser<'b, 'a> {
     }
 }
 
-pub struct RunConditional<'a> {
-    pub run_if: Option<TokenWrapper<'a>>,
+pub struct RunConditional<'input> {
+    pub run_if: Option<TokenWrapper<'input>>,
 }

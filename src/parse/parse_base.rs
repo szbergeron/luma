@@ -10,12 +10,13 @@ use std::sync::{Arc, RwLock};
 
 use crate::parse::*;
 
-impl<'b, 'a> Parser<'b, 'a> {
-    pub fn entry(&mut self) -> Result<ast::OuterScope<'a>, ParseResultError<'a>> {
+impl<'input, 'lexer> Parser<'input, 'lexer> {
+    pub fn entry(&mut self) -> Result<ast::OuterScope<'input>, ParseResultError<'input>> {
         //let mut declarations
-        let mut declarations: Vec<
-            Arc<RwLock<Result<ast::SymbolDeclaration<'a>, ParseResultError<'a>>>>,
-        > = Vec::new();
+        /*let mut declarations: Vec<
+            Arc<RwLock<Result<ast::SymbolDeclaration<'input>, ParseResultError<'input>>>>,
+        > = Vec::new();*/
+        let mut declarations = Vec::new();
 
         let start = self.lex.la(0).map_or(CodeLocation::Builtin, |tw| tw.start);
 
@@ -34,16 +35,18 @@ impl<'b, 'a> Parser<'b, 'a> {
                             self.report_err(e.clone());
                             self.eat_through(vec![Token::RBrace, Token::Semicolon]);
 
-                            Err(e)
+                            //Err(e);
                         }
-                        Ok(ok) => Ok(ok),
+                        Ok(ok) => {
+                            declarations.push(Arc::new(RwLock::new(ok)));
+                        },
                     };
 
-                    Arc::new(RwLock::new(r))
+                    //Arc::new(RwLock::new(r))
                 }
             };
 
-            declarations.push(r);
+            //declarations.push(r);
         }
 
         let end = self.lex.la(-1).map_or(start, |tw| tw.start);
@@ -56,7 +59,7 @@ impl<'b, 'a> Parser<'b, 'a> {
 
     pub fn parse_struct_declaration(
         &mut self,
-    ) -> Result<ast::StructDeclaration<'a>, ParseResultError<'a>> {
+    ) -> Result<ast::StructDeclaration<'input>, ParseResultError<'input>> {
         let start = self.expect(Token::Struct)?.start;
         let id = self.expect(Token::Identifier)?.slice;
         let mut typeparams = Vec::new();
@@ -108,7 +111,7 @@ impl<'b, 'a> Parser<'b, 'a> {
 
     pub fn global_declaration(
         &mut self,
-    ) -> Result<ast::SymbolDeclaration<'a>, ParseResultError<'a>> {
+    ) -> Result<ast::SymbolDeclaration<'input>, ParseResultError<'input>> {
         let has_pub = self.eat_match(Token::Public);
         let mut failed = false;
 
@@ -155,7 +158,7 @@ impl<'b, 'a> Parser<'b, 'a> {
         }
     }
 
-    pub fn namespace(&mut self) -> Result<ast::Namespace<'a>, ParseResultError<'a>> {
+    pub fn namespace(&mut self) -> Result<ast::Namespace<'input>, ParseResultError<'input>> {
         let start = self.lex.la(0).map_or(CodeLocation::Builtin, |tw| tw.start);
 
         self.expect(Token::Module)?;
@@ -180,7 +183,7 @@ impl<'b, 'a> Parser<'b, 'a> {
 
     fn type_reference_inner(
         &mut self,
-    ) -> Result<Option<ast::TypeReference<'a>>, ParseResultError<'a>> {
+    ) -> Result<Option<ast::TypeReference<'input>>, ParseResultError<'input>> {
         let typename = self.eat_match(Token::Identifier);
         match typename {
             None => Ok(None),
@@ -221,7 +224,7 @@ impl<'b, 'a> Parser<'b, 'a> {
         }
     }
 
-    pub fn type_reference(&mut self) -> Result<ast::TypeReference<'a>, ParseResultError<'a>> {
+    pub fn type_reference(&mut self) -> Result<ast::TypeReference<'input>, ParseResultError<'input>> {
         let index = self
             .lex
             .la(0)
@@ -240,9 +243,9 @@ impl<'b, 'a> Parser<'b, 'a> {
 
     pub fn function_param_list(
         &mut self,
-    ) -> Result<Vec<(Box<ast::ExpressionWrapper<'a>>, ast::TypeReference<'a>)>, ParseResultError<'a>>
+    ) -> Result<Vec<(Box<ast::ExpressionWrapper<'input>>, ast::TypeReference<'input>)>, ParseResultError<'input>>
     {
-        let mut rvec: Vec<(Box<ast::ExpressionWrapper<'a>>, ast::TypeReference<'a>)> = Vec::new();
+        let mut rvec: Vec<(Box<ast::ExpressionWrapper<'input>>, ast::TypeReference<'input>)> = Vec::new();
         while let Ok(a) = self.atomic_expression() {
             self.expect(Token::Colon)?;
             let tr = self.type_reference()?;
@@ -262,7 +265,7 @@ impl<'b, 'a> Parser<'b, 'a> {
 
     pub fn function_declaration(
         &mut self,
-    ) -> Result<ast::FunctionDeclaration<'a>, ParseResultError<'a>> {
+    ) -> Result<ast::FunctionDeclaration<'input>, ParseResultError<'input>> {
         let start = self.expect(Token::Function)?.start;
         let function_name = self.expect(Token::Identifier)?;
         self.expect(Token::LParen)?;
@@ -290,7 +293,7 @@ impl<'b, 'a> Parser<'b, 'a> {
         })
     }
 
-    pub fn closure(&mut self) -> Result<ast::Closure<'a>, ParseResultError<'a>> {
-        panic!()
+    pub fn closure(&mut self) -> Result<ast::Closure<'input>, ParseResultError<'input>> {
+        todo!("inline closures not implemented yet");
     }
 }

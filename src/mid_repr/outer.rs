@@ -14,34 +14,41 @@ use std::sync::{Arc, RwLock, Weak};
 impl<'a> SymbolDB<'a> {
 }*/
 
+#[derive(Debug)]
 #[allow(dead_code)]
-pub struct ScopeContext<'a> {
+pub struct ScopeContext<'declarations, 'error> {
     scope: Vec<String>,
     public: bool,
-    super_context: Option<Weak<RwLock<ScopeContext<'a>>>>,
+    super_context: Option<Weak<RwLock<ScopeContext<'declarations, 'error>>>>,
 
-    global_context: Option<Weak<RwLock<ScopeContext<'a>>>>,
+    global_context: Option<Weak<RwLock<ScopeContext<'declarations, 'error>>>>,
 
-    inner_contexts: CHashMap<String, Arc<RwLock<ScopeContext<'a>>>>,
+    inner_contexts: CHashMap<String, Arc<RwLock<ScopeContext<'declarations, 'error>>>>,
 
-    exported_symbols: CHashMap<String, Weak<RwLock<SymbolDeclaration<'a>>>>,
+    exported_symbols: CHashMap<String, Weak<RwLock<SymbolDeclaration<'declarations>>>>,
 
-    imported_symbols: CHashMap<String, Weak<RwLock<SymbolDeclaration<'a>>>>,
+    imported_symbols: CHashMap<String, Weak<RwLock<SymbolDeclaration<'declarations>>>>,
 
-    defined_symbols: CHashMap<String, Arc<RwLock<SymbolDeclaration<'a>>>>,
+    defined_symbols: CHashMap<String, Arc<RwLock<SymbolDeclaration<'declarations>>>>,
 
-    error_sink: crossbeam::Sender<Error<'a>>,
+    error_sink: crossbeam::Sender<Error<'error>>,
 }
 
 use std::mem::drop;
 
-impl<'a> ScopeContext<'a> {
+/*trait RefDefinition<T> where T: {
+}
+
+impl<'a> RefDefinition<RwLock<ScopeContext<'a>>> {
+}*/
+
+impl<'declarations, 'error> ScopeContext<'declarations, 'error> {
     pub fn new(
-        error_sink: crossbeam::Sender<Error<'a>>,
+        error_sink: crossbeam::Sender<Error<'error>>,
         scope: Vec<String>,
-        global: Option<Weak<RwLock<ScopeContext<'a>>>>,
-        parent: Option<Weak<RwLock<ScopeContext<'a>>>>,
-    ) -> ScopeContext<'a> {
+        global: Option<Weak<RwLock<ScopeContext<'declarations, 'error>>>>,
+        parent: Option<Weak<RwLock<ScopeContext<'declarations, 'error>>>>,
+    ) -> ScopeContext<'declarations, 'error> {
         ScopeContext {
             scope,
             public: true,
@@ -55,15 +62,17 @@ impl<'a> ScopeContext<'a> {
         }
     }
 
-    pub fn add_definition(&mut self, d: SymbolDeclaration<'a>) -> bool {
-        let is_exported = d.is_public();
-        let sname = d
+    pub fn add_definition<'declaration>(&mut self, d: Arc<RwLock<SymbolDeclaration<'declaration>>>) -> bool
+        where 'declaration: 'declarations {
+        let g = d.read().unwrap();
+        let is_exported = g.is_public();
+        let sname = g
             .symbol_name()
             .expect("No support for unnamed symbol declarations currently");
 
         let mut result = true;
 
-        let nref = Arc::new(RwLock::new(d));
+        let nref = d.clone();
         if let Some(rg) = self.defined_symbols.get(sname) {
             self.error_sink
                 .send(Error::DuplicateDefinition {
@@ -89,7 +98,7 @@ impl<'a> ScopeContext<'a> {
         result
     }
 
-    pub fn set_once_super(&mut self, super_context: Weak<RwLock<ScopeContext<'a>>>) {
+    /*pub fn set_once_super(&mut self, super_context: Weak<RwLock<ScopeContext<'a>>>) {
         if self.super_context.is_some() {
             panic!("Super context is already some");
         } else {
@@ -103,9 +112,9 @@ impl<'a> ScopeContext<'a> {
         } else {
             self.global_context = Some(global_context);
         }
-    }
+    }*/
 
-    pub fn add_child_context(&mut self, child: Arc<RwLock<ScopeContext<'a>>>) {
+    pub fn add_child_context(&mut self, child: Arc<RwLock<ScopeContext<'declarations, 'error>>>) {
         let child_guard = child.read().unwrap();
         let last_string = child_guard
             .scope
@@ -119,7 +128,7 @@ impl<'a> ScopeContext<'a> {
 
     //pub fn get_weakref(&self,
 
-    pub fn import(&mut self, _sn: ScopedName<'a>) {}
+    //pub fn import(&mut self, _sn: ScopedName<'a>) {}
 }
 
 /*pub struct FullyQualifiedScopedName<'a> {

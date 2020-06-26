@@ -1,38 +1,41 @@
 use crate::ast;
-use crate::helper::lex_wrap::{LookaheadStream, Wrapper};
+use crate::helper::lex_wrap::{LookaheadStream, Wrapper, ParseResultError};
 use crate::helper::*;
 use crate::parse::Parser;
 use rayon::prelude::*;
 use std::collections::HashSet;
 use std::collections::VecDeque;
-use std::fs;
+
 use std::path::{Path, PathBuf};
 use std::process;
 
 use crate::mid_repr::ScopeContext;
 use std::sync::{Arc, RwLock};
 
-pub fn parse_unit(
-    file_scope: Vec<String>,
-    base_path: PathId,
-    path_handle: PathIdMapHandle,
+use crate::ast::*;
+
+pub fn parse_unit<'file>(
+    handle: FileHandleRef<'file>,
     cflags: &CFlags,
-) {
-    let path = path_handle
+) -> Result<OuterScope<'file>, ParseResultError<'file>> {
+    /*let path = path_handle
         .read()
         .unwrap()
         .get_path(base_path)
         .expect("path ID not registered")
-        .clone();
-    println!(
+        .clone();*/
+    /*println!(
         "parsing {:?} which has a file scope of {:?}",
         path, file_scope
-    );
+    );*/
+
     // clone because we don't want to keep lock open, and this should be rather cheap in the scheme
     // of things
     // TODO: eval if this even matters
 
-    let contents = &fs::read_to_string(path).expect("could not read contents of target file")[..];
+    let contents = handle.contents;
+
+    let base_path = handle.id;
     let mut lex = Wrapper::new(contents, base_path);
     let mut scanner = LookaheadStream::new(&mut lex);
 
@@ -41,22 +44,23 @@ pub fn parse_unit(
     let p = parser.entry();
 
     if !cflags.eflags.silence_errors {
-        parser.print_errors(contents, path_handle);
+        parser.print_errors(handle);
     }
 
-    //
-    match p {
-        Ok(mut punit) => {
+    match p.as_ref() {
+        Ok(punit) => {
             if cflags.dump_tree {
                 println!("Gets AST of: {}", punit);
             }
 
-            analyze(&mut punit);
+            //analyze(&mut punit);
         }
         Err(err) => {
             println!("Failed to parse with error: {:?}", err);
         }
     }
+
+    p
 }
 
 /*pub fn parse<'a>(contents: &'a str) -> Result<ast::ParseUnit<'a>, ParseResultError<'a>> {
@@ -162,15 +166,61 @@ pub fn launch(args: &[&str]) {
 
     let handles = pmap.get_handles();
 
+    /*handles.par_iter_mut().filter(|&mut file| {
+        if let Some(file) = file.as_mut() {
+            file.open()
+        } else {
+            false
+        }
+    });*/
+
+    println!("going to iter and open files");
+
     handles.par_iter_mut().for_each(|file| {
-        if let Some(fh) = file {
-            let _contents = fh.open();
+        if let Some(f) = file {
+            println!("opening a file");
+            f.open();
         }
     });
 
-    //std::mem::drop(handles);
+    println!("handles: {:?}", handles);
 
-    //std::mem::drop(pmap);
+    println!("going to parse files");
+
+    let mut outers = Vec::new();
+    handles.par_iter().map(|file| {
+        println!("iter over file");
+        if let Some(fh) = file {
+            println!("file was some, going to parse: {:?}", fh.location);
+            //let contents = fh.open();
+            //parse_unit(Vec::new(), file.id, pmap
+            let outer_maybe = parse_unit(fh.as_ref(), &cflags);
+            Some(outer_maybe)
+        } else {
+            println!("a file was none");
+            None
+        }
+    }).collect_into_vec(&mut outers);
+
+    println!("parsed files");
+
+    let outers = outers.par_iter_mut();
+    outers.zip(handles.par_iter()).for_each(|(outer, handle)| {
+        if let Some(Ok(root)) = outer.as_mut() {
+            let context = handle.as_ref().unwrap().context();
+            root.prepass(&context)
+        }
+    });
+
+    //let mut outers = outers.into_par_iter().as_mut();
+
+    //let mut result = Vec::new();
+
+    //outers.map(|o| o).collect_into_vec(&mut result);
+
+    // have now finished parsing, need to do prepass now
+    //let r: Vec<()> = handles.into_par_iter().zip(outers).map(|(handle, outer)| {
+    //}).collect(); // only want to drive to completion here
 }
 
 pub fn explore_paths<'error>(

@@ -12,16 +12,16 @@ use ast::base::*;
 use ast::expressions::*;
 use ast::outer::*;
 
-type ExpressionResult<'a> = Result<Box<ast::ExpressionWrapper<'a>>, ParseResultError<'a>>;
+type ExpressionResult<'input> = Result<Box<ast::ExpressionWrapper<'input>>, ParseResultError<'input>>;
 
-impl<'a, 'b> Parser<'a, 'b> {
-    pub fn parse_expr(&mut self) -> ExpressionResult<'a> {
+impl<'input, 'lexer> Parser<'input, 'lexer> {
+    pub fn parse_expr(&mut self) -> ExpressionResult<'input> {
         let r = self.parse_expr_inner(0, 1);
 
         r
     }
 
-    pub fn parse_pattern(&mut self) -> Result<Pattern<'a>, ParseResultError<'a>> {
+    pub fn parse_pattern(&mut self) -> Result<Pattern<'input>, ParseResultError<'input>> {
         // can be a single literal or tuple, and each tuple is a set of expressions
 
         let lp = self.expect(Token::LParen);
@@ -49,11 +49,11 @@ impl<'a, 'b> Parser<'a, 'b> {
         })
     }
 
-    pub fn parse_array_literal(&mut self) -> ExpressionResult<'a> {
+    pub fn parse_array_literal(&mut self) -> ExpressionResult<'input> {
         todo!()
     }
 
-    pub fn scoped_name(&mut self) -> Box<ScopedNameReference<'a>> {
+    pub fn scoped_name(&mut self) -> Box<ScopedNameReference<'input>> {
         let mut r = Box::new(ScopedNameReference {
             scope: Vec::new(),
             silent: true,
@@ -101,7 +101,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         r
     }
 
-    pub fn atomic_expression(&mut self) -> ExpressionResult<'a> {
+    pub fn atomic_expression(&mut self) -> ExpressionResult<'input> {
         if let Ok(tw) = self.lex.next() {
             match tw.token {
                 Token::UnknownIntegerLiteral => Ok(ast::ExpressionWrapper::literal_expression(tw)),
@@ -111,17 +111,20 @@ impl<'a, 'b> Parser<'a, 'b> {
                     self.lex.backtrack();
                     self.parse_access_base(None)
                 }
-                _ => Err(ParseResultError::UnexpectedToken(
-                    tw,
-                    vec![
-                        Token::UnknownIntegerLiteral,
-                        Token::StringLiteral,
-                        Token::Underscore,
-                        Token::LParen,
-                        Token::DoubleColon,
-                        Token::Identifier,
-                    ],
-                )),
+                _ => {
+                    self.lex.backtrack();
+                    Err(ParseResultError::UnexpectedToken(
+                        tw,
+                        vec![
+                            Token::UnknownIntegerLiteral,
+                            Token::StringLiteral,
+                            Token::Underscore,
+                            Token::LParen,
+                            Token::DoubleColon,
+                            Token::Identifier,
+                        ],
+                    ))
+                },
             }
         } else {
             self.err(ParseResultError::EndOfFile)
@@ -130,8 +133,8 @@ impl<'a, 'b> Parser<'a, 'b> {
 
     pub fn parse_access_trailing(
         &mut self,
-        on: Box<ExpressionWrapper<'a>>,
-    ) -> ExpressionResult<'a> {
+        on: Box<ExpressionWrapper<'input>>,
+    ) -> ExpressionResult<'input> {
         let p = self.parse_pattern()?;
         let start = on.as_node().start().unwrap_or(CodeLocation::Builtin);
 
@@ -155,8 +158,8 @@ impl<'a, 'b> Parser<'a, 'b> {
 
     pub fn parse_access_base(
         &mut self,
-        on: Option<Box<ExpressionWrapper<'a>>>,
-    ) -> ExpressionResult<'a> {
+        on: Option<Box<ExpressionWrapper<'input>>>,
+    ) -> ExpressionResult<'input> {
         //println!("parse_access called with lookahead {:?}", self.lex.la(0));
         /*
          * Follows pattern:
@@ -200,7 +203,6 @@ impl<'a, 'b> Parser<'a, 'b> {
         }
 
         // invisible invariant: either base or b_pattern has to be Some, or both
-
         let (start, end) = match either {
             EitherAnd::Neither => panic!("Somehow got neither a pattern nor a base"),
             EitherAnd::A(a) => (a.start, a.end),
@@ -220,7 +222,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         Ok(Box::new(ExpressionWrapper::Access(ae)))
     }
 
-    pub fn parse_if_then_else(&mut self) -> ExpressionResult<'a> {
+    pub fn parse_if_then_else(&mut self) -> ExpressionResult<'input> {
         let start = self.expect(Token::If)?.start;
         let if_exp = self.parse_expr()?;
         let then_exp = self.parse_expr()?;
@@ -246,7 +248,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         ))
     }
 
-    pub fn parse_while(&mut self) -> ExpressionResult<'a> {
+    pub fn parse_while(&mut self) -> ExpressionResult<'input> {
         let start = self.expect(Token::While)?.start;
         let while_exp = self.parse_expr()?;
         let do_exp = self.parse_expr()?;
@@ -257,9 +259,9 @@ impl<'a, 'b> Parser<'a, 'b> {
         Ok(WhileExpression::new_expr(node_info, while_exp, do_exp))
     }
 
-    pub fn syntactic_block(&mut self) -> ExpressionResult<'a> {
+    pub fn syntactic_block(&mut self) -> ExpressionResult<'input> {
         self.expect(Token::LBrace)?;
-        let mut declarations: Vec<Result<Box<ast::ExpressionWrapper<'a>>, ParseResultError<'a>>> =
+        let mut declarations: Vec<Result<Box<ast::ExpressionWrapper<'input>>, ParseResultError<'input>>> =
             Vec::new();
         let start = self.lex.la(0).map_or(CodeLocation::Builtin, |tw| tw.start);
 
@@ -326,7 +328,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         Ok(ast::BlockExpression::new_expr(node_info, declarations))
     }
 
-    pub fn parse_expr_inner(&mut self, min_bp: u32, level: usize) -> ExpressionResult<'a> {
+    pub fn parse_expr_inner(&mut self, min_bp: u32, level: usize) -> ExpressionResult<'input> {
         let t1 = self.lex.la(0)?;
         let mut lhs = match t1.token {
             Token::LBracket => {
@@ -378,7 +380,7 @@ impl<'a, 'b> Parser<'a, 'b> {
             if let Some(_colon) = self.eat_match(Token::Colon) {
                 todo!("Type constraints not implemented yet")
             } else if let Some(_as) = self.eat_match(Token::As) {
-                let typeref: Box<ast::TypeReference<'a>> = Box::new(self.type_reference()?);
+                let typeref: Box<ast::TypeReference<'input>> = Box::new(self.type_reference()?);
                 let start = lhs
                     .as_node()
                     .start()
@@ -424,8 +426,8 @@ impl<'a, 'b> Parser<'a, 'b> {
         &mut self,
         node_info: NodeInfo,
         t: Token,
-        lhs: Box<ast::ExpressionWrapper<'a>>,
-    ) -> Box<ast::ExpressionWrapper<'a>> {
+        lhs: Box<ast::ExpressionWrapper<'input>>,
+    ) -> Box<ast::ExpressionWrapper<'input>> {
         match t {
             Token::And | Token::Asterisk | Token::Dash | Token::Bang => {
                 UnaryOperationExpression::new_expr(node_info, t, lhs)
@@ -443,9 +445,9 @@ impl<'a, 'b> Parser<'a, 'b> {
         &mut self,
         node_info: NodeInfo,
         t: Token,
-        lhs: Box<ast::ExpressionWrapper<'a>>,
-        rhs: Box<ast::ExpressionWrapper<'a>>,
-    ) -> ExpressionResult<'a> {
+        lhs: Box<ast::ExpressionWrapper<'input>>,
+        rhs: Box<ast::ExpressionWrapper<'input>>,
+    ) -> ExpressionResult<'input> {
         match t {
             Token::Plus | Token::Dash | Token::Asterisk | Token::FSlash => {
                 Ok(BinaryOperationExpression::new_expr(node_info, t, lhs, rhs))
@@ -494,9 +496,9 @@ impl<'a, 'b> Parser<'a, 'b> {
     }
 }
 
-pub enum DotAccess<'a> {
-    Field(&'a str),
-    Method(&'a str, Vec<Box<ast::ExpressionWrapper<'a>>>),
+pub enum DotAccess<'input> {
+    Field(&'input str),
+    Method(&'input str, Vec<Box<ast::ExpressionWrapper<'input>>>),
 }
 
 use ast::IntoAstNode;
