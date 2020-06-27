@@ -167,13 +167,13 @@ pub fn launch(args: &[&str]) {
         .expect("couldn't build thread pool");
 
     for path in inputs.iter() {
-        println!("pushing path {:?}", path);
+        //println!("pushing path {:?}", path);
         path_map.push_path(path.clone());
     }
 
     explore_paths(&mut path_map, &mut scope_map, error_sender);
 
-    println!("scope map: {:?}", scope_map.handles());
+    //println!("scope map: {:?}", scope_map.handles());
 
     //let handles = pmap.get_handles();
 
@@ -186,7 +186,7 @@ pub fn launch(args: &[&str]) {
         }*/
         //println!("opening file {:?}", file.path());
         file.open();
-        println!("opened file {:?}", file.path());
+        //println!("opened file {:?}", file.path());
         //println!("opened file");
     });
 
@@ -256,6 +256,7 @@ where
         vec![String::from("crate")],
         None,
         None,
+        None,
     )));
 
     sidm.set_global(global_context.clone());
@@ -287,11 +288,14 @@ where
                         base_scope,
                         Some(Arc::downgrade(&global_context)),
                         Some(Arc::downgrade(&parent)),
+                        None,
                     )));
-                    println!("pushing a file to pmap");
-                    println!("context: {:?}", context);
+                    //println!("pushing a file to pmap");
+                    //println!("context: {:?}", context);
                     pidm.push_path(path);
-                    sidm.push_scope(context);
+                    sidm.push_scope(context.clone());
+
+                    parent.write().unwrap().add_child_context(context.clone());
                 }
             }
         } else if path.is_dir() {
@@ -302,28 +306,39 @@ where
                 base_scope.clone(),
                 Some(Arc::downgrade(&global_context)),
                 Some(Arc::downgrade(&parent)),
+                None,
             )));
 
-            println!("pushing a dir to pmap");
-            println!("context: {:?}", context);
-            pidm.push_path(path.clone());
-            sidm.push_scope(context.clone());
+            //println!("pushing a dir to pmap");
+            //println!("context: {:?}", context);
+            let mut path = path;
 
             for subpath in path
                 .read_dir()
                 .expect("couldn't read a directory in passed trees")
             {
                 if let Ok(subpath) = subpath {
-                    let new_handle = FileHandle::new(subpath.path(), None);
-                    vd.push_back((base_scope.clone(), new_handle, context.clone()));
+                    if subpath.path().file_name().expect("couldn't get file name of directory child").to_string_lossy().as_parallel_string() == "mod.rsh" {
+                        path = subpath.path();
+                    } else {
+                        let new_handle = FileHandle::new(subpath.path(), None);
+                        vd.push_back((base_scope.clone(), new_handle, context.clone()));
+                    }
                 }
             }
+
+            pidm.push_path(path.clone());
+            sidm.push_scope(context.clone());
+                    
+            parent.write().unwrap().add_child_context(context.clone());
         }
     }
 
     for (id, handle) in pidm.handles_mut().iter_mut().enumerate() {
         handle.set_id(id);
     }
+
+    println!("scopes: {}", sidm.global().unwrap().read().unwrap());
 }
 
 pub fn prepass<'a>(_p: &mut ast::OuterScope<'a>) {}

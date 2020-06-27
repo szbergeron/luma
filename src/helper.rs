@@ -123,7 +123,11 @@ impl<'input> FileHandle {
                 } else {
                     //println!("tried to open something that isn't a file");
                     //panic!("tried to open something that isn't a file");
-                    return false;
+                    //return false;
+
+                    //TODO: decide if allowing folders to be their own empty files is wrong
+                    self.contents = Some(String::new());
+                    return true;
                 }
                 //let content_rc = Arc::new(content_string);
                 //let result = content_rc.clone();

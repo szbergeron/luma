@@ -19,6 +19,8 @@ impl<'a> SymbolDB<'a> {
 pub struct ScopeContext<'input> {
     scope: Vec<String>,
     public: bool,
+    from: Option<Arc<RwLock<Namespace<'input>>>>,
+
     super_context: Option<Weak<RwLock<ScopeContext<'input>>>>,
 
     global_context: Option<Weak<RwLock<ScopeContext<'input>>>>,
@@ -36,12 +38,81 @@ pub struct ScopeContext<'input> {
 
 use std::mem::drop;
 
+impl<'input> AstNode<'input> for ScopeContext<'input> {
+    fn node_info(&self) -> NodeInfo {
+        match self.from.as_ref() {
+            None => NodeInfo::Builtin,
+            Some(ns_lock) => {
+                let ns_guard = ns_lock.read().unwrap();
+                ns_guard.node_info()
+            }
+        }
+    }
+
+    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+        let _ = writeln!(f, "{}ScopeContext at scope{:?}", indent(depth), self.scope);
+        /*writeln!(f, "{}Super context:", indent(depth+1)).unwrap();
+        if self.super_context.is_some() {
+            self.super_context.as_ref().unwrap().upgrade().unwrap().read().unwrap().display(f, depth+2);
+        } else {
+            writeln!(f, "{}None", indent(depth+2)).unwrap();
+        }
+        writeln!(f, "{}Global context:", indent(depth+1)).unwrap();
+        if self.global_context.is_some() {
+            self.global_context.as_ref().unwrap().upgrade().unwrap().read().unwrap().display(f, depth+2);
+        } else {
+            writeln!(f, "{}None", indent(depth+2)).unwrap();
+        }*/
+        writeln!(f, "{}Inner contexts:", indent(depth + 1)).unwrap();
+        self.inner_contexts
+            .clone()
+            .into_iter()
+            .for_each(|(_, wref)| wref.read().unwrap().display(f, depth + 2));
+        writeln!(f, "{}Exported symbols:", indent(depth + 1)).unwrap();
+        self.exported_symbols
+            .clone()
+            .into_iter()
+            .for_each(|(_, wref)| {
+                wref.upgrade()
+                    .unwrap()
+                    .read()
+                    .unwrap()
+                    .display(f, depth + 2)
+            });
+        writeln!(f, "{}Imported symbols:", indent(depth + 1)).unwrap();
+        self.imported_symbols
+            .clone()
+            .into_iter()
+            .for_each(|(_, wref)| {
+                wref.upgrade()
+                    .unwrap()
+                    .read()
+                    .unwrap()
+                    .display(f, depth + 2)
+            });
+        writeln!(f, "{}Defined symbols:", indent(depth + 1)).unwrap();
+        self.defined_symbols
+            .clone()
+            .into_iter()
+            .for_each(|(_, wref)| wref.read().unwrap().display(f, depth + 2));
+    }
+}
+
+impl<'input> std::fmt::Display for ScopeContext<'input> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.display(f, 0);
+
+        write!(f, "")
+    }
+}
+
 impl<'input> ScopeContext<'input> {
     pub fn new(
         error_sink: crossbeam::Sender<Error<'input>>,
         scope: Vec<String>,
         global: Option<Weak<RwLock<ScopeContext<'input>>>>,
         parent: Option<Weak<RwLock<ScopeContext<'input>>>>,
+        from: Option<Arc<RwLock<Namespace<'input>>>>,
     ) -> ScopeContext<'input> {
         ScopeContext {
             scope,
@@ -53,6 +124,7 @@ impl<'input> ScopeContext<'input> {
             defined_symbols: CHashMap::new(),
             inner_contexts: CHashMap::new(),
             error_sink,
+            from,
         }
     }
 
