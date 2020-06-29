@@ -203,7 +203,7 @@ pub fn launch(args: &[&str]) {
                 if let Ok(root) = outer.as_ref() {
                     println!("root was ok");
                     let mut scope_guard = scope_context.write().unwrap();
-                    scope_guard.on_root(root);
+                    ScopeContext::on_root(scope_context.clone(), root);
                 } else {
                     println!("root was not ok");
                 }
@@ -229,13 +229,13 @@ where
 {
     let mut vd = VecDeque::new();
 
-    let global_context = Arc::new(RwLock::new(ScopeContext::new(
+    let global_context = ScopeContext::new(
         error_sink.clone(),
         vec![String::from("crate")],
         None,
         None,
         None,
-    )));
+    );
 
     sidm.set_global(global_context.clone());
 
@@ -261,13 +261,13 @@ where
         if path.is_file() {
             if let Some(ext) = path.extension() {
                 if ext.to_string_lossy().to_string() == "rsh" {
-                    let context = Arc::new(RwLock::new(ScopeContext::new(
+                    let context = ScopeContext::new(
                         error_sink.clone(),
                         base_scope,
                         Some(Arc::downgrade(&global_context)),
                         Some(Arc::downgrade(&parent)),
                         None,
-                    )));
+                    );
                     //println!("pushing a file to pmap");
                     //println!("context: {:?}", context);
                     pidm.push_path(path);
@@ -279,13 +279,13 @@ where
         } else if path.is_dir() {
             base_scope.push(stem);
 
-            let context = Arc::new(RwLock::new(ScopeContext::new(
+            let context = ScopeContext::new(
                 error_sink.clone(),
                 base_scope.clone(),
                 Some(Arc::downgrade(&global_context)),
                 Some(Arc::downgrade(&parent)),
                 None,
-            )));
+            );
 
             //println!("pushing a dir to pmap");
             //println!("context: {:?}", context);

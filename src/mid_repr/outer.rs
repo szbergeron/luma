@@ -19,7 +19,7 @@ impl<'a> SymbolDB<'a> {
 pub struct ScopeContext<'input> {
     scope: Vec<String>,
     public: bool,
-    from: Option<Arc<RwLock<Namespace<'input>>>>,
+    from: Option<Arc<RwLock<SymbolDeclaration<'input>>>>,
 
     super_context: Option<Weak<RwLock<ScopeContext<'input>>>>,
 
@@ -44,7 +44,7 @@ impl<'input> AstNode<'input> for ScopeContext<'input> {
             None => NodeInfo::Builtin,
             Some(ns_lock) => {
                 let ns_guard = ns_lock.read().unwrap();
-                ns_guard.node_info()
+                ns_guard.as_node().node_info()
             }
         }
     }
@@ -112,8 +112,8 @@ impl<'input> ScopeContext<'input> {
         scope: Vec<String>,
         global: Option<Weak<RwLock<ScopeContext<'input>>>>,
         parent: Option<Weak<RwLock<ScopeContext<'input>>>>,
-        from: Option<Arc<RwLock<Namespace<'input>>>>,
-    ) -> ScopeContext<'input> {
+        from: Option<Arc<RwLock<SymbolDeclaration<'input>>>>,
+    ) -> Arc<RwLock<ScopeContext<'input>>> {
         let mut scope = ScopeContext {
             scope,
             public: true,
@@ -127,36 +127,46 @@ impl<'input> ScopeContext<'input> {
             from: None,
         };
 
+        let mut scope_locked = Arc::new(RwLock::new(scope));
+
+        let mut scope_guard = scope_locked.write().unwrap();
+
         if let Some(ns) = from.as_ref() {
             let ns_guard = ns.read().unwrap();
-            if let Ok(outer) = ns_guard.contents.as_ref() {
+            for dec in ns_guard.symbols() {
+                scope_guard.add_definition(scope_locked.clone(), dec.clone());
+            }
+            /*if let Ok(outer) = ns_guard.contents.as_ref() {
                 for dec in outer.declarations.iter() {
                     scope.add_definition(dec.clone());
                 }
-            }
+            }*/
 
-            scope.from = Some(ns.clone());
+            scope_guard.from = Some(ns.clone());
         }
 
-        scope
+        std::mem::drop(scope_guard);
+
+        scope_locked
     }
 
-    pub fn on_root(&mut self, outer: &OuterScope<'input>) {
+    pub fn on_root(self_rc: Arc<RwLock<ScopeContext<'input>>>, outer: &OuterScope<'input>) {
         println!("iter over outer declarations");
         for dec in outer.declarations.iter() {
             println!("got decl");
             //let dg = dec.read().unwrap();
-            self.add_definition(dec.clone());
+            let mut self_guard = self_rc.write().unwrap();
+            self_guard.add_definition(self_rc.clone(), dec.clone());
         }
     }
 
-    pub fn add_ns(self_rc: Arc<RwLock<ScopeContext<'input>>>, ns: Arc<RwLock<Namespace<'input>>>) {
+    pub fn add_context(self_rc: Arc<RwLock<ScopeContext<'input>>>, ns: Arc<RwLock<SymbolDeclaration<'input>>>) {
         let mut self_guard = self_rc.write().unwrap();
 
-        let ns_guard = ns.read().unwrap();
+        let ctx_guard = ns.read().unwrap();
 
         let mut scope = self_guard.scope.clone();
-        scope.push(String::from(ns_guard.name.unwrap_or("")));
+        scope.push(String::from(ctx_guard.symbol_name().unwrap_or("")));
 
         let error = self_guard.error_sink.clone();
 
@@ -165,7 +175,7 @@ impl<'input> ScopeContext<'input> {
         let parent = self_rc.clone();
 
         let scope = Self::new(error, scope, Some(global), Some(Arc::downgrade(&parent)), Some(ns.clone()));
-        let scope = Arc::new(RwLock::new(scope));
+        //let scope = Arc::new(RwLock::new(scope));
 
         self_guard.add_child_context(scope);
     }
@@ -176,6 +186,8 @@ impl<'input> ScopeContext<'input> {
         let sname = decl_guard
             .symbol_name()
             .expect("No support for unnamed symbol declarations currently");
+
+        let is_context = decl_guard.is_context();
         
         println!("adding a definition");
         println!("symbol name is {}", sname);
@@ -209,6 +221,10 @@ impl<'input> ScopeContext<'input> {
             self.imported_symbols
                 .insert(String::from(sname), Arc::downgrade(&nref)); // can silently replace to shadow here
             self.defined_symbols.insert(String::from(sname), nref);
+
+            if is_context {
+                Self::add_context(self_rc.clone(), decl.clone());
+            }
         }
 
         result

@@ -374,4 +374,10 @@ impl<'a> SymbolDeclaration<'a> {
             _ => &[],
         }
     }
+
+    /*pub fn as_ns(&self) -> Option<&Namespace<'a>> {
+        match self {
+            Self::Nam
+        }
+    }*/
 }
