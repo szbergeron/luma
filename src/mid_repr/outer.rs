@@ -127,7 +127,7 @@ impl<'input> ScopeContext<'input> {
             from: None,
         };
 
-        let mut scope_locked = Arc::new(RwLock::new(scope));
+        let scope_locked = Arc::new(RwLock::new(scope));
 
         let mut scope_guard = scope_locked.write().unwrap();
 
@@ -150,34 +150,31 @@ impl<'input> ScopeContext<'input> {
         scope_locked
     }
 
-    pub fn on_root(self_rc: Arc<RwLock<ScopeContext<'input>>>, outer: &OuterScope<'input>) {
-        println!("iter over outer declarations");
+    pub fn on_root(&mut self, self_rc: Arc<RwLock<ScopeContext<'input>>>, outer: &OuterScope<'input>) {
         for dec in outer.declarations.iter() {
-            println!("got decl");
-            //let dg = dec.read().unwrap();
-            let mut self_guard = self_rc.write().unwrap();
-            self_guard.add_definition(self_rc.clone(), dec.clone());
+            //let mut self_guard = self_rc.write().unwrap();
+            self.add_definition(self_rc.clone(), dec.clone());
         }
     }
 
-    pub fn add_context(self_rc: Arc<RwLock<ScopeContext<'input>>>, ns: Arc<RwLock<SymbolDeclaration<'input>>>) {
-        let mut self_guard = self_rc.write().unwrap();
+    pub fn add_context(&mut self, self_rc: Arc<RwLock<ScopeContext<'input>>>, ns: Arc<RwLock<SymbolDeclaration<'input>>>) {
+        //let mut self_guard = self_rc.write().unwrap();
 
         let ctx_guard = ns.read().unwrap();
 
-        let mut scope = self_guard.scope.clone();
+        let mut scope = self.scope.clone();
         scope.push(String::from(ctx_guard.symbol_name().unwrap_or("")));
 
-        let error = self_guard.error_sink.clone();
+        let error = self.error_sink.clone();
 
-        let global = self_guard.global_context.as_ref().unwrap().clone();
+        let global = self.global_context.as_ref().unwrap().clone();
 
         let parent = self_rc.clone();
 
         let scope = Self::new(error, scope, Some(global), Some(Arc::downgrade(&parent)), Some(ns.clone()));
         //let scope = Arc::new(RwLock::new(scope));
 
-        self_guard.add_child_context(scope);
+        self.add_child_context(scope);
     }
 
     pub fn add_definition(&mut self, self_rc: Arc<RwLock<ScopeContext<'input>>>, decl: Arc<RwLock<SymbolDeclaration<'input>>>) -> bool {
@@ -198,7 +195,8 @@ impl<'input> ScopeContext<'input> {
 
         let nref = decl.clone();
 
-        if let Some(rg) = self.defined_symbols.get(sname) {
+        if self.defined_symbols.get(sname).is_some() {
+            let rg = self.defined_symbols.get(sname).unwrap();
             println!("duplicate symbol detected: {}", sname);
             self.error_sink
                 .send(Error::DuplicateDefinition {
@@ -223,7 +221,7 @@ impl<'input> ScopeContext<'input> {
             self.defined_symbols.insert(String::from(sname), nref);
 
             if is_context {
-                Self::add_context(self_rc.clone(), decl.clone());
+                self.add_context(self_rc.clone(), decl.clone());
             }
         }
 

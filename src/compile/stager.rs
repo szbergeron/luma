@@ -203,7 +203,7 @@ pub fn launch(args: &[&str]) {
                 if let Ok(root) = outer.as_ref() {
                     println!("root was ok");
                     let mut scope_guard = scope_context.write().unwrap();
-                    ScopeContext::on_root(scope_context.clone(), root);
+                    scope_guard.on_root(scope_context.clone(), root);
                 } else {
                     println!("root was not ok");
                 }
