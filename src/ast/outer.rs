@@ -353,4 +353,25 @@ impl<'a> SymbolDeclaration<'a> {
             Self::ExpressionDeclaration(_ed) => None,
         }
     }
+
+    pub fn is_context(&self) -> bool {
+        match self {
+            Self::NamespaceDeclaration(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn symbols(&self) -> &[Arc<RwLock<SymbolDeclaration<'a>>>] {
+        match self {
+            Self::NamespaceDeclaration(ns) => {
+                match ns.contents.as_ref() {
+                    Ok(contents) => {
+                        &contents.declarations[..]
+                    },
+                    Err(_) => &[],
+                }
+            }
+            _ => &[],
+        }
+    }
 }

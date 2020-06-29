@@ -114,7 +114,7 @@ impl<'input> ScopeContext<'input> {
         parent: Option<Weak<RwLock<ScopeContext<'input>>>>,
         from: Option<Arc<RwLock<Namespace<'input>>>>,
     ) -> ScopeContext<'input> {
-        ScopeContext {
+        let mut scope = ScopeContext {
             scope,
             public: true,
             super_context: parent,
@@ -124,28 +124,70 @@ impl<'input> ScopeContext<'input> {
             defined_symbols: CHashMap::new(),
             inner_contexts: CHashMap::new(),
             error_sink,
-            from,
+            from: None,
+        };
+
+        if let Some(ns) = from.as_ref() {
+            let ns_guard = ns.read().unwrap();
+            if let Ok(outer) = ns_guard.contents.as_ref() {
+                for dec in outer.declarations.iter() {
+                    scope.add_definition(dec.clone());
+                }
+            }
+
+            scope.from = Some(ns.clone());
         }
+
+        scope
     }
 
     pub fn on_root(&mut self, outer: &OuterScope<'input>) {
+        println!("iter over outer declarations");
         for dec in outer.declarations.iter() {
+            println!("got decl");
             //let dg = dec.read().unwrap();
             self.add_definition(dec.clone());
         }
     }
 
-    pub fn add_definition(&mut self, d: Arc<RwLock<SymbolDeclaration<'input>>>) -> bool {
-        let g = d.read().unwrap();
-        let is_exported = g.is_public();
-        let sname = g
+    pub fn add_ns(self_rc: Arc<RwLock<ScopeContext<'input>>>, ns: Arc<RwLock<Namespace<'input>>>) {
+        let mut self_guard = self_rc.write().unwrap();
+
+        let ns_guard = ns.read().unwrap();
+
+        let mut scope = self_guard.scope.clone();
+        scope.push(String::from(ns_guard.name.unwrap_or("")));
+
+        let error = self_guard.error_sink.clone();
+
+        let global = self_guard.global_context.as_ref().unwrap().clone();
+
+        let parent = self_rc.clone();
+
+        let scope = Self::new(error, scope, Some(global), Some(Arc::downgrade(&parent)), Some(ns.clone()));
+        let scope = Arc::new(RwLock::new(scope));
+
+        self_guard.add_child_context(scope);
+    }
+
+    pub fn add_definition(&mut self, self_rc: Arc<RwLock<ScopeContext<'input>>>, decl: Arc<RwLock<SymbolDeclaration<'input>>>) -> bool {
+        let decl_guard = decl.read().unwrap();
+        let is_exported = decl_guard.is_public();
+        let sname = decl_guard
             .symbol_name()
             .expect("No support for unnamed symbol declarations currently");
+        
+        println!("adding a definition");
+        println!("symbol name is {}", sname);
+
+        std::mem::drop(decl_guard);
 
         let mut result = true;
 
-        let nref = d.clone();
+        let nref = decl.clone();
+
         if let Some(rg) = self.defined_symbols.get(sname) {
+            println!("duplicate symbol detected: {}", sname);
             self.error_sink
                 .send(Error::DuplicateDefinition {
                     duplicate_symbol: nref,
@@ -155,6 +197,7 @@ impl<'input> ScopeContext<'input> {
 
             result = false;
         } else {
+            println!("was not duplicate, so inserting symbol");
             if is_exported {
                 self.exported_symbols
                     .insert(String::from(sname), Arc::downgrade(&nref))
@@ -162,6 +205,7 @@ impl<'input> ScopeContext<'input> {
                         "should never be replacing an export, would be a duplicate symbol",
                     );
             }
+
             self.imported_symbols
                 .insert(String::from(sname), Arc::downgrade(&nref)); // can silently replace to shadow here
             self.defined_symbols.insert(String::from(sname), nref);

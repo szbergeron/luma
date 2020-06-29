@@ -64,12 +64,6 @@ pub fn parse_unit<'file>(
     p
 }
 
-/*pub fn parse<'a>(contents: &'a str) -> Result<ast::ParseUnit<'a>, ParseResultError<'a>> {
-
-
-    r
-}*/
-
 #[derive(Default)]
 pub struct EFlags {
     pub warnings_as_errors: bool,
@@ -173,32 +167,13 @@ pub fn launch(args: &[&str]) {
 
     explore_paths(&mut path_map, &mut scope_map, error_sender);
 
-    //println!("scope map: {:?}", scope_map.handles());
-
-    //let handles = pmap.get_handles();
-
     println!("going to iter and open files");
 
     path_map.handles_mut().par_iter_mut().for_each(|file| {
-        /*if let Some(f) = file {
-            println!("opening a file");
-            f.open();
-        }*/
-        //println!("opening file {:?}", file.path());
         file.open();
-        //println!("opened file {:?}", file.path());
-        //println!("opened file");
     });
 
-    //println!("opened files");
-
-    //let handles_and_contexts
-
     let mut outers = Vec::new();
-
-    //println!("scope map: {:?}", scope_map.handles());
-    //println!("\n");
-    //println!("path map: {:?}", path_map.handles());
 
     path_map
         .handles()
@@ -217,6 +192,8 @@ pub fn launch(args: &[&str]) {
         })
         .collect_into_vec(&mut outers);
 
+    println!("lens: {} {} {}", outers.len(), path_map.handles().len(), scope_map.handles().len());
+
     outers
         .par_iter()
         .zip(path_map.handles().par_iter())
@@ -224,21 +201,22 @@ pub fn launch(args: &[&str]) {
         .for_each(|((outer, handle), scope_context)| {
             if handle.path().is_file() {
                 if let Ok(root) = outer.as_ref() {
+                    println!("root was ok");
                     let mut scope_guard = scope_context.write().unwrap();
                     scope_guard.on_root(root);
+                } else {
+                    println!("root was not ok");
                 }
+            } else {
+                println!("handle was not file");
             }
         });
 
-    //let mut outers = outers.into_par_iter().as_mut();
-
-    //let mut result = Vec::new();
-
-    //outers.map(|o| o).collect_into_vec(&mut result);
-
-    // have now finished parsing, need to do prepass now
-    //let r: Vec<()> = handles.into_par_iter().zip(outers).map(|(handle, outer)| {
-    //}).collect(); // only want to drive to completion here
+    println!("root scopes:");
+    for s in scope_map.handles() {
+        let scope = s.read().unwrap();
+        println!("{}", scope);
+    }
 }
 
 pub fn explore_paths<'input, 'context>(
@@ -337,8 +315,6 @@ where
     for (id, handle) in pidm.handles_mut().iter_mut().enumerate() {
         handle.set_id(id);
     }
-
-    println!("scopes: {}", sidm.global().unwrap().read().unwrap());
 }
 
 pub fn prepass<'a>(_p: &mut ast::OuterScope<'a>) {}
