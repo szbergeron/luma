@@ -39,7 +39,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
                         }
                         Ok(ok) => {
                             declarations.push(Arc::new(RwLock::new(ok)));
-                        },
+                        }
                     };
 
                     //Arc::new(RwLock::new(r))
@@ -224,7 +224,9 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         }
     }
 
-    pub fn type_reference(&mut self) -> Result<ast::TypeReference<'input>, ParseResultError<'input>> {
+    pub fn type_reference(
+        &mut self,
+    ) -> Result<ast::TypeReference<'input>, ParseResultError<'input>> {
         let index = self
             .lex
             .la(0)
@@ -243,9 +245,17 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
 
     pub fn function_param_list(
         &mut self,
-    ) -> Result<Vec<(Box<ast::ExpressionWrapper<'input>>, ast::TypeReference<'input>)>, ParseResultError<'input>>
-    {
-        let mut rvec: Vec<(Box<ast::ExpressionWrapper<'input>>, ast::TypeReference<'input>)> = Vec::new();
+    ) -> Result<
+        Vec<(
+            Box<ast::ExpressionWrapper<'input>>,
+            ast::TypeReference<'input>,
+        )>,
+        ParseResultError<'input>,
+    > {
+        let mut rvec: Vec<(
+            Box<ast::ExpressionWrapper<'input>>,
+            ast::TypeReference<'input>,
+        )> = Vec::new();
         while let Ok(a) = self.atomic_expression() {
             self.expect(Token::Colon)?;
             let tr = self.type_reference()?;

@@ -12,7 +12,8 @@ use ast::base::*;
 use ast::expressions::*;
 use ast::outer::*;
 
-type ExpressionResult<'input> = Result<Box<ast::ExpressionWrapper<'input>>, ParseResultError<'input>>;
+type ExpressionResult<'input> =
+    Result<Box<ast::ExpressionWrapper<'input>>, ParseResultError<'input>>;
 
 impl<'input, 'lexer> Parser<'input, 'lexer> {
     pub fn parse_expr(&mut self) -> ExpressionResult<'input> {
@@ -124,7 +125,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
                             Token::Identifier,
                         ],
                     ))
-                },
+                }
             }
         } else {
             self.err(ParseResultError::EndOfFile)
@@ -261,8 +262,9 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
 
     pub fn syntactic_block(&mut self) -> ExpressionResult<'input> {
         self.expect(Token::LBrace)?;
-        let mut declarations: Vec<Result<Box<ast::ExpressionWrapper<'input>>, ParseResultError<'input>>> =
-            Vec::new();
+        let mut declarations: Vec<
+            Result<Box<ast::ExpressionWrapper<'input>>, ParseResultError<'input>>,
+        > = Vec::new();
         let start = self.lex.la(0).map_or(CodeLocation::Builtin, |tw| tw.start);
 
         let mut failed = false;

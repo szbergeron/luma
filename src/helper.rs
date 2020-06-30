@@ -86,7 +86,7 @@ impl Drop for FileHandle {
 impl<'input> FileHandle {
     pub fn new(
         p: PathBuf,
-        /*scope: Vec<String>,*/ 
+        /*scope: Vec<String>,*/
         id: Option<usize>,
         //context: Arc<RwLock<ScopeContext<'context>>>, // should only refer to self here
     ) -> FileHandle {
@@ -103,9 +103,7 @@ impl<'input> FileHandle {
 
     pub fn open(&mut self) -> bool {
         match self.contents.clone() {
-            Some(_contents) => {
-                true
-            },
+            Some(_contents) => true,
             None => {
                 if self.location.is_file() {
                     let content_maybe = fs::read_to_string(self.location.clone());
@@ -113,12 +111,15 @@ impl<'input> FileHandle {
                         Ok(contents) => {
                             self.contents = Some(contents);
                             return true;
-                        },
+                        }
                         Err(e) => {
-                            println!("couldn't read to string file by path {:?}: {}", self.location, e);
+                            println!(
+                                "couldn't read to string file by path {:?}: {}",
+                                self.location, e
+                            );
                             panic!("couldn't read to string a file!");
                             //return false;
-                        },
+                        }
                     }
                 } else {
                     //println!("tried to open something that isn't a file");
@@ -158,14 +159,17 @@ impl<'input> FileHandle {
         }*/
     }*/
 
-    pub fn as_ref<'handle, 'ltself>(&'ltself self) -> Option<FileHandleRef<'handle>> where 'ltself: 'handle {
+    pub fn as_ref<'handle, 'ltself>(&'ltself self) -> Option<FileHandleRef<'handle>>
+    where
+        'ltself: 'handle,
+    {
         //println!("getting a ref for file with path {:?}", self.location);
         match self.contents.as_ref() {
             Some(s) => Some(FileHandleRef {
                 id: self.id.unwrap_or(0),
                 contents: s.get(..).unwrap(),
             }),
-            None => None
+            None => None,
         }
         /*FileHandleRef {
             id: self.id.unwrap_or(0),
@@ -228,13 +232,10 @@ impl<'file> ScopeIdMap<'file> {
         self.global_context.clone()
     }
 
-    pub fn push_scope(
-        &mut self,
-        scope: Arc<RwLock<ScopeContext<'file>>>,
-    ) {
+    pub fn push_scope(&mut self, scope: Arc<RwLock<ScopeContext<'file>>>) {
         self.scopes.push(scope);
     }
-        //
+    //
 }
 
 impl<'context> PathIdMap {
@@ -255,7 +256,7 @@ impl<'context> PathIdMap {
     pub fn push_path(
         &mut self,
         p: PathBuf,
-       //*scope: Vec<String>,*/ context: Arc<RwLock<ScopeContext<'context>>>,
+        //*scope: Vec<String>,*/ context: Arc<RwLock<ScopeContext<'context>>>,
     ) -> PathId {
         let id = self.paths.len();
         self.paths.push(FileHandle::new(p, Some(id)));

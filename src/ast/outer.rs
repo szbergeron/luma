@@ -6,8 +6,8 @@ use crate::helper::lex_wrap::ParseResultError;
 //use std::rc::Rc;
 use std::sync::Arc;
 //use std::cell::RefCell;
-use std::sync::RwLock;
 use crate::mid_repr::*;
+use std::sync::RwLock;
 
 #[derive(Debug)]
 pub struct Namespace<'a> {
@@ -65,9 +65,13 @@ impl<'a> OuterScope<'a> {
         std::mem::drop(context);
     }*/
 
-    pub fn new(node_info: NodeInfo, declarations: Vec<Arc<RwLock<SymbolDeclaration<'a>>>>) -> OuterScope<'a> {
+    pub fn new(
+        node_info: NodeInfo,
+        declarations: Vec<Arc<RwLock<SymbolDeclaration<'a>>>>,
+    ) -> OuterScope<'a> {
         OuterScope {
-            node_info, declarations,
+            node_info,
+            declarations,
         }
     }
 }
@@ -100,7 +104,7 @@ impl<'a> AstNode<'a> for OuterScope<'a> {
                 .expect("locking error within parsunit display")
                 //.iter()
                 //.for_each(|elem| elem.display(f, depth + 1))
-                .display(f, depth+1)
+                .display(f, depth + 1)
         });
 
         /*for dec in self.declarations {
@@ -363,14 +367,10 @@ impl<'a> SymbolDeclaration<'a> {
 
     pub fn symbols(&self) -> &[Arc<RwLock<SymbolDeclaration<'a>>>] {
         match self {
-            Self::NamespaceDeclaration(ns) => {
-                match ns.contents.as_ref() {
-                    Ok(contents) => {
-                        &contents.declarations[..]
-                    },
-                    Err(_) => &[],
-                }
-            }
+            Self::NamespaceDeclaration(ns) => match ns.contents.as_ref() {
+                Ok(contents) => &contents.declarations[..],
+                Err(_) => &[],
+            },
             _ => &[],
         }
     }

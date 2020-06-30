@@ -15,7 +15,8 @@ use colored::*;
 //use std::io::{self, Write};
 
 pub struct Parser<'input, 'lexer>
-    where 'input: 'lexer
+where
+    'input: 'lexer,
 {
     lex: &'lexer mut LookaheadStream<'input>,
     errors: Vec<ParseResultError<'input>>,
@@ -167,7 +168,6 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
 
         map
     }*/
-
 
     pub fn print_errors(&self, handle: FileHandleRef) {
         //let linemap = self.build_line_map(input);
