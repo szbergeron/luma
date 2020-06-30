@@ -51,18 +51,10 @@ impl<'input> AstNode<'input> for ScopeContext<'input> {
 
     fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let _ = writeln!(f, "{}ScopeContext at scope{:?}", indent(depth), self.scope);
-        /*writeln!(f, "{}Super context:", indent(depth+1)).unwrap();
-        if self.super_context.is_some() {
-            self.super_context.as_ref().unwrap().upgrade().unwrap().read().unwrap().display(f, depth+2);
-        } else {
-            writeln!(f, "{}None", indent(depth+2)).unwrap();
-        }
-        writeln!(f, "{}Global context:", indent(depth+1)).unwrap();
-        if self.global_context.is_some() {
-            self.global_context.as_ref().unwrap().upgrade().unwrap().read().unwrap().display(f, depth+2);
-        } else {
-            writeln!(f, "{}None", indent(depth+2)).unwrap();
-        }*/
+        writeln!(f, "{}From:", indent(depth + 1)).unwrap();
+        self.from
+            .as_ref()
+            .map(|from_lock| from_lock.read().unwrap().display(f, depth + 2));
         writeln!(f, "{}Inner contexts:", indent(depth + 1)).unwrap();
         self.inner_contexts
             .clone()
@@ -150,14 +142,22 @@ impl<'input> ScopeContext<'input> {
         scope_locked
     }
 
-    pub fn on_root(&mut self, self_rc: Arc<RwLock<ScopeContext<'input>>>, outer: &OuterScope<'input>) {
+    pub fn on_root(
+        &mut self,
+        self_rc: Arc<RwLock<ScopeContext<'input>>>,
+        outer: &OuterScope<'input>,
+    ) {
         for dec in outer.declarations.iter() {
             //let mut self_guard = self_rc.write().unwrap();
             self.add_definition(self_rc.clone(), dec.clone());
         }
     }
 
-    pub fn add_context(&mut self, self_rc: Arc<RwLock<ScopeContext<'input>>>, ns: Arc<RwLock<SymbolDeclaration<'input>>>) {
+    pub fn add_context(
+        &mut self,
+        self_rc: Arc<RwLock<ScopeContext<'input>>>,
+        ns: Arc<RwLock<SymbolDeclaration<'input>>>,
+    ) {
         //let mut self_guard = self_rc.write().unwrap();
 
         let ctx_guard = ns.read().unwrap();
@@ -171,13 +171,23 @@ impl<'input> ScopeContext<'input> {
 
         let parent = self_rc.clone();
 
-        let scope = Self::new(error, scope, Some(global), Some(Arc::downgrade(&parent)), Some(ns.clone()));
+        let scope = Self::new(
+            error,
+            scope,
+            Some(global),
+            Some(Arc::downgrade(&parent)),
+            Some(ns.clone()),
+        );
         //let scope = Arc::new(RwLock::new(scope));
 
         self.add_child_context(scope);
     }
 
-    pub fn add_definition(&mut self, self_rc: Arc<RwLock<ScopeContext<'input>>>, decl: Arc<RwLock<SymbolDeclaration<'input>>>) -> bool {
+    pub fn add_definition(
+        &mut self,
+        self_rc: Arc<RwLock<ScopeContext<'input>>>,
+        decl: Arc<RwLock<SymbolDeclaration<'input>>>,
+    ) -> bool {
         let decl_guard = decl.read().unwrap();
         let is_exported = decl_guard.is_public();
         let sname = decl_guard
@@ -185,7 +195,7 @@ impl<'input> ScopeContext<'input> {
             .expect("No support for unnamed symbol declarations currently");
 
         let is_context = decl_guard.is_context();
-        
+
         println!("adding a definition");
         println!("symbol name is {}", sname);
 

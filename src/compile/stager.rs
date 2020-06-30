@@ -80,6 +80,76 @@ pub struct CFlags {
 }
 
 pub fn launch(args: &[&str]) {
+    let args = parse_args(args).expect("couldn't parse arguments");
+
+    let mut path_map = PathIdMap::new();
+    let mut scope_map = ScopeIdMap::new();
+
+    let (error_sender, _error_reciever) = crossbeam::unbounded();
+
+    // start spawning the parser threads
+    let _pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(args.flags.thread_count)
+        .build()
+        .expect("couldn't build thread pool");
+
+    args.inputs.iter().for_each(|path| {
+        path_map.push_path(path.clone());
+    });
+
+    explore_paths(&mut path_map, &mut scope_map, error_sender);
+
+    println!("going to iter and open files");
+
+    path_map.handles_mut().par_iter_mut().for_each(|file| {
+        file.open();
+    });
+
+    let mut outers = Vec::new();
+
+    path_map
+        .handles()
+        .par_iter()
+        .zip(scope_map.handles().par_iter())
+        .map(|(file, scope)| {
+            if let Some(handle_ref) = file.as_ref() {
+                let r = parse_unit(handle_ref, &*scope.read().unwrap(), &args.flags);
+                r
+            } else {
+                Ok(OuterScope::new(NodeInfo::Builtin, Vec::new()))
+            }
+        })
+        .collect_into_vec(&mut outers);
+
+    outers
+        .par_iter()
+        .zip(path_map.handles().par_iter())
+        .zip(scope_map.handles_mut().par_iter_mut())
+        .for_each(|((outer, handle), scope_context)| {
+            if handle.path().is_file() {
+                if let Ok(root) = outer.as_ref() {
+                    println!("root was ok");
+                    let mut scope_guard = scope_context.write().unwrap();
+                    scope_guard.on_root(scope_context.clone(), root);
+                } else {
+                    println!("root was not ok");
+                }
+            } else {
+                println!("handle was not file");
+            }
+        });
+
+    println!("context tree:");
+    println!("{}", scope_map.global().unwrap().read().unwrap());
+}
+
+struct ArgResult {
+    flags: CFlags,
+    inputs: HashSet<PathBuf>,
+    outputs: HashSet<PathBuf>,
+}
+
+fn parse_args(args: &[&str]) -> Result<ArgResult, &'static str> {
     enum State {
         ExpectInput,
         ExpectOutput,
@@ -145,78 +215,11 @@ pub fn launch(args: &[&str]) {
         println!("input file with path '{:#?}'", p);
     }
 
-    let mut path_map = PathIdMap::new();
-    let mut scope_map = ScopeIdMap::new();
-
-    let (error_sender, _error_reciever) = crossbeam::unbounded();
-
-    //static_assertions::assert_impl_all!(&mut [std::option::Option<crate::helper::FileHandle<'_>>]: rayon::iter::IntoParallelIterator);
-    //static_assertions::assert_impl_all!(for<'data> &'data mut [Option<FileHandle<'data>>]: rayon::iter::IntoParallelIterator);
-    //static_assertions::assert_impl_all!(FileHandle<'_>: Send);
-
-    // start spawning the parser threads
-    let _pool = rayon::ThreadPoolBuilder::new()
-        .num_threads(cflags.thread_count)
-        .build()
-        .expect("couldn't build thread pool");
-
-    for path in inputs.iter() {
-        //println!("pushing path {:?}", path);
-        path_map.push_path(path.clone());
-    }
-
-    explore_paths(&mut path_map, &mut scope_map, error_sender);
-
-    println!("going to iter and open files");
-
-    path_map.handles_mut().par_iter_mut().for_each(|file| {
-        file.open();
-    });
-
-    let mut outers = Vec::new();
-
-    path_map
-        .handles()
-        .par_iter()
-        .zip(scope_map.handles().par_iter())
-        .map(|(file, scope)| {
-            //println!("parsing a file");
-            if let Some(handle_ref) = file.as_ref() {
-                let r = parse_unit(handle_ref, &*scope.read().unwrap(), &cflags);
-                r
-            } else {
-                Ok(OuterScope::new(NodeInfo::Builtin, Vec::new()))
-                //println!("offending file is {:?}", file.path());
-                //panic!("couldn't read from an opened file");
-            }
-        })
-        .collect_into_vec(&mut outers);
-
-    println!("lens: {} {} {}", outers.len(), path_map.handles().len(), scope_map.handles().len());
-
-    outers
-        .par_iter()
-        .zip(path_map.handles().par_iter())
-        .zip(scope_map.handles_mut().par_iter_mut())
-        .for_each(|((outer, handle), scope_context)| {
-            if handle.path().is_file() {
-                if let Ok(root) = outer.as_ref() {
-                    println!("root was ok");
-                    let mut scope_guard = scope_context.write().unwrap();
-                    scope_guard.on_root(scope_context.clone(), root);
-                } else {
-                    println!("root was not ok");
-                }
-            } else {
-                println!("handle was not file");
-            }
-        });
-
-    println!("root scopes:");
-    for s in scope_map.handles() {
-        let scope = s.read().unwrap();
-        println!("{}", scope);
-    }
+    Ok(ArgResult {
+        inputs,
+        outputs,
+        flags: cflags,
+    })
 }
 
 pub fn explore_paths<'input, 'context>(
@@ -268,8 +271,6 @@ where
                         Some(Arc::downgrade(&parent)),
                         None,
                     );
-                    //println!("pushing a file to pmap");
-                    //println!("context: {:?}", context);
                     pidm.push_path(path);
                     sidm.push_scope(context.clone());
 
@@ -287,8 +288,6 @@ where
                 None,
             );
 
-            //println!("pushing a dir to pmap");
-            //println!("context: {:?}", context);
             let mut path = path;
 
             for subpath in path
@@ -296,7 +295,14 @@ where
                 .expect("couldn't read a directory in passed trees")
             {
                 if let Ok(subpath) = subpath {
-                    if subpath.path().file_name().expect("couldn't get file name of directory child").to_string_lossy().as_parallel_string() == "mod.rsh" {
+                    if subpath
+                        .path()
+                        .file_name()
+                        .expect("couldn't get file name of directory child")
+                        .to_string_lossy()
+                        .as_parallel_string()
+                        == "mod.rsh"
+                    {
                         path = subpath.path();
                     } else {
                         let new_handle = FileHandle::new(subpath.path(), None);
@@ -307,7 +313,7 @@ where
 
             pidm.push_path(path.clone());
             sidm.push_scope(context.clone());
-                    
+
             parent.write().unwrap().add_child_context(context.clone());
         }
     }
