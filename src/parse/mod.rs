@@ -10,6 +10,8 @@ use crate::helper::lex_wrap::LookaheadStream;
 use crate::helper::lex_wrap::{CodeLocation, ParseResultError};
 use crate::helper::*;
 
+use crate::lex::Token;
+
 use colored::*;
 
 //use std::io::{self, Write};
@@ -20,6 +22,12 @@ where
 {
     lex: &'lexer mut LookaheadStream<'input>,
     errors: Vec<ParseResultError<'input>>,
+    next: Vec<Token>,
+}
+
+pub struct SyncSliceHandle {
+    start: usize,
+    end: usize,
 }
 
 impl<'input, 'lexer> Parser<'input, 'lexer> {
@@ -27,6 +35,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         Parser {
             lex,
             errors: Vec::new(),
+            next: Vec::new(),
         }
     }
 
@@ -191,6 +200,8 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         for e in self.errors.iter() {
             println!();
             match e {
+                ParseResultError::InternalParseIssue => {
+                },
                 ParseResultError::EndOfFile => {
                     eprintln!("Unexpected End of File");
                 }

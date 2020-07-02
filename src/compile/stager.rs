@@ -19,16 +19,6 @@ pub fn parse_unit<'file>(
     context: &ScopeContext<'file>,
     cflags: &CFlags,
 ) -> Result<OuterScope<'file>, ParseResultError<'file>> {
-    /*let path = path_handle
-    .read()
-    .unwrap()
-    .get_path(base_path)
-    .expect("path ID not registered")
-    .clone();*/
-    /*println!(
-        "parsing {:?} which has a file scope of {:?}",
-        path, file_scope
-    );*/
 
     // clone because we don't want to keep lock open, and this should be rather cheap in the scheme
     // of things
@@ -53,8 +43,6 @@ pub fn parse_unit<'file>(
             if cflags.dump_tree {
                 println!("Gets AST of: {}", punit);
             }
-
-            //analyze(&mut punit);
         }
         Err(err) => {
             println!("Failed to parse with error: {:?}", err);
@@ -105,14 +93,18 @@ pub fn launch(args: &[&str]) {
         file.open();
     });
 
+    println!("opened files");
+
     let mut outers = Vec::new();
 
+    // take files, parse each, and pair (by index) each file path with its AST root
     path_map
         .handles()
         .par_iter()
         .zip(scope_map.handles().par_iter())
         .map(|(file, scope)| {
             if let Some(handle_ref) = file.as_ref() {
+                println!("parsing unit");
                 let r = parse_unit(handle_ref, &*scope.read().unwrap(), &args.flags);
                 r
             } else {
@@ -141,6 +133,10 @@ pub fn launch(args: &[&str]) {
 
     println!("context tree:");
     println!("{}", scope_map.global().unwrap().read().unwrap());
+
+    scope_map.handles().par_iter().for_each(|handle| prepass(handle));
+
+    scope_map.handles().par_iter().for_each(|handle| analyze(handle));
 }
 
 struct ArgResult {
@@ -323,8 +319,8 @@ where
     }
 }
 
-pub fn prepass<'a>(_p: &mut ast::OuterScope<'a>) {}
+pub fn prepass<'a>(_p: &Arc<RwLock<ScopeContext<'a>>>) {}
 
-pub fn analyze<'a>(_p: &mut ast::OuterScope<'a>) {}
+pub fn analyze<'a>(_p: &Arc<RwLock<ScopeContext<'a>>>) {}
 
-pub fn tollvm<'a>(_p: &mut ast::OuterScope<'a>, _filename: &str) {}
+pub fn tollvm<'a>(_p: &Arc<RwLock<ScopeContext<'a>>>, _filename: &str) {}

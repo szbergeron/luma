@@ -1,6 +1,15 @@
 use super::base::*;
 use crate::ast;
 
+pub struct TypeConstraint<'a> {
+    pub node_info: NodeInfo,
+
+    pub constrains: TypeReference<'a>, // generic type constrained by this
+
+    pub is: Vec<TypeReference<'a>>, // only types themselves
+    pub implements: Vec<TypeReference<'a>>, // only traits
+}
+
 //#[derive(Debug)]
 pub struct TypeReference<'a> {
     pub node_info: NodeInfo,

@@ -293,6 +293,8 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
                     declarations.push(exp);
                 }*/
                 _ => {
+                    let sync = self.sync_next(&[Token::Semicolon]);
+
                     let e = self.parse_expr();
 
                     let final_exp = e
@@ -310,9 +312,11 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
                             self.report_err(err.clone());
 
                             failed = true;
-                            self.eat_to(vec![Token::Semicolon, Token::RBrace]);
+                            //self.eat_to(vec![Token::Semicolon, Token::RBrace]);
                             err
                         });
+
+                    self.unsync(sync)?;
 
                     //self.expect(Token::Semicolon)?; // TODO: eval if this is required
 

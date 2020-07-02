@@ -349,6 +349,7 @@ pub mod lex_wrap {
 
     #[derive(Debug, Clone)]
     pub enum ParseResultError<'a> {
+        InternalParseIssue,
         EndOfFile,
         NotYetParsed,
         //ExpectedExpressionNotPresent,

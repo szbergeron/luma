@@ -12,42 +12,43 @@ use crate::parse::*;
 
 impl<'input, 'lexer> Parser<'input, 'lexer> {
     pub fn entry(&mut self) -> Result<ast::OuterScope<'input>, ParseResultError<'input>> {
-        //let mut declarations
-        /*let mut declarations: Vec<
-            Arc<RwLock<Result<ast::SymbolDeclaration<'input>, ParseResultError<'input>>>>,
-        > = Vec::new();*/
+        println!("in entry");
         let mut declarations = Vec::new();
 
         let start = self.lex.la(0).map_or(CodeLocation::Builtin, |tw| tw.start);
 
         let mut failed = false;
 
+        let sync = self.sync_next(&[Token::RBrace]);
+
         while let Ok(tw) = self.lex.la(0) {
+            println!("looping over decs, la is {:?}", tw.token);
             let r = match tw.token {
                 Token::RBrace => break,
                 _ => {
                     //
+                    let sync = self.sync_next(&Self::first_global);
+                    println!("getting global dec");
                     let r = self.global_declaration();
+                    self.unsync(sync)?;
 
                     let r = match r {
                         Err(e) => {
                             failed = true;
                             self.report_err(e.clone());
-                            self.eat_through(vec![Token::RBrace, Token::Semicolon]);
-
-                            //Err(e);
+                            //self.eat_through(vec![Token::RBrace, Token::Semicolon]);
                         }
                         Ok(ok) => {
                             declarations.push(Arc::new(RwLock::new(ok)));
                         }
                     };
 
-                    //Arc::new(RwLock::new(r))
                 }
             };
 
-            //declarations.push(r);
         }
+
+        self.unsync(sync)?;
 
         let end = self.lex.la(-1).map_or(start, |tw| tw.start);
 
@@ -57,6 +58,13 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         })
     }
 
+    pub fn parse_where_clause(
+        &mut self,
+    ) -> Result<Vec<ast::TypeConstraint<'input>>, ParseResultError<'input>> {
+        todo!()
+    }
+
+    const first_struct: [Token; 1] = [Token::Struct];
     pub fn parse_struct_declaration(
         &mut self,
     ) -> Result<ast::StructDeclaration<'input>, ParseResultError<'input>> {
@@ -109,6 +117,8 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         })
     }
 
+    
+    const first_global: [Token; 3] = [Token::Module, Token::Function, Token::Struct];
     pub fn global_declaration(
         &mut self,
     ) -> Result<ast::SymbolDeclaration<'input>, ParseResultError<'input>> {
@@ -143,7 +153,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
                         e
                     }),
                 _ => {
-                    self.eat_to(vec![Token::RBrace, Token::Semicolon]);
+                    //self.eat_to(vec![Token::RBrace, Token::Semicolon]);
 
                     self.err(ParseResultError::UnexpectedToken(
                         tw,
@@ -158,6 +168,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         }
     }
 
+    const first_namespace: [Token; 1] = [Token::Module];
     pub fn namespace(&mut self) -> Result<ast::Namespace<'input>, ParseResultError<'input>> {
         let start = self.lex.la(0).map_or(CodeLocation::Builtin, |tw| tw.start);
 
@@ -273,6 +284,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         Ok(rvec)
     }
 
+    const first_function: [Token; 1] = [Token::Function];
     pub fn function_declaration(
         &mut self,
     ) -> Result<ast::FunctionDeclaration<'input>, ParseResultError<'input>> {
@@ -290,8 +302,6 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         let end = body.as_node().start().expect("Some(_) body has None end");
 
         let node_info = ast::NodeInfo::from_indices(true, start, end);
-
-        //let _ = self.eat_match(Token::Semicolon);
 
         Ok(ast::FunctionDeclaration {
             node_info,
