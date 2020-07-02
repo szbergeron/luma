@@ -25,7 +25,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
     pub fn parse_pattern(&mut self) -> Result<Pattern<'input>, ParseResultError<'input>> {
         // can be a single literal or tuple, and each tuple is a set of expressions
 
-        let lp = self.expect(Token::LParen);
+        let lp = self.soft_expect(Token::LParen);
 
         let start = lp?.start;
 
@@ -40,7 +40,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
             }
         }
 
-        let end = self.expect(Token::RParen)?.end;
+        let end = self.hard_expect(Token::RParen)?.end;
 
         let node_info = NodeInfo::from_indices(start, end);
 
@@ -161,7 +161,6 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         &mut self,
         on: Option<Box<ExpressionWrapper<'input>>>,
     ) -> ExpressionResult<'input> {
-        //println!("parse_access called with lookahead {:?}", self.lex.la(0));
         /*
          * Follows pattern:
          *     Namespace1::NamespaceN::Access &| (Pattern) . Repeat_Chain
@@ -224,7 +223,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
     }
 
     pub fn parse_if_then_else(&mut self) -> ExpressionResult<'input> {
-        let start = self.expect(Token::If)?.start;
+        let start = self.hard_expect(Token::If)?.start;
         let if_exp = self.parse_expr()?;
         let then_exp = self.parse_expr()?;
         let (else_exp, end) = if self.eat_match(Token::Else).is_some() {
@@ -250,7 +249,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
     }
 
     pub fn parse_while(&mut self) -> ExpressionResult<'input> {
-        let start = self.expect(Token::While)?.start;
+        let start = self.hard_expect(Token::While)?.start;
         let while_exp = self.parse_expr()?;
         let do_exp = self.parse_expr()?;
 
@@ -261,9 +260,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
     }
 
     pub fn syntactic_block(&mut self) -> ExpressionResult<'input> {
-        println!("parsing syntactic block");
-        self.expect(Token::LBrace)?;
-        println!("got an lbrace");
+        self.hard_expect(Token::LBrace)?;
         let mut declarations: Vec<
             Result<Box<ast::ExpressionWrapper<'input>>, ParseResultError<'input>>,
         > = Vec::new();
@@ -331,7 +328,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
 
         let node_info = ast::NodeInfo::from_indices(start, end);
 
-        self.expect(Token::RBrace)?;
+        self.hard_expect(Token::RBrace)?;
 
         Ok(ast::BlockExpression::new_expr(node_info, declarations))
     }

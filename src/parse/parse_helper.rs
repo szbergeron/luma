@@ -3,7 +3,7 @@ use crate::lex::Token;
 use crate::helper::lex_wrap::ParseResultError;
 use crate::helper::lex_wrap::TokenWrapper;
 use crate::parse::*;
-use std::collections::HashSet;
+//use std::collections::HashSet;
 
 impl<'input, 'lexer> Parser<'input, 'lexer> {
     pub fn sync_next(
@@ -15,11 +15,11 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         
         self.next.extend(next.iter());
 
-        let end_len = self.next.len();
+        //let end_len = self.next.len();
 
-        println!("sync next called, sync stack is {:?}", self.next);
+        //println!("sync next called, sync stack is {:?}", self.next);
 
-        SyncSliceHandle { start: start_len, end: end_len }
+        SyncSliceHandle { start: start_len, /* end: end_len */ }
     }
 
     pub fn unsync(
@@ -39,18 +39,18 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
     pub fn synchronize(
         &mut self
     ) -> bool {
-        println!("synchronizing! Current error derivations list is {:?}", self.next);
-        println!("looping in sync");
+        //println!("synchronizing! Current error derivations list is {:?}", self.next);
+        //println!("looping in sync");
 
         let mut r = false;
         loop {
             if let Ok(tok) = self.lex.la(0) {
                 if let Some(index) = self.next.iter().rposition(|ntok| *ntok == tok.token) {
-                    println!("truncates the return list! Found a token: {:?}", tok.token);
+                    //println!("truncates the return list! Found a token: {:?}", tok.token);
                     self.next.truncate(index + 1);
                     return r;
                 } else {
-                    println!("advances lexer over erronious token {:?}", tok.token);
+                    //println!("advances lexer over erronious token {:?}", tok.token);
                     self.lex.advance();
                     r = true;
                 }
@@ -162,7 +162,22 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
 
     }
 
-    pub fn expect(&mut self, expected: Token) -> Result<TokenWrapper<'input>, ParseResultError<'input>> {
+    /// Will return a failing result if parsing fails, but will not attempt to reallign input or
+    /// independently dispatch any error notifications, and will not consume any erroneous input
+    pub fn soft_expect(&mut self, expected: Token) -> Result<TokenWrapper<'input>, ParseResultError<'input>> {
+        if let Ok(tw) = self.lex.la(0) {
+            if tw.token == expected {
+                self.lex.advance();
+                Ok(tw)
+            } else {
+                Err(ParseResultError::UnexpectedToken(tw, vec![expected]))
+            }
+        } else {
+            Err(ParseResultError::EndOfFile)
+        }
+    }
+
+    pub fn hard_expect(&mut self, expected: Token) -> Result<TokenWrapper<'input>, ParseResultError<'input>> {
         /*self.sync_next(&[t]);
         self.synchronize();
         self.unsync(*/
@@ -173,6 +188,8 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
                 self.lex.advance();
                 Ok(tw)
             } else {
+                //println!("token wrapper is {:?} and expected is {:?}", tw, expected);
+                //println!("stack is {:?}", self.next);
                 Err(ParseResultError::UnexpectedToken(tw, vec![expected]))
             }
         } else {

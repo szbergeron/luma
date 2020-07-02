@@ -1,4 +1,4 @@
-use crate::ast;
+//use crate::ast;
 use crate::helper::lex_wrap::{LookaheadStream, ParseResultError, Wrapper};
 use crate::helper::*;
 use crate::parse::Parser;
@@ -14,6 +14,7 @@ use std::sync::{Arc, RwLock};
 
 use crate::ast::*;
 
+#[allow(unused_variables, dead_code)]
 pub fn parse_unit<'file>(
     handle: FileHandleRef<'file>,
     context: &ScopeContext<'file>,
@@ -139,6 +140,7 @@ pub fn launch(args: &[&str]) {
     scope_map.handles().par_iter().for_each(|handle| analyze(handle));
 }
 
+#[allow(dead_code)]
 struct ArgResult {
     flags: CFlags,
     inputs: HashSet<PathBuf>,

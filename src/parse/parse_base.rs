@@ -1,3 +1,5 @@
+#[allow(non_upper_case_globals)]
+
 use crate::ast;
 use crate::lex::Token;
 
@@ -12,7 +14,6 @@ use crate::parse::*;
 
 impl<'input, 'lexer> Parser<'input, 'lexer> {
     pub fn entry(&mut self) -> Result<ast::OuterScope<'input>, ParseResultError<'input>> {
-        println!("in entry");
         let mut declarations = Vec::new();
 
         let start = self.lex.la(0).map_or(CodeLocation::Builtin, |tw| tw.start);
@@ -22,17 +23,15 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         let sync = self.sync_next(&[Token::RBrace]);
 
         while let Ok(tw) = self.lex.la(0) {
-            println!("looping over decs, la is {:?}", tw.token);
-            let r = match tw.token {
+            let _ = match tw.token {
                 Token::RBrace => break,
                 _ => {
                     //
                     let sync = self.sync_next(&Self::first_global);
-                    println!("getting global dec");
                     let r = self.global_declaration();
                     self.unsync(sync)?;
 
-                    let r = match r {
+                    let _ = match r {
                         Err(e) => {
                             //failed = true;
                             self.report_err(e.clone());
@@ -64,12 +63,12 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         todo!()
     }
 
-    const first_struct: [Token; 1] = [Token::Struct];
+    //const first_struct: [Token; 1] = [Token::Struct];
     pub fn parse_struct_declaration(
         &mut self,
     ) -> Result<ast::StructDeclaration<'input>, ParseResultError<'input>> {
-        let start = self.expect(Token::Struct)?.start;
-        let id = self.expect(Token::Identifier)?.slice;
+        let start = self.hard_expect(Token::Struct)?.start;
+        let id = self.hard_expect(Token::Identifier)?.slice;
         let mut typeparams = Vec::new();
         if let Some(_lt) = self.eat_match(Token::CmpLessThan) {
             while let Some(id) = self.eat_match(Token::CmpLessThan) {
@@ -80,14 +79,14 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
                     break;
                 }
             }
-            self.expect(Token::CmpGreaterThan)?;
+            self.hard_expect(Token::CmpGreaterThan)?;
         }
-        self.expect(Token::LBrace)?;
+        self.hard_expect(Token::LBrace)?;
 
         let mut fields = Vec::new();
 
         while let Some(field) = self.eat_match(Token::Identifier) {
-            self.expect(Token::Colon)?;
+            self.hard_expect(Token::Colon)?;
             let field_type = self.type_reference()?;
             let expr = if self.eat_match(Token::Equals).is_some() {
                 Some(self.parse_expr()?)
@@ -104,7 +103,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
             }
         }
 
-        let end = self.expect(Token::RBrace)?.end;
+        let end = self.hard_expect(Token::RBrace)?.end;
 
         let node_info = ast::NodeInfo::from_indices(start, end);
 
@@ -118,18 +117,15 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
     }
 
     
+    #[allow(non_upper_case_globals)]
     const first_global: [Token; 3] = [Token::Module, Token::Function, Token::Struct];
     pub fn global_declaration(
         &mut self,
     ) -> Result<ast::SymbolDeclaration<'input>, ParseResultError<'input>> {
-        println!("parsing global declaration");
         let has_pub = self.eat_match(Token::Public);
-        println!("got match for pub");
         let mut failed = false;
 
-        println!("expecting next to be mod fn or struct, la is {:?}", self.lex.la(0));
         self.expect_next_in(&[Token::Module, Token::Function, Token::Struct])?;
-        println!("expect returned successfully, lookahead is {:?}", self.lex.la(0));
 
         if let Ok(tw) = self.lex.la(0) {
             let r = match tw.token {
@@ -174,19 +170,19 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         }
     }
 
-    const first_namespace: [Token; 1] = [Token::Module];
+    //const first_namespace: [Token; 1] = [Token::Module];
     pub fn namespace(&mut self) -> Result<ast::Namespace<'input>, ParseResultError<'input>> {
         let start = self.lex.la(0).map_or(CodeLocation::Builtin, |tw| tw.start);
 
-        self.expect(Token::Module)?;
-        let id = self.expect(Token::Identifier)?.slice;
-        self.expect(Token::LBrace)?;
+        self.hard_expect(Token::Module)?;
+        let id = self.hard_expect(Token::Identifier)?.slice;
+        self.hard_expect(Token::LBrace)?;
         let pu = self.entry();
-        self.expect(Token::RBrace)?;
+        self.hard_expect(Token::RBrace)?;
 
         let end = self.lex.la(-1).map_or(CodeLocation::Builtin, |tw| tw.end);
 
-        let failed = pu.is_err();
+        //let failed = pu.is_err();
 
         let node_info = ast::NodeInfo::from_indices(start, end);
 
@@ -221,7 +217,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
                             }
                         }
 
-                        end = self.expect(Token::CmpGreaterThan)?.end;
+                        end = self.hard_expect(Token::CmpGreaterThan)?.end;
 
                         params
                     }
@@ -274,7 +270,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
             ast::TypeReference<'input>,
         )> = Vec::new();
         while let Ok(a) = self.atomic_expression() {
-            self.expect(Token::Colon)?;
+            self.hard_expect(Token::Colon)?;
             let tr = self.type_reference()?;
 
             let r = (a, tr);
@@ -290,19 +286,17 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         Ok(rvec)
     }
 
-    const first_function: [Token; 1] = [Token::Function];
+    //const first_function: [Token; 1] = [Token::Function];
     pub fn function_declaration(
         &mut self,
     ) -> Result<ast::FunctionDeclaration<'input>, ParseResultError<'input>> {
-        println!("parsing func dec, la is {:?}", self.lex.la(0));
-        let start = self.expect(Token::Function)?.start;
-        println!("got function tok");
-        let function_name = self.expect(Token::Identifier)?;
-        self.expect(Token::LParen)?;
+        let start = self.hard_expect(Token::Function)?.start;
+        let function_name = self.hard_expect(Token::Identifier)?;
+        self.hard_expect(Token::LParen)?;
         let params = self.function_param_list()?;
-        self.expect(Token::RParen)?;
+        self.hard_expect(Token::RParen)?;
 
-        self.expect(Token::ThinArrow)?;
+        self.hard_expect(Token::ThinArrow)?;
         let return_type = self.type_reference()?;
 
         let body = self.parse_expr()?;

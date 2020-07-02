@@ -1,1 +1,3 @@
-fn func() -> type {}
+fn func() -> type {
+    let f = 5;
+}

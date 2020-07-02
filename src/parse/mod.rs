@@ -27,7 +27,7 @@ where
 
 pub struct SyncSliceHandle {
     start: usize,
-    end: usize,
+    //end: usize,
 }
 
 impl<'input, 'lexer> Parser<'input, 'lexer> {
@@ -188,7 +188,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         let lines: Vec<&str> = lines_iter.collect();
         //let _read_borrow = path_handle.read().unwrap();
         let stdout = std::io::stdout();
-        let mut handle = stdout.lock();
+        let handle = stdout.lock();
 
         println!();
         println!("{}", "Errors:".red());

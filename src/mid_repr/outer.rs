@@ -106,7 +106,7 @@ impl<'input> ScopeContext<'input> {
         parent: Option<Weak<RwLock<ScopeContext<'input>>>>,
         from: Option<Arc<RwLock<SymbolDeclaration<'input>>>>,
     ) -> Arc<RwLock<ScopeContext<'input>>> {
-        let mut scope = ScopeContext {
+        let scope = ScopeContext {
             scope,
             public: true,
             super_context: parent,
