@@ -60,7 +60,7 @@ impl<'a> ExpressionWrapper<'a> {
     }*/
 
     pub fn wildcard(input: TokenWrapper<'a>) -> Box<ExpressionWrapper<'a>> {
-        let node_info = NodeInfo::from_token(&input, true);
+        let node_info = NodeInfo::from_token(&input);
 
         WildcardExpression::new_expr(node_info)
 
@@ -838,7 +838,7 @@ impl<'a> LiteralExpression<'a> {
         };
 
         Box::new(ExpressionWrapper::Literal(LiteralExpression {
-            node_info: NodeInfo::from_token(&tw, true),
+            node_info: NodeInfo::from_token(&tw),
             contents: literal,
         }))
     }

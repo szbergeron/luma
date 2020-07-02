@@ -17,7 +17,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
 
         let start = self.lex.la(0).map_or(CodeLocation::Builtin, |tw| tw.start);
 
-        let mut failed = false;
+        //let mut failed = false;
 
         let sync = self.sync_next(&[Token::RBrace]);
 
@@ -34,7 +34,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
 
                     let r = match r {
                         Err(e) => {
-                            failed = true;
+                            //failed = true;
                             self.report_err(e.clone());
                             //self.eat_through(vec![Token::RBrace, Token::Semicolon]);
                         }
@@ -54,7 +54,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
 
         Ok(ast::OuterScope {
             declarations,
-            node_info: ast::NodeInfo::from_indices(failed, start, end),
+            node_info: ast::NodeInfo::from_indices(start, end),
         })
     }
 
@@ -106,7 +106,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
 
         let end = self.expect(Token::RBrace)?.end;
 
-        let node_info = ast::NodeInfo::from_indices(true, start, end);
+        let node_info = ast::NodeInfo::from_indices(start, end);
 
         Ok(ast::StructDeclaration {
             node_info,
@@ -122,8 +122,14 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
     pub fn global_declaration(
         &mut self,
     ) -> Result<ast::SymbolDeclaration<'input>, ParseResultError<'input>> {
+        println!("parsing global declaration");
         let has_pub = self.eat_match(Token::Public);
+        println!("got match for pub");
         let mut failed = false;
+
+        println!("expecting next to be mod fn or struct, la is {:?}", self.lex.la(0));
+        self.expect_next_in(&[Token::Module, Token::Function, Token::Struct])?;
+        println!("expect returned successfully, lookahead is {:?}", self.lex.la(0));
 
         if let Ok(tw) = self.lex.la(0) {
             let r = match tw.token {
@@ -182,7 +188,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
 
         let failed = pu.is_err();
 
-        let node_info = ast::NodeInfo::from_indices(failed, start, end);
+        let node_info = ast::NodeInfo::from_indices(start, end);
 
         Ok(ast::Namespace {
             name: Some(id),
@@ -221,7 +227,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
                     }
                 };
 
-                let node_info = ast::NodeInfo::from_indices(true, start, end);
+                let node_info = ast::NodeInfo::from_indices(start, end);
 
                 let tr = ast::TypeReference {
                     typename: tn.slice,
@@ -288,7 +294,9 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
     pub fn function_declaration(
         &mut self,
     ) -> Result<ast::FunctionDeclaration<'input>, ParseResultError<'input>> {
+        println!("parsing func dec, la is {:?}", self.lex.la(0));
         let start = self.expect(Token::Function)?.start;
+        println!("got function tok");
         let function_name = self.expect(Token::Identifier)?;
         self.expect(Token::LParen)?;
         let params = self.function_param_list()?;
@@ -301,7 +309,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
 
         let end = body.as_node().start().expect("Some(_) body has None end");
 
-        let node_info = ast::NodeInfo::from_indices(true, start, end);
+        let node_info = ast::NodeInfo::from_indices(start, end);
 
         Ok(ast::FunctionDeclaration {
             node_info,

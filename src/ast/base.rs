@@ -39,7 +39,7 @@ pub enum NodeInfo {
 #[derive(Debug, Clone, Copy)]
 pub struct ParsedNodeInfo {
     pub span: Span,
-    pub parsed: bool,
+    //pub parsed: bool,
 }
 
 impl NodeInfo {
@@ -50,22 +50,22 @@ impl NodeInfo {
         }
     }
 
-    pub fn from_token(input: &TokenWrapper, parsed: bool) -> NodeInfo {
+    pub fn from_token(input: &TokenWrapper) -> NodeInfo {
         let inner = ParsedNodeInfo {
             span: Span {
                 start: input.start,
                 end: input.end,
             },
-            parsed,
+            //parsed,
         };
 
         NodeInfo::Parsed(inner)
     }
 
-    pub fn from_indices(parsed: bool, start: CodeLocation, end: CodeLocation) -> NodeInfo {
+    pub fn from_indices(start: CodeLocation, end: CodeLocation) -> NodeInfo {
         let inner = ParsedNodeInfo {
             span: Span { start, end },
-            parsed,
+            //parsed,
         };
 
         NodeInfo::Parsed(inner)
@@ -77,12 +77,12 @@ impl std::fmt::Display for NodeInfo {
         match self {
             Self::Parsed(info) => write!(
                 f,
-                "parsed {} over {}",
-                if info.parsed {
+                "over {}",
+                /*if info.parsed {
                     "successfully"
                 } else {
                     "unsuccessfully"
-                },
+                },*/
                 info.span
             ),
             Self::Builtin => write!(f, "buildin"),

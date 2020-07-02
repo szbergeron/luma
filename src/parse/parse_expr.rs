@@ -42,7 +42,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
 
         let end = self.expect(Token::RParen)?.end;
 
-        let node_info = NodeInfo::from_indices(true, start, end);
+        let node_info = NodeInfo::from_indices(start, end);
 
         Ok(Pattern {
             node_info,
@@ -94,7 +94,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
             Some(start) => {
                 // can't get start without also getting end
                 let end = end.unwrap_or(start);
-                r.node_info = NodeInfo::from_indices(true, start, end);
+                r.node_info = NodeInfo::from_indices(start, end);
             }
             None => {}
         }
@@ -139,7 +139,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         let p = self.parse_pattern()?;
         let start = on.as_node().start().unwrap_or(CodeLocation::Builtin);
 
-        let node_info = NodeInfo::from_indices(true, start, p.end().unwrap_or(start));
+        let node_info = NodeInfo::from_indices(start, p.end().unwrap_or(start));
 
         let scope = ScopedNameReference {
             silent: true,
@@ -211,7 +211,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
             EitherAnd::Both(a, b) => (a.start, b.end),
         };
 
-        let node_info = NodeInfo::from_indices(true, start, end);
+        let node_info = NodeInfo::from_indices(start, end);
 
         let ae = AccessExpression {
             node_info,
@@ -242,7 +242,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
             (exp, end)
         };
 
-        let node_info = ast::NodeInfo::from_indices(true, start, end);
+        let node_info = ast::NodeInfo::from_indices(start, end);
 
         Ok(IfThenElseExpression::new_expr(
             node_info, if_exp, then_exp, else_exp,
@@ -255,19 +255,21 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         let do_exp = self.parse_expr()?;
 
         let node_info =
-            ast::NodeInfo::from_indices(true, start, do_exp.as_node().end().unwrap_or(start));
+            ast::NodeInfo::from_indices(start, do_exp.as_node().end().unwrap_or(start));
 
         Ok(WhileExpression::new_expr(node_info, while_exp, do_exp))
     }
 
     pub fn syntactic_block(&mut self) -> ExpressionResult<'input> {
+        println!("parsing syntactic block");
         self.expect(Token::LBrace)?;
+        println!("got an lbrace");
         let mut declarations: Vec<
             Result<Box<ast::ExpressionWrapper<'input>>, ParseResultError<'input>>,
         > = Vec::new();
         let start = self.lex.la(0).map_or(CodeLocation::Builtin, |tw| tw.start);
 
-        let mut failed = false;
+        //let mut failed = false;
 
         loop {
             match self.lex.la(0)?.token {
@@ -303,7 +305,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
                                 let start =
                                     exp.as_node().start().map_or(CodeLocation::Builtin, |v| v);
                                 let end = semi.end;
-                                let node_info = ast::NodeInfo::from_indices(true, start, end);
+                                let node_info = ast::NodeInfo::from_indices(start, end);
                                 ast::StatementExpression::new_expr(node_info, exp)
                             }
                             None => exp,
@@ -311,7 +313,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
                         .map_err(|err| {
                             self.report_err(err.clone());
 
-                            failed = true;
+                            //failed = true;
                             //self.eat_to(vec![Token::Semicolon, Token::RBrace]);
                             err
                         });
@@ -327,7 +329,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
 
         let end = self.lex.la(-1).map_or(start, |tw| tw.start);
 
-        let node_info = ast::NodeInfo::from_indices(!failed, start, end);
+        let node_info = ast::NodeInfo::from_indices(start, end);
 
         self.expect(Token::RBrace)?;
 
@@ -374,7 +376,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
                 let rhs = self.parse_expr_inner(bp, level + 1)?;
                 let start = t1.start;
                 let end = rhs.as_node().end().expect("parsed rhs has no end?");
-                let node_info = ast::NodeInfo::from_indices(true, start, end);
+                let node_info = ast::NodeInfo::from_indices(start, end);
 
                 self.build_unary(node_info, t, rhs)
             }
@@ -392,7 +394,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
                     .start()
                     .expect("parsed lhs did not have a start");
                 let end = typeref.end().expect("parsed typeref did not have an end");
-                let node_info = NodeInfo::from_indices(true, start, end);
+                let node_info = NodeInfo::from_indices(start, end);
                 lhs = ast::CastExpression::new_expr(node_info, lhs, typeref);
                 continue;
             } else if let Some(((l_bp, r_bp), tw)) = self.eat_if(|t| infix_binding_power(t.token)) {
@@ -404,7 +406,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
                     let rhs = self.parse_expr_inner(r_bp, level + 1)?;
                     let start = lhs.as_node().start().expect("parsed lhs has no start?");
                     let end = rhs.as_node().end().expect("parsed rhs has no end?");
-                    let node_info = ast::NodeInfo::from_indices(true, start, end);
+                    let node_info = ast::NodeInfo::from_indices(start, end);
                     lhs = self.build_binary(node_info, tw.token, lhs, rhs)?;
                     continue;
                 }

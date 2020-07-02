@@ -26,7 +26,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         &mut self,
         handle: SyncSliceHandle,
     ) -> Result<(), ParseResultError<'input>> {
-        if self.next.len() != handle.end {
+        if self.next.len() < handle.start { // maybe just < rather than <=?
             //panic!("wrong handle or unmatched sync handle passed");
             Err(ParseResultError::InternalParseIssue)
         } else {
@@ -129,11 +129,57 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         }
     }
 
+    /// Reports an error if next token is not within the [expected] slice
+    /// Does not consume the expected token, should be used as an error-reporting
+    /// form of eat_to
+    pub fn expect_next_in(&mut self, expected: &[Token]) -> Result<(), ParseResultError<'input>> {
+        let first = self.lex.la(0);
+        let sync = self.sync_next(expected);
+        let corrected = self.synchronize();
+
+        if corrected {
+            println!("corrective action had to be taken");
+            if let Ok(tw) = first {
+                self.report_err(ParseResultError::UnexpectedToken(tw, expected.iter().cloned().collect()));
+            } else {
+                self.report_err(ParseResultError::EndOfFile);
+            }
+        }
+
+        match self.unsync(sync) {
+            Err(e) => {
+                // found a synchronization point for a sync point in a superscope, so the current
+                // scope's sync point is not usable. Parent scope will not get their expect_next,
+                // so return err
+                Err(e)
+            },
+            Ok(_) => {
+                // found a synchronization point that allows for parse recovery, so return to
+                // parent scope an Ok result
+                Ok(())
+            },
+        }
+
+    }
+
     pub fn expect(&mut self, expected: Token) -> Result<TokenWrapper<'input>, ParseResultError<'input>> {
         /*self.sync_next(&[t]);
         self.synchronize();
         self.unsync(*/
+        self.expect_next_in(&[expected])?;
+
         if let Ok(tw) = self.lex.la(0) {
+            if tw.token == expected {
+                self.lex.advance();
+                Ok(tw)
+            } else {
+                Err(ParseResultError::UnexpectedToken(tw, vec![expected]))
+            }
+        } else {
+            Err(ParseResultError::EndOfFile)
+        }
+
+        /*if let Ok(tw) = self.lex.la(0) {
             let r = match tw.token {
                 token if token == expected => {
                     self.lex.advance();
@@ -187,7 +233,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         } else {
             // no point in synchronizing, EOF already
             Err(ParseResultError::EndOfFile)
-        }
+        }*/
     }
 }
 
