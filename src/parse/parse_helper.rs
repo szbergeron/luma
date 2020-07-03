@@ -6,6 +6,8 @@ use crate::parse::*;
 //use std::collections::HashSet;
 
 impl<'input, 'lexer> Parser<'input, 'lexer> {
+    /// Mark what tokens could feasibly come after some recursive parse state call that the current
+    /// parse state wants to capture and handle.
     pub fn sync_next(
         &mut self,
         next: &[Token],
@@ -15,19 +17,16 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         
         self.next.extend(next.iter());
 
-        //let end_len = self.next.len();
-
-        //println!("sync next called, sync stack is {:?}", self.next);
-
         SyncSliceHandle { start: start_len, /* end: end_len */ }
     }
 
+    /// Remove the current recovery frame from the recovery stack,
+    /// pass the handle that was provided by sync_next to remove the correct frame
     pub fn unsync(
         &mut self,
         handle: SyncSliceHandle,
     ) -> Result<(), ParseResultError<'input>> {
         if self.next.len() < handle.start { // maybe just < rather than <=?
-            //panic!("wrong handle or unmatched sync handle passed");
             Err(ParseResultError::InternalParseIssue)
         } else {
             self.next.truncate(handle.start);
@@ -35,22 +34,27 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         }
     }
 
-    /// eat up to, return whether any synchronization action was required
+    /// Eat up to, return whether any synchronization action was required
+    ///
+    /// The synchronization algorithm tries to avoid dropping as much spurious input as possible,
+    /// and instead assumes the user has generally not completed typing.
+    ///
+    /// It will only drop an input if the `next` set does not contain the provided token.
+    ///
+    /// If the `next` set *does* contain the provided token, then it will
+    /// remove any entries in the set more recent than that entry, and
+    /// signal to restart parsing in the state that matches that entry by
+    /// having unsync(...) only return Ok once that recovery scope is reached
     pub fn synchronize(
         &mut self
     ) -> bool {
-        //println!("synchronizing! Current error derivations list is {:?}", self.next);
-        //println!("looping in sync");
-
         let mut r = false;
         loop {
             if let Ok(tok) = self.lex.la(0) {
                 if let Some(index) = self.next.iter().rposition(|ntok| *ntok == tok.token) {
-                    //println!("truncates the return list! Found a token: {:?}", tok.token);
                     self.next.truncate(index + 1);
                     return r;
                 } else {
-                    //println!("advances lexer over erronious token {:?}", tok.token);
                     self.lex.advance();
                     r = true;
                 }
@@ -64,36 +68,16 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         return r;
     }
 
-    /*pub fn eat_through(&mut self, toks: Vec<Token>) {
-        let s: HashSet<Token> = toks.into_iter().collect();
-
-        while let Ok(tw) = self.lex.next() {
-            if s.contains(&tw.token) {
-                break;
-            } else {
-                continue;
-            }
-        }
-    }*/
-
-    /*pub fn eat_to(&mut self, toks: Vec<Token>) {
-        let s: HashSet<Token> = toks.into_iter().collect();
-
-        while let Ok(tw) = self.lex.la(0) {
-            if s.contains(&tw.token) {
-                break;
-            } else {
-                self.lex.advance();
-                continue;
-            }
-        }
-    }*/
-
+    /// If the current lookahead is the token passed, consume the token and
+    /// return its metadata. Otherwise, do nothing and return None
+    ///
+    /// fast-cased version of eat_match_in for when only one token would be possible
     pub fn eat_match(&mut self, t: Token) -> Option<TokenWrapper<'input>> {
         self.eat_match_in(&[t])
-        //expect(t).map_or(|t| Some(t), None)
     }
 
+    /// If the current lookahead is within the [Token] slice passed, consume the token and
+    /// return its metadata. Otherwise, do nothing and return None
     pub fn eat_match_in(&mut self, t: &[Token]) -> Option<TokenWrapper<'input>> {
         if let Ok(tw) = self.lex.la(0) {
             if t.contains(&tw.token) {
@@ -108,6 +92,8 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         }
     }
 
+    /// Consumes a token if the passed closure returns Some(T),
+    /// returning a tuple of the returned T and the token (+metadata) that was consumed
     pub fn eat_if<F, T>(&mut self, f: F) -> Option<(T, TokenWrapper<'input>)>
     where
         F: FnOnce(TokenWrapper<'input>) -> Option<T>,
@@ -177,10 +163,9 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         }
     }
 
+    /// Behavior similar to soft_expect, but will attempt to reallign input stream to get to the
+    /// token
     pub fn hard_expect(&mut self, expected: Token) -> Result<TokenWrapper<'input>, ParseResultError<'input>> {
-        /*self.sync_next(&[t]);
-        self.synchronize();
-        self.unsync(*/
         self.expect_next_in(&[expected])?;
 
         if let Ok(tw) = self.lex.la(0) {
@@ -188,69 +173,11 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
                 self.lex.advance();
                 Ok(tw)
             } else {
-                //println!("token wrapper is {:?} and expected is {:?}", tw, expected);
-                //println!("stack is {:?}", self.next);
                 Err(ParseResultError::UnexpectedToken(tw, vec![expected]))
             }
         } else {
             Err(ParseResultError::EndOfFile)
         }
-
-        /*if let Ok(tw) = self.lex.la(0) {
-            let r = match tw.token {
-                token if token == expected => {
-                    self.lex.advance();
-
-                    Ok(tw)
-                }
-                other => {
-                    println!("reported an error, token was not of expected type expected {:?} but found {:?}", expected, tw.token);
-                    self.report_err(ParseResultError::UnexpectedToken(tw, vec![expected]));
-
-                    // skip over any erronious tokens that don't exist in sync set
-                    let sync = self.sync_next(&[expected]);
-                    self.synchronize();
-
-                    // if token was meant for an above sync point then don't eat token
-                    self.unsync(sync)?;
-
-                    // can only get here if sync stack 
-                    if let Ok(tw) = self.lex.la(0) {
-                        if tw.token == expected {
-                            self.lex.advance();
-                            Ok(tw)
-                        } else {
-                            panic!("Unexpected state: unsynced to current scope, but next token was not expected token");
-                        }
-                    } else {
-                        Err(ParseResultError::EndOfFile)
-                    }
-                }
-            };
-            /*let sync = self.sync_next(&[t]);
-            self.synchronize();
-            self.unsync(sync)?;*/
-
-            /*let r = match tw.token {
-                tt if tt == t => Ok(tw),
-                _ => {
-                    println!("expected a {} but found a {}, so failing", );
-                    self.lex.backtrack();
-
-                    self.synchronize();
-                    Err(ParseResultError::UnexpectedToken(tw, vec![t]))
-                }
-            };
-
-            r
-
-            r*/
-
-            r
-        } else {
-            // no point in synchronizing, EOF already
-            Err(ParseResultError::EndOfFile)
-        }*/
     }
 }
 
