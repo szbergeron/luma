@@ -100,7 +100,8 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         match (start, end) {
             (CodeLocation::Parsed(start), CodeLocation::Parsed(end)) => {
                 let start_line = (start.line - 2).max(1);
-                let end_line = (end.line + 2).min(lines.len() as isize - 1);
+                let end_line = (end.line + 2).min(lines.len() as isize);
+                println!("start line: {}, end line: {}", start_line, end_line);
 
                 let mut pad = 0;
                 for line_num in start_line..(end_line + 1) {

@@ -310,6 +310,8 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
                         .map_err(|err| {
                             self.report_err(err.clone());
 
+                            let _ = self.expect_next_in(&[Token::Semicolon, Token::RBrace]); // need to eat up to recovery point
+
                             //failed = true;
                             //self.eat_to(vec![Token::Semicolon, Token::RBrace]);
                             err

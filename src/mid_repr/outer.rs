@@ -190,9 +190,12 @@ impl<'input> ScopeContext<'input> {
     ) -> bool {
         let decl_guard = decl.read().unwrap();
         let is_exported = decl_guard.is_public();
-        let sname = decl_guard
-            .symbol_name()
-            .expect("No support for unnamed symbol declarations currently");
+        let sname = if let Some(sname) = decl_guard.symbol_name() {
+            sname
+        } else {
+            println!("symbol declaration not implemented for unnamed symbols");
+            return false;
+        };
 
         let is_context = decl_guard.is_context();
 

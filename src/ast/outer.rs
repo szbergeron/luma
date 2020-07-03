@@ -354,7 +354,7 @@ impl<'a> SymbolDeclaration<'a> {
             Self::FunctionDeclaration(fd) => Some(fd.name),
             Self::NamespaceDeclaration(ns) => ns.name,
             Self::StructDeclaration(sd) => Some(sd.name),
-            Self::ExpressionDeclaration(_ed) => None,
+            Self::ExpressionDeclaration(ed) => None, // no symbol to export
         }
     }
 

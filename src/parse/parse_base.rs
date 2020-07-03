@@ -1,5 +1,4 @@
 #[allow(non_upper_case_globals)]
-
 use crate::ast;
 use crate::lex::Token;
 
@@ -41,10 +40,8 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
                             declarations.push(Arc::new(RwLock::new(ok)));
                         }
                     };
-
                 }
             };
-
         }
 
         self.unsync(sync)?;
@@ -116,7 +113,19 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         })
     }
 
-    
+    pub fn parse_static_declaration(
+        &mut self,
+    ) -> Result<ast::StaticVariableDeclaration<'input>, ParseResultError<'input>> {
+        let expr = self.parse_expr()?;
+        self.hard_expect(Token::Semicolon)?;
+
+        Ok(ast::StaticVariableDeclaration {
+            node_info: expr.as_node().node_info(),
+            public: false,
+            expression: expr,
+        })
+    }
+
     #[allow(non_upper_case_globals)]
     const first_global: [Token; 3] = [Token::Module, Token::Function, Token::Struct];
     pub fn global_declaration(
@@ -125,7 +134,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         let has_pub = self.eat_match(Token::Public);
         let mut failed = false;
 
-        self.expect_next_in(&[Token::Module, Token::Function, Token::Struct])?;
+        self.expect_next_in(&[Token::Module, Token::Function, Token::Struct, Token::Let])?;
 
         if let Ok(tw) = self.lex.la(0) {
             let r = match tw.token {
@@ -154,8 +163,15 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
                         failed = true;
                         e
                     }),
+                // only parse let expressions for now, since other (pure) expressions would be
+                // useless
+                Token::Let => self.parse_static_declaration().map(|sd| {
+                    let mut ed = ast::SymbolDeclaration::ExpressionDeclaration(sd);
+                    if has_pub.is_some() { ed.mark_public() }
+                    ed
+                }),
                 _ => {
-                    //self.eat_to(vec![Token::RBrace, Token::Semicolon]);
+                    // may be expression?
 
                     self.err(ParseResultError::UnexpectedToken(
                         tw,
