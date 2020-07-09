@@ -20,7 +20,6 @@ pub fn parse_unit<'file>(
     context: &ScopeContext<'file>,
     cflags: &CFlags,
 ) -> Result<OuterScope<'file>, ParseResultError<'file>> {
-
     // clone because we don't want to keep lock open, and this should be rather cheap in the scheme
     // of things
     // TODO: eval if this even matters
@@ -135,9 +134,15 @@ pub fn launch(args: &[&str]) {
     println!("context tree:");
     println!("{}", scope_map.global().unwrap().read().unwrap());
 
-    scope_map.handles().par_iter().for_each(|handle| prepass(handle));
+    scope_map
+        .handles()
+        .par_iter()
+        .for_each(|handle| prepass(handle));
 
-    scope_map.handles().par_iter().for_each(|handle| analyze(handle));
+    scope_map
+        .handles()
+        .par_iter()
+        .for_each(|handle| analyze(handle));
 }
 
 #[allow(dead_code)]

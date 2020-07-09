@@ -267,8 +267,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         let while_exp = self.parse_expr()?;
         let do_exp = self.parse_expr()?;
 
-        let node_info =
-            ast::NodeInfo::from_indices(start, do_exp.as_node().end().unwrap_or(start));
+        let node_info = ast::NodeInfo::from_indices(start, do_exp.as_node().end().unwrap_or(start));
 
         Ok(WhileExpression::new_expr(node_info, while_exp, do_exp))
     }

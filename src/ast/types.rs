@@ -6,7 +6,7 @@ pub struct TypeConstraint<'a> {
 
     pub constrains: TypeReference<'a>, // generic type constrained by this
 
-    pub is: Vec<TypeReference<'a>>, // only types themselves
+    pub is: Vec<TypeReference<'a>>,         // only types themselves
     pub implements: Vec<TypeReference<'a>>, // only traits
 }
 

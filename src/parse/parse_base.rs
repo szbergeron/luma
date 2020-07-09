@@ -167,7 +167,9 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
                 // useless
                 Token::Let => self.parse_static_declaration().map(|sd| {
                     let mut ed = ast::SymbolDeclaration::ExpressionDeclaration(sd);
-                    if has_pub.is_some() { ed.mark_public() }
+                    if has_pub.is_some() {
+                        ed.mark_public()
+                    }
                     ed
                 }),
                 _ => {

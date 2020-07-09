@@ -8,13 +8,9 @@ use crate::parse::*;
 impl<'input, 'lexer> Parser<'input, 'lexer> {
     /// Mark what tokens could feasibly come after some recursive parse state call that the current
     /// parse state wants to capture and handle.
-    pub fn sync_next(
-        &mut self,
-        next: &[Token],
-        ) -> SyncSliceHandle
-    {
+    pub fn sync_next(&mut self, next: &[Token]) -> SyncSliceHandle {
         let start_len = self.next.len();
-        
+
         self.next.extend(next.iter());
 
         SyncSliceHandle { start: start_len }
@@ -22,11 +18,9 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
 
     /// Remove the current recovery frame from the recovery stack,
     /// pass the handle that was provided by sync_next to remove the correct frame
-    pub fn unsync(
-        &mut self,
-        handle: SyncSliceHandle,
-    ) -> Result<(), ParseResultError<'input>> {
-        if self.next.len() < handle.start { // maybe just < rather than <=?
+    pub fn unsync(&mut self, handle: SyncSliceHandle) -> Result<(), ParseResultError<'input>> {
+        if self.next.len() < handle.start {
+            // maybe just < rather than <=?
             Err(ParseResultError::InternalParseIssue)
         } else {
             self.next.truncate(handle.start);
@@ -45,9 +39,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
     /// remove any entries in the set more recent than that entry, and
     /// signal to restart parsing in the state that matches that entry by
     /// having unsync(...) only return Ok once that recovery scope is reached
-    pub fn synchronize(
-        &mut self
-    ) -> bool {
+    pub fn synchronize(&mut self) -> bool {
         let mut r = false;
         loop {
             if let Ok(tok) = self.lex.la(0) {
@@ -126,7 +118,10 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         if corrected {
             println!("corrective action had to be taken");
             if let Ok(tw) = first {
-                self.report_err(ParseResultError::UnexpectedToken(tw, expected.iter().cloned().collect()));
+                self.report_err(ParseResultError::UnexpectedToken(
+                    tw,
+                    expected.iter().cloned().collect(),
+                ));
             } else {
                 self.report_err(ParseResultError::EndOfFile);
             }
@@ -138,19 +133,21 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
                 // scope's sync point is not usable. Parent scope will not get their expect_next,
                 // so return err
                 Err(e)
-            },
+            }
             Ok(_) => {
                 // found a synchronization point that allows for parse recovery, so return to
                 // parent scope an Ok result
                 Ok(())
-            },
+            }
         }
-
     }
 
     /// Will return a failing result if parsing fails, but will not attempt to reallign input or
     /// independently dispatch any error notifications, and will not consume any erroneous input
-    pub fn soft_expect(&mut self, expected: Token) -> Result<TokenWrapper<'input>, ParseResultError<'input>> {
+    pub fn soft_expect(
+        &mut self,
+        expected: Token,
+    ) -> Result<TokenWrapper<'input>, ParseResultError<'input>> {
         if let Ok(tw) = self.lex.la(0) {
             if tw.token == expected {
                 self.lex.advance();
@@ -165,7 +162,10 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
 
     /// Behavior similar to soft_expect, but will attempt to reallign input stream to get to the
     /// token
-    pub fn hard_expect(&mut self, expected: Token) -> Result<TokenWrapper<'input>, ParseResultError<'input>> {
+    pub fn hard_expect(
+        &mut self,
+        expected: Token,
+    ) -> Result<TokenWrapper<'input>, ParseResultError<'input>> {
         self.expect_next_in(&[expected])?;
 
         if let Ok(tw) = self.lex.la(0) {

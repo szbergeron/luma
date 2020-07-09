@@ -201,8 +201,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         for e in self.errors.iter() {
             println!();
             match e {
-                ParseResultError::InternalParseIssue => {
-                },
+                ParseResultError::InternalParseIssue => {}
                 ParseResultError::EndOfFile => {
                     eprintln!("Unexpected End of File");
                 }
