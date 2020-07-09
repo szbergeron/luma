@@ -17,7 +17,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         
         self.next.extend(next.iter());
 
-        SyncSliceHandle { start: start_len, /* end: end_len */ }
+        SyncSliceHandle { start: start_len }
     }
 
     /// Remove the current recovery frame from the recovery stack,

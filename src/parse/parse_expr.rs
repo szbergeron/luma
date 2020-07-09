@@ -22,6 +22,10 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         r
     }
 
+    // follows typespecifier? pattern
+    // where:
+    //     typespecifier: <typelist>
+    //     pattern: (expressionlist)
     pub fn parse_pattern(&mut self) -> Result<Pattern<'input>, ParseResultError<'input>> {
         // can be a single literal or tuple, and each tuple is a set of expressions
 
@@ -48,6 +52,16 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
             node_info,
             expressions,
         })
+    }
+
+    pub fn parse_type_specifier(&mut self) -> Vec<ast::TypeReference<'input>> {
+        let mut r = Vec::new();
+
+        if let Some(_) = self.eat_match(Token::CmpLessThan) {
+            let _ = self.hard_expect(Token::CmpGreaterThan);
+        }
+
+        r
     }
 
     pub fn parse_array_literal(&mut self) -> ExpressionResult<'input> {

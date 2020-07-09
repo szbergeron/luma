@@ -106,10 +106,6 @@ impl<'a> AstNode<'a> for OuterScope<'a> {
                 //.for_each(|elem| elem.display(f, depth + 1))
                 .display(f, depth + 1)
         });
-
-        /*for dec in self.declarations {
-            dec.display(f, depth + 1);
-        }*/
     }
 }
 
@@ -120,7 +116,6 @@ pub struct FunctionDeclaration<'a> {
     pub public: bool,
     pub name: &'a str,
 
-    //pub expressions: Vec<Box<dyn Expression<'a>>>,
     pub body: Box<ExpressionWrapper<'a>>,
     pub return_type: TypeReference<'a>,
     pub params: Vec<(Box<super::ExpressionWrapper<'a>>, super::TypeReference<'a>)>,
@@ -143,7 +138,6 @@ impl<'a> AstNode<'a> for FunctionDeclaration<'a> {
 
         let _ = writeln!(f, "{}Parameters:", indent(depth + 1),);
 
-        //write!(f, "{}", indent(depth + 1));
         for vd in self.params.iter() {
             let _ = writeln!(
                 f,

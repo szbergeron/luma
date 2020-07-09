@@ -11,3 +11,10 @@ let f = {
 
     f * g * e mod;
 }
+
+mod f {
+    pub pub fn adsfjk() {
+    }
+}
+
+mod g {}
