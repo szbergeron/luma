@@ -1,6 +1,16 @@
 use super::base::*;
 use crate::ast;
 
+// holds idea of a constraint, or "request" of a type.
+//
+// holds idea of a support, or the "answer" that may help in solving a constraint
+
+
+// holds mappings for every type that is in scope, and what they are constrained to
+pub struct TypeContext<'a> {
+    //
+}
+
 pub struct TypeConstraint<'a> {
     pub node_info: NodeInfo,
 
