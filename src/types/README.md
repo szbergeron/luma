@@ -35,7 +35,38 @@ Compositions:
 Basic:
     Space: Element:
         A space is analogous to a namespace, but appears in several different contexts.
-        A space is separate from any other space, including identically defined spaces.
+        A space is separate from any other space, including identically defined spaces.had
 
     Element:
         An element describes a single symbol within some space
+
+
+Types themselves are divided into two categories:
+    Value Types:
+        Value types speak to the structure of the data or the data itself, examples would be structs, specific sized integers, enums, or other such types.
+
+        Value types are always invariant for constraints, so no value type may be assigned into any *different* value type.
+
+    Trait Types:
+        Trait types speak to the abilities an object is capable of, and put no restriction on the structure of the data used for 
+
+
+//All accesses are done through associated vtables, with each object being 
+
+each object is laid out, when by value, as a value and a pointer. When a modification to a by-value object occurs, the behavior that results from the modification varies. 
+
+Objects follow one of two types:
+    Fixed:
+        Fixed objects are those that are held "by value", and are unboxed and on the stack/in registers.
+        Fixed objects have no dynamic dispatch capability, and their type is not mutable and not run-time polymorphic.
+
+    Dynamic:
+        Dynamic objects are objects that are solely owned as boxed values, and are always located on the heap.
+        Dynamic objects allow for dynamic dispatch, trait promotion/demotion, and run-time polymorphism.
+
+Fixed objects may be copied and promoted to dynamic objects losslessly.
+However, going from a dynamic object to a fixed object is less straightforward.
+A fixed object may be initialized from a dynamic object where that dynamic object allows
+for run-time coercion to a value type of the specified type. The ability to convert in this way
+must be defined within the type that the dynamic object is known as, or the dynamic object
+must first be confirmed through trait introspection to allow this conversion.
