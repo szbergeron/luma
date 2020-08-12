@@ -70,3 +70,23 @@ A fixed object may be initialized from a dynamic object where that dynamic objec
 for run-time coercion to a value type of the specified type. The ability to convert in this way
 must be defined within the type that the dynamic object is known as, or the dynamic object
 must first be confirmed through trait introspection to allow this conversion.
+
+
+Syntax:
+
+References:
+    Type references follow this form:
+        TypeReference = Identifier | Tuple | GenericSpecifier | Wildcard
+
+        GenericSpecifier = Identifier < TypeList >
+
+        TypeList = TypeReference | TypeReference , TypeList | <null derives>
+
+        Tuple = ( TypeList )
+
+        Wildcard = _
+
+    Type references will hopefully allow for value specification (constexpr or value arguments) in the future
+
+    Type references are intended to be used both for providers (function return type) and for constraints,
+    and are the primary tool by which type inference is accomplished

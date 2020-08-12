@@ -11,6 +11,33 @@ pub struct TypeContext<'a> {
     //
 }
 
+pub enum TypeReference<'a> {
+    Identifier(IdentifierTypeReference<'a>),
+    Tuple(TupleTypeReference<'a>),
+    Generic(GenericTypeReference<'a>),
+    Wildcard(),
+}
+
+pub struct IdentifierTypeReference<'a> {
+    pub node_info: NodeInfo,
+
+    pub identifier: &'a str,
+}
+
+pub struct TupleTypeReference<'a> {
+    pub node_info: NodeInfo,
+
+    pub inner_types: Vec<TypeReference<'a>>,
+}
+
+pub struct GenericTypeReference<'a> {
+    pub node_info: NodeInfo,
+
+    pub identifier: &'a str,
+
+    pub specified_types: Vec<TypeReference<'a>>,
+}
+
 pub struct TypeConstraint<'a> {
     pub node_info: NodeInfo,
 
