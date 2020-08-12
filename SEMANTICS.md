@@ -83,3 +83,16 @@ func f() -> Box<dyn Foo> {
     qux
 }
 ```
+
+
+So what's that whole `secondary trait handle` thing doing there?
+Well, indirection (following pointers) is often rather expensive on modern machines,
+that's why linked lists are so often frowned upon. Here, say you recieve an object
+as a parameter to a function and you specify that it must `impl trait Foo + trait Bar`.
+Since we already know it has to implement those two things, it doesn't make sense
+to dereference the primary handle and traverse the vtable list, we can instead just
+pass around the `trait Foo` and `trait Bar` handles and only have to do a single
+dereference for virtual dispatch! This is a significant part of why
+it's good to enforce as many type constraints as you can at compile time,
+because trait (re)-discovery can get rather expensive (on top of being
+hard for the programmer themself to reason about.)
