@@ -45,10 +45,10 @@ The following pseudo-syntax shows how this may be accomplished:
 
 ```
 trait Foo {
-    int bar,
-    func baz(self, float) -> float,
+    bar: int,
+    baz: fn(self, float) -> float,
 
-    int quux = 10,
+    quux: int = 10,
 }
 
 func f() -> Box<dyn Foo> {
@@ -57,7 +57,7 @@ func f() -> Box<dyn Foo> {
     // "where qux impl Object" is implied, but you can specify other traits here to forward-acknowledge
     // that you'll be using fields of some other traits. This allows for circular field/method
     // references between `open` blocks
-    foo_for_qux = open Foo for qux where qux impl Object {
+    foo_for_qux = impl Foo for qux where qux impl Object {
         bar = 50,
         baz = (self, input) {
             // within this context, any field/method from
@@ -65,7 +65,7 @@ func f() -> Box<dyn Foo> {
             // are visible and accessible.
 
             (self.bar + self.quux) as float * input
-        }
+        },
     }
 
     // This statement verifies that all paths within the current block fully define `Foo` for `qux`.
@@ -84,7 +84,6 @@ func f() -> Box<dyn Foo> {
 }
 ```
 
-
 So what's that whole `secondary trait handle` thing doing there?
 Well, indirection (following pointers) is often rather expensive on modern machines,
 that's why linked lists are so often frowned upon. Here, say you recieve an object
@@ -96,3 +95,50 @@ dereference for virtual dispatch! This is a significant part of why
 it's good to enforce as many type constraints as you can at compile time,
 because trait (re)-discovery can get rather expensive (on top of being
 hard for the programmer themself to reason about.)
+
+So what do we do when a single trait isn't granular enough for what we want to do?
+If you want to add single fields over time, you can just pass around the vtable itself
+as a variable! When you want to add it to an object, it *will* be a runtime error
+if you don't initialize every required element. What does this look like? Well,
+first you create the empty vtable:
+```
+let mut impl_foo_for_qux = impl Foo for qux where qux impl Object {};
+```
+This creates a vtable specific to qux (with a pointer back to that variable for `self` refs)
+which you can then build out. If you want to define a field/method, you can simply do this:
+```
+open impl_foo_for_qux {
+    bar = 50,
+    baz = (self, _) {
+        42
+    }
+}
+```
+or, if a symbol is unambiguous (you aren't doing method overloading) then
+you can treat it like a struct, and simply use the dot operator:
+```
+impl_foo_for_qux.bar = Some(50)
+```
+Say you pass around the vtable beyond some opaque barrier
+(like a function that can't get inlined, or you pass it into a virtual dispatch method)
+and the state of the vtable when you want to add it to an object isn't clear, what then?
+So in the simple case where you define the entire trait in one block, the compiler can
+follow the lifetime of the vtable and know that all the fields have been defined
+(or even warn you if it can prove you didn't specify all the fields/methods!)
+In the case where you have an opaque barrier though, there will be a runtime check
+that all fields and methods have been specified, and that all traits that were
+stated to be defined (in the `where` clause, for instance) are indeed present on
+the object. If a runtime error here occurs, it is currently treated as a fatal error.
+The thread that is trying to add that trait will panic, and so will any threads
+that are unconditionally joining to that thread or that attempt to. This behavior
+may change later, and there may be various control flow mechanisms added to 
+make this more ergonomic.
+
+So what's going on with that whole `Some(50)` thing in that second example?
+When you're actually passing around a vtable as a variable, it's best
+to think of it as a struct that contains a bunch of `Option<T>`. If a field or method
+is defined, then the attribute that corresponds to it is `Some`, otherwise that attribute
+is `None`. This lets you do some manual checking to see if stuff is defined, and if not
+then you can define it yourself. `open` and `impl` blocks automatically wrap any attributes
+in `Some` for convenience, since it's incredibly rare to want to *remove* the provided
+definition for some attribute when you can just overwrite it otherwise.
