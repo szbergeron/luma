@@ -1,9 +1,11 @@
-use super::base::*;
+use crate::ast::base::*;
 use crate::ast;
 
 // holds idea of a constraint, or "request" of a type.
 //
 // holds idea of a support, or the "answer" that may help in solving a constraint
+
+pub type TypeID = usize;
 
 
 // holds mappings for every type that is in scope, and what they are constrained to
@@ -11,49 +13,57 @@ pub struct TypeContext<'a> {
     //
 }
 
-pub enum TypeReference<'a> {
-    Identifier(IdentifierTypeReference<'a>),
-    Tuple(TupleTypeReference<'a>),
-    Generic(GenericTypeReference<'a>),
+// Type references use owned strings rather than references
+// so that the type registry can be global without holding
+// the contents of every file in memory just to cache type info.
+pub enum TypeReference {
+    Identifier(IdentifierTypeReference),
+    Tuple(TupleTypeReference),
+    Generic(GenericTypeReference),
     Wildcard(),
 }
 
-pub struct IdentifierTypeReference<'a> {
-    pub node_info: NodeInfo,
-
-    pub identifier: &'a str,
+impl TypeReference {
+    pub fn hash
 }
 
-pub struct TupleTypeReference<'a> {
+pub struct IdentifierTypeReference {
     pub node_info: NodeInfo,
 
-    pub inner_types: Vec<TypeReference<'a>>,
+    pub identifier: String,
 }
 
-pub struct GenericTypeReference<'a> {
+pub struct TupleTypeReference {
     pub node_info: NodeInfo,
 
-    pub identifier: &'a str,
-
-    pub specified_types: Vec<TypeReference<'a>>,
+    pub inner_types: Vec<TypeReference>,
 }
 
-pub struct TypeConstraint<'a> {
+pub struct GenericTypeReference {
+    pub node_info: NodeInfo,
+
+    pub identifier: String,
+
+    pub specified_types: Vec<TypeReference>,
+}
+
+/*pub struct TypeConstraint {
     pub node_info: NodeInfo,
 
     pub constrains: TypeReference<'a>, // generic type constrained by this
 
     pub is: Vec<TypeReference<'a>>,         // only types themselves
     pub implements: Vec<TypeReference<'a>>, // only traits
-}
+}*/
 
 //#[derive(Debug)]
-pub struct TypeReference<'a> {
+/*pub struct TypeReference<'a> {
     pub node_info: NodeInfo,
 
     pub typename: &'a str,
     pub type_parameters: Vec<TypeReference<'a>>,
-    pub refers_to: Option<Box<dyn Type + Send>>,
+    //pub refers_to: Option<Box<dyn Type + Send>>,
+    pub refers_to: Option<TypeID>
     //pub span: Span<'a>,
 }
 
@@ -98,7 +108,7 @@ impl<'a> TypeReference<'a> {
             node_info: ast::NodeInfo::from_token(input, true),
         }
     }*/
-}
+}*/
 
 impl<'a> AstNode<'a> for TypeReference<'a> {
     fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
@@ -128,4 +138,54 @@ pub trait Type: std::fmt::Debug + std::marker::Send + std::marker::Sync /* don't
     fn primitive(&self) -> bool {
         false
     }
+
+    fn uid(&self) -> usize;
+}
+
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+
+static ID_COUNTER: AtomicUsize = AtomicUsize::new();
+
+// actual type definitions
+#[derive(Debug, Clone)]
+pub struct DynType {
+    pub guid: usize,
+}
+
+impl DynType {
+    pub fn new_empty() -> DynType {
+        DynType {
+            guid: ID_COUNTER.fetch_add(1, Ordering::Relaxed),
+        }
+    }
+}
+
+impl Type for DynType {
+    fn uid(&self) -> usize {
+        self.guid
+    }
+}
+
+pub struct FixedType {
+    pub guid: usize,
+}
+
+impl FixedType {
+    pub fn new_empty() -> FixedType {
+        FixedType {
+            guid: ID_COUNTER.fetch_add(1, Ordering::Relaxed),
+        }
+    }
+}
+
+impl Type for FixedType {
+    fn uid(&self) -> usize {
+        self.guid
+    }
+}
+
+pub enum EitherType {
+    Dyn(DynType),
+    Fixed(FixedType),
 }

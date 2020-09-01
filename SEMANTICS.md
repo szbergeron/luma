@@ -141,4 +141,5 @@ is defined, then the attribute that corresponds to it is `Some`, otherwise that 
 is `None`. This lets you do some manual checking to see if stuff is defined, and if not
 then you can define it yourself. `open` and `impl` blocks automatically wrap any attributes
 in `Some` for convenience, since it's incredibly rare to want to *remove* the provided
-definition for some attribute when you can just overwrite it otherwise.
+definition for some attribute when you can just overwrite it otherwise, and this behavior
+closely matches default initialization syntax for many other languages.
