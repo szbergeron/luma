@@ -1,0 +1,59 @@
+// a bnf version of this syntax will be created at a later point
+
+Decisions:
+* dereferences of reference types will be automatically applied
+* macros are unplanned
+* builtins:
+    print(val: str)
+        prints a str typed value to stdout
+    eprint(val: str)
+        prints a str typed value to stderr
+    stringify(val: ?) -> str
+        attempts to convert a value to a string
+        this is defined for each type individually currently,
+        and for reference types must be individually implemented and overridden
+
+        a builtin impl is provided for type i32 and a builtin shell impl is provided for type str
+
+    concat(v1: str, v2: str) -> str
+        returns a copied str of the provided strs with the content of v1 directly followed by the content of v2
+
+* operator overloading is 
+
+Builtin implementation is to be accomplished by the use of "builtin" syntax in included files.
+This syntax is given an example of in new_syntax_1.rsh 
+
+All expressions are overloadable, and use the `operator_<operation>` syntax such as `operation_add`
+The operators are as follows:
+    as => operator_as => 'as'
+        Used to typically cast an expression.
+        The overloading function should return the requested type and take in the provided type
+        This operation is implemented as a unary operation, even if it appears as a binary operation
+
+    dot => operator_dot => '.'
+        Used for dereference or attribute operations
+        This operation is not typically overloadable at runtime (yet)
+
+    equals => operator_equals => '='
+        Used for assignment operations.
+        This operation is not overloadable at runtime (yet)
+
+    logicalor => operator_logicalor => "||"
+        Used for the binary logical or operation
+        The overloading function should take the value of both sides of the operation and output a boolean value
+
+    logicaland => operator_logicaland => "&&"
+        Used for the binary logical and operation
+        The overloading function should take the value of both sides of the operation and output a boolean value
+
+    cmpequal => operator_cmpequal => "=="
+        Used for the binary logical equals operation
+        The overloading function should take the value of both sides of the operation and output a boolean value
+
+    cmplessthan => operator_cmplessthan => "<="
+        Used for the binary logical less than operation
+        The overloading function should take the value of both sides of the operation and output a boolean value
+
+    cmpgreaterthan => operator_cmpgreaterthan => ">="
+        Used for the binary logical greater than operation
+        The overloading function should take the value of both sides of the operation and output a boolean value
