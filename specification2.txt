@@ -57,3 +57,10 @@ The operators are as follows:
     cmpgreaterthan => operator_cmpgreaterthan => ">="
         Used for the binary logical greater than operation
         The overloading function should take the value of both sides of the operation and output a boolean value
+
+Assignment and "mutating" operations are a rather special case. Assignment ('a = b') requires taking a by reference *as well as* b by reference.
+This is actually done by making all variable usages referencing by default. Equality is handled by a builtin that
+takes `&left, &right` and returns a `result` whose value is dependent on the input types.
+Every variable is conceptually a reference to the type it owns, with an implicit conversion from `&type` to `type` when an operation
+requests it. This is done within expressions by first resolving on the directly given type, and then if the type has a dereference
+operation allowed a resolution is attempted on the dereferenced type
