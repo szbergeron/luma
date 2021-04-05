@@ -67,7 +67,7 @@ pub enum Token {
     LogicalOr,
 
     #[token("&")]
-    And,
+    Ampersand,
 
     #[token("^")]
     Caret,

@@ -54,32 +54,78 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         })
     }
 
-    pub fn parse_type_specifier(&mut self) -> Result<Box<ast::TypeReference<'input>>, ParseResultError<'input>> {
+    pub fn parse_type_specifier(
+        &mut self,
+    ) -> Result<Box<ast::TypeReference<'input>>, ParseResultError<'input>> {
         // these can start with a ( for a typle, a & for a reference, or a str, [<] for a named and
         // optionally parameterized type
-        let next_possible = [Token::LParen, Token::And, Token::Identifier];
-        self.expect_next_in(&next_possible)?;
-        if let Ok(tw) = self.lex.la(0) {
-            let r = match tw.token {
-                Token::And => {
-                    todo!()
-                },
-                Token::Identifier => {
-                    todo!()
-                },
-                _ => {
-                    self.err(ParseResultError::UnexpectedToken(
-                            tw,
-                            next_possible.to_vec(),
-                            None,
-                    ))
-                }
-            };
 
-            r
-        } else {
-            todo!()
+        let scope = self.scoped_name();
+
+        /*if !scope.silent {
+            self.hard_expect
+        }*/
+        // TODO: eval if should require a trailing :: during scope lookup
+
+        let final_id: &'input str = scope
+            .scope
+            .last()
+            .expect("ScopedNameReference had no final id, not even implicit");
+        let mut tr = TypeReference::new(*scope, final_id);
+
+        let continuation = [Token::LParen, Token::Ampersand];
+        //self.eat_match_in(&continuation)?;
+        //println!("Trying to eat a type_spec with la {:?}", self.lex.la(0));
+        match self.eat_match_in(&continuation) {
+            Some(tw) => {
+                match tw.token {
+                    Token::Ampersand => {
+                        tr.ctx.scope.push("&");
+
+                        let inner = self.parse_type_specifier()?;
+                        tr.type_args.push(inner);
+                    }
+                    Token::LParen => {
+                        tr.ctx.scope.push("Tuple");
+
+                        //println!("la is {:?}", self.lex.la(0));
+
+                        #[allow(irrefutable_let_patterns)]
+                        while let tri = self.parse_type_specifier()? {
+                            tr.type_args.push(tri);
+                            match self.eat_match(Token::Comma) {
+                                None => break,
+                                Some(_comma) => continue,
+                            }
+                        }
+
+                        self.hard_expect(Token::RParen)?;
+                        //todo!()
+                    }
+                    _ => {
+                        self.err(ParseResultError::UnexpectedToken(
+                            tw,
+                            continuation.to_vec(),
+                            Some(
+                                "Was trying to parse a type specifier, but didn't find a valid
+                            start to such an expression",
+                            ),
+                        ))?;
+                    }
+                };
+
+                //r
+
+                //Ok(Box::new(tr))
+            }
+            None => {
+                // no continuation to the type, parsing can be finished at this point
+            }
         }
+
+        println!("Returns with tr {:?}", tr);
+
+        Ok(Box::new(tr))
     }
 
     /*pub fn parse_type_specifier(&mut self) -> Vec<ast::TypeReference<'input>> {
@@ -113,7 +159,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
                 start = Some(dc.start);
                 end = Some(dc.end);
             }
-            None => r.scope.push("here"),
+            None => r.scope.push("local"),
         }
 
         while let Some(id) = self.eat_match(Token::Identifier) {
@@ -166,7 +212,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
                             Token::DoubleColon,
                             Token::Identifier,
                         ],
-                        None
+                        None,
                     ))
                 }
             }
@@ -429,7 +475,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
             if let Some(_colon) = self.eat_match(Token::Colon) {
                 todo!("Type constraints not implemented yet")
             } else if let Some(_as) = self.eat_match(Token::As) {
-                let typeref: Box<ast::TypeReference<'input>> = Box::new(self.type_reference()?);
+                let typeref: Box<ast::TypeReference<'input>> = self.parse_type_specifier()?;
                 let start = lhs
                     .as_node()
                     .start()
@@ -478,7 +524,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         lhs: Box<ast::ExpressionWrapper<'input>>,
     ) -> Box<ast::ExpressionWrapper<'input>> {
         match t {
-            Token::And | Token::Asterisk | Token::Dash | Token::Bang => {
+            Token::Ampersand | Token::Asterisk | Token::Dash | Token::Bang => {
                 UnaryOperationExpression::new_expr(node_info, t, lhs)
             }
             Token::Let => LetExpression::new_expr(node_info, lhs),
@@ -557,7 +603,7 @@ pub fn prefix_binding_power(t: Token) -> Option<u32> {
         | Token::Dash
         | Token::Asterisk
         | Token::Bang
-        | Token::And
+        | Token::Ampersand
         | Token::Let
         | Token::Return => Some(100),
 
@@ -596,7 +642,7 @@ pub fn infix_binding_power(t: Token) -> Option<(u32, u32)> {
 
         Token::Caret => Some((11, 12)),
 
-        Token::And => Some((13, 14)),
+        Token::Ampersand => Some((13, 14)),
 
         //Token::ShiftLeft | Token::ShiftRight => Some((15, 16)),
         Token::Plus | Token::Dash => Some((17, 18)),

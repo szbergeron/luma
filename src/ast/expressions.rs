@@ -14,7 +14,16 @@ pub trait Expression<'a>: AstNode<'a> {
 pub struct TypeReference<'a> {
     node_info: NodeInfo,
 
+    pub ctx: ScopedNameReference<'a>,
     pub canonicalized_name: &'a str,
+
+    pub type_args: Vec<Box<TypeReference<'a>>>
+}
+
+impl<'a> TypeReference<'a> {
+    pub fn new(ctx: ScopedNameReference<'a>, name: &'a str) -> TypeReference<'a> {
+        TypeReference { node_info: NodeInfo::Builtin, ctx, type_args: Vec::new(), canonicalized_name: name }
+    }
 }
 
 impl<'a> AstNode<'a> for TypeReference<'a> {
@@ -572,7 +581,7 @@ impl UnaryOperation {
             Token::Asterisk => Some(Self::Dereference),
             Token::Bang => Some(Self::Invert),
             Token::Dash => Some(Self::Negate),
-            Token::And => Some(Self::Reference),
+            Token::Ampersand => Some(Self::Reference),
             _ => None,
         }
     }

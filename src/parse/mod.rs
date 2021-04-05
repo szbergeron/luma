@@ -208,7 +208,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
                 ParseResultError::NotYetParsed => {
                     panic!("Programming error, unexplored region of ast has error for us?");
                 }
-                ParseResultError::UnexpectedToken(t, expected) => {
+                ParseResultError::UnexpectedToken(t, expected, msg) => {
                     self.print_context(t.start, t.end, &lines);
                     eprintln!("Got unexpected token of type {:?}. Expected one of {:?}. Token with slice \"{}\" was encountered around ({}, {})",
                         t.token,
@@ -217,6 +217,10 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
                         t.start,
                         t.end,
                     );
+                    match msg {
+                        Some(msg) => eprintln!("Hint: {}", msg),
+                        None => {}
+                    };
                 }
                 ParseResultError::SemanticIssue(issue, start, end) => {
                     //self.print_context(*start, *end, &lines);

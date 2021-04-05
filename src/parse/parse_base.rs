@@ -84,7 +84,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
 
         while let Some(field) = self.eat_match(Token::Identifier) {
             self.hard_expect(Token::Colon)?;
-            let field_type = self.type_reference()?;
+            let field_type = *self.parse_type_specifier()?;
             let expr = if self.eat_match(Token::Equals).is_some() {
                 Some(self.parse_expr()?)
             } else {
@@ -213,7 +213,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         })
     }
 
-    fn type_reference_inner(
+    /*fn type_reference_inner(
         &mut self,
     ) -> Result<Option<ast::TypeReference<'input>>, ParseResultError<'input>> {
         let typename = self.eat_match(Token::Identifier);
@@ -275,7 +275,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
             )),
             Ok(Some(tr)) => Ok(tr),
         }
-    }
+    }*/
 
     pub fn function_param_list(
         &mut self,
@@ -292,11 +292,12 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         )> = Vec::new();
         while let Ok(a) = self.atomic_expression() {
             self.hard_expect(Token::Colon)?;
-            let tr = self.type_reference()?;
+            let tr = self.parse_type_specifier()?;
 
             let r = (a, tr);
 
-            rvec.push(r);
+            //rvec.push(r);
+            todo!("Function param list parsing is WIP");
 
             match self.eat_match(Token::Comma) {
                 Some(_) => continue,
@@ -318,7 +319,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         self.hard_expect(Token::RParen)?;
 
         self.hard_expect(Token::ThinArrow)?;
-        let return_type = self.type_reference()?;
+        let return_type = self.parse_type_specifier()?;
 
         let body = self.parse_expr()?;
 
@@ -330,7 +331,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
             node_info,
             body,
             params,
-            return_type,
+            return_type: *return_type,
             name: function_name.slice,
             public: false,
         })
