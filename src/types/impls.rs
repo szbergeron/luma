@@ -33,13 +33,14 @@ impl<T: Any> AsAny for T {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Hash, Eq, PartialEq)]
 pub struct TypeSignature<'input> {
     name: &'input str,
     params: SmallVec<[Option<TypeID>; TYPE_PARAM_DEFAULT_COUNT]>,
 }
 
 pub trait Type: DynHash + DynEq + AsAny {
+    fn set_tid(&mut self, tid: TypeID);
     fn canonicalized_name(&mut self, within: &Ctx) -> &str;
     /*// owned for simpler lifetimes,
     // shouldn't be used often, doesn't appear in src text
@@ -167,6 +168,10 @@ impl Type for i32_t_static {
     fn add_method(&self, method: super::Method) -> bool {
         todo!()
     }
+
+    fn set_tid(&mut self, tid: TypeID) {
+        self.tid = tid;
+    }
 }
 
 impl std::cmp::PartialEq for i32_t_static {
@@ -214,12 +219,12 @@ impl ref_t_static {
         self.collapsed_canon_name = Some(
             "&".to_owned()
                 + self
-                    .apply_inner_rw(within, |t: &mut dyn Type| t.canonicalized_name(within).to_owned())
+                    .map_inner_rw(within, |t: &mut dyn Type| t.canonicalized_name(within).to_owned())
                     .unwrap_or("<unknown>".to_owned()).as_str(),
         );
     }
 
-    fn apply_inner_rw<F, T>(&self, within: &Ctx, func: F) -> Option<T> where F: Fn(&mut dyn Type) -> T {
+    fn map_inner_rw<F, T>(&self, within: &Ctx, func: F) -> Option<T> where F: Fn(&mut dyn Type) -> T {
         self.value_t.map(|tid| { 
             let lookup = within.lookup(tid).expect("apply_inner_rw was given an invalid value_t tid");
             let mut guard = lookup.write().expect("Couldn't lock write lookup on inner value type");
@@ -228,7 +233,7 @@ impl ref_t_static {
         })
     }
 
-    fn apply_inner_r<F, T>(&self, within: &Ctx, func: F) -> Option<T> where F: Fn(& dyn Type) -> T {
+    fn map_inner_r<F, T>(&self, within: &Ctx, func: F) -> Option<T> where F: Fn(& dyn Type) -> T {
         self.value_t.map(|tid| { 
             let lookup = within.lookup(tid).expect("apply_inner_rw was given an invalid value_t tid");
             let guard = lookup.read().expect("Couldn't lock write lookup on inner value type");
@@ -297,7 +302,7 @@ impl Type for ref_t_static {
     }
 
     fn encode_reference(&self, within: &Ctx) -> String {
-        self.apply_inner_r(within, |t| t.encode_reference(within).to_owned()).expect("No inner type present when trying to encode reference") + "*"
+        self.map_inner_r(within, |t| t.encode_reference(within).to_owned()).expect("No inner type present when trying to encode reference") + "*"
     }
 
     /// Definition is implicit within llvm,
@@ -312,5 +317,9 @@ impl Type for ref_t_static {
 
     fn derefs_to(&self) -> Option<TypeID> {
         self.value_t
+    }
+
+    fn set_tid(&mut self, tid: TypeID) {
+        self.tid = tid;
     }
 }

@@ -353,14 +353,16 @@ pub mod lex_wrap {
         EndOfFile,
         NotYetParsed,
         //ExpectedExpressionNotPresent,
-        UnexpectedToken(TokenWrapper<'a>, Vec<crate::lex::Token>),
+        /// The found token (and position), followed by a list of possible tokens here, followed by
+        /// a message (if applicable)
+        UnexpectedToken(TokenWrapper<'a>, Vec<crate::lex::Token>, Option<&'static str>),
         SemanticIssue(&'a str, CodeLocation, CodeLocation),
     }
 
     impl<'a> ParseResultError<'a> {
         pub fn add_expect(&mut self, toks: &[crate::lex::Token]) {
             match self {
-                Self::UnexpectedToken(_tw, v) => {
+                Self::UnexpectedToken(_tw, v, None) => {
                     v.extend(toks);
                 }
                 _ => {}

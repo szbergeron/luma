@@ -120,7 +120,9 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
             if let Ok(tw) = first {
                 self.report_err(ParseResultError::UnexpectedToken(
                     tw,
-                    expected.iter().cloned().collect(),
+                    expected.to_vec(),
+                    None,
+                    //expected.iter().cloned().collect(),
                 ));
             } else {
                 self.report_err(ParseResultError::EndOfFile);
@@ -153,7 +155,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
                 self.lex.advance();
                 Ok(tw)
             } else {
-                Err(ParseResultError::UnexpectedToken(tw, vec![expected]))
+                Err(ParseResultError::UnexpectedToken(tw, vec![expected], None))
             }
         } else {
             Err(ParseResultError::EndOfFile)
@@ -173,7 +175,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
                 self.lex.advance();
                 Ok(tw)
             } else {
-                Err(ParseResultError::UnexpectedToken(tw, vec![expected]))
+                Err(ParseResultError::UnexpectedToken(tw, vec![expected], None))
             }
         } else {
             Err(ParseResultError::EndOfFile)

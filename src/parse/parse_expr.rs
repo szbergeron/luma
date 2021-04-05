@@ -54,7 +54,35 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         })
     }
 
-    pub fn parse_type_specifier(&mut self) -> Vec<ast::TypeReference<'input>> {
+    pub fn parse_type_specifier(&mut self) -> Result<Box<ast::TypeReference<'input>>, ParseResultError<'input>> {
+        // these can start with a ( for a typle, a & for a reference, or a str, [<] for a named and
+        // optionally parameterized type
+        let next_possible = [Token::LParen, Token::And, Token::Identifier];
+        self.expect_next_in(&next_possible)?;
+        if let Ok(tw) = self.lex.la(0) {
+            let r = match tw.token {
+                Token::And => {
+                    todo!()
+                },
+                Token::Identifier => {
+                    todo!()
+                },
+                _ => {
+                    self.err(ParseResultError::UnexpectedToken(
+                            tw,
+                            next_possible.to_vec(),
+                            None,
+                    ))
+                }
+            };
+
+            r
+        } else {
+            todo!()
+        }
+    }
+
+    /*pub fn parse_type_specifier(&mut self) -> Vec<ast::TypeReference<'input>> {
         let mut r = Vec::new();
 
         if let Some(_) = self.eat_match(Token::CmpLessThan) {
@@ -62,7 +90,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         }
 
         r
-    }
+    }*/
 
     pub fn parse_array_literal(&mut self) -> ExpressionResult<'input> {
         todo!()
@@ -138,6 +166,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
                             Token::DoubleColon,
                             Token::Identifier,
                         ],
+                        None
                     ))
                 }
             }

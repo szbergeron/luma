@@ -51,8 +51,12 @@ pub struct Ctx<'input> {
 }
 
 impl<'input> Ctx<'input> {
-    pub fn define(&self, newtype: Box<dyn Type>) -> TypeID {
-        todo!()
+    pub fn define<T: 'static>(&self, mut newtype: T) -> TypeID where T: Type {
+        let tid = generate_typeid();
+        newtype.set_tid(tid);
+        let arcd = Arc::new(RwLock::new(newtype));
+        self.types.insert(tid, arcd);
+        tid
     }
 
     pub fn implement(&self, /* handle */) {}
@@ -63,9 +67,9 @@ impl<'input> Ctx<'input> {
 
     //pub fn inherit(&self, /* handle src, handle dst */) {}
 
-    pub fn query(&self, canonicalized_string: String) -> TypeHandle {
+    /*pub fn query(&self, canonicalized_string: String) -> TypeHandle {
         panic!("not implemented")
-    }
+    }*/
 
     pub fn lookup(&self, tid: TypeID) -> Option<TypeHandle> {
         self.types.get(&tid).map(|r| (*r.value()).clone())
@@ -75,8 +79,8 @@ impl<'input> Ctx<'input> {
         self.ids.get(&tid).map(|r| (*r.value()).clone())
     }
 
-    pub fn sig_to_id(&self, t: &TypeSignature<'input>) -> Option<TypeID> {
-        todo!()
+    pub fn sig_to_id(&self, t: &TypeSignature<'input>) -> Option<Vec<TypeID>> {
+        self.signatures.get(t).map(|r| (*r.value()).iter().map(|&v| v).collect())
     }
 }
 

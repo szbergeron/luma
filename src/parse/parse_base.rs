@@ -178,6 +178,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
                     self.err(ParseResultError::UnexpectedToken(
                         tw,
                         vec![Token::Module, Token::Let, Token::Function],
+                        None,
                     ))
                 }
             };
