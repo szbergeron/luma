@@ -1,12 +1,38 @@
 use super::base::*;
 use super::outer::*;
-use super::types;
+//use super::types;
 
 use crate::helper::lex_wrap::{ParseResultError, TokenWrapper};
 use crate::lex::Token;
+use crate::types;
 
 pub trait Expression<'a>: AstNode<'a> {
     fn expr_type(&self) -> Box<dyn types::Type>;
+}
+
+#[derive(Debug)]
+pub struct TypeReference<'a> {
+    node_info: NodeInfo,
+
+    pub canonicalized_name: &'a str,
+}
+
+impl<'a> AstNode<'a> for TypeReference<'a> {
+    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+        let _ = writeln!(
+            f,
+            "{}TypeReference with child canon name {}",
+            indent(depth), self.canonicalized_name
+        );
+        /*
+        [&self.subexpr]
+            .iter()
+            .for_each(|expr| expr.as_node().display(f, depth + 1));*/
+    }
+
+    fn node_info(&self) -> NodeInfo {
+        self.node_info
+    }
 }
 
 #[derive(Debug)]
@@ -756,7 +782,7 @@ pub struct TernarySelectorOperationExpression<'a> {
     //pub span: Span<'a>,
 }
 
-#[derive(Debug)]
+/*#[derive(Debug)]
 pub struct Closure<'a> {
     node_info: NodeInfo,
 
@@ -766,7 +792,7 @@ pub struct Closure<'a> {
     pub start: usize,
     pub end: usize,
     //pub span: Span<'a>,
-}
+}*/
 
 /*#[derive(Debug)]
 pub struct IdentifierExpression<'a> {

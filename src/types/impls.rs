@@ -23,7 +23,7 @@ mod TypeHelpers {
     }
 }
 
-trait AsAny {
+pub trait AsAny {
     fn as_any(&self) -> &dyn Any;
 }
 
@@ -91,7 +91,7 @@ pub trait DynHash {
 }
 
 impl<T: std::hash::Hash + ?Sized> DynHash for T {
-    fn dyn_hash(&self, state: &mut dyn std::hash::Hasher) {
+    fn dyn_hash(&self, mut state: &mut dyn std::hash::Hasher) {
         self.hash(&mut state);
     }
 }
@@ -214,23 +214,41 @@ impl ref_t_static {
         self.collapsed_canon_name = Some(
             "&".to_owned()
                 + self
-                    .get_inner_rw(within)
-                    .map(|t| t.canonicalized_name(within))
-                    .unwrap_or("<unknown>"),
+                    .apply_inner_rw(within, |t: &mut dyn Type| t.canonicalized_name(within).to_owned())
+                    .unwrap_or("<unknown>".to_owned()).as_str(),
         );
     }
 
-    fn get_inner_rw(&self, within: &Ctx) -> Option<std::sync::RwLockWriteGuard<dyn Type + 'static>> {
-        self.value_t.map(|tid| {
-            within
-                .lookup(tid)
-                .expect("Type held an invalid tid for value type")
-                .write()
-                .expect("Couldn't lock write lookup on inner value type")
+    fn apply_inner_rw<F, T>(&self, within: &Ctx, func: F) -> Option<T> where F: Fn(&mut dyn Type) -> T {
+        self.value_t.map(|tid| { 
+            let lookup = within.lookup(tid).expect("apply_inner_rw was given an invalid value_t tid");
+            let mut guard = lookup.write().expect("Couldn't lock write lookup on inner value type");
+            let v = func(&mut *guard);
+            v
         })
     }
 
-    fn get_inner_r(&self, within: &Ctx) -> Option<std::sync::RwLockReadGuard<dyn Type + 'static>> {
+    fn apply_inner_r<F, T>(&self, within: &Ctx, func: F) -> Option<T> where F: Fn(& dyn Type) -> T {
+        self.value_t.map(|tid| { 
+            let lookup = within.lookup(tid).expect("apply_inner_rw was given an invalid value_t tid");
+            let guard = lookup.read().expect("Couldn't lock write lookup on inner value type");
+            let v = func(& *guard);
+            v
+        })
+    }
+
+    /*fn get_inner_rw<'a>(&self, within: &Ctx<'a>) -> Option<std::sync::RwLockWriteGuard<dyn Type>> {
+        match self.value_t {
+            None => None,
+            Some(tid) => Some(within
+                .lookup(tid)
+                .expect("Type held an invalid tid for value type")
+                .write()
+                .expect("Couldn't lock write lookup on inner value type"))
+        }
+    }*/
+
+    /*fn get_inner_r(&self, within: &Ctx) -> Option<std::sync::RwLockReadGuard<dyn Type + 'static>> {
         self.value_t.map(|tid| {
             within
                 .lookup(tid)
@@ -238,7 +256,7 @@ impl ref_t_static {
                 .read()
                 .expect("Couldn't lock write lookup on inner value type")
         })
-    }
+    }*/
 
     fn new(tid_inner: TypeID) -> Box<ref_t_static> {
         Box::new(ref_t_static {
@@ -254,9 +272,8 @@ impl Type for ref_t_static {
     fn canonicalized_name(&mut self, within: &Ctx) -> &str {
         self.build_canon_name(within);
 
-        self.collapsed_canon_name
+        self.collapsed_canon_name.as_ref().map(|s| s)
             .expect("build_canon_name didn't populate inner canon name?")
-            .as_str()
     }
 
     fn supers(&self) -> &[TypeHandle] {
@@ -280,10 +297,7 @@ impl Type for ref_t_static {
     }
 
     fn encode_reference(&self, within: &Ctx) -> String {
-        self.get_inner_r(within)
-            .expect("No inner type present when trying to encode reference")
-            .encode_reference(within)
-            + "*"
+        self.apply_inner_r(within, |t| t.encode_reference(within).to_owned()).expect("No inner type present when trying to encode reference") + "*"
     }
 
     /// Definition is implicit within llvm,

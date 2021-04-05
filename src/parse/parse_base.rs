@@ -54,11 +54,11 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         })
     }
 
-    pub fn parse_where_clause(
+    /*pub fn parse_where_clause(
         &mut self,
     ) -> Result<Vec<ast::TypeConstraint<'input>>, ParseResultError<'input>> {
         todo!()
-    }
+    }*/
 
     //const first_struct: [Token; 1] = [Token::Struct];
     pub fn parse_struct_declaration(
@@ -243,14 +243,16 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
 
                 let node_info = ast::NodeInfo::from_indices(start, end);
 
-                let tr = ast::TypeReference {
+                todo!("Type references not implemented");
+
+                /*let tr = ast::TypeReference {
                     typename: tn.slice,
                     type_parameters: type_param_list,
                     refers_to: None,
                     node_info,
-                };
+                };*/
 
-                Ok(Some(tr))
+                //Ok(Some(tr))
             }
         }
     }
@@ -333,7 +335,12 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         })
     }
 
-    pub fn closure(&mut self) -> Result<ast::Closure<'input>, ParseResultError<'input>> {
+    /*pub fn builtin_declaration(
+        &mut self,
+    ) -> Result<ast::BuiltinDeclaration<'input>, ParseResultError<'input>> {
+    }*/
+
+    /*pub fn closure(&mut self) -> Result<ast::Closure<'input>, ParseResultError<'input>> {
         todo!("inline closures not implemented yet");
-    }
+    }*/
 }

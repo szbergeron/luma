@@ -238,6 +238,18 @@ pub enum Token {
     #[regex(r#""([^"\\]|\\t|\\u|\\n|\\")*""#)]
     StringLiteral,
 
+    #[regex(r#""llvm\{.*\}llvm""#)]
+    InteriorLLVMInlineBlock,
+
+    #[token("__builtin")]
+    InteriorBuiltin,
+
+    #[token("__ll_vars")]
+    InteriorLLVars,
+
+    #[token("__ll_results")]
+    InteriorLLResults,
+
     #[regex(r"[\t\f]+", logos::skip)]
     #[error]
     Error,

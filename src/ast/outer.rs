@@ -1,6 +1,6 @@
 use super::base::*;
 use super::expressions::ExpressionWrapper;
-use super::types::*;
+use crate::types::*;
 
 use crate::helper::lex_wrap::ParseResultError;
 //use std::rc::Rc;
@@ -8,6 +8,7 @@ use std::sync::Arc;
 //use std::cell::RefCell;
 use crate::mid_repr::*;
 use std::sync::RwLock;
+use super::expressions::TypeReference;
 
 #[derive(Debug)]
 pub struct Namespace<'a> {
@@ -133,7 +134,7 @@ impl<'a> AstNode<'a> for FunctionDeclaration<'a> {
             indent(depth),
             self.node_info(),
             self.name,
-            self.return_type,
+            self.return_type, // TODO
         );
 
         let _ = writeln!(f, "{}Parameters:", indent(depth + 1),);
