@@ -9,9 +9,9 @@ pub type TypeID = usize;
 
 
 // holds mappings for every type that is in scope, and what they are constrained to
-pub struct TypeContext<'a> {
+/*pub struct TypeContext<'a> {
     //
-}
+}*/
 
 // Type references use owned strings rather than references
 // so that the type registry can be global without holding
@@ -20,11 +20,11 @@ pub enum TypeReference {
     Identifier(IdentifierTypeReference),
     Tuple(TupleTypeReference),
     Generic(GenericTypeReference),
-    Wildcard(),
+    Wildcard(WildcardReference),
 }
 
 impl TypeReference {
-    pub fn hash
+    //pub fn hash
 }
 
 pub struct IdentifierTypeReference {
@@ -45,6 +45,9 @@ pub struct GenericTypeReference {
     pub identifier: String,
 
     pub specified_types: Vec<TypeReference>,
+}
+
+pub struct WildcardReference {
 }
 
 /*pub struct TypeConstraint {
@@ -134,13 +137,13 @@ impl<'a> AstNode<'a> for TypeReference<'a> {
 
 // marked as requiring Send and Sync because rayon parallel iterators require this to be the case,
 // and this type is accessible through FileHandler indirectly
-pub trait Type: std::fmt::Debug + std::marker::Send + std::marker::Sync /* don't ask */ {
+/*pub trait Type: std::fmt::Debug + std::marker::Send + std::marker::Sync /* don't ask */ {
     fn primitive(&self) -> bool {
         false
     }
 
     fn uid(&self) -> usize;
-}
+}*/
 
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
@@ -161,7 +164,7 @@ impl DynType {
     }
 }
 
-impl Type for DynType {
+/*impl Type for DynType {
     fn uid(&self) -> usize {
         self.guid
     }
@@ -188,4 +191,4 @@ impl Type for FixedType {
 pub enum EitherType {
     Dyn(DynType),
     Fixed(FixedType),
-}
+}*/

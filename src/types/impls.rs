@@ -33,6 +33,7 @@ impl<T: Any> AsAny for T {
     }
 }
 
+#[derive(Clone)]
 pub struct TypeSignature<'input> {
     name: &'input str,
     params: SmallVec<[Option<TypeID>; TYPE_PARAM_DEFAULT_COUNT]>,
@@ -70,7 +71,7 @@ pub trait Type: DynHash + DynEq + AsAny {
 
     fn uid(&self) -> TypeID;
 
-    fn encode_reference(&self) -> String;
+    fn encode_reference(&self, within: &Ctx) -> String;
 
     fn encode_definition(&self) -> String;
 
@@ -151,7 +152,7 @@ impl Type for i32_t_static {
         &[]
     }
 
-    fn encode_reference(&self) -> String {
+    fn encode_reference(&self, _: &Ctx) -> String {
         "<llvm 32 bit int>".to_owned()
     }
 
@@ -232,8 +233,6 @@ impl ref_t_static {
     fn get_inner_r(&self, within: &Ctx) -> Option<std::sync::RwLockReadGuard<dyn Type + 'static>> {
         self.value_t.map(|tid| {
             within
-                .upgrade()
-                .expect("Ctx was dropped before types resolved")
                 .lookup(tid)
                 .expect("Type held an invalid tid for value type")
                 .read()
@@ -243,6 +242,7 @@ impl ref_t_static {
 
     fn new(tid_inner: TypeID) -> Box<ref_t_static> {
         Box::new(ref_t_static {
+            ctxid: std::u64::MIN,
             value_t: Some(tid_inner),
             tid: super::ctx::generate_typeid(),
             collapsed_canon_name: None,
@@ -279,10 +279,10 @@ impl Type for ref_t_static {
         self.tid
     }
 
-    fn encode_reference(&self) -> String {
-        self.get_inner_r()
+    fn encode_reference(&self, within: &Ctx) -> String {
+        self.get_inner_r(within)
             .expect("No inner type present when trying to encode reference")
-            .encode_reference()
+            .encode_reference(within)
             + "*"
     }
 

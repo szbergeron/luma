@@ -1,6 +1,6 @@
-use super::base::TypeID;
+//use super::base::TypeID;
 
-/**
+/*
  * Solver has the following operations:
  *
  * register(Type Handle)
@@ -25,9 +25,9 @@ use super::base::TypeID;
  *   This allows for inferring type of partially specified variables.
  *
  * propose(Source: Type Handle
- **/
+ */
 
-/**
+/*
  * let f = ContainerType::new(); // generic over some contained T
  * let g: ContainerType<dyn SomeTrait> = f; // constrains T to be a type that impl SomeTrait
  * g.insert(5); // constrains T to be something that allows implicit From<integer>
@@ -84,9 +84,28 @@ use super::base::TypeID;
  *
  * Once a type has been inferred and fully constrained for some variable,
  * inference can use methods and fields defined on that type to check other variables.
- **/
+ */
 
-pub struct Rule {
+/*
+ * For now, no type inference is going to be done. A constraint must match 
+ * the expected type and must be directly substitutable when templating
+ * with no casting or trait inference
+ */
+
+/*
+ * Example for where type inference must occur:
+ *
+ * fn<T> f() -> impl T {
+ * }
+ *
+ * ...
+ * let mut g = f();
+ * g = H(); // g must impl H at least
+ * // if H is the only base type that impl H, then g must be H and we must infer f::<H>
+ * ...
+ */
+
+/*pub struct Rule {
     requires: std::collections::HashSet<TypeID>,
     provides: std::collections::HashSet<TypeID>,
 }
@@ -102,4 +121,4 @@ pub struct Context {
 impl Context {
     pub fn register(&mut self, tr: Box<dyn Type>) -> TypeID {
     }
-}
+}*/

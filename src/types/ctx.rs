@@ -3,6 +3,7 @@ use std::sync::RwLock;
 use crate::ast::Span;
 use super::impls::*;
 use dashmap::DashMap;
+use smallvec::SmallVec;
 
 pub type TypeHandle = Arc<RwLock<dyn Type>>;
 
@@ -14,6 +15,8 @@ pub struct Method {
     param_types: Vec<TypeID>,
     param_names: Vec<String>,
 }
+
+const TYPE_SIGNATURE_DUPLICATE_MAX_FREQ: usize = 3;
 
 /*impl Method {
     fn returns(&self) -> TypeID {
@@ -42,7 +45,9 @@ pub fn generate_typeid() -> TypeID {
 
 /// Interior mutable container representing a type context
 pub struct Ctx<'input> {
-    types: DashMap<TypeSignature<'input>, Box<dyn Type>>,
+    types: DashMap<TypeID, TypeHandle>,
+    signatures: DashMap<TypeSignature<'input>, SmallVec<[TypeID; TYPE_SIGNATURE_DUPLICATE_MAX_FREQ]>>,
+    ids: DashMap<TypeID, TypeSignature<'input>>,
 }
 
 impl<'input> Ctx<'input> {
@@ -63,10 +68,14 @@ impl<'input> Ctx<'input> {
     }
 
     pub fn lookup(&self, tid: TypeID) -> Option<TypeHandle> {
-        todo!()
+        self.types.get(&tid).map(|r| (*r.value()).clone())
     }
 
-    pub fn rlookup(&self, t: &TypeSignature<'input>) -> Option<TypeID> {
+    pub fn id_to_sig(&self, tid: TypeID) -> Option<TypeSignature<'input>> {
+        self.ids.get(&tid).map(|r| (*r.value()).clone())
+    }
+
+    pub fn sig_to_id(&self, t: &TypeSignature<'input>) -> Option<TypeID> {
         todo!()
     }
 }
