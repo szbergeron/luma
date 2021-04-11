@@ -1,0 +1,11 @@
+Fri Apr 2:
+    Discussion with Prof Coleman, hashed out reference type semantics
+
+    All variables are to be treated as bindings or aliases
+
+    Take the expression:
+
+        let x: &i32 = 5;
+
+    Here, during creation of the variable x a value of size i32 is allocated during initialization of the & type.
+    The variable itself is a binding of type &<i32> which is 

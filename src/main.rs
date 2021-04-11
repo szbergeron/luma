@@ -22,6 +22,8 @@ pub mod helper;
 pub mod lalrpop_lexer;
 pub mod lex;
 pub mod parse;
+pub mod traits;
+pub mod encode;
 //pub mod parse_expr;
 pub mod build_expr;
 pub mod check;

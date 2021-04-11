@@ -14,15 +14,15 @@ fn main() {
 
 __builtin fn add(v1: i32, v2: i32) -> i32
 __ll_vars { var1: v1, var2: v2, out } // put the value of v1 into the temp var1, and same for v2. `out` is left uninitialized
-__ll_results { out } // expect the output single tuple element of the function to reside in the temp `out`
+__ll_result { out } // expect the output single tuple element of the function to reside in the temp `out`
 llvm{
     ; add impl for i32 type
     {out} = add i32 {v1}, {v2}
 }llvm
 
 __builtin fn assign(lhs: &i32, rhs: i32) -> &i32
-ll_vars { var1: lhs, var2: rhs, out } // put the value of v1 into the temp var1, and same for v2. `out` is left uninitialized
-ll_results { out } // expect the output single tuple element of the function to reside in the temp `out`
+__ll_vars { var1: lhs, var2: rhs, out } // put the value of v1 into the temp var1, and same for v2. `out` is left uninitialized
+__ll_result { out } // expect the output single tuple element of the function to reside in the temp `out`
 llvm{
     ; insert into lhs (stor) from value of rhs
 }llvm

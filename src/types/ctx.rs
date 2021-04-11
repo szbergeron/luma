@@ -1,19 +1,67 @@
-use std::sync::Arc;
-use std::sync::RwLock;
-use crate::ast::Span;
 use super::impls::*;
+use crate::ast::Span;
 use dashmap::DashMap;
 use smallvec::SmallVec;
+use std::cell::UnsafeCell;
+use std::fmt::Write;
+use std::sync::RwLock;
+use std::sync::{Arc, Weak};
 
 pub type TypeHandle = Arc<RwLock<dyn Type>>;
 
 pub type TypeID = u64;
 pub type CtxID = u64;
 
+enum Implementation {
+    Builtin {
+        ll_content: String,
+        ll_result: String,
+        ll_vars: Vec<(String, String)>,
+    },
+}
+
 pub struct Method {
+    self_type: TypeID,
+    name: String,
     return_type: TypeID,
-    param_types: Vec<TypeID>,
-    param_names: Vec<String>,
+    params: Vec<(TypeID, String)>,
+
+    implementation: Implementation,
+}
+
+impl Method {
+    pub fn new_from_builtin(
+        self_type: TypeID,
+        name: String,
+        params: Vec<(TypeID, String)>,
+        return_type: TypeID,
+        ll_vars: Vec<(String, String)>,
+        ll_result: String,
+        ll_content: String,
+    ) -> Method {
+        Method {
+            self_type,
+            name,
+            return_type,
+            params,
+            implementation: Implementation::Builtin {
+                ll_content,
+                ll_result,
+                ll_vars,
+            },
+        }
+    }
+
+    pub fn encode_definition(&self) -> Result<String, Box<dyn std::error::Error>> {
+        let mut builder = String::new();
+
+        writeln!(&mut builder, "; encoding a method by name {}", self.name)?;
+        //todo!("Method encode not complete")
+
+        Ok(builder)
+    }
+
+    //pub fn encode_reference(&self,
 }
 
 const TYPE_SIGNATURE_DUPLICATE_MAX_FREQ: usize = 3;
@@ -43,15 +91,170 @@ pub fn generate_typeid() -> TypeID {
     GENERATOR.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 
+// interior mut type
+struct GlobalCtxNode<'input> {
+    canonical_local_name: &'input str,
+    children: DashMap<&'input str, Arc<GlobalCtxNode<'input>>>,
+    //localtypes: DashMap<&'input str, Arc<Ctx<'input>>>,
+    type_ctx: Arc<TypeCtx<'input>>,
+    selfref: std::cell::UnsafeCell<Weak<GlobalCtxNode<'input>>>,
+}
+
+impl<'input> GlobalCtxNode<'input> {
+    fn new(name: &'input str) -> Arc<GlobalCtxNode<'input>> {
+        let ctxnode = GlobalCtxNode {
+            canonical_local_name: name,
+            children: DashMap::new(),
+            type_ctx: Arc::new(TypeCtx::new()),
+            selfref: UnsafeCell::new(Weak::default()),
+        };
+
+        std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
+        let owner = unsafe {
+            let owner = Arc::new(ctxnode);
+
+            // TODO: check how to avoid this being unsafe/potentially UB (*const is
+            // given by Arc::as_ptr, not sure how to make the circular
+            // ref in a safe way during init without requiring mutex + interior mut
+            GlobalCtxNode::set_selfref(Arc::as_ptr(&owner), Arc::downgrade(&owner));
+
+            owner
+        };
+        std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
+
+        owner
+    }
+
+    // takes ptr to hopefully avoid aliasing concerns
+    /// Only call during a context where s is not concurrently
+    /// accessible!! This modifies s.selfref in a way that is unchecked
+    unsafe fn set_selfref(s: *const Self, sr: Weak<Self>) {
+        //(*s).selfref = sr;
+        *((*s).selfref).get() = sr
+    }
+
+    fn get_selfref_arc(&self) -> Option<Arc<GlobalCtxNode<'input>>> {
+        unsafe {
+            // NOTE: relies on selfref being initialized during construction before this
+            // point
+            (*self.selfref.get()).upgrade()
+        }
+    }
+
+    fn name(&self) -> &str {
+        self.canonical_local_name
+    }
+
+    fn type_ctx(&self) -> Arc<TypeCtx<'input>> {
+        self.type_ctx.clone()
+    }
+
+    fn nsctx_for(&self, scope: &[&'input str]) -> Option<Arc<GlobalCtxNode<'input>>> {
+        //match scope {
+        //[last] //
+        match scope {
+            [] => self.get_selfref_arc(),
+            [first, rest @ ..] => {
+                //self.
+                self.children
+                    .get(first)
+                    .map(|nsctx| nsctx.nsctx_for(rest))
+                    .flatten()
+            }
+        }
+    }
+
+    fn register_nsctx(&self, scope: &[&'input str]) {
+        match scope {
+            [] => {
+                // no action for empty case, this is base case (self is already registered)
+            }
+            [first, rest @ ..] => {
+                self.children
+                    .entry(first)
+                    .or_insert_with(|| {
+                        let gcn = GlobalCtxNode::new(first);
+                        gcn
+                    })
+                    .register_nsctx(rest);
+            }
+        }
+    }
+
+    //fn register_type_ctx(&self, scope: &[&'input str])
+
+    //fn register_type_ctx
+}
+
+pub struct GlobalCtx<'input> {
+    entry: Arc<GlobalCtxNode<'input>>,
+}
+
+impl<'input> GlobalCtx<'input> {
+    pub fn new() -> GlobalCtx<'input> {
+        GlobalCtx { entry: GlobalCtxNode::new("global") }
+    }
+
+    /// tries to get a namespace ctx if one exists, and None if not
+    #[allow(unused)]
+    fn get_nsctx(&self, scope: &[&'input str]) -> Option<Arc<GlobalCtxNode<'input>>> {
+        self.entry.nsctx_for(scope)
+    }
+
+    /// tries to get a namespace ctx if one exists, and not then creates the necessary path of
+    /// nsctxs to have one to return. This builds out the tree, but can make future ns lookups
+    /// believe that an ns was actually declared/referenced and should thus be avoided for
+    /// strict read-query lookups
+    #[allow(unused)]
+    fn get_or_create_nsctx(&self, scope: &[&'input str]) -> Arc<GlobalCtxNode<'input>> {
+        self.entry.register_nsctx(scope);
+
+        self.get_nsctx(scope).expect(
+            "Created nsctx was not found directly afterward, failed to create? Failed to search?",
+        )
+    }
+
+    #[allow(unused)]
+    /// tries to get a namespace ctx if one exists, and not then creates the necessary path of
+    /// nsctxs to have one to use for the return value. This builds out the tree, but can make future ns lookups
+    /// believe that an ns was actually declared/referenced and should thus be avoided for
+    /// strict read-query lookups. This returns the TypeCtx directly off of the
+    /// internal NS looked up by `scope`, so that the last level type (decl itself) can be inserted
+    pub fn get_or_create_typectx(&self, scope: &[&'input str]) -> Arc<TypeCtx<'input>> {
+        self.get_or_create_nsctx(scope).type_ctx()
+    }
+
+    pub fn register_name_ctx(&self, scope: &[&'input str]) {
+        match scope {
+            // global scope handled same as default scope
+            ["global", rest @ ..] | [rest @ ..] => {
+                self.entry.register_nsctx(rest);
+            }
+        }
+    }
+}
+
 /// Interior mutable container representing a type context
-pub struct Ctx<'input> {
+pub struct TypeCtx<'input> {
     types: DashMap<TypeID, TypeHandle>,
-    signatures: DashMap<TypeSignature<'input>, SmallVec<[TypeID; TYPE_SIGNATURE_DUPLICATE_MAX_FREQ]>>,
+    signatures:
+        DashMap<TypeSignature<'input>, SmallVec<[TypeID; TYPE_SIGNATURE_DUPLICATE_MAX_FREQ]>>,
     ids: DashMap<TypeID, TypeSignature<'input>>,
 }
 
-impl<'input> Ctx<'input> {
-    pub fn define<T: 'static>(&self, mut newtype: T) -> TypeID where T: Type {
+impl<'input> TypeCtx<'input> {
+    pub fn new() -> TypeCtx<'input> {
+        TypeCtx {
+            types: DashMap::new(),
+            signatures: DashMap::new(),
+            ids: DashMap::new(),
+        }
+    }
+
+    pub fn define<T: 'static>(&self, mut newtype: T) -> TypeID
+    where
+        T: Type,
+    {
         let tid = generate_typeid();
         newtype.set_tid(tid);
         let arcd = Arc::new(RwLock::new(newtype));
@@ -59,9 +262,9 @@ impl<'input> Ctx<'input> {
         tid
     }
 
-    pub fn implement(&self, /* handle */) {}
+    pub fn implement(&self /* handle */) {}
 
-    pub fn mix(&self, /* handle 1, handle 2 */) -> TypeID {
+    pub fn mix(&self /* handle 1, handle 2 */) -> TypeID {
         todo!()
     }
 
@@ -80,11 +283,13 @@ impl<'input> Ctx<'input> {
     }
 
     pub fn sig_to_id(&self, t: &TypeSignature<'input>) -> Option<Vec<TypeID>> {
-        self.signatures.get(t).map(|r| (*r.value()).iter().map(|&v| v).collect())
+        self.signatures
+            .get(t)
+            .map(|r| (*r.value()).iter().map(|&v| v).collect())
     }
 }
 
 //impl Send for CtxInner {} // should this have send?
-unsafe impl<'input> Sync for Ctx<'input>{}
+unsafe impl<'input> Sync for TypeCtx<'input> {}
 
 //pub type Ctx = Arc<CtxInner>;

@@ -1,4 +1,4 @@
-use super::{Ctx, Method, TypeHandle, TypeID, CtxID};
+use super::{TypeCtx, Method, TypeHandle, TypeID, CtxID};
 use crate::ast::Span;
 use std::sync;
 use std::any::Any;
@@ -41,7 +41,7 @@ pub struct TypeSignature<'input> {
 
 pub trait Type: DynHash + DynEq + AsAny {
     fn set_tid(&mut self, tid: TypeID);
-    fn canonicalized_name(&mut self, within: &Ctx) -> &str;
+    fn canonicalized_name(&mut self, within: &TypeCtx) -> &str;
     /*// owned for simpler lifetimes,
     // shouldn't be used often, doesn't appear in src text
     canonicalized_string: String,
@@ -72,7 +72,7 @@ pub trait Type: DynHash + DynEq + AsAny {
 
     fn uid(&self) -> TypeID;
 
-    fn encode_reference(&self, within: &Ctx) -> String;
+    fn encode_reference(&self, within: &TypeCtx) -> String;
 
     fn encode_definition(&self) -> String;
 
@@ -133,7 +133,7 @@ pub struct i32_t_static {
 }
 
 impl Type for i32_t_static {
-    fn canonicalized_name(&mut self, _: &Ctx) -> &str {
+    fn canonicalized_name(&mut self, _: &TypeCtx) -> &str {
         "i32"
     }
 
@@ -153,7 +153,7 @@ impl Type for i32_t_static {
         &[]
     }
 
-    fn encode_reference(&self, _: &Ctx) -> String {
+    fn encode_reference(&self, _: &TypeCtx) -> String {
         "<llvm 32 bit int>".to_owned()
     }
 
@@ -215,7 +215,7 @@ impl std::cmp::PartialEq for ref_t_static {
 impl std::cmp::Eq for ref_t_static {}
 
 impl ref_t_static {
-    fn build_canon_name(&mut self, within: &Ctx) {
+    fn build_canon_name(&mut self, within: &TypeCtx) {
         self.collapsed_canon_name = Some(
             "&".to_owned()
                 + self
@@ -224,7 +224,7 @@ impl ref_t_static {
         );
     }
 
-    fn map_inner_rw<F, T>(&self, within: &Ctx, func: F) -> Option<T> where F: Fn(&mut dyn Type) -> T {
+    fn map_inner_rw<F, T>(&self, within: &TypeCtx, func: F) -> Option<T> where F: Fn(&mut dyn Type) -> T {
         self.value_t.map(|tid| { 
             let lookup = within.lookup(tid).expect("apply_inner_rw was given an invalid value_t tid");
             let mut guard = lookup.write().expect("Couldn't lock write lookup on inner value type");
@@ -233,7 +233,7 @@ impl ref_t_static {
         })
     }
 
-    fn map_inner_r<F, T>(&self, within: &Ctx, func: F) -> Option<T> where F: Fn(& dyn Type) -> T {
+    fn map_inner_r<F, T>(&self, within: &TypeCtx, func: F) -> Option<T> where F: Fn(& dyn Type) -> T {
         self.value_t.map(|tid| { 
             let lookup = within.lookup(tid).expect("apply_inner_rw was given an invalid value_t tid");
             let guard = lookup.read().expect("Couldn't lock write lookup on inner value type");
@@ -274,7 +274,7 @@ impl ref_t_static {
 }
 
 impl Type for ref_t_static {
-    fn canonicalized_name(&mut self, within: &Ctx) -> &str {
+    fn canonicalized_name(&mut self, within: &TypeCtx) -> &str {
         self.build_canon_name(within);
 
         self.collapsed_canon_name.as_ref().map(|s| s)
@@ -301,7 +301,7 @@ impl Type for ref_t_static {
         self.tid
     }
 
-    fn encode_reference(&self, within: &Ctx) -> String {
+    fn encode_reference(&self, within: &TypeCtx) -> String {
         self.map_inner_r(within, |t| t.encode_reference(within).to_owned()).expect("No inner type present when trying to encode reference") + "*"
     }
 
