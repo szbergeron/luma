@@ -3,6 +3,60 @@ use crate::ast::*;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock, Weak};
+use crate::helper::Interner::*;
+
+pub mod Interner {
+    static mut INTERNER_PRIV: Option<lasso::ThreadedRodeo<crate::StringSymbol>> = None;
+
+    /// Should be called before `interner()` is called, sets the static itself
+    /// and issues memory barrier to try to swap the Option atomically
+    ///
+    /// relies on implicit SeqCst when in a single-threaded context
+    pub unsafe fn init_interner() {
+        let it = lasso::ThreadedRodeo::new();
+
+        //let b = Box::new(it);
+
+        //let ptr = b.into_raw();
+
+        std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
+
+        //INTERNER_PRIV.swap(ptr, std::sync::atomic::Ordering::SeqCst);
+        INTERNER_PRIV = Some(it);
+
+        std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// INVARIANT: must be called after init_interner has already been called in a single-threaded ONLY
+    /// context. If this is called before, or init_interner was called during a data race,
+    /// then this may panic as it can not find the interner present.
+    pub fn interner() -> &'static lasso::ThreadedRodeo<crate::StringSymbol> {
+        unsafe {
+            INTERNER_PRIV
+                .as_ref()
+                .expect("Unable to load interner, INTERNER_PRIV was None")
+        }
+    }
+
+    pub fn intern(v: &str) -> crate::StringSymbol {
+        interner().get_or_intern(v)
+    }
+
+    pub trait SpurHelper {
+        fn resolve(&self) -> &'static str;
+        fn try_resolve(&self) -> Option<&'static str>;
+    }
+
+    impl SpurHelper for crate::StringSymbol {
+        fn resolve(&self) -> &'static str {
+            interner().resolve(self)
+        }
+
+        fn try_resolve(&self) -> Option<&'static str> {
+            interner().try_resolve(self)
+        }
+    }
+}
 
 pub enum EitherAnd<A, B> {
     A(A),
@@ -46,10 +100,10 @@ impl<A, B> EitherAnd<A, B> {
 }
 
 #[derive(Debug, Clone)]
-pub enum Error<'a> {
+pub enum Error {
     DuplicateDefinition {
-        duplicate_symbol: Arc<RwLock<SymbolDeclaration<'a>>>,
-        existing_symbol: Arc<RwLock<SymbolDeclaration<'a>>>,
+        duplicate_symbol: Arc<RwLock<SymbolDeclaration>>,
+        existing_symbol: Arc<RwLock<SymbolDeclaration>>,
     },
 }
 
@@ -159,7 +213,7 @@ impl<'input> FileHandle {
         }*/
     }*/
 
-    pub fn as_ref<'handle, 'ltself>(&'ltself self) -> Option<FileHandleRef<'handle>>
+    pub fn as_ref<'handle, 'ltself>(&'ltself self) -> Option<FileHandleRef>
     where
         'ltself: 'handle,
     {
@@ -203,36 +257,36 @@ pub struct PathIdMap {
     paths: Vec<FileHandle>,
 }
 
-pub struct ScopeIdMap<'file> {
-    global_context: Option<Arc<RwLock<ScopeContext<'file>>>>,
-    scopes: Vec<Arc<RwLock<ScopeContext<'file>>>>,
+pub struct ScopeIdMap {
+    global_context: Option<Arc<RwLock<ScopeContext>>>,
+    scopes: Vec<Arc<RwLock<ScopeContext>>>,
 }
 
-impl<'file> ScopeIdMap<'file> {
-    pub fn new() -> ScopeIdMap<'file> {
+impl ScopeIdMap {
+    pub fn new() -> ScopeIdMap {
         ScopeIdMap {
             scopes: Vec::new(),
             global_context: None,
         }
     }
 
-    pub fn handles(&self) -> &[Arc<RwLock<ScopeContext<'file>>>] {
+    pub fn handles(&self) -> &[Arc<RwLock<ScopeContext>>] {
         &self.scopes[..]
     }
 
-    pub fn handles_mut(&mut self) -> &mut [Arc<RwLock<ScopeContext<'file>>>] {
+    pub fn handles_mut(&mut self) -> &mut [Arc<RwLock<ScopeContext>>] {
         &mut self.scopes[..]
     }
 
-    pub fn set_global(&mut self, global: Arc<RwLock<ScopeContext<'file>>>) {
+    pub fn set_global(&mut self, global: Arc<RwLock<ScopeContext>>) {
         self.global_context = Some(global);
     }
 
-    pub fn global(&self) -> Option<Arc<RwLock<ScopeContext<'file>>>> {
+    pub fn global(&self) -> Option<Arc<RwLock<ScopeContext>>> {
         self.global_context.clone()
     }
 
-    pub fn push_scope(&mut self, scope: Arc<RwLock<ScopeContext<'file>>>) {
+    pub fn push_scope(&mut self, scope: Arc<RwLock<ScopeContext>>) {
         self.scopes.push(scope);
     }
     //
@@ -290,12 +344,13 @@ impl<'context> PathIdMap {
 pub mod lex_wrap {
     use logos::Logos;
     use std::rc::Rc;
+    use crate::helper::Interner::*;
 
-    type ParseResult<'a> = Result<TokenWrapper<'a>, ParseResultError<'a>>;
+    type ParseResult<'a> = Result<TokenWrapper, ParseResultError>;
 
     pub struct Wrapper<'a> {
         lexer: logos::Lexer<'a, crate::lex::Token>,
-        cur: Result<TokenWrapper<'a>, ParseResultError<'a>>,
+        cur: Result<TokenWrapper, ParseResultError>,
 
         current_line: isize,
         last_newline_absolute: usize,
@@ -340,26 +395,26 @@ pub mod lex_wrap {
     }
 
     #[derive(Debug, Clone, Copy)]
-    pub struct TokenWrapper<'a> {
+    pub struct TokenWrapper {
         pub token: crate::lex::Token,
-        pub slice: &'a str,
+        pub slice: crate::StringSymbol,
         pub start: CodeLocation,
         pub end: CodeLocation,
     }
 
     #[derive(Debug, Clone)]
-    pub enum ParseResultError<'a> {
+    pub enum ParseResultError {
         InternalParseIssue,
         EndOfFile,
         NotYetParsed,
         //ExpectedExpressionNotPresent,
         /// The found token (and position), followed by a list of possible tokens here, followed by
         /// a message (if applicable)
-        UnexpectedToken(TokenWrapper<'a>, Vec<crate::lex::Token>, Option<&'static str>),
-        SemanticIssue(&'a str, CodeLocation, CodeLocation),
+        UnexpectedToken(TokenWrapper, Vec<crate::lex::Token>, Option<&'static str>),
+        SemanticIssue(&'static str, CodeLocation, CodeLocation),
     }
 
-    impl<'a> ParseResultError<'a> {
+    impl ParseResultError {
         pub fn add_expect(&mut self, toks: &[crate::lex::Token]) {
             match self {
                 Self::UnexpectedToken(_tw, v, None) => {
@@ -383,7 +438,7 @@ pub mod lex_wrap {
             }
         }
 
-        pub fn peek(&mut self) -> ParseResult<'a> {
+        pub fn peek(&mut self) -> ParseResult {
             self.cur.clone()
         }
 
@@ -429,7 +484,8 @@ pub mod lex_wrap {
                     };
                     self.cur = Ok(TokenWrapper {
                         token: tok,
-                        slice: self.lexer.slice(),
+                        //slice: interner().get_or_intern(self.lexer.slice()),
+                        slice: intern(self.lexer.slice()),
                         start: CodeLocation::Parsed(startloc),
                         end: CodeLocation::Parsed(endloc),
                     })
@@ -445,14 +501,14 @@ pub mod lex_wrap {
     }
 
     #[derive(Clone)]
-    pub struct LookaheadStream<'a> {
-        tokens: Rc<Vec<TokenWrapper<'a>>>,
+    pub struct LookaheadStream {
+        tokens: Rc<Vec<TokenWrapper>>,
         index: usize,
         //latest: Option<TokenWrapper<'a>>,
     }
 
-    impl<'a> LookaheadStream<'a> {
-        pub fn new(w: &mut Wrapper<'a>) -> LookaheadStream<'a> {
+    impl LookaheadStream {
+        pub fn new(w: &mut Wrapper) -> LookaheadStream {
             let mut v = Vec::new();
             let mut comment_level = 0;
             let mut inside_line_comment = false;
@@ -505,11 +561,11 @@ pub mod lex_wrap {
             self.index
         }
 
-        pub fn ffwd(&mut self, other: &LookaheadStream<'a>) {
+        pub fn ffwd(&mut self, other: &LookaheadStream) {
             self.seek_to(other.index());
         }
 
-        pub fn next(&mut self) -> ParseResult<'a> {
+        pub fn next(&mut self) -> ParseResult {
             //self.tokens[self.index]
             let r = self.la(0);
             //self.latest = Some(r);
@@ -520,7 +576,7 @@ pub mod lex_wrap {
             r
         }
 
-        pub fn prev(&mut self) -> ParseResult<'a> {
+        pub fn prev(&mut self) -> ParseResult {
             let r = self.la(0);
 
             //self.index -= 1;
@@ -537,7 +593,7 @@ pub mod lex_wrap {
             self.index += 1;
         }
 
-        pub fn la(&self, offset: isize) -> ParseResult<'a> {
+        pub fn la(&self, offset: isize) -> ParseResult {
             let index = self.index as isize + offset;
             if index < 0 {
                 Err(ParseResultError::NotYetParsed)

@@ -11,8 +11,8 @@ use std::sync::{Arc, RwLock};
 
 use crate::parse::*;
 
-impl<'input, 'lexer> Parser<'input, 'lexer> {
-    pub fn entry(&mut self) -> Result<ast::OuterScope<'input>, ParseResultError<'input>> {
+impl<'lexer> Parser<'lexer> {
+    pub fn entry(&mut self) -> Result<ast::OuterScope, ParseResultError> {
         let mut declarations = Vec::new();
 
         let start = self.lex.la(0).map_or(CodeLocation::Builtin, |tw| tw.start);
@@ -63,7 +63,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
     //const first_struct: [Token; 1] = [Token::Struct];
     pub fn parse_struct_declaration(
         &mut self,
-    ) -> Result<ast::StructDeclaration<'input>, ParseResultError<'input>> {
+    ) -> Result<ast::StructDeclaration, ParseResultError> {
         let start = self.hard_expect(Token::Struct)?.start;
         let id = self.hard_expect(Token::Identifier)?.slice;
         let mut typeparams = Vec::new();
@@ -115,7 +115,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
 
     pub fn parse_static_declaration(
         &mut self,
-    ) -> Result<ast::StaticVariableDeclaration<'input>, ParseResultError<'input>> {
+    ) -> Result<ast::StaticVariableDeclaration, ParseResultError> {
         let expr = self.parse_expr()?;
         self.hard_expect(Token::Semicolon)?;
 
@@ -130,7 +130,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
     const first_global: [Token; 3] = [Token::Module, Token::Function, Token::Struct];
     pub fn global_declaration(
         &mut self,
-    ) -> Result<ast::SymbolDeclaration<'input>, ParseResultError<'input>> {
+    ) -> Result<ast::SymbolDeclaration, ParseResultError> {
         let has_pub = self.eat_match(Token::Public);
         let mut failed = false;
 
@@ -190,7 +190,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
     }
 
     //const first_namespace: [Token; 1] = [Token::Module];
-    pub fn namespace(&mut self) -> Result<ast::Namespace<'input>, ParseResultError<'input>> {
+    pub fn namespace(&mut self) -> Result<ast::Namespace, ParseResultError> {
         let start = self.lex.la(0).map_or(CodeLocation::Builtin, |tw| tw.start);
 
         self.hard_expect(Token::Module)?;
@@ -215,7 +215,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
 
     /*fn type_reference_inner(
         &mut self,
-    ) -> Result<Option<ast::TypeReference<'input>>, ParseResultError<'input>> {
+    ) -> Result<Option<ast::TypeReference>, ParseResultError> {
         let typename = self.eat_match(Token::Identifier);
         match typename {
             None => Ok(None),
@@ -281,14 +281,14 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         &mut self,
     ) -> Result<
         Vec<(
-            Box<ast::ExpressionWrapper<'input>>,
-            ast::TypeReference<'input>,
+            Box<ast::ExpressionWrapper>,
+            ast::TypeReference,
         )>,
-        ParseResultError<'input>,
+        ParseResultError,
     > {
         let mut rvec: Vec<(
-            Box<ast::ExpressionWrapper<'input>>,
-            ast::TypeReference<'input>,
+            Box<ast::ExpressionWrapper>,
+            ast::TypeReference,
         )> = Vec::new();
         while let Ok(a) = self.atomic_expression() {
             self.hard_expect(Token::Colon)?;
@@ -311,7 +311,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
     //const first_function: [Token; 1] = [Token::Function];
     pub fn function_declaration(
         &mut self,
-    ) -> Result<ast::FunctionDeclaration<'input>, ParseResultError<'input>> {
+    ) -> Result<ast::FunctionDeclaration, ParseResultError> {
         let start = self.hard_expect(Token::Function)?.start;
         let function_name = self.hard_expect(Token::Identifier)?;
         self.hard_expect(Token::LParen)?;
@@ -339,10 +339,10 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
 
     /*pub fn builtin_declaration(
         &mut self,
-    ) -> Result<ast::BuiltinDeclaration<'input>, ParseResultError<'input>> {
+    ) -> Result<ast::BuiltinDeclaration, ParseResultError> {
     }*/
 
-    /*pub fn closure(&mut self) -> Result<ast::Closure<'input>, ParseResultError<'input>> {
+    /*pub fn closure(&mut self) -> Result<ast::Closure, ParseResultError> {
         todo!("inline closures not implemented yet");
     }*/
 }

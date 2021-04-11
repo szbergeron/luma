@@ -90,7 +90,7 @@ impl std::fmt::Display for NodeInfo {
     }
 }
 
-pub trait AstNode<'a>: std::fmt::Debug + Send + Sync {
+pub trait AstNode: std::fmt::Debug + Send + Sync {
     fn node_info(&self) -> NodeInfo;
     //fn start(&self) -> CodeLocation;
     //fn end(&self) -> CodeLocation;
@@ -104,16 +104,16 @@ pub trait AstNode<'a>: std::fmt::Debug + Send + Sync {
         self.node_info().as_parsed().map(|node| node.span.end)
     }
 
-    fn as_expr(&self) -> Option<&mut dyn expressions::Expression<'a>> {
+    fn as_expr(&self) -> Option<&mut dyn expressions::Expression> {
         None
     }
 
     //fn children(&self) -> [&'a mut dyn AstNode<'a>];
 }
 
-pub trait IntoAstNode<'a> {
-    fn as_node_mut(&mut self) -> &mut dyn AstNode<'a>;
-    fn as_node(&self) -> &dyn AstNode<'a>;
+pub trait IntoAstNode {
+    fn as_node_mut(&mut self) -> &mut dyn AstNode;
+    fn as_node(&self) -> &dyn AstNode;
 }
 
 /*impl<'a>  std::ops::Deref for dyn IntoAstNode<'a> {

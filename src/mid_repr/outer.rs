@@ -6,6 +6,9 @@ use chashmap::CHashMap;
 //use std::collections::HashMap;
 use std::sync::{Arc, RwLock, Weak};
 
+use crate::helper::Interner::*;
+use crate::StringSymbol;
+
 /*pub struct SymbolDB<'a> {
     from: Arc<RwLock<OuterScope<'a>>>,
     pub symbols: Arc<RwLock<HashMap<ScopedName<'a>, Arc<RwLock<Declaration<'a>>>>>>,
@@ -16,29 +19,29 @@ impl<'a> SymbolDB<'a> {
 
 #[derive(Debug)]
 #[allow(dead_code)]
-pub struct ScopeContext<'input> {
-    scope: Vec<String>,
+pub struct ScopeContext {
+    scope: Vec<StringSymbol>,
     public: bool,
-    from: Option<Arc<RwLock<SymbolDeclaration<'input>>>>,
+    from: Option<Arc<RwLock<SymbolDeclaration>>>,
 
-    super_context: Option<Weak<RwLock<ScopeContext<'input>>>>,
+    super_context: Option<Weak<RwLock<ScopeContext>>>,
 
-    global_context: Option<Weak<RwLock<ScopeContext<'input>>>>,
+    global_context: Option<Weak<RwLock<ScopeContext>>>,
 
-    inner_contexts: CHashMap<String, Arc<RwLock<ScopeContext<'input>>>>,
+    inner_contexts: CHashMap<StringSymbol, Arc<RwLock<ScopeContext>>>,
 
-    exported_symbols: CHashMap<String, Weak<RwLock<SymbolDeclaration<'input>>>>,
+    exported_symbols: CHashMap<StringSymbol, Weak<RwLock<SymbolDeclaration>>>,
 
-    imported_symbols: CHashMap<String, Weak<RwLock<SymbolDeclaration<'input>>>>,
+    imported_symbols: CHashMap<StringSymbol, Weak<RwLock<SymbolDeclaration>>>,
 
-    defined_symbols: CHashMap<String, Arc<RwLock<SymbolDeclaration<'input>>>>,
+    defined_symbols: CHashMap<StringSymbol, Arc<RwLock<SymbolDeclaration>>>,
 
-    error_sink: crossbeam::Sender<Error<'input>>,
+    error_sink: crossbeam::Sender<Error>,
 }
 
 use std::mem::drop;
 
-impl<'input> AstNode<'input> for ScopeContext<'input> {
+impl AstNode for ScopeContext {
     fn node_info(&self) -> NodeInfo {
         match self.from.as_ref() {
             None => NodeInfo::Builtin,
@@ -90,7 +93,7 @@ impl<'input> AstNode<'input> for ScopeContext<'input> {
     }
 }
 
-impl<'input> std::fmt::Display for ScopeContext<'input> {
+impl std::fmt::Display for ScopeContext {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.display(f, 0);
 
@@ -98,14 +101,14 @@ impl<'input> std::fmt::Display for ScopeContext<'input> {
     }
 }
 
-impl<'input> ScopeContext<'input> {
+impl ScopeContext {
     pub fn new(
-        error_sink: crossbeam::Sender<Error<'input>>,
-        scope: Vec<String>,
-        global: Option<Weak<RwLock<ScopeContext<'input>>>>,
-        parent: Option<Weak<RwLock<ScopeContext<'input>>>>,
-        from: Option<Arc<RwLock<SymbolDeclaration<'input>>>>,
-    ) -> Arc<RwLock<ScopeContext<'input>>> {
+        error_sink: crossbeam::Sender<Error>,
+        scope: Vec<StringSymbol>,
+        global: Option<Weak<RwLock<ScopeContext>>>,
+        parent: Option<Weak<RwLock<ScopeContext>>>,
+        from: Option<Arc<RwLock<SymbolDeclaration>>>,
+    ) -> Arc<RwLock<ScopeContext>> {
         let scope = ScopeContext {
             scope,
             public: true,
@@ -144,8 +147,8 @@ impl<'input> ScopeContext<'input> {
 
     pub fn on_root(
         &mut self,
-        self_rc: Arc<RwLock<ScopeContext<'input>>>,
-        outer: &OuterScope<'input>,
+        self_rc: Arc<RwLock<ScopeContext>>,
+        outer: &OuterScope,
     ) {
         for dec in outer.declarations.iter() {
             //let mut self_guard = self_rc.write().unwrap();
@@ -155,15 +158,18 @@ impl<'input> ScopeContext<'input> {
 
     pub fn add_context(
         &mut self,
-        self_rc: Arc<RwLock<ScopeContext<'input>>>,
-        ns: Arc<RwLock<SymbolDeclaration<'input>>>,
+        self_rc: Arc<RwLock<ScopeContext>>,
+        ns: Arc<RwLock<SymbolDeclaration>>,
     ) {
         //let mut self_guard = self_rc.write().unwrap();
 
         let ctx_guard = ns.read().unwrap();
 
         let mut scope = self.scope.clone();
-        scope.push(String::from(ctx_guard.symbol_name().unwrap_or("")));
+        //scope.push(String::from(ctx_guard.symbol_name().unwrap_or("")));
+        //scope.push(interner().resolve(interner().get(ctx_guard.symbol_name().unwrap_or(&interner().get_or_intern_static("")))).to_owned());
+        //scope.push(interner().get_or_intern(ctx_guard.symbol_name().unwrap_or()));
+        scope.push(ctx_guard.symbol_name().unwrap_or(interner().get_or_intern_static("")));
 
         let error = self.error_sink.clone();
 
@@ -185,8 +191,8 @@ impl<'input> ScopeContext<'input> {
 
     pub fn add_definition(
         &mut self,
-        self_rc: Arc<RwLock<ScopeContext<'input>>>,
-        decl: Arc<RwLock<SymbolDeclaration<'input>>>,
+        self_rc: Arc<RwLock<ScopeContext>>,
+        decl: Arc<RwLock<SymbolDeclaration>>,
     ) -> bool {
         let decl_guard = decl.read().unwrap();
         let is_exported = decl_guard.is_public();
@@ -200,7 +206,7 @@ impl<'input> ScopeContext<'input> {
         let is_context = decl_guard.is_context();
 
         println!("adding a definition");
-        println!("symbol name is {}", sname);
+        println!("symbol name is {}", sname.resolve());
 
         std::mem::drop(decl_guard);
 
@@ -208,9 +214,9 @@ impl<'input> ScopeContext<'input> {
 
         let nref = decl.clone();
 
-        if self.defined_symbols.get(sname).is_some() {
-            let rg = self.defined_symbols.get(sname).unwrap();
-            println!("duplicate symbol detected: {}", sname);
+        if self.defined_symbols.get(&sname).is_some() {
+            let rg = self.defined_symbols.get(&sname).unwrap();
+            println!("duplicate symbol detected: {}", interner().resolve(&sname));
             self.error_sink
                 .send(Error::DuplicateDefinition {
                     duplicate_symbol: nref,
@@ -223,15 +229,15 @@ impl<'input> ScopeContext<'input> {
             println!("was not duplicate, so inserting symbol");
             if is_exported {
                 self.exported_symbols
-                    .insert(String::from(sname), Arc::downgrade(&nref))
+                    .insert(sname, Arc::downgrade(&nref))
                     .expect_none(
                         "should never be replacing an export, would be a duplicate symbol",
                     );
             }
 
             self.imported_symbols
-                .insert(String::from(sname), Arc::downgrade(&nref)); // can silently replace to shadow here
-            self.defined_symbols.insert(String::from(sname), nref);
+                .insert(sname, Arc::downgrade(&nref)); // can silently replace to shadow here
+            self.defined_symbols.insert(sname, nref);
 
             if is_context {
                 self.add_context(self_rc.clone(), decl.clone());
@@ -257,7 +263,7 @@ impl<'input> ScopeContext<'input> {
         }
     }*/
 
-    pub fn add_child_context(&mut self, child: Arc<RwLock<ScopeContext<'input>>>) {
+    pub fn add_child_context(&mut self, child: Arc<RwLock<ScopeContext>>) {
         let child_guard = child.read().unwrap();
         let last_string = child_guard
             .scope

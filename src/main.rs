@@ -35,6 +35,8 @@ pub mod types;
 //#[macro_use] extern crate lalrpop_util;
 //lalrpop_mod!(pub grammar);
 
+pub type StringSymbol = lasso::LargeSpur;
+
 fn main() {
     let args: Vec<String> = env::args().collect();
     println!("Args: {:?}", args);

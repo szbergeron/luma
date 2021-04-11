@@ -5,7 +5,7 @@ use crate::helper::lex_wrap::TokenWrapper;
 use crate::parse::*;
 //use std::collections::HashSet;
 
-impl<'input, 'lexer> Parser<'input, 'lexer> {
+impl<'lexer> Parser<'lexer> {
     /// Mark what tokens could feasibly come after some recursive parse state call that the current
     /// parse state wants to capture and handle.
     pub fn sync_next(&mut self, next: &[Token]) -> SyncSliceHandle {
@@ -18,7 +18,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
 
     /// Remove the current recovery frame from the recovery stack,
     /// pass the handle that was provided by sync_next to remove the correct frame
-    pub fn unsync(&mut self, handle: SyncSliceHandle) -> Result<(), ParseResultError<'input>> {
+    pub fn unsync(&mut self, handle: SyncSliceHandle) -> Result<(), ParseResultError> {
         if self.next.len() < handle.start {
             // maybe just < rather than <=?
             Err(ParseResultError::InternalParseIssue)
@@ -64,13 +64,13 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
     /// return its metadata. Otherwise, do nothing and return None
     ///
     /// fast-cased version of eat_match_in for when only one token would be possible
-    pub fn eat_match(&mut self, t: Token) -> Option<TokenWrapper<'input>> {
+    pub fn eat_match(&mut self, t: Token) -> Option<TokenWrapper> {
         self.eat_match_in(&[t])
     }
 
     /// If the current lookahead is within the [Token] slice passed, consume the token and
     /// return its metadata. Otherwise, do nothing and return None
-    pub fn eat_match_in(&mut self, t: &[Token]) -> Option<TokenWrapper<'input>> {
+    pub fn eat_match_in(&mut self, t: &[Token]) -> Option<TokenWrapper> {
         if let Ok(tw) = self.lex.la(0) {
             if t.contains(&tw.token) {
                 self.lex.advance();
@@ -86,9 +86,9 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
 
     /// Consumes a token if the passed closure returns Some(T),
     /// returning a tuple of the returned T and the token (+metadata) that was consumed
-    pub fn eat_if<F, T>(&mut self, f: F) -> Option<(T, TokenWrapper<'input>)>
+    pub fn eat_if<F, T>(&mut self, f: F) -> Option<(T, TokenWrapper)>
     where
-        F: FnOnce(TokenWrapper<'input>) -> Option<T>,
+        F: FnOnce(TokenWrapper) -> Option<T>,
     {
         match self.lex.la(0) {
             Ok(tw) => {
@@ -110,7 +110,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
     /// Reports an error if next token is not within the [expected] slice
     /// Does not consume the expected token, should be used as an error-reporting
     /// form of eat_to
-    pub fn expect_next_in(&mut self, expected: &[Token]) -> Result<(), ParseResultError<'input>> {
+    pub fn expect_next_in(&mut self, expected: &[Token]) -> Result<(), ParseResultError> {
         let first = self.lex.la(0);
         let sync = self.sync_next(expected);
         let corrected = self.synchronize();
@@ -149,7 +149,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
     pub fn soft_expect(
         &mut self,
         expected: Token,
-    ) -> Result<TokenWrapper<'input>, ParseResultError<'input>> {
+    ) -> Result<TokenWrapper, ParseResultError> {
         if let Ok(tw) = self.lex.la(0) {
             if tw.token == expected {
                 self.lex.advance();
@@ -167,7 +167,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
     pub fn hard_expect(
         &mut self,
         expected: Token,
-    ) -> Result<TokenWrapper<'input>, ParseResultError<'input>> {
+    ) -> Result<TokenWrapper, ParseResultError> {
         self.expect_next_in(&[expected])?;
 
         if let Ok(tw) = self.lex.la(0) {
@@ -183,6 +183,6 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
     }
 }
 
-pub struct RunConditional<'input> {
-    pub run_if: Option<TokenWrapper<'input>>,
+pub struct RunConditional {
+    pub run_if: Option<TokenWrapper>,
 }

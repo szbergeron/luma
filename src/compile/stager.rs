@@ -14,12 +14,17 @@ use std::sync::{Arc, RwLock};
 
 use crate::ast::*;
 
+use lasso::{ThreadedRodeo, LargeSpur};
+use std::{thread};
+
+use crate::helper::Interner::*;
+
 #[allow(unused_variables, dead_code)]
 pub fn parse_unit<'file>(
-    handle: FileHandleRef<'file>,
-    context: &ScopeContext<'file>,
+    handle: FileHandleRef,
+    context: &ScopeContext,
     cflags: &CFlags,
-) -> Result<OuterScope<'file>, ParseResultError<'file>> {
+) -> Result<OuterScope, ParseResultError> {
     // clone because we don't want to keep lock open, and this should be rather cheap in the scheme
     // of things
     // TODO: eval if this even matters
@@ -73,6 +78,8 @@ pub fn launch(args: &[&str]) {
     let mut path_map = PathIdMap::new();
     let mut scope_map = ScopeIdMap::new();
 
+    let interner: Arc<ThreadedRodeo<LargeSpur>> = Arc::new(ThreadedRodeo::new());
+
     let (error_sender, _error_reciever) = crossbeam::unbounded();
 
     // start spawning the parser threads
@@ -85,7 +92,7 @@ pub fn launch(args: &[&str]) {
         path_map.push_path(path.clone());
     });
 
-    explore_paths(&mut path_map, &mut scope_map, error_sender);
+    explore_paths(&mut path_map, &mut scope_map, error_sender, interner.as_ref());
 
     println!("going to iter and open files");
 
@@ -225,19 +232,18 @@ fn parse_args(args: &[&str]) -> Result<ArgResult, &'static str> {
     })
 }
 
-pub fn explore_paths<'input, 'context>(
+pub fn explore_paths<'context>(
     pidm: &mut PathIdMap,
-    sidm: &mut ScopeIdMap<'input>,
-    error_sink: crossbeam::Sender<Error<'input>>,
+    sidm: &mut ScopeIdMap,
+    error_sink: crossbeam::Sender<Error>,
+    interner: &ThreadedRodeo<LargeSpur>,
 ) -> ()
-where
-    'input: 'context,
 {
     let mut vd = VecDeque::new();
 
     let global_context = ScopeContext::new(
         error_sink.clone(),
-        vec![String::from("crate")],
+        vec![intern("global")],
         None,
         None,
         None,
@@ -248,7 +254,7 @@ where
     //let scopes = ScopeIdMap::new();
 
     for p in pidm.drain() {
-        vd.push_back((vec![String::from("crate")], p, global_context.clone()));
+        vd.push_back((vec![intern("crate")], p, global_context.clone()));
     }
 
     while !vd.is_empty() {
@@ -281,7 +287,7 @@ where
                 }
             }
         } else if path.is_dir() {
-            base_scope.push(stem);
+            base_scope.push(intern(stem.as_str()));
 
             let context = ScopeContext::new(
                 error_sink.clone(),
@@ -326,8 +332,8 @@ where
     }
 }
 
-pub fn prepass<'a>(_p: &Arc<RwLock<ScopeContext<'a>>>) {}
+pub fn prepass<'a>(_p: &Arc<RwLock<ScopeContext>>) {}
 
-pub fn analyze<'a>(_p: &Arc<RwLock<ScopeContext<'a>>>) {}
+pub fn analyze<'a>(_p: &Arc<RwLock<ScopeContext>>) {}
 
-pub fn tollvm<'a>(_p: &Arc<RwLock<ScopeContext<'a>>>, _filename: &str) {}
+pub fn tollvm<'a>(_p: &Arc<RwLock<ScopeContext>>, _filename: &str) {}

@@ -10,22 +10,25 @@ use crate::mid_repr::*;
 use std::sync::RwLock;
 use super::expressions::TypeReference;
 
+use crate::StringSymbol;
+use crate::helper::Interner::*;
+
 #[derive(Debug)]
-pub struct Namespace<'a> {
+pub struct Namespace {
     pub node_info: NodeInfo,
 
     pub public: bool,
-    pub name: Option<&'a str>,
-    pub contents: Result<OuterScope<'a>, ParseResultError<'a>>,
+    pub name: Option<StringSymbol>,
+    pub contents: Result<OuterScope, ParseResultError>,
 }
 
-impl<'a> Namespace<'a> {
+impl Namespace {
     pub fn set_public(&mut self, public: bool) {
         self.public = public;
     }
 }
 
-impl<'a> AstNode<'a> for Namespace<'a> {
+impl AstNode for Namespace {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
@@ -35,7 +38,10 @@ impl<'a> AstNode<'a> for Namespace<'a> {
             f,
             "{}Namespace with name {} and public {} and info {} has children:",
             indent(depth),
-            self.name.unwrap_or("<unnamed>"),
+            //self.name.unwrap_or("<unnamed>"),
+            //interner().try_resolve(self.name
+            //self.name.map(|e| e.try_resolve()).unwrap_or("<unnamed>"),
+            self.name.unwrap_or(intern("<unnamed>")).resolve(),
             self.public,
             self.node_info,
         );
@@ -47,14 +53,14 @@ impl<'a> AstNode<'a> for Namespace<'a> {
 }
 
 #[derive(Debug)]
-pub struct OuterScope<'a> {
+pub struct OuterScope {
     pub node_info: NodeInfo,
 
-    //pub declarations: Vec<Arc<RwLock<Result<SymbolDeclaration<'a>, ParseResultError<'a>>>>>,
-    pub declarations: Vec<Arc<RwLock<SymbolDeclaration<'a>>>>,
+    //pub declarations: Vec<Arc<RwLock<Result<SymbolDeclaration, ParseResultError>>>>,
+    pub declarations: Vec<Arc<RwLock<SymbolDeclaration>>>,
 }
 
-impl<'a> OuterScope<'a> {
+impl OuterScope {
     /*pub fn prepass<'context>(&self, context: &Arc<RwLock<ScopeContext<'context, 'context>>>) where 'a: 'context {
         let mut context = context.write().unwrap();
         for dec in self.declarations.iter() {
@@ -68,8 +74,8 @@ impl<'a> OuterScope<'a> {
 
     pub fn new(
         node_info: NodeInfo,
-        declarations: Vec<Arc<RwLock<SymbolDeclaration<'a>>>>,
-    ) -> OuterScope<'a> {
+        declarations: Vec<Arc<RwLock<SymbolDeclaration>>>,
+    ) -> OuterScope {
         OuterScope {
             node_info,
             declarations,
@@ -77,7 +83,7 @@ impl<'a> OuterScope<'a> {
     }
 }
 
-impl<'a> std::fmt::Display for OuterScope<'a> {
+impl std::fmt::Display for OuterScope {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let r = write!(f, "\n");
 
@@ -87,7 +93,7 @@ impl<'a> std::fmt::Display for OuterScope<'a> {
     }
 }
 
-impl<'a> AstNode<'a> for OuterScope<'a> {
+impl AstNode for OuterScope {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
@@ -111,18 +117,18 @@ impl<'a> AstNode<'a> for OuterScope<'a> {
 }
 
 #[derive(Debug)]
-pub struct FunctionDeclaration<'a> {
+pub struct FunctionDeclaration {
     pub node_info: NodeInfo,
 
     pub public: bool,
-    pub name: &'a str,
+    pub name: StringSymbol,
 
-    pub body: Box<ExpressionWrapper<'a>>,
-    pub return_type: TypeReference<'a>,
-    pub params: Vec<(Box<super::ExpressionWrapper<'a>>, super::TypeReference<'a>)>,
+    pub body: Box<ExpressionWrapper>,
+    pub return_type: TypeReference,
+    pub params: Vec<(Box<super::ExpressionWrapper>, super::TypeReference)>,
 }
 
-impl<'a> AstNode<'a> for FunctionDeclaration<'a> {
+impl AstNode for FunctionDeclaration {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
@@ -133,7 +139,7 @@ impl<'a> AstNode<'a> for FunctionDeclaration<'a> {
             "{}FunctionDeclaration that parsed {} with name {} and rtype {:?} takes",
             indent(depth),
             self.node_info(),
-            self.name,
+            self.name.resolve(),
             self.return_type, // TODO
         );
 
@@ -156,20 +162,20 @@ impl<'a> AstNode<'a> for FunctionDeclaration<'a> {
 }
 
 #[derive(Debug)]
-pub struct StructDeclaration<'a> {
+pub struct StructDeclaration {
     pub node_info: NodeInfo,
 
     pub public: bool,
-    pub name: &'a str,
-    pub typeparams: Vec<&'a str>,
+    pub name: StringSymbol,
+    pub typeparams: Vec<StringSymbol>,
     pub fields: Vec<(
-        &'a str,
-        TypeReference<'a>,
-        Option<Box<super::ExpressionWrapper<'a>>>,
+        StringSymbol,
+        TypeReference,
+        Option<Box<super::ExpressionWrapper>>,
     )>,
 }
 
-impl<'a> AstNode<'a> for StructDeclaration<'a> {
+impl AstNode for StructDeclaration {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
@@ -180,12 +186,13 @@ impl<'a> AstNode<'a> for StructDeclaration<'a> {
             "{}StructDeclaration that parsed {} with name {} has fields:",
             indent(depth),
             self.node_info(),
-            self.name,
+            self.name.resolve(),
+            //interner().resolve(self.name),
         );
 
         //write!(f, "{}", indent(depth + 1));
         for (name, tr, exp) in self.fields.iter() {
-            let _ = write!(f, "{}{} : {:?} = ", indent(depth + 1), name, tr,);
+            let _ = write!(f, "{}{} : {:?} = ", indent(depth + 1), interner().resolve(name), tr,);
             match exp {
                 None => {
                     let _ = writeln!(f, "<undefined>",);
@@ -237,16 +244,16 @@ impl<'a> AstNode<'a> for VariableDeclaration<'a> {
 }*/
 
 #[derive(Debug)]
-pub struct ScopedNameReference<'a> {
+pub struct ScopedNameReference {
     pub node_info: NodeInfo,
 
-    pub scope: Vec<&'a str>,
+    pub scope: Vec<StringSymbol>,
 
     pub silent: bool,
 }
 
-impl<'a> ScopedNameReference<'a> {
-    pub fn to_raw_scope(&self) -> ScopedName<'a> {
+impl ScopedNameReference {
+    pub fn to_raw_scope(&self) -> ScopedName {
         ScopedName::new(self.scope.clone())
     }
 }
@@ -258,25 +265,25 @@ impl<'a> ScopedNameReference<'a> {
 }*/
 
 #[derive(Debug, PartialEq, Hash)]
-pub struct ScopedName<'a> {
-    pub scope: Vec<&'a str>,
+pub struct ScopedName {
+    pub scope: Vec<StringSymbol>,
 }
 
-impl<'a> ScopedName<'a> {
-    pub fn new(s: Vec<&'a str>) -> ScopedName<'a> {
+impl ScopedName {
+    pub fn new(s: Vec<StringSymbol>) -> ScopedName {
         ScopedName { scope: s }
     }
 }
 
 #[derive(Debug)]
-pub struct StaticVariableDeclaration<'a> {
+pub struct StaticVariableDeclaration {
     pub node_info: NodeInfo,
 
     pub public: bool,
-    pub expression: Box<ExpressionWrapper<'a>>,
+    pub expression: Box<ExpressionWrapper>,
 }
 
-impl<'a> AstNode<'a> for StaticVariableDeclaration<'a> {
+impl AstNode for StaticVariableDeclaration {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
@@ -287,16 +294,16 @@ impl<'a> AstNode<'a> for StaticVariableDeclaration<'a> {
 }
 
 #[derive(Debug)]
-pub enum SymbolDeclaration<'a> {
-    FunctionDeclaration(FunctionDeclaration<'a>),
-    NamespaceDeclaration(Namespace<'a>),
-    StructDeclaration(StructDeclaration<'a>),
-    ExpressionDeclaration(StaticVariableDeclaration<'a>),
-    //VariableDeclaration(VariableDeclaration<'a>),
+pub enum SymbolDeclaration {
+    FunctionDeclaration(FunctionDeclaration),
+    NamespaceDeclaration(Namespace),
+    StructDeclaration(StructDeclaration),
+    ExpressionDeclaration(StaticVariableDeclaration),
+    //VariableDeclaration(VariableDeclaration),
 }
 
-impl<'a> IntoAstNode<'a> for SymbolDeclaration<'a> {
-    fn as_node_mut(&mut self) -> &mut dyn AstNode<'a> {
+impl IntoAstNode for SymbolDeclaration {
+    fn as_node_mut(&mut self) -> &mut dyn AstNode {
         match self {
             Self::FunctionDeclaration(fd) => fd,
             Self::NamespaceDeclaration(nd) => nd,
@@ -305,7 +312,7 @@ impl<'a> IntoAstNode<'a> for SymbolDeclaration<'a> {
         }
     }
 
-    fn as_node(&self) -> &dyn AstNode<'a> {
+    fn as_node(&self) -> &dyn AstNode {
         match self {
             Self::FunctionDeclaration(fd) => fd,
             Self::NamespaceDeclaration(nd) => nd,
@@ -315,7 +322,7 @@ impl<'a> IntoAstNode<'a> for SymbolDeclaration<'a> {
     }
 }
 
-impl<'a> SymbolDeclaration<'a> {
+impl SymbolDeclaration {
     pub fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         match self {
             //Self::FunctionDeclaration(fd) => fd.display(f, depth),
@@ -344,7 +351,7 @@ impl<'a> SymbolDeclaration<'a> {
         }
     }
 
-    pub fn symbol_name(&self) -> Option<&'a str> {
+    pub fn symbol_name(&self) -> Option<StringSymbol> {
         match self {
             Self::FunctionDeclaration(fd) => Some(fd.name),
             Self::NamespaceDeclaration(ns) => ns.name,
@@ -360,7 +367,7 @@ impl<'a> SymbolDeclaration<'a> {
         }
     }
 
-    pub fn symbols(&self) -> &[Arc<RwLock<SymbolDeclaration<'a>>>] {
+    pub fn symbols(&self) -> &[Arc<RwLock<SymbolDeclaration>>] {
         match self {
             Self::NamespaceDeclaration(ns) => match ns.contents.as_ref() {
                 Ok(contents) => &contents.declarations[..],

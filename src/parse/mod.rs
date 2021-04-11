@@ -9,6 +9,7 @@ pub use parse_helper::*;
 use crate::helper::lex_wrap::LookaheadStream;
 use crate::helper::lex_wrap::{CodeLocation, ParseResultError};
 use crate::helper::*;
+use crate::helper::Interner::*;
 
 use crate::lex::Token;
 
@@ -16,12 +17,10 @@ use colored::*;
 
 //use std::io::{self, Write};
 
-pub struct Parser<'input, 'lexer>
-where
-    'input: 'lexer,
+pub struct Parser<'lexer>
 {
-    lex: &'lexer mut LookaheadStream<'input>,
-    errors: Vec<ParseResultError<'input>>,
+    lex: &'lexer mut LookaheadStream,
+    errors: Vec<ParseResultError>,
     next: Vec<Token>,
 }
 
@@ -30,8 +29,8 @@ pub struct SyncSliceHandle {
     //end: usize,
 }
 
-impl<'input, 'lexer> Parser<'input, 'lexer> {
-    pub fn new(lex: &'lexer mut LookaheadStream<'input>) -> Parser<'input, 'lexer> {
+impl<'lexer> Parser<'lexer> {
+    pub fn new(lex: &'lexer mut LookaheadStream) -> Parser<'lexer> {
         Parser {
             lex,
             errors: Vec::new(),
@@ -39,21 +38,21 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
         }
     }
 
-    pub fn err<T>(&mut self, err: ParseResultError<'input>) -> Result<T, ParseResultError<'input>> {
+    pub fn err<T>(&mut self, err: ParseResultError) -> Result<T, ParseResultError> {
         self.errors.push(err.clone());
 
         Err(err)
     }
 
-    pub fn report_err(&mut self, err: ParseResultError<'input>) {
+    pub fn report_err(&mut self, err: ParseResultError) {
         //println!("REPORTED AN ERROR");
         self.errors.push(err);
     }
 
     pub fn cpe<T>(
         &mut self,
-        r: Result<T, ParseResultError<'input>>,
-    ) -> Result<T, ParseResultError<'input>> {
+        r: Result<T, ParseResultError>,
+    ) -> Result<T, ParseResultError> {
         let r = match r {
             Err(e) => {
                 self.errors.push(e.clone());
@@ -213,7 +212,7 @@ impl<'input, 'lexer> Parser<'input, 'lexer> {
                     eprintln!("Got unexpected token of type {:?}. Expected one of {:?}. Token with slice \"{}\" was encountered around ({}, {})",
                         t.token,
                         expected,
-                        t.slice,
+                        t.slice.resolve(),
                         t.start,
                         t.end,
                     );

@@ -1,37 +1,39 @@
 use super::base::*;
 use super::outer::*;
+use crate::helper::Interner::*;
 //use super::types;
 
 use crate::helper::lex_wrap::{ParseResultError, TokenWrapper};
 use crate::lex::Token;
 use crate::types;
+use crate::StringSymbol;
 
-pub trait Expression<'a>: AstNode<'a> {
+pub trait Expression: AstNode {
     fn expr_type(&self) -> Box<dyn types::Type>;
 }
 
 #[derive(Debug)]
-pub struct TypeReference<'a> {
+pub struct TypeReference {
     node_info: NodeInfo,
 
-    pub ctx: ScopedNameReference<'a>,
-    pub canonicalized_name: &'a str,
+    pub ctx: ScopedNameReference,
+    pub canonicalized_name: StringSymbol,
 
-    pub type_args: Vec<Box<TypeReference<'a>>>
+    pub type_args: Vec<Box<TypeReference>>
 }
 
-impl<'a> TypeReference<'a> {
-    pub fn new(ctx: ScopedNameReference<'a>, name: &'a str) -> TypeReference<'a> {
+impl TypeReference {
+    pub fn new(ctx: ScopedNameReference, name: StringSymbol) -> TypeReference {
         TypeReference { node_info: NodeInfo::Builtin, ctx, type_args: Vec::new(), canonicalized_name: name }
     }
 }
 
-impl<'a> AstNode<'a> for TypeReference<'a> {
+impl AstNode for TypeReference {
     fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let _ = writeln!(
             f,
             "{}TypeReference with child canon name {}",
-            indent(depth), self.canonicalized_name
+            indent(depth), self.canonicalized_name.resolve() //interner().resolve(&self.canonicalized_name)
         );
         /*
         [&self.subexpr]
@@ -45,28 +47,28 @@ impl<'a> AstNode<'a> for TypeReference<'a> {
 }
 
 #[derive(Debug)]
-pub enum ExpressionWrapper<'a> {
-    Assignment(AssignmentExpression<'a>),
-    BinaryOperation(BinaryOperationExpression<'a>),
-    UnaryOperation(UnaryOperationExpression<'a>),
-    Comparison(ComparisonOperationExpression<'a>),
-    Cast(CastExpression<'a>),
-    Literal(LiteralExpression<'a>),
-    MethodCall(MethodCall<'a>),
-    Access(AccessExpression<'a>),
-    Statement(StatementExpression<'a>),
-    Block(BlockExpression<'a>),
-    IfThenElse(IfThenElseExpression<'a>),
-    While(WhileExpression<'a>),
-    LetExpression(LetExpression<'a>),
-    Pattern(Pattern<'a>),
-    Return(ReturnExpression<'a>),
+pub enum ExpressionWrapper {
+    Assignment(AssignmentExpression),
+    BinaryOperation(BinaryOperationExpression),
+    UnaryOperation(UnaryOperationExpression),
+    Comparison(ComparisonOperationExpression),
+    Cast(CastExpression),
+    Literal(LiteralExpression),
+    MethodCall(MethodCall),
+    Access(AccessExpression),
+    Statement(StatementExpression),
+    Block(BlockExpression),
+    IfThenElse(IfThenElseExpression),
+    While(WhileExpression),
+    LetExpression(LetExpression),
+    Pattern(Pattern),
+    Return(ReturnExpression),
     Wildcard(WildcardExpression),
 }
 
-impl<'a> ExpressionWrapper<'a> {
-    //pub fn int_literal(input: &'a str) -> ExpressionWrapper<'a> {
-    pub fn literal_expression(input: TokenWrapper<'a>) -> Box<ExpressionWrapper<'a>> {
+impl ExpressionWrapper {
+    //pub fn int_literal(input: &'a str) -> ExpressionWrapper {
+    pub fn literal_expression(input: TokenWrapper) -> Box<ExpressionWrapper> {
         /*let span = Span {
             start: 0,
             end: 0,
@@ -81,7 +83,7 @@ impl<'a> ExpressionWrapper<'a> {
         inner
     }
 
-    /*pub fn identifier_expression(input: TokenWrapper<'a>) -> Box<ExpressionWrapper<'a>> {
+    /*pub fn identifier_expression(input: TokenWrapper) -> Box<ExpressionWrapper> {
         let node_info = NodeInfo::from_token(&input, true);
 
         let inner = IdentifierExpression {
@@ -94,7 +96,7 @@ impl<'a> ExpressionWrapper<'a> {
         Box::new(ExpressionWrapper::Identifier(inner))
     }*/
 
-    pub fn wildcard(input: TokenWrapper<'a>) -> Box<ExpressionWrapper<'a>> {
+    pub fn wildcard(input: TokenWrapper) -> Box<ExpressionWrapper> {
         let node_info = NodeInfo::from_token(&input);
 
         WildcardExpression::new_expr(node_info)
@@ -103,8 +105,8 @@ impl<'a> ExpressionWrapper<'a> {
     }
 }
 
-impl<'a> IntoAstNode<'a> for ExpressionWrapper<'a> {
-    fn as_node(&self) -> &dyn AstNode<'a> {
+impl IntoAstNode for ExpressionWrapper {
+    fn as_node(&self) -> &dyn AstNode {
         match self {
             Self::Assignment(e) => e,
             Self::BinaryOperation(e) => e,
@@ -128,7 +130,7 @@ impl<'a> IntoAstNode<'a> for ExpressionWrapper<'a> {
         }
     }
 
-    fn as_node_mut(&mut self) -> &mut dyn AstNode<'a> {
+    fn as_node_mut(&mut self) -> &mut dyn AstNode {
         todo!()
     }
 }
@@ -138,15 +140,15 @@ pub struct WildcardExpression {
     node_info: NodeInfo,
 }
 
-impl<'a> WildcardExpression {
-    pub fn new_expr(node_info: NodeInfo) -> Box<ExpressionWrapper<'a>> {
+impl WildcardExpression {
+    pub fn new_expr(node_info: NodeInfo) -> Box<ExpressionWrapper> {
         Box::new(ExpressionWrapper::Wildcard(WildcardExpression {
             node_info,
         }))
     }
 }
 
-impl<'a> AstNode<'a> for WildcardExpression {
+impl AstNode for WildcardExpression {
     fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let _ = writeln!(
             f,
@@ -163,17 +165,17 @@ impl<'a> AstNode<'a> for WildcardExpression {
 }
 
 #[derive(Debug)]
-pub struct StatementExpression<'a> {
+pub struct StatementExpression {
     node_info: NodeInfo,
 
-    subexpr: Box<ExpressionWrapper<'a>>,
+    subexpr: Box<ExpressionWrapper>,
 }
 
-impl<'a> StatementExpression<'a> {
+impl StatementExpression {
     pub fn new_expr(
         node_info: NodeInfo,
-        subexpr: Box<ExpressionWrapper<'a>>,
-    ) -> Box<ExpressionWrapper<'a>> {
+        subexpr: Box<ExpressionWrapper>,
+    ) -> Box<ExpressionWrapper> {
         Box::new(ExpressionWrapper::Statement(StatementExpression {
             node_info,
             subexpr,
@@ -181,7 +183,7 @@ impl<'a> StatementExpression<'a> {
     }
 }
 
-impl<'a> AstNode<'a> for StatementExpression<'a> {
+impl AstNode for StatementExpression {
     fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let _ = writeln!(
             f,
@@ -199,18 +201,18 @@ impl<'a> AstNode<'a> for StatementExpression<'a> {
 }
 
 #[derive(Debug)]
-pub struct Pattern<'a> {
+pub struct Pattern {
     pub node_info: NodeInfo,
 
     //on: &'a str,
-    pub expressions: Vec<Box<ExpressionWrapper<'a>>>,
+    pub expressions: Vec<Box<ExpressionWrapper>>,
 }
 
-impl<'a> Pattern<'a> {
+impl Pattern {
     pub fn new_expr(
         node_info: NodeInfo,
-        expressions: Vec<Box<ExpressionWrapper<'a>>>,
-    ) -> Box<ExpressionWrapper<'a>> {
+        expressions: Vec<Box<ExpressionWrapper>>,
+    ) -> Box<ExpressionWrapper> {
         Box::new(ExpressionWrapper::Pattern(Pattern {
             node_info,
             expressions,
@@ -218,7 +220,7 @@ impl<'a> Pattern<'a> {
     }
 }
 
-impl<'a> AstNode<'a> for Pattern<'a> {
+impl AstNode for Pattern {
     fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let _ = writeln!(f, "{}Pattern with child expressions:", indent(depth),);
         self.expressions
@@ -232,19 +234,19 @@ impl<'a> AstNode<'a> for Pattern<'a> {
 }
 
 #[derive(Debug)]
-pub struct WhileExpression<'a> {
+pub struct WhileExpression {
     node_info: NodeInfo,
 
-    if_exp: Box<ExpressionWrapper<'a>>,
-    then_exp: Box<ExpressionWrapper<'a>>,
+    if_exp: Box<ExpressionWrapper>,
+    then_exp: Box<ExpressionWrapper>,
 }
 
-impl<'a> WhileExpression<'a> {
+impl WhileExpression {
     pub fn new_expr(
         node_info: NodeInfo,
-        if_exp: Box<ExpressionWrapper<'a>>,
-        then_exp: Box<ExpressionWrapper<'a>>,
-    ) -> Box<ExpressionWrapper<'a>> {
+        if_exp: Box<ExpressionWrapper>,
+        then_exp: Box<ExpressionWrapper>,
+    ) -> Box<ExpressionWrapper> {
         Box::new(ExpressionWrapper::While(WhileExpression {
             node_info,
             if_exp,
@@ -253,7 +255,7 @@ impl<'a> WhileExpression<'a> {
     }
 }
 
-impl<'a> AstNode<'a> for WhileExpression<'a> {
+impl AstNode for WhileExpression {
     fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let _ = writeln!(f, "{}IfThenElseExpression:", indent(depth),);
         let _ = writeln!(f, "{}While:", indent(depth + 1));
@@ -268,21 +270,21 @@ impl<'a> AstNode<'a> for WhileExpression<'a> {
 }
 
 #[derive(Debug)]
-pub struct IfThenElseExpression<'a> {
+pub struct IfThenElseExpression {
     node_info: NodeInfo,
 
-    if_exp: Box<ExpressionWrapper<'a>>,
-    then_exp: Box<ExpressionWrapper<'a>>,
-    else_exp: Box<ExpressionWrapper<'a>>,
+    if_exp: Box<ExpressionWrapper>,
+    then_exp: Box<ExpressionWrapper>,
+    else_exp: Box<ExpressionWrapper>,
 }
 
-impl<'a> IfThenElseExpression<'a> {
+impl IfThenElseExpression {
     pub fn new_expr(
         node_info: NodeInfo,
-        if_exp: Box<ExpressionWrapper<'a>>,
-        then_exp: Box<ExpressionWrapper<'a>>,
-        else_exp: Box<ExpressionWrapper<'a>>,
-    ) -> Box<ExpressionWrapper<'a>> {
+        if_exp: Box<ExpressionWrapper>,
+        then_exp: Box<ExpressionWrapper>,
+        else_exp: Box<ExpressionWrapper>,
+    ) -> Box<ExpressionWrapper> {
         Box::new(ExpressionWrapper::IfThenElse(IfThenElseExpression {
             node_info,
             if_exp,
@@ -292,7 +294,7 @@ impl<'a> IfThenElseExpression<'a> {
     }
 }
 
-impl<'a> AstNode<'a> for IfThenElseExpression<'a> {
+impl AstNode for IfThenElseExpression {
     fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let _ = writeln!(f, "{}IfThenElseExpression:", indent(depth),);
         let _ = writeln!(f, "{}If:", indent(depth + 1));
@@ -309,13 +311,13 @@ impl<'a> AstNode<'a> for IfThenElseExpression<'a> {
 }
 
 #[derive(Debug)]
-pub struct BlockExpression<'a> {
+pub struct BlockExpression {
     pub node_info: NodeInfo,
 
-    pub contents: Vec<Result<Box<ExpressionWrapper<'a>>, ParseResultError<'a>>>,
+    pub contents: Vec<Result<Box<ExpressionWrapper>, ParseResultError>>,
 }
 
-impl<'a> AstNode<'a> for BlockExpression<'a> {
+impl AstNode for BlockExpression {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
@@ -331,11 +333,11 @@ impl<'a> AstNode<'a> for BlockExpression<'a> {
     }
 }
 
-impl<'a> BlockExpression<'a> {
+impl BlockExpression {
     pub fn new_expr(
         node_info: NodeInfo,
-        contents: Vec<Result<Box<ExpressionWrapper<'a>>, ParseResultError<'a>>>,
-    ) -> Box<ExpressionWrapper<'a>> {
+        contents: Vec<Result<Box<ExpressionWrapper>, ParseResultError>>,
+    ) -> Box<ExpressionWrapper> {
         Box::new(ExpressionWrapper::Block(BlockExpression {
             node_info,
             contents,
@@ -344,17 +346,17 @@ impl<'a> BlockExpression<'a> {
 }
 
 #[derive(Debug)]
-pub struct LetExpression<'a> {
+pub struct LetExpression {
     node_info: NodeInfo,
 
-    pub into: Box<ExpressionWrapper<'a>>,
+    pub into: Box<ExpressionWrapper>,
 }
 
-impl<'a> LetExpression<'a> {
+impl LetExpression {
     pub fn new_expr(
         node_info: NodeInfo,
-        into: Box<ExpressionWrapper<'a>>,
-    ) -> Box<ExpressionWrapper<'a>> {
+        into: Box<ExpressionWrapper>,
+    ) -> Box<ExpressionWrapper> {
         Box::new(ExpressionWrapper::LetExpression(LetExpression {
             node_info,
             into,
@@ -362,7 +364,7 @@ impl<'a> LetExpression<'a> {
     }
 }
 
-impl<'a> AstNode<'a> for LetExpression<'a> {
+impl AstNode for LetExpression {
     fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let _ = writeln!(
             f,
@@ -380,23 +382,23 @@ impl<'a> AstNode<'a> for LetExpression<'a> {
 }
 
 #[derive(Debug)]
-pub struct AssignmentExpression<'a> {
+pub struct AssignmentExpression {
     node_info: NodeInfo,
-    //lhs: Box<dyn Expression<'a>>,
-    //rhs: Box<dyn Expression<'a>>,
+    //lhs: Box<dyn Expression>,
+    //rhs: Box<dyn Expression>,
     //pub is_let_expression: bool,
-    pub lhs: Box<ExpressionWrapper<'a>>,
-    pub rhs: Box<ExpressionWrapper<'a>>,
-    //pub span: Span<'a>,
+    pub lhs: Box<ExpressionWrapper>,
+    pub rhs: Box<ExpressionWrapper>,
+    //pub span: Span,
 }
 
-impl<'a> AssignmentExpression<'a> {
+impl AssignmentExpression {
     pub fn new_expr(
         node_info: NodeInfo,
-        lhs: Box<ExpressionWrapper<'a>>,
-        rhs: Box<ExpressionWrapper<'a>>,
+        lhs: Box<ExpressionWrapper>,
+        rhs: Box<ExpressionWrapper>,
         //is_let_expression: bool,
-    ) -> Box<ExpressionWrapper<'a>> {
+    ) -> Box<ExpressionWrapper> {
         Box::new(ExpressionWrapper::Assignment(AssignmentExpression {
             node_info,
             lhs,
@@ -405,7 +407,7 @@ impl<'a> AssignmentExpression<'a> {
     }
 }
 
-impl<'a> AstNode<'a> for AssignmentExpression<'a> {
+impl AstNode for AssignmentExpression {
     fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let _ = writeln!(
             f,
@@ -424,24 +426,24 @@ impl<'a> AstNode<'a> for AssignmentExpression<'a> {
 }
 
 #[derive(Debug)]
-pub struct BinaryOperationExpression<'a> {
+pub struct BinaryOperationExpression {
     node_info: NodeInfo,
 
     pub operation: BinaryOperation,
-    pub lhs: Box<ExpressionWrapper<'a>>,
-    pub rhs: Box<ExpressionWrapper<'a>>,
-    //lhs: Box<dyn Expression<'a>>,
-    //rhs: Box<dyn Expression<'a>>,
-    //pub span: Span<'a>,
+    pub lhs: Box<ExpressionWrapper>,
+    pub rhs: Box<ExpressionWrapper>,
+    //lhs: Box<dyn Expression>,
+    //rhs: Box<dyn Expression>,
+    //pub span: Span,
 }
 
-impl<'a> BinaryOperationExpression<'a> {
+impl BinaryOperationExpression {
     pub fn new_expr(
         node_info: NodeInfo,
         operation: Token,
-        lhs: Box<ExpressionWrapper<'a>>,
-        rhs: Box<ExpressionWrapper<'a>>,
-    ) -> Box<ExpressionWrapper<'a>> {
+        lhs: Box<ExpressionWrapper>,
+        rhs: Box<ExpressionWrapper>,
+    ) -> Box<ExpressionWrapper> {
         let operation = BinaryOperation::from_token(operation)
             .expect("tried to build binop from bad operator token");
         Box::new(ExpressionWrapper::BinaryOperation(
@@ -455,7 +457,7 @@ impl<'a> BinaryOperationExpression<'a> {
     }
 }
 
-impl<'a> AstNode<'a> for BinaryOperationExpression<'a> {
+impl AstNode for BinaryOperationExpression {
     fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let _ = writeln!(
             f,
@@ -474,24 +476,24 @@ impl<'a> AstNode<'a> for BinaryOperationExpression<'a> {
 }
 
 #[derive(Debug)]
-pub struct ComparisonOperationExpression<'a> {
+pub struct ComparisonOperationExpression {
     node_info: NodeInfo,
 
     pub operation: ComparisonOperation,
-    //lhs: Box<dyn Expression<'a>>,
-    //rhs: Box<dyn Expression<'a>>,
-    pub lhs: Box<ExpressionWrapper<'a>>,
-    pub rhs: Box<ExpressionWrapper<'a>>,
-    //pub span: Span<'a>,
+    //lhs: Box<dyn Expression>,
+    //rhs: Box<dyn Expression>,
+    pub lhs: Box<ExpressionWrapper>,
+    pub rhs: Box<ExpressionWrapper>,
+    //pub span: Span,
 }
 
-impl<'a> ComparisonOperationExpression<'a> {
+impl ComparisonOperationExpression {
     pub fn new_expr(
         node_info: NodeInfo,
         operation: Token,
-        lhs: Box<ExpressionWrapper<'a>>,
-        rhs: Box<ExpressionWrapper<'a>>,
-    ) -> Box<ExpressionWrapper<'a>> {
+        lhs: Box<ExpressionWrapper>,
+        rhs: Box<ExpressionWrapper>,
+    ) -> Box<ExpressionWrapper> {
         let operation = ComparisonOperation::from_token(operation)
             .expect("tried to build binop from bad operator token");
         Box::new(ExpressionWrapper::Comparison(
@@ -505,7 +507,7 @@ impl<'a> ComparisonOperationExpression<'a> {
     }
 }
 
-impl<'a> AstNode<'a> for ComparisonOperationExpression<'a> {
+impl AstNode for ComparisonOperationExpression {
     fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let _ = writeln!(
             f,
@@ -588,23 +590,23 @@ impl UnaryOperation {
 }
 
 #[derive(Debug)]
-pub struct AccessExpression<'a> {
+pub struct AccessExpression {
     pub node_info: NodeInfo,
 
-    pub on: Option<Box<ExpressionWrapper<'a>>>,
-    //pub span: Span<'a>,
+    pub on: Option<Box<ExpressionWrapper>>,
+    //pub span: Span,
     //pub field: &'a str,
-    pub scope: Box<ScopedNameReference<'a>>,
-    pub pattern: Option<Pattern<'a>>,
+    pub scope: Box<ScopedNameReference>,
+    pub pattern: Option<Pattern>,
 }
 
-impl<'a> AccessExpression<'a> {
+impl AccessExpression {
     pub fn new_expr(
         node_info: NodeInfo,
-        on: Option<Box<ExpressionWrapper<'a>>>,
-        scope: Box<ScopedNameReference<'a>>,
-        pattern: Option<Pattern<'a>>,
-    ) -> Box<ExpressionWrapper<'a>> {
+        on: Option<Box<ExpressionWrapper>>,
+        scope: Box<ScopedNameReference>,
+        pattern: Option<Pattern>,
+    ) -> Box<ExpressionWrapper> {
         Box::new(ExpressionWrapper::Access(AccessExpression {
             node_info,
             scope,
@@ -614,7 +616,7 @@ impl<'a> AccessExpression<'a> {
     }
 }
 
-impl<'a> AstNode<'a> for AccessExpression<'a> {
+impl AstNode for AccessExpression {
     fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let _ = writeln!(
             f,
@@ -650,30 +652,30 @@ impl<'a> AstNode<'a> for AccessExpression<'a> {
 }
 
 #[derive(Debug)]
-pub struct MethodCall<'a> {
+pub struct MethodCall {
     node_info: NodeInfo,
 
-    pub on: Box<ExpressionWrapper<'a>>,
-    //pub span: Span<'a>,
-    pub method: &'a str,
-    pub arguments: Vec<Box<ExpressionWrapper<'a>>>,
+    pub on: Box<ExpressionWrapper>,
+    //pub span: Span,
+    pub method: StringSymbol,
+    pub arguments: Vec<Box<ExpressionWrapper>>,
 }
 
 #[derive(Debug)]
-pub struct UnaryOperationExpression<'a> {
+pub struct UnaryOperationExpression {
     node_info: NodeInfo,
 
     pub operation: UnaryOperation,
-    pub subexpr: Box<ExpressionWrapper<'a>>,
-    //pub span: Span<'a>,
+    pub subexpr: Box<ExpressionWrapper>,
+    //pub span: Span,
 }
 
-impl<'a> UnaryOperationExpression<'a> {
+impl UnaryOperationExpression {
     pub fn new_expr(
         node_info: NodeInfo,
         operation: Token,
-        subexpr: Box<ExpressionWrapper<'a>>,
-    ) -> Box<ExpressionWrapper<'a>> {
+        subexpr: Box<ExpressionWrapper>,
+    ) -> Box<ExpressionWrapper> {
         let operation = UnaryOperation::from_token(operation)
             .expect("tried to build unop from bad operator token");
         Box::new(ExpressionWrapper::UnaryOperation(
@@ -686,7 +688,7 @@ impl<'a> UnaryOperationExpression<'a> {
     }
 }
 
-impl<'a> AstNode<'a> for UnaryOperationExpression<'a> {
+impl AstNode for UnaryOperationExpression {
     fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let _ = writeln!(
             f,
@@ -705,22 +707,22 @@ impl<'a> AstNode<'a> for UnaryOperationExpression<'a> {
 }
 
 #[derive(Debug)]
-pub struct CastExpression<'a> {
+pub struct CastExpression {
     node_info: NodeInfo,
 
-    pub subexpr: Box<ExpressionWrapper<'a>>,
-    //pub typeref: Box<ExpressionWrapper<'a>>,
-    pub typeref: Box<super::TypeReference<'a>>,
-    //pub typeref: Box<types::TypeReference<'a>>,
-    //pub span: Span<'a>,
+    pub subexpr: Box<ExpressionWrapper>,
+    //pub typeref: Box<ExpressionWrapper>,
+    pub typeref: Box<super::TypeReference>,
+    //pub typeref: Box<types::TypeReference>,
+    //pub span: Span,
 }
 
-impl<'a> CastExpression<'a> {
+impl CastExpression {
     pub fn new_expr(
         node_info: NodeInfo,
-        lhs: Box<ExpressionWrapper<'a>>,
-        typeref: Box<super::TypeReference<'a>>,
-    ) -> Box<ExpressionWrapper<'a>> {
+        lhs: Box<ExpressionWrapper>,
+        typeref: Box<super::TypeReference>,
+    ) -> Box<ExpressionWrapper> {
         Box::new(ExpressionWrapper::Cast(CastExpression {
             node_info,
             subexpr: lhs,
@@ -730,17 +732,17 @@ impl<'a> CastExpression<'a> {
 }
 
 #[derive(Debug)]
-pub struct ReturnExpression<'a> {
+pub struct ReturnExpression {
     node_info: NodeInfo,
 
-    pub subexpr: Box<ExpressionWrapper<'a>>,
+    pub subexpr: Box<ExpressionWrapper>,
 }
 
-impl<'a> ReturnExpression<'a> {
+impl ReturnExpression {
     pub fn new_expr(
         node_info: NodeInfo,
-        subexpr: Box<ExpressionWrapper<'a>>,
-    ) -> Box<ExpressionWrapper<'a>> {
+        subexpr: Box<ExpressionWrapper>,
+    ) -> Box<ExpressionWrapper> {
         //let operation = UnaryOperation::from_token(operation).expect("tried to build unop from bad operator token");
         Box::new(ExpressionWrapper::Return(ReturnExpression {
             node_info,
@@ -749,7 +751,7 @@ impl<'a> ReturnExpression<'a> {
     }
 }
 
-impl<'a> AstNode<'a> for ReturnExpression<'a> {
+impl AstNode for ReturnExpression {
     fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let _ = writeln!(
             f,
@@ -766,7 +768,7 @@ impl<'a> AstNode<'a> for ReturnExpression<'a> {
     }
 }
 
-impl<'a> AstNode<'a> for CastExpression<'a> {
+impl AstNode for CastExpression {
     fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let _ = writeln!(f, "{}CastExpression of expression:", indent(depth),);
         [&self.subexpr]
@@ -782,38 +784,38 @@ impl<'a> AstNode<'a> for CastExpression<'a> {
 }
 
 #[derive(Debug)]
-pub struct TernarySelectorOperationExpression<'a> {
+pub struct TernarySelectorOperationExpression {
     node_info: NodeInfo,
 
-    pub condition: Box<ExpressionWrapper<'a>>,
-    pub first: Box<ExpressionWrapper<'a>>,
-    pub second: Box<ExpressionWrapper<'a>>,
-    //pub span: Span<'a>,
+    pub condition: Box<ExpressionWrapper>,
+    pub first: Box<ExpressionWrapper>,
+    pub second: Box<ExpressionWrapper>,
+    //pub span: Span,
 }
 
 /*#[derive(Debug)]
-pub struct Closure<'a> {
+pub struct Closure {
     node_info: NodeInfo,
 
-    pub expressions: Vec<Box<ExpressionWrapper<'a>>>,
-    pub return_type: types::TypeReference<'a>,
-    pub params: Vec<Box<ExpressionWrapper<'a>>>, // should all be irrefutable patterns
+    pub expressions: Vec<Box<ExpressionWrapper>>,
+    pub return_type: types::TypeReference,
+    pub params: Vec<Box<ExpressionWrapper>>, // should all be irrefutable patterns
     pub start: usize,
     pub end: usize,
-    //pub span: Span<'a>,
+    //pub span: Span,
 }*/
 
 /*#[derive(Debug)]
-pub struct IdentifierExpression<'a> {
+pub struct IdentifierExpression {
     pub node_info: NodeInfo,
 
     //pub name: &'a str,
-    pub context: Box<ScopedName<'a>>,
-    pub node_type: Option<types::TypeReference<'a>>,
-    //pub span: Span<'a>,
+    pub context: Box<ScopedName>,
+    pub node_type: Option<types::TypeReference>,
+    //pub span: Span,
 }
 
-impl<'a> AstNode<'a> for IdentifierExpression<'a> {
+impl AstNode for IdentifierExpression {
     fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let _ = writeln!(
             f,
@@ -831,8 +833,8 @@ impl<'a> AstNode<'a> for IdentifierExpression<'a> {
 
 #[derive(Debug)]
 #[allow(non_camel_case_types)]
-pub enum Literal<'a> {
-    StringLiteral(&'a str),
+pub enum Literal {
+    StringLiteral(StringSymbol),
 
     f32Literal(f32),
     f64Literal(f64),
@@ -853,21 +855,21 @@ pub enum Literal<'a> {
 }
 
 #[derive(Debug)]
-pub struct LiteralExpression<'a> {
+pub struct LiteralExpression {
     node_info: NodeInfo,
 
     //pub contents: &'a str,
-    pub contents: Literal<'a>,
-    //pub span: Span<'a>,
+    pub contents: Literal,
+    //pub span: Span,
 }
 
-impl<'a> LiteralExpression<'a> {
-    pub fn new_expr(tw: TokenWrapper<'a>) -> Box<ExpressionWrapper<'a>> {
+impl LiteralExpression {
+    pub fn new_expr(tw: TokenWrapper) -> Box<ExpressionWrapper> {
         let literal = match tw.token {
             Token::UnknownIntegerLiteral => {
-                Literal::UnknownIntegerLiteral(tw.slice.parse().unwrap())
+                Literal::UnknownIntegerLiteral(tw.slice.resolve().parse().unwrap())
             }
-            Token::i8Literal => Literal::i8Literal(tw.slice.parse().unwrap()),
+            Token::i8Literal => Literal::i8Literal(tw.slice.resolve().parse().unwrap()),
             Token::StringLiteral => Literal::StringLiteral(tw.slice),
             _ => todo!(),
         };
@@ -879,7 +881,7 @@ impl<'a> LiteralExpression<'a> {
     }
 }
 
-impl<'a> AstNode<'a> for LiteralExpression<'a> {
+impl AstNode for LiteralExpression {
     fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let _ = writeln!(
             f,
