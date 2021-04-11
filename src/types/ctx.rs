@@ -92,18 +92,18 @@ pub fn generate_typeid() -> TypeID {
 }
 
 // interior mut type
-struct GlobalCtxNode<'input> {
-    canonical_local_name: &'input str,
-    children: DashMap<&'input str, Arc<GlobalCtxNode<'input>>>,
+struct GlobalCtxNode {
+    canonical_local_name: String,
+    children: DashMap<String, Arc<GlobalCtxNode>>,
     //localtypes: DashMap<&'input str, Arc<Ctx<'input>>>,
-    type_ctx: Arc<TypeCtx<'input>>,
-    selfref: std::cell::UnsafeCell<Weak<GlobalCtxNode<'input>>>,
+    type_ctx: Arc<TypeCtx>,
+    selfref: std::cell::UnsafeCell<Weak<GlobalCtxNode>>,
 }
 
-impl<'input> GlobalCtxNode<'input> {
-    fn new(name: &'input str) -> Arc<GlobalCtxNode<'input>> {
+impl GlobalCtxNode {
+    fn new(name: &str) -> Arc<GlobalCtxNode> {
         let ctxnode = GlobalCtxNode {
-            canonical_local_name: name,
+            canonical_local_name: name.to_owned(),
             children: DashMap::new(),
             type_ctx: Arc::new(TypeCtx::new()),
             selfref: UnsafeCell::new(Weak::default()),
@@ -133,7 +133,7 @@ impl<'input> GlobalCtxNode<'input> {
         *((*s).selfref).get() = sr
     }
 
-    fn get_selfref_arc(&self) -> Option<Arc<GlobalCtxNode<'input>>> {
+    fn get_selfref_arc(&self) -> Option<Arc<GlobalCtxNode>> {
         unsafe {
             // NOTE: relies on selfref being initialized during construction before this
             // point
@@ -142,14 +142,14 @@ impl<'input> GlobalCtxNode<'input> {
     }
 
     fn name(&self) -> &str {
-        self.canonical_local_name
+        self.canonical_local_name.as_str()
     }
 
-    fn type_ctx(&self) -> Arc<TypeCtx<'input>> {
+    fn type_ctx(&self) -> Arc<TypeCtx> {
         self.type_ctx.clone()
     }
 
-    fn nsctx_for(&self, scope: &[&'input str]) -> Option<Arc<GlobalCtxNode<'input>>> {
+    fn nsctx_for(&self, scope: &[&str]) -> Option<Arc<GlobalCtxNode>> {
         //match scope {
         //[last] //
         match scope {
@@ -157,21 +157,21 @@ impl<'input> GlobalCtxNode<'input> {
             [first, rest @ ..] => {
                 //self.
                 self.children
-                    .get(first)
+                    .get(first.to_owned())
                     .map(|nsctx| nsctx.nsctx_for(rest))
                     .flatten()
             }
         }
     }
 
-    fn register_nsctx(&self, scope: &[&'input str]) {
+    fn register_nsctx(&self, scope: &[&str]) {
         match scope {
             [] => {
                 // no action for empty case, this is base case (self is already registered)
             }
             [first, rest @ ..] => {
                 self.children
-                    .entry(first)
+                    .entry(first.to_string())
                     .or_insert_with(|| {
                         let gcn = GlobalCtxNode::new(first);
                         gcn
@@ -186,18 +186,18 @@ impl<'input> GlobalCtxNode<'input> {
     //fn register_type_ctx
 }
 
-pub struct GlobalCtx<'input> {
-    entry: Arc<GlobalCtxNode<'input>>,
+pub struct GlobalCtx {
+    entry: Arc<GlobalCtxNode>,
 }
 
-impl<'input> GlobalCtx<'input> {
-    pub fn new() -> GlobalCtx<'input> {
+impl GlobalCtx {
+    pub fn new() -> GlobalCtx {
         GlobalCtx { entry: GlobalCtxNode::new("global") }
     }
 
     /// tries to get a namespace ctx if one exists, and None if not
     #[allow(unused)]
-    fn get_nsctx(&self, scope: &[&'input str]) -> Option<Arc<GlobalCtxNode<'input>>> {
+    fn get_nsctx(&self, scope: &[&str]) -> Option<Arc<GlobalCtxNode>> {
         self.entry.nsctx_for(scope)
     }
 
@@ -206,7 +206,7 @@ impl<'input> GlobalCtx<'input> {
     /// believe that an ns was actually declared/referenced and should thus be avoided for
     /// strict read-query lookups
     #[allow(unused)]
-    fn get_or_create_nsctx(&self, scope: &[&'input str]) -> Arc<GlobalCtxNode<'input>> {
+    fn get_or_create_nsctx(&self, scope: &[&str]) -> Arc<GlobalCtxNode> {
         self.entry.register_nsctx(scope);
 
         self.get_nsctx(scope).expect(
@@ -220,11 +220,11 @@ impl<'input> GlobalCtx<'input> {
     /// believe that an ns was actually declared/referenced and should thus be avoided for
     /// strict read-query lookups. This returns the TypeCtx directly off of the
     /// internal NS looked up by `scope`, so that the last level type (decl itself) can be inserted
-    pub fn get_or_create_typectx(&self, scope: &[&'input str]) -> Arc<TypeCtx<'input>> {
+    pub fn get_or_create_typectx(&self, scope: &[&str]) -> Arc<TypeCtx> {
         self.get_or_create_nsctx(scope).type_ctx()
     }
 
-    pub fn register_name_ctx(&self, scope: &[&'input str]) {
+    pub fn register_name_ctx(&self, scope: &[&str]) {
         match scope {
             // global scope handled same as default scope
             ["global", rest @ ..] | [rest @ ..] => {
@@ -235,15 +235,15 @@ impl<'input> GlobalCtx<'input> {
 }
 
 /// Interior mutable container representing a type context
-pub struct TypeCtx<'input> {
+pub struct TypeCtx {
     types: DashMap<TypeID, TypeHandle>,
     signatures:
-        DashMap<TypeSignature<'input>, SmallVec<[TypeID; TYPE_SIGNATURE_DUPLICATE_MAX_FREQ]>>,
-    ids: DashMap<TypeID, TypeSignature<'input>>,
+        DashMap<TypeSignature, SmallVec<[TypeID; TYPE_SIGNATURE_DUPLICATE_MAX_FREQ]>>,
+    ids: DashMap<TypeID, TypeSignature>,
 }
 
-impl<'input> TypeCtx<'input> {
-    pub fn new() -> TypeCtx<'input> {
+impl TypeCtx {
+    pub fn new() -> TypeCtx {
         TypeCtx {
             types: DashMap::new(),
             signatures: DashMap::new(),
@@ -278,11 +278,11 @@ impl<'input> TypeCtx<'input> {
         self.types.get(&tid).map(|r| (*r.value()).clone())
     }
 
-    pub fn id_to_sig(&self, tid: TypeID) -> Option<TypeSignature<'input>> {
+    pub fn id_to_sig(&self, tid: TypeID) -> Option<TypeSignature> {
         self.ids.get(&tid).map(|r| (*r.value()).clone())
     }
 
-    pub fn sig_to_id(&self, t: &TypeSignature<'input>) -> Option<Vec<TypeID>> {
+    pub fn sig_to_id(&self, t: &TypeSignature) -> Option<Vec<TypeID>> {
         self.signatures
             .get(t)
             .map(|r| (*r.value()).iter().map(|&v| v).collect())
@@ -290,6 +290,6 @@ impl<'input> TypeCtx<'input> {
 }
 
 //impl Send for CtxInner {} // should this have send?
-unsafe impl<'input> Sync for TypeCtx<'input> {}
+unsafe impl Sync for TypeCtx {}
 
 //pub type Ctx = Arc<CtxInner>;

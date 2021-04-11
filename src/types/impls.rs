@@ -34,8 +34,8 @@ impl<T: Any> AsAny for T {
 }
 
 #[derive(Clone, Hash, Eq, PartialEq)]
-pub struct TypeSignature<'input> {
-    name: &'input str,
+pub struct TypeSignature {
+    name: String,
     params: SmallVec<[Option<TypeID>; TYPE_PARAM_DEFAULT_COUNT]>,
 }
 
