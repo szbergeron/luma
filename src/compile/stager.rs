@@ -38,7 +38,11 @@ pub fn parse_unit<'file>(
 
     let mut parser = Parser::new(&mut scanner, scope);
 
-    let p = parser.entry();
+    #[allow(irrefutable_let_patterns)]
+    let p = if let iguard = interner() {
+        let p = parser.entry();
+        p
+    } else { panic!("irrefutable pattern") };
 
     if !cflags.eflags.silence_errors {
         parser.print_errors(handle);

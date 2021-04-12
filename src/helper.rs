@@ -1,12 +1,13 @@
 //use crate::lex;
 use crate::ast::*;
 use crate::helper::Interner::*;
+//use atomic_option::AtomicOption;
+use lazy_static::lazy_static;
+//use lock_api::RawRwLockRecursive;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock, Weak};
-use lazy_static::lazy_static;
-use atomic_option::AtomicOption;
-use lock_api::RawRwLockRecursive;
+use std::borrow::Borrow;
 
 pub mod Interner {
     pub type StringSymbol = lasso::LargeSpur;
@@ -18,11 +19,13 @@ pub mod Interner {
     }
     //static mut INTERNER_PRIV: Option<Rodeo> = None;
     //static mut INTERNER_UNLOCKED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-    static mut INTERNER_OWNING: Option<std::sync::RwLock<Rodeo>> = None;
+    lazy_static! {
+        static ref INTERNER_OWNING: std::sync::Mutex<Option<std::sync::Arc<std::sync::RwLock<Rodeo>>>> = std::sync::Mutex::new(None);
+    }
 
     thread_local! {
         // NOTE: lifetime considered 'unsafe
-        static INTERNER_GUARD: std::cell::UnsafeCell<Option<Box<std::sync::RwLockReadGuard<'static, Rodeo>>>> = std::cell::UnsafeCell::new(None);
+        static INTERNER_GUARD: std::cell::UnsafeCell<Option<std::sync::RwLockReadGuard<'static, Rodeo>>> = std::cell::UnsafeCell::new(None);
 
         static INTERNER_READ_COUNT_LOCAL: std::cell::UnsafeCell<i64> = std::cell::UnsafeCell::new(0);
     }
@@ -38,7 +41,7 @@ pub mod Interner {
         };
     }*/
 
-    //static INTERNER: lock_api::RwLock<Option<Rodeo>> = 
+    //static INTERNER: lock_api::RwLock<Option<Rodeo>> =
     /*lazy_static! {
         static ref INTERNER: lock_api::RwLock<lock_api::RwLock<Option<Rodeo>>, Option<Rodeo>> = {
             std::sync::RwLock::new()
@@ -49,46 +52,79 @@ pub mod Interner {
         rodeo: &'static Rodeo,
     }
 
+    // NOTE: this sometimes triggers bugs in rustc, if the compiler starts spitting out errors
+    // remove the target/ directory and retry building
     impl InternerReadGuard {
         fn new() -> InternerReadGuard {
             unsafe {
                 INTERNER_READ_COUNT_LOCAL.with(|v| {
-                    v.get_mut();
-                    *v += 1;
-                    v
+                    let val = v.get();
+                    *val += 1;
                 });
 
-                let r: &'static Rodeo = INTERNER_GUARD.with(|g| {
-                    let inner = g.get_mut();
-                    inner.get_or_insert_with(|| {
-                            let interner_lock = INTERNER_OWNING.expect("Interner was not init'd by the time it was requested").try_read();
-                            let lock = interner_lock.expect("Couldn't lock interner");
-                            lock
-                    }).as_ref()
+                //let inner = INTERNER_GUARD.get_mut();
 
+                let r: &'static Rodeo = INTERNER_GUARD.with(|v| {
+                    let optr = v.get();
+                    let inner: &mut Option<std::sync::RwLockReadGuard<'static, Rodeo>> = optr
+                        .as_mut()
+                        .expect("UnsafeCell didn't turn into non-null ptr");
+                    if inner.is_none() {
+                        let mg = INTERNER_OWNING.lock().expect("Couldn't lock outer mutex");
+                        let ir = mg.clone();
+                        let io = ir.expect("Interner was not init'd by the time it was requested");
+                        let ig = io.try_read().expect("Couldn't lock interner rwlock");
+
+                        *inner = Some(
+                            //ig as std::sync::RwLockReadGuard<'static, Rodeo>,
+                            std::mem::transmute(ig)
+                        );
+                    }
+
+                    &**inner.as_ref().expect("Just set inner to Some, but was None")
                 });
-                todo!()
+
+                InternerReadGuard {
+                    rodeo: r,
+                }
+            }
+        }
+
+        /// return the value of the internal ref. This is marked unsafe as the lifetime should be
+        /// 'unsafe, and is not actually 'static
+        pub unsafe fn as_static(&self) -> &'static Rodeo {
+            self.rodeo
+        }
+    }
+
+    impl std::ops::Drop for InternerReadGuard {
+        fn drop(&mut self) {
+            unsafe {
+                let do_dealloc = INTERNER_READ_COUNT_LOCAL.with(|v| {
+                    let val = v.get();
+                    *val += 1;
+                    *val == 0
+                });
+
+                if do_dealloc {
+                    INTERNER_GUARD.with(|v| {
+                        let optr = v.get();
+                        *optr = None;
+                    });
+                }
             }
         }
     }
 
-
-    impl std::ops::Drop for InternerReadGuard {
-        fn drop(&mut self) {
-            todo!()
-        }
-
-    }
-
-    impl std::ops::Deref for InternerReadGuard {
+    /*impl std::ops::Deref for InternerReadGuard {
         type Target = Rodeo;
 
         fn deref(&self) -> &Self::Target {
-            todo!()
+            self.rodeo
         }
-    }
+    }*/
 
-    //unsafe fn open_read() -> InternerReadGuard 
+    //unsafe fn open_read() -> InternerReadGuard
 
     /// Should be called before `interner()` is called, sets the static itself
     /// and issues memory barrier to try to swap the Option atomically
@@ -97,34 +133,38 @@ pub mod Interner {
     pub unsafe fn init_interner() {
         let it = lasso::ThreadedRodeo::new();
         let en = Rodeo::ThreadedRodeo(it);
-        let op = Some(en);
+        let op = Some(std::sync::Arc::new(std::sync::RwLock::new(en)));
+
+        let mut internal = INTERNER_OWNING.lock().expect("Couldn't lock outer mutex for interner");
+        *internal = op;
+
 
         //let b = Box::new(it);
 
         //let ptr = b.into_raw();
 
-        std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
+        //std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
 
         //INTERNER_PRIV.swap(ptr, std::sync::atomic::Ordering::SeqCst);
         //INTERNER_PRIV = op;
 
-        std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
+        //std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
     }
 
     /// INVARIANT: must be called after init_interner has already been called in a single-threaded ONLY
     /// context. If this is called before, or init_interner was called during a data race,
     /// then this may panic as it can not find the interner present.
-    unsafe fn interner() -> &'static Rodeo {
-        todo!();
+    pub fn interner() -> InternerReadGuard {
+        InternerReadGuard::new()
         /*unsafe {
-            INTERNER_GUARD.with(|optref| { 
+            INTERNER_GUARD.with(|optref| {
                 optref.as_ref().expect("Interner didn't exist yet")
         }*/
     }
 
     pub fn intern(v: &str) -> StringSymbol {
         unsafe {
-            match interner() {
+            match interner().as_static() {
                 Rodeo::ThreadedRodeo(tr) => tr.get_or_intern(v),
                 _ => panic!("Tried to intern a string when interner was not in a writable state"),
             }
@@ -133,7 +173,7 @@ pub mod Interner {
 
     pub fn intern_static(v: &'static str) -> StringSymbol {
         unsafe {
-            match interner() {
+            match interner().as_static() {
                 Rodeo::ThreadedRodeo(tr) => tr.get_or_intern_static(v),
                 _ => panic!("Tried to intern a string when interner was not in a writable state"),
             }
@@ -148,7 +188,7 @@ pub mod Interner {
     impl SpurHelper for StringSymbol {
         fn resolve(&self) -> &'static str {
             unsafe {
-                match interner() {
+                match interner().as_static() {
                     Rodeo::ThreadedRodeo(tr) => tr.resolve(self),
                     Rodeo::RodeoResolver(rr) => rr.resolve(self),
                     Rodeo::RodeoReader(rr) => rr.resolve(self),
@@ -158,7 +198,7 @@ pub mod Interner {
 
         fn try_resolve(&self) -> Option<&'static str> {
             unsafe {
-                match interner() {
+                match interner().as_static() {
                     Rodeo::ThreadedRodeo(tr) => tr.try_resolve(self),
                     Rodeo::RodeoResolver(rr) => rr.try_resolve(self),
                     Rodeo::RodeoReader(rr) => rr.try_resolve(self),

@@ -163,7 +163,8 @@ impl<'lexer> Parser<'lexer> {
                 end = Some(dc.end);
             }
             None => {
-                //r.scope.push(intern("local")),
+                eprintln!("need to address `local` vars within {}: {}", std::file!(), std::line!());
+                r.scope.push(intern("local"));
             }
         }
 
