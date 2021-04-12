@@ -7,7 +7,6 @@ use chashmap::CHashMap;
 use std::sync::{Arc, RwLock, Weak};
 
 use crate::helper::Interner::*;
-use crate::StringSymbol;
 
 /*pub struct SymbolDB<'a> {
     from: Arc<RwLock<OuterScope<'a>>>,
@@ -273,6 +272,10 @@ impl ScopeContext {
         drop(child_guard);
 
         self.inner_contexts.insert(last_string, child);
+    }
+
+    pub fn get_scope(&self) -> &[StringSymbol] {
+        self.scope.as_slice()
     }
 
     //pub fn get_weakref(&self,

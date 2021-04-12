@@ -6,7 +6,8 @@ use std::sync::{Arc, RwLock, Weak};
 use crate::helper::Interner::*;
 
 pub mod Interner {
-    static mut INTERNER_PRIV: Option<lasso::ThreadedRodeo<crate::StringSymbol>> = None;
+    pub type StringSymbol = lasso::LargeSpur;
+    static mut INTERNER_PRIV: Option<lasso::ThreadedRodeo<StringSymbol>> = None;
 
     /// Should be called before `interner()` is called, sets the static itself
     /// and issues memory barrier to try to swap the Option atomically
@@ -30,7 +31,7 @@ pub mod Interner {
     /// INVARIANT: must be called after init_interner has already been called in a single-threaded ONLY
     /// context. If this is called before, or init_interner was called during a data race,
     /// then this may panic as it can not find the interner present.
-    pub fn interner() -> &'static lasso::ThreadedRodeo<crate::StringSymbol> {
+    pub fn interner() -> &'static lasso::ThreadedRodeo<StringSymbol> {
         unsafe {
             INTERNER_PRIV
                 .as_ref()
@@ -38,7 +39,7 @@ pub mod Interner {
         }
     }
 
-    pub fn intern(v: &str) -> crate::StringSymbol {
+    pub fn intern(v: &str) -> StringSymbol {
         interner().get_or_intern(v)
     }
 
@@ -47,7 +48,7 @@ pub mod Interner {
         fn try_resolve(&self) -> Option<&'static str>;
     }
 
-    impl SpurHelper for crate::StringSymbol {
+    impl SpurHelper for StringSymbol {
         fn resolve(&self) -> &'static str {
             interner().resolve(self)
         }
@@ -397,7 +398,7 @@ pub mod lex_wrap {
     #[derive(Debug, Clone, Copy)]
     pub struct TokenWrapper {
         pub token: crate::lex::Token,
-        pub slice: crate::StringSymbol,
+        pub slice: StringSymbol,
         pub start: CodeLocation,
         pub end: CodeLocation,
     }

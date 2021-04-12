@@ -35,9 +35,12 @@ pub mod types;
 //#[macro_use] extern crate lalrpop_util;
 //lalrpop_mod!(pub grammar);
 
-pub type StringSymbol = lasso::LargeSpur;
+//pub type StringSymbol = lasso::LargeSpur;
 
 fn main() {
+    unsafe {
+        crate::helper::Interner::init_interner();
+    }
     let args: Vec<String> = env::args().collect();
     println!("Args: {:?}", args);
     let sliced: Vec<&str> = args.iter().map(|s| &s[..]).collect();

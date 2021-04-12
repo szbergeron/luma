@@ -23,6 +23,7 @@ use crate::helper::Interner::*;
 pub fn parse_unit<'file>(
     handle: FileHandleRef,
     context: &ScopeContext,
+    scope: Vec<StringSymbol>,
     cflags: &CFlags,
 ) -> Result<OuterScope, ParseResultError> {
     // clone because we don't want to keep lock open, and this should be rather cheap in the scheme
@@ -35,7 +36,7 @@ pub fn parse_unit<'file>(
     let mut lex = Wrapper::new(contents, base_path);
     let mut scanner = LookaheadStream::new(&mut lex);
 
-    let mut parser = Parser::new(&mut scanner);
+    let mut parser = Parser::new(&mut scanner, scope);
 
     let p = parser.entry();
 
@@ -78,7 +79,7 @@ pub fn launch(args: &[&str]) {
     let mut path_map = PathIdMap::new();
     let mut scope_map = ScopeIdMap::new();
 
-    let interner: Arc<ThreadedRodeo<LargeSpur>> = Arc::new(ThreadedRodeo::new());
+    //let interner: Arc<ThreadedRodeo<LargeSpur>> = Arc::new(ThreadedRodeo::new());
 
     let (error_sender, _error_reciever) = crossbeam::unbounded();
 
@@ -92,7 +93,7 @@ pub fn launch(args: &[&str]) {
         path_map.push_path(path.clone());
     });
 
-    explore_paths(&mut path_map, &mut scope_map, error_sender, interner.as_ref());
+    explore_paths(&mut path_map, &mut scope_map, error_sender);
 
     println!("going to iter and open files");
 
@@ -112,7 +113,9 @@ pub fn launch(args: &[&str]) {
         .map(|(file, scope)| {
             if let Some(handle_ref) = file.as_ref() {
                 println!("parsing unit");
-                let r = parse_unit(handle_ref, &*scope.read().unwrap(), &args.flags);
+                // TODO: potentially remove ScopeContext from this and integrate later
+                let scope_v  = scope.read().unwrap().get_scope().to_vec();
+                let r = parse_unit(handle_ref, &*scope.read().unwrap(), scope_v, &args.flags);
                 r
             } else {
                 Ok(OuterScope::new(NodeInfo::Builtin, Vec::new()))
@@ -236,7 +239,6 @@ pub fn explore_paths<'context>(
     pidm: &mut PathIdMap,
     sidm: &mut ScopeIdMap,
     error_sink: crossbeam::Sender<Error>,
-    interner: &ThreadedRodeo<LargeSpur>,
 ) -> ()
 {
     let mut vd = VecDeque::new();

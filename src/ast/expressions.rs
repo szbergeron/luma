@@ -6,7 +6,6 @@ use crate::helper::Interner::*;
 use crate::helper::lex_wrap::{ParseResultError, TokenWrapper};
 use crate::lex::Token;
 use crate::types;
-use crate::StringSymbol;
 
 pub trait Expression: AstNode {
     fn expr_type(&self) -> Box<dyn types::Type>;

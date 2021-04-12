@@ -22,6 +22,7 @@ pub struct Parser<'lexer>
     lex: &'lexer mut LookaheadStream,
     errors: Vec<ParseResultError>,
     next: Vec<Token>,
+    scope: Vec<StringSymbol>,
 }
 
 pub struct SyncSliceHandle {
@@ -30,9 +31,10 @@ pub struct SyncSliceHandle {
 }
 
 impl<'lexer> Parser<'lexer> {
-    pub fn new(lex: &'lexer mut LookaheadStream) -> Parser<'lexer> {
+    pub fn new(lex: &'lexer mut LookaheadStream, scope: Vec<StringSymbol>) -> Parser<'lexer> {
         Parser {
             lex,
+            scope,
             errors: Vec::new(),
             next: Vec::new(),
         }

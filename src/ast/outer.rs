@@ -10,7 +10,6 @@ use crate::mid_repr::*;
 use std::sync::RwLock;
 use super::expressions::TypeReference;
 
-use crate::StringSymbol;
 use crate::helper::Interner::*;
 
 #[derive(Debug)]
