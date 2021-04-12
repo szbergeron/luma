@@ -61,7 +61,7 @@ impl<'lexer> Parser<'lexer> {
         // these can start with a ( for a typle, a & for a reference, or a str, [<] for a named and
         // optionally parameterized type
 
-        let scope = self.scoped_name();
+        let scope = self.parse_scoped_name();
 
         /*if !scope.silent {
             self.hard_expect
@@ -144,7 +144,7 @@ impl<'lexer> Parser<'lexer> {
         todo!()
     }
 
-    pub fn scoped_name(&mut self) -> Box<ScopedNameReference> {
+    pub fn parse_scoped_name(&mut self) -> Box<ScopedNameReference> {
         let mut r = Box::new(ScopedNameReference {
             scope: Vec::new(),
             silent: true,
@@ -154,14 +154,17 @@ impl<'lexer> Parser<'lexer> {
         let mut start = None;
         let mut end = None;
 
-        match self.eat_match(Token::DoubleColon) {
+        match self.eat_match_in(Token::DoubleColon) {
             Some(dc) => {
                 r.scope.push(intern("global"));
+                r.scope.extend(self.scope); // TODO: revisit `global` prepending
                 r.silent = false;
                 start = Some(dc.start);
                 end = Some(dc.end);
             }
-            None => r.scope.push(intern("local")),
+            None => {
+                //r.scope.push(intern("local")),
+            }
         }
 
         while let Some(id) = self.eat_match(Token::Identifier) {
@@ -269,7 +272,7 @@ impl<'lexer> Parser<'lexer> {
 
         let mut either: EitherAnd<Span, Span> = EitherAnd::Neither;
 
-        let base = self.scoped_name();
+        let base = self.parse_scoped_name();
 
         match base.node_info.as_parsed() {
             Some(pni) => {
