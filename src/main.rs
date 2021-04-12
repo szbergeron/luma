@@ -7,6 +7,9 @@
 #[macro_use]
 extern crate static_assertions;
 
+#[macro_use]
+extern crate lazy_static;
+
 //lalrpop_mod!(pub rsh);
 
 //#[macro_use]

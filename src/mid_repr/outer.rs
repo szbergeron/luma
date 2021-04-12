@@ -168,7 +168,7 @@ impl ScopeContext {
         //scope.push(String::from(ctx_guard.symbol_name().unwrap_or("")));
         //scope.push(interner().resolve(interner().get(ctx_guard.symbol_name().unwrap_or(&interner().get_or_intern_static("")))).to_owned());
         //scope.push(interner().get_or_intern(ctx_guard.symbol_name().unwrap_or()));
-        scope.push(ctx_guard.symbol_name().unwrap_or(interner().get_or_intern_static("")));
+        scope.push(ctx_guard.symbol_name().unwrap_or(intern_static("")));
 
         let error = self.error_sink.clone();
 
@@ -215,7 +215,7 @@ impl ScopeContext {
 
         if self.defined_symbols.get(&sname).is_some() {
             let rg = self.defined_symbols.get(&sname).unwrap();
-            println!("duplicate symbol detected: {}", interner().resolve(&sname));
+            println!("duplicate symbol detected: {}", sname.resolve());
             self.error_sink
                 .send(Error::DuplicateDefinition {
                     duplicate_symbol: nref,

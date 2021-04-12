@@ -1,13 +1,94 @@
 //use crate::lex;
 use crate::ast::*;
+use crate::helper::Interner::*;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock, Weak};
-use crate::helper::Interner::*;
+use lazy_static::lazy_static;
+use atomic_option::AtomicOption;
+use lock_api::RawRwLockRecursive;
 
 pub mod Interner {
     pub type StringSymbol = lasso::LargeSpur;
-    static mut INTERNER_PRIV: Option<lasso::ThreadedRodeo<StringSymbol>> = None;
+
+    pub enum Rodeo {
+        ThreadedRodeo(lasso::ThreadedRodeo<StringSymbol>),
+        RodeoReader(lasso::RodeoReader<StringSymbol>),
+        RodeoResolver(lasso::RodeoResolver<StringSymbol>),
+    }
+    //static mut INTERNER_PRIV: Option<Rodeo> = None;
+    //static mut INTERNER_UNLOCKED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    static mut INTERNER_OWNING: Option<std::sync::RwLock<Rodeo>> = None;
+
+    thread_local! {
+        // NOTE: lifetime considered 'unsafe
+        static INTERNER_GUARD: std::cell::UnsafeCell<Option<Box<std::sync::RwLockReadGuard<'static, Rodeo>>>> = std::cell::UnsafeCell::new(None);
+
+        static INTERNER_READ_COUNT_LOCAL: std::cell::UnsafeCell<i64> = std::cell::UnsafeCell::new(0);
+    }
+
+    /********thread_local! {
+        static INTERNER_OWNING: Option<std::sync::Arc<std::sync::RwLock<Rodeo>>> = None;
+        static INTERNER_READ_GUARD: Option<Box<std:;sync::RwLockReadGuard<Rodeo>>> = None;
+    }*/
+
+    /*lazy_static! {
+        static ref INTERNER: lock_api::RawRwLock<Option<Rodeo>> = {
+            lock_api::RawRwLock::new(None)
+        };
+    }*/
+
+    //static INTERNER: lock_api::RwLock<Option<Rodeo>> = 
+    /*lazy_static! {
+        static ref INTERNER: lock_api::RwLock<lock_api::RwLock<Option<Rodeo>>, Option<Rodeo>> = {
+            std::sync::RwLock::new()
+        };
+    }*/
+
+    pub struct InternerReadGuard {
+        rodeo: &'static Rodeo,
+    }
+
+    impl InternerReadGuard {
+        fn new() -> InternerReadGuard {
+            unsafe {
+                INTERNER_READ_COUNT_LOCAL.with(|v| {
+                    v.get_mut();
+                    *v += 1;
+                    v
+                });
+
+                let r: &'static Rodeo = INTERNER_GUARD.with(|g| {
+                    let inner = g.get_mut();
+                    inner.get_or_insert_with(|| {
+                            let interner_lock = INTERNER_OWNING.expect("Interner was not init'd by the time it was requested").try_read();
+                            let lock = interner_lock.expect("Couldn't lock interner");
+                            lock
+                    }).as_ref()
+
+                });
+                todo!()
+            }
+        }
+    }
+
+
+    impl std::ops::Drop for InternerReadGuard {
+        fn drop(&mut self) {
+            todo!()
+        }
+
+    }
+
+    impl std::ops::Deref for InternerReadGuard {
+        type Target = Rodeo;
+
+        fn deref(&self) -> &Self::Target {
+            todo!()
+        }
+    }
+
+    //unsafe fn open_read() -> InternerReadGuard 
 
     /// Should be called before `interner()` is called, sets the static itself
     /// and issues memory barrier to try to swap the Option atomically
@@ -15,6 +96,8 @@ pub mod Interner {
     /// relies on implicit SeqCst when in a single-threaded context
     pub unsafe fn init_interner() {
         let it = lasso::ThreadedRodeo::new();
+        let en = Rodeo::ThreadedRodeo(it);
+        let op = Some(en);
 
         //let b = Box::new(it);
 
@@ -23,7 +106,7 @@ pub mod Interner {
         std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
 
         //INTERNER_PRIV.swap(ptr, std::sync::atomic::Ordering::SeqCst);
-        INTERNER_PRIV = Some(it);
+        //INTERNER_PRIV = op;
 
         std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
     }
@@ -31,16 +114,30 @@ pub mod Interner {
     /// INVARIANT: must be called after init_interner has already been called in a single-threaded ONLY
     /// context. If this is called before, or init_interner was called during a data race,
     /// then this may panic as it can not find the interner present.
-    pub fn interner() -> &'static lasso::ThreadedRodeo<StringSymbol> {
-        unsafe {
-            INTERNER_PRIV
-                .as_ref()
-                .expect("Unable to load interner, INTERNER_PRIV was None")
-        }
+    unsafe fn interner() -> &'static Rodeo {
+        todo!();
+        /*unsafe {
+            INTERNER_GUARD.with(|optref| { 
+                optref.as_ref().expect("Interner didn't exist yet")
+        }*/
     }
 
     pub fn intern(v: &str) -> StringSymbol {
-        interner().get_or_intern(v)
+        unsafe {
+            match interner() {
+                Rodeo::ThreadedRodeo(tr) => tr.get_or_intern(v),
+                _ => panic!("Tried to intern a string when interner was not in a writable state"),
+            }
+        }
+    }
+
+    pub fn intern_static(v: &'static str) -> StringSymbol {
+        unsafe {
+            match interner() {
+                Rodeo::ThreadedRodeo(tr) => tr.get_or_intern_static(v),
+                _ => panic!("Tried to intern a string when interner was not in a writable state"),
+            }
+        }
     }
 
     pub trait SpurHelper {
@@ -50,11 +147,23 @@ pub mod Interner {
 
     impl SpurHelper for StringSymbol {
         fn resolve(&self) -> &'static str {
-            interner().resolve(self)
+            unsafe {
+                match interner() {
+                    Rodeo::ThreadedRodeo(tr) => tr.resolve(self),
+                    Rodeo::RodeoResolver(rr) => rr.resolve(self),
+                    Rodeo::RodeoReader(rr) => rr.resolve(self),
+                }
+            }
         }
 
         fn try_resolve(&self) -> Option<&'static str> {
-            interner().try_resolve(self)
+            unsafe {
+                match interner() {
+                    Rodeo::ThreadedRodeo(tr) => tr.try_resolve(self),
+                    Rodeo::RodeoResolver(rr) => rr.try_resolve(self),
+                    Rodeo::RodeoReader(rr) => rr.try_resolve(self),
+                }
+            }
         }
     }
 }
@@ -343,9 +452,9 @@ impl<'context> PathIdMap {
 }
 
 pub mod lex_wrap {
+    use crate::helper::Interner::*;
     use logos::Logos;
     use std::rc::Rc;
-    use crate::helper::Interner::*;
 
     type ParseResult<'a> = Result<TokenWrapper, ParseResultError>;
 
@@ -611,3 +720,10 @@ pub mod lex_wrap {
         }
     }
 }
+
+/*pub mod locks {
+    pub mod recursive_rwlock {
+        pub struct RecursiveRWLock {
+        }
+    }
+}*/

@@ -154,10 +154,10 @@ impl<'lexer> Parser<'lexer> {
         let mut start = None;
         let mut end = None;
 
-        match self.eat_match_in(Token::DoubleColon) {
+        match self.eat_match(Token::DoubleColon) {
             Some(dc) => {
                 r.scope.push(intern("global"));
-                r.scope.extend(self.scope); // TODO: revisit `global` prepending
+                r.scope.extend(self.scope.as_slice()); // TODO: revisit `global` prepending
                 r.silent = false;
                 start = Some(dc.start);
                 end = Some(dc.end);

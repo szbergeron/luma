@@ -191,7 +191,7 @@ impl AstNode for StructDeclaration {
 
         //write!(f, "{}", indent(depth + 1));
         for (name, tr, exp) in self.fields.iter() {
-            let _ = write!(f, "{}{} : {:?} = ", indent(depth + 1), interner().resolve(name), tr,);
+            let _ = write!(f, "{}{} : {:?} = ", indent(depth + 1), name.resolve(), tr,);
             match exp {
                 None => {
                     let _ = writeln!(f, "<undefined>",);
