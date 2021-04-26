@@ -9,7 +9,7 @@ pub use parse_helper::*;
 use crate::helper::lex_wrap::LookaheadStream;
 use crate::helper::lex_wrap::{CodeLocation, ParseResultError};
 use crate::helper::*;
-use crate::helper::Interner::*;
+use crate::helper::interner::*;
 
 use crate::lex::Token;
 

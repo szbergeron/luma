@@ -6,7 +6,7 @@ use chashmap::CHashMap;
 //use std::collections::HashMap;
 use std::sync::{Arc, RwLock, Weak};
 
-use crate::helper::Interner::*;
+use crate::helper::interner::*;
 
 /*pub struct SymbolDB<'a> {
     from: Arc<RwLock<OuterScope<'a>>>,

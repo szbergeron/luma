@@ -42,7 +42,7 @@ pub mod types;
 
 fn main() {
     unsafe {
-        crate::helper::Interner::init_interner();
+        crate::helper::interner::init_interner();
     }
     let args: Vec<String> = env::args().collect();
     println!("Args: {:?}", args);

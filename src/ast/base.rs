@@ -111,6 +111,47 @@ pub trait AstNode: std::fmt::Debug + Send + Sync {
     //fn children(&self) -> [&'a mut dyn AstNode<'a>];
 }
 
+impl AstNode for Option<&dyn AstNode> {
+    fn node_info(&self) -> NodeInfo {
+        match self {
+            Some(n) => n.node_info(),
+            None => NodeInfo::Builtin,
+        }
+    }
+
+    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+        match self {
+            Some(n) => n.display(f, depth),
+            None => write!(f, "<none>").unwrap(),
+        }
+    }
+}
+
+impl IntoAstNode for Option<&dyn AstNode> {
+    fn as_node_mut(&mut self) -> &mut dyn AstNode {
+        self
+    }
+
+    fn as_node(&self) -> &dyn AstNode {
+        self
+    }
+}
+
+impl std::fmt::Display for &dyn AstNode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Ok(self.display(f, 0))
+    }
+}
+
+/*impl std::fmt::Display for Option<&dyn AstNode> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            None => write!(f, "<unknown>"),
+            Some(n) => n.fmt(f),
+        }
+    }
+}*/
+
 pub trait IntoAstNode {
     fn as_node_mut(&mut self) -> &mut dyn AstNode;
     fn as_node(&self) -> &dyn AstNode;

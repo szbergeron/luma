@@ -27,7 +27,7 @@ impl<'lexer> Parser<'lexer> {
                 _ => {
                     //
                     let sync = self.sync_next(&Self::first_global);
-                    let r = self.global_declaration();
+                    let r = self.parse_global_declaration();
                     self.unsync(sync)?;
 
                     let _ = match r {
@@ -128,7 +128,7 @@ impl<'lexer> Parser<'lexer> {
 
     #[allow(non_upper_case_globals)]
     const first_global: [Token; 3] = [Token::Module, Token::Function, Token::Struct];
-    pub fn global_declaration(
+    pub fn parse_global_declaration(
         &mut self,
     ) -> Result<ast::SymbolDeclaration, ParseResultError> {
         let has_pub = self.eat_match(Token::Public);
@@ -139,7 +139,7 @@ impl<'lexer> Parser<'lexer> {
         if let Ok(tw) = self.lex.la(0) {
             let r = match tw.token {
                 Token::Module => self
-                    .namespace()
+                    .parse_namespace()
                     .map(|mut ns| {
                         ns.set_public(has_pub.is_some());
                         ast::SymbolDeclaration::NamespaceDeclaration(ns)
@@ -149,7 +149,7 @@ impl<'lexer> Parser<'lexer> {
                         e
                     }),
                 Token::Function => self
-                    .function_declaration()
+                    .parse_function_declaration()
                     .map(|fd| ast::SymbolDeclaration::FunctionDeclaration(fd))
                     .map_err(|e| {
                         failed = true;
@@ -190,7 +190,7 @@ impl<'lexer> Parser<'lexer> {
     }
 
     //const first_namespace: [Token; 1] = [Token::Module];
-    pub fn namespace(&mut self) -> Result<ast::Namespace, ParseResultError> {
+    pub fn parse_namespace(&mut self) -> Result<ast::Namespace, ParseResultError> {
         let start = self.lex.la(0).map_or(CodeLocation::Builtin, |tw| tw.start);
 
         self.hard_expect(Token::Module)?;
@@ -277,7 +277,7 @@ impl<'lexer> Parser<'lexer> {
         }
     }*/
 
-    pub fn function_param_list(
+    pub fn parse_function_param_list(
         &mut self,
     ) -> Result<
         Vec<(
@@ -309,13 +309,13 @@ impl<'lexer> Parser<'lexer> {
     }
 
     //const first_function: [Token; 1] = [Token::Function];
-    pub fn function_declaration(
+    pub fn parse_function_declaration(
         &mut self,
     ) -> Result<ast::FunctionDeclaration, ParseResultError> {
         let start = self.hard_expect(Token::Function)?.start;
         let function_name = self.hard_expect(Token::Identifier)?;
         self.hard_expect(Token::LParen)?;
-        let params = self.function_param_list()?;
+        let params = self.parse_function_param_list()?;
         self.hard_expect(Token::RParen)?;
 
         self.hard_expect(Token::ThinArrow)?;

@@ -1,6 +1,6 @@
 use super::base::*;
 use super::outer::*;
-use crate::helper::Interner::*;
+use crate::helper::interner::*;
 //use super::types;
 
 use crate::helper::lex_wrap::{ParseResultError, TokenWrapper};
@@ -18,22 +18,38 @@ pub struct TypeReference {
     pub ctx: ScopedNameReference,
     pub canonicalized_name: StringSymbol,
 
-    pub type_args: Vec<Box<TypeReference>>
+    pub type_args: Vec<Box<TypeReference>>,
 }
 
 impl TypeReference {
     pub fn new(ctx: ScopedNameReference, name: StringSymbol) -> TypeReference {
-        TypeReference { node_info: NodeInfo::Builtin, ctx, type_args: Vec::new(), canonicalized_name: name }
+        TypeReference {
+            node_info: NodeInfo::Builtin,
+            ctx,
+            type_args: Vec::new(),
+            canonicalized_name: name,
+        }
     }
 }
 
 impl AstNode for TypeReference {
-    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
-        let _ = writeln!(
+    fn display(&self, f: &mut std::fmt::Formatter<'_>, _depth: usize) {
+        let _ = write!(
             f,
-            "{}TypeReference with child canon name {}",
-            indent(depth), self.canonicalized_name.resolve() //interner().resolve(&self.canonicalized_name)
+            "{}",
+            self.ctx.as_node(),
+            //self.canonicalized_name.resolve() //interner().resolve(&self.canonicalized_name)
         );
+        if !self.type_args.is_empty() {
+            write!(f, "<").unwrap();
+            for idx in 0..self.type_args.len() {
+                write!(f, "{}", self.type_args[idx].as_node()).unwrap();
+                if idx < self.type_args.len() - 1 {
+                    write!(f, ", ").unwrap();
+                }
+            }
+            write!(f, ">").unwrap();
+        }
         /*
         [&self.subexpr]
             .iter()
@@ -42,6 +58,16 @@ impl AstNode for TypeReference {
 
     fn node_info(&self) -> NodeInfo {
         self.node_info
+    }
+}
+
+impl IntoAstNode for TypeReference {
+    fn as_node_mut(&mut self) -> &mut dyn AstNode {
+        self
+    }
+
+    fn as_node(&self) -> &dyn AstNode {
+        self
     }
 }
 
@@ -344,14 +370,14 @@ impl BlockExpression {
     }
 }
 
-#[derive(Debug)]
+/*#[derive(Debug)]
 pub struct LetExpression {
     node_info: NodeInfo,
 
     pub into: Box<ExpressionWrapper>,
-}
+}*/
 
-impl LetExpression {
+/*impl LetExpression {
     pub fn new_expr(
         node_info: NodeInfo,
         into: Box<ExpressionWrapper>,
@@ -361,18 +387,24 @@ impl LetExpression {
             into,
         }))
     }
-}
+}*/
 
 impl AstNode for LetExpression {
     fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let _ = writeln!(
             f,
-            "{}LetExpression that comes from assignment:",
+            "{}LetExpression that assigns into {} from:",
             indent(depth),
+            self.primary_component.as_node()
         );
-        [&self.into]
+
+        /*write!(f, "{}", indent(depth + 1)).unwrap();
+        self.primary_component.display(f, depth+1);
+        writeln!(f, "");*/
+
+        [&self.expression.as_node()]
             .iter()
-            .for_each(|expr| expr.as_node().display(f, depth + 1));
+            .for_each(|expr| expr.display(f, depth + 1));
     }
 
     fn node_info(&self) -> NodeInfo {

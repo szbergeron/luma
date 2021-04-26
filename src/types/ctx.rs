@@ -1,5 +1,5 @@
 use super::impls::*;
-use crate::ast::Span;
+
 use dashmap::DashMap;
 use smallvec::SmallVec;
 use std::cell::UnsafeCell;
@@ -12,6 +12,7 @@ pub type TypeHandle = Arc<RwLock<dyn Type>>;
 pub type TypeID = u64;
 pub type CtxID = u64;
 
+#[allow(dead_code)]
 enum Implementation {
     Builtin {
         ll_content: String,
@@ -20,6 +21,7 @@ enum Implementation {
     },
 }
 
+#[allow(dead_code)]
 pub struct Method {
     self_type: TypeID,
     name: String,

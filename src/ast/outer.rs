@@ -1,16 +1,16 @@
 use super::base::*;
 use super::expressions::ExpressionWrapper;
-use crate::types::*;
+
 
 use crate::helper::lex_wrap::ParseResultError;
 //use std::rc::Rc;
 use std::sync::Arc;
 //use std::cell::RefCell;
-use crate::mid_repr::*;
+
 use std::sync::RwLock;
 use super::expressions::TypeReference;
 
-use crate::helper::Interner::*;
+use crate::helper::interner::*;
 
 #[derive(Debug)]
 pub struct Namespace {
@@ -116,6 +116,96 @@ impl AstNode for OuterScope {
 }
 
 #[derive(Debug)]
+pub struct LetComponentScopedDestructure {
+    // TODO: need to pub more work into this, revisit when relevant for
+    // product types down the line
+}
+
+#[derive(Debug)]
+pub struct LetComponentTuple {
+    pub node_info: NodeInfo,
+
+    // pub arity: usize, // implicit in length of component vec
+
+    pub elements: Vec<LetComponent>,
+
+    pub type_specifier: Option<Box<TypeReference>>,
+}
+
+#[derive(Debug)]
+pub struct LetComponentIdentifier {
+    pub node_info: NodeInfo,
+
+    pub identifier_string: StringSymbol,
+
+    pub type_specifier: Option<Box<TypeReference>>,
+}
+
+#[derive(Debug)]
+pub enum LetComponent {
+    ScopedDestructure(LetComponentScopedDestructure),
+    Tuple(LetComponentTuple),
+    Identifier(LetComponentIdentifier),
+    Discard(NodeInfo),
+}
+
+impl IntoAstNode for LetComponent {
+    fn as_node_mut(&mut self) -> &mut dyn AstNode {
+        self
+    }
+
+    fn as_node(&self) -> &dyn AstNode {
+        self
+    }
+}
+
+impl AstNode for LetComponent {
+    fn node_info(&self) -> NodeInfo {
+        match self {
+            Self::ScopedDestructure(_lcsd) => todo!("LetComponentScopedDestructure not implemented for fmt"),
+            Self::Discard(ni) => *ni,
+            Self::Tuple(lct) => lct.node_info,
+            Self::Identifier(lci) => lci.node_info,
+        }
+    }
+
+    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+        match self {
+            Self::ScopedDestructure(_lcsd) => todo!("LetComponentScopedDestructure not implemented for fmt"),
+            Self::Discard(_) => write!(f, "_").unwrap(),
+            Self::Identifier(lci) => {
+                write!(f, "{}: {}", lci.identifier_string.resolve(), lci.type_specifier.as_ref().map(|tr| tr.as_node()).as_node()).unwrap();
+            },
+            Self::Tuple(lct) => {
+                write!(f, "(").unwrap();
+                for idx in 0..lct.elements.len() {
+                    lct.elements[idx].display(f, depth);
+                    if idx < lct.elements.len() - 1 {
+                        write!(f, ", ").unwrap();
+                    }
+                }
+                /*for cmp in lct.elements.iter() {
+                    cmp.display(f, depth);
+                    write!(f, ", ").unwrap();
+                }*/
+                write!(f, ")").unwrap();
+                write!(f, ": {}", lct.type_specifier.as_ref().map(|tr| tr.as_node()).as_node()).unwrap();
+            },
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct LetExpression {
+    pub node_info: NodeInfo,
+
+    //pub binding_type: TypeReference,
+    pub primary_component: Box<LetComponent>,
+
+    pub expression: Box<ExpressionWrapper>,
+}
+
+#[derive(Debug)]
 pub struct FunctionDeclaration {
     pub node_info: NodeInfo,
 
@@ -135,11 +225,11 @@ impl AstNode for FunctionDeclaration {
     fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let _ = writeln!(
             f,
-            "{}FunctionDeclaration that parsed {} with name {} and rtype {:?} takes",
+            "{}FunctionDeclaration that parsed {} with name {}",
             indent(depth),
             self.node_info(),
             self.name.resolve(),
-            self.return_type, // TODO
+            //self.return_type.display(f, 0), // TODO
         );
 
         let _ = writeln!(f, "{}Parameters:", indent(depth + 1),);
@@ -154,6 +244,15 @@ impl AstNode for FunctionDeclaration {
 
             vd.0.as_node().display(f, depth + 3);
         }
+
+        if self.params.is_empty() {
+            let _ = writeln!(f, "{}(None)", indent(depth + 3));
+        }
+
+        let _ = writeln!(f, "{}Return type:", indent(depth + 1));
+
+        self.return_type.display(f, depth + 3);
+
         let _ = writeln!(f, "{}And body:", indent(depth + 1),);
 
         self.body.as_node().display(f, depth + 2);
@@ -257,6 +356,31 @@ impl ScopedNameReference {
     }
 }
 
+impl AstNode for ScopedNameReference {
+    fn node_info(&self) -> NodeInfo {
+        self.node_info
+    }
+
+    fn display(&self, f: &mut std::fmt::Formatter<'_>, _depth: usize) {
+        for idx in 0..self.scope.len() {
+            write!(f, "{}", self.scope[idx].resolve()).unwrap();
+            if idx < self.scope.len() - 1 {
+                write!(f, "::").unwrap();
+            }
+        }
+    }
+}
+
+impl IntoAstNode for ScopedNameReference {
+    fn as_node_mut(&mut self) -> &mut dyn AstNode {
+        self
+    }
+
+    fn as_node(&self) -> &dyn AstNode {
+        self
+    }
+}
+
 /*impl<'a> std::cmp::PartialEq for ScopedNameReference<'a> {
     fn eq(&self, other: &ScopedNameReference) -> bool {
         other.scope == self.scope
@@ -355,7 +479,7 @@ impl SymbolDeclaration {
             Self::FunctionDeclaration(fd) => Some(fd.name),
             Self::NamespaceDeclaration(ns) => ns.name,
             Self::StructDeclaration(sd) => Some(sd.name),
-            Self::ExpressionDeclaration(ed) => None, // no symbol to export
+            Self::ExpressionDeclaration(_ed) => None, // no symbol to export
         }
     }
 

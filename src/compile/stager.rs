@@ -14,10 +14,9 @@ use std::sync::{Arc, RwLock};
 
 use crate::ast::*;
 
-use lasso::{ThreadedRodeo, LargeSpur};
-use std::{thread};
 
-use crate::helper::Interner::*;
+
+use crate::helper::interner::*;
 
 #[allow(unused_variables, dead_code)]
 pub fn parse_unit<'file>(
@@ -146,7 +145,8 @@ pub fn launch(args: &[&str]) {
         });
 
     println!("context tree:");
-    println!("{}", scope_map.global().unwrap().read().unwrap());
+    println!("<output disabled>");
+    //println!("{}", scope_map.global().unwrap().read().unwrap());
 
     scope_map
         .handles()

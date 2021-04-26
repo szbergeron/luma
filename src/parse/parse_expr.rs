@@ -13,6 +13,8 @@ use ast::base::*;
 use ast::expressions::*;
 use ast::outer::*;
 
+//type LetRes
+
 type ExpressionResult =
     Result<Box<ast::ExpressionWrapper>, ParseResultError>;
 
@@ -21,6 +23,113 @@ impl<'lexer> Parser<'lexer> {
         let r = self.parse_expr_inner(0, 1);
 
         r
+    }
+
+    /// Parses the recursively defined first part of a let statement,
+    ///
+    /// let <parse_binding()> = <expression>;
+    ///
+    /// includes support for parsing type specifiers within
+    pub fn parse_binding(&mut self) -> Result<Box<LetComponent>, ParseResultError> {
+        // want to find if this is going to be a destructuring operation
+        self.expect_next_in(&[Token::LParen, Token::Identifier])?;
+
+        let mut end;
+        let start;
+
+        // parse body/binding part of let statement
+        let content = match self.lex.la(0)?.token {
+            Token::LParen => {
+                let mut elements: Vec<LetComponent> = Vec::new();
+                //todo!("Pattern assignment not yet implemented")
+                start = self.hard_expect(Token::LParen)?.start; // consume start lparen
+
+                while let Ok(expr) = self.parse_binding() {
+                    elements.push(*expr);
+
+                    match self.eat_match(Token::Comma) {
+                        None => break,
+
+                        // consequence of this is that trailing comma is discarded
+                        // arity of tuple is not increased in this case, but
+                        // these semantics make sense to me
+                        //
+                        //
+                        // TODO: revisit if trailing comma within tuple should
+                        // signify increased arity, or if type should
+                        // be identical to tuple with current specified elements
+                        //
+                        // possible way of using this would be "capture
+                        // all specified parts of tuple, discard remaining"
+                        Some(_comma) => continue,
+                    }
+                }
+
+                end = self.hard_expect(Token::RParen)?.end; // if user opened, must close
+
+                // see if a type exists, user may specify type anywhere during parsing, but
+                // must be possible to resolve types directly for every binding 
+                // without needing to infer
+                Either::A(elements)
+            },
+            Token::Identifier => {
+                let variable = self.hard_expect(Token::Identifier)?;
+                let variable_name = variable.slice;
+
+                start = variable.start;
+                end = variable.end;
+
+                Either::B(variable_name)
+            }
+            _ => {
+                unreachable!("expect_next_in forwarded a bad token")
+            }
+        };
+
+        // if there's a colon, we assume that a type specifier must directly follow it
+        //if let Some(_colon) = self.eat_match(Token::
+        let specified_type = match self.eat_match(Token::Colon) {
+            Some(_colon) => {
+                let r = self.parse_type_specifier()?;
+                r.end().map(|loc| end = loc);
+                Some(r)
+            },
+            None => None,
+        };
+
+        let node_info = NodeInfo::from_indices(start, end);
+
+        match content {
+            Either::A(tuple_elements) => {
+                Ok(Box::new(LetComponent::Tuple(LetComponentTuple { elements: tuple_elements, node_info, type_specifier: specified_type })))
+            },
+            Either::B(name) => {
+                Ok(Box::new(LetComponent::Identifier(LetComponentIdentifier { identifier_string: name, node_info, type_specifier: specified_type })))
+            },
+        }
+    }
+
+    /// syntax: let <binding>: <type> = <expr>
+    pub fn parse_let(&mut self) -> ExpressionResult {
+        let start = self.hard_expect(Token::Let)?.start;
+
+        let binding = self.parse_binding()?;
+
+        let _eq = self.hard_expect(Token::Equals)?;
+
+        let expr = self.parse_expr()?;
+
+        // TODO: eval if this could ever be None, potentially force expr to have a
+        // CodeLocation::Parsed
+        let end = expr.as_node().end().unwrap_or(CodeLocation::Builtin);
+        
+        let lexpr = LetExpression {
+            node_info: NodeInfo::from_indices(start, end),
+            primary_component: binding,
+            expression: expr };
+
+        //todo!("Let expression parsing not yet complete")
+        Ok(Box::new(ExpressionWrapper::LetExpression(lexpr)))
     }
 
     // follows typespecifier? pattern
@@ -82,6 +191,7 @@ impl<'lexer> Parser<'lexer> {
             Some(tw) => {
                 match tw.token {
                     Token::Ampersand => {
+                        //println!("adding a & to a ctx that had {:?}", tr.ctx.scope);
                         tr.ctx.scope.push(intern("&"));
 
                         let inner = self.parse_type_specifier()?;
@@ -452,6 +562,11 @@ impl<'lexer> Parser<'lexer> {
 
                 r?
             }
+            Token::Let => {
+                let r = self.parse_let();
+
+                r?
+            }
             /*Token::Let => {
                 let pattern = self.parse_atomic(0, level);
 
@@ -533,7 +648,7 @@ impl<'lexer> Parser<'lexer> {
             Token::Ampersand | Token::Asterisk | Token::Dash | Token::Bang => {
                 UnaryOperationExpression::new_expr(node_info, t, lhs)
             }
-            Token::Let => LetExpression::new_expr(node_info, lhs),
+            //Token::Let => LetExpression::new_expr(node_info, lhs),
             Token::Return => ReturnExpression::new_expr(node_info, lhs),
             _ => {
                 println!("got unexpected token {:?}", t);

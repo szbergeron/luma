@@ -135,6 +135,9 @@ impl<'a> AstNode<'a> for TypeReference<'a> {
     }
 }
 
+impl IntoAstNode for TypeReference {
+}
+
 // marked as requiring Send and Sync because rayon parallel iterators require this to be the case,
 // and this type is accessible through FileHandler indirectly
 /*pub trait Type: std::fmt::Debug + std::marker::Send + std::marker::Sync /* don't ask */ {

@@ -1,15 +1,15 @@
 //use crate::lex;
 use crate::ast::*;
-use crate::helper::Interner::*;
+
 //use atomic_option::AtomicOption;
-use lazy_static::lazy_static;
+
 //use lock_api::RawRwLockRecursive;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock, Weak};
-use std::borrow::Borrow;
+use std::sync::{Arc, RwLock};
 
-pub mod Interner {
+
+pub mod interner {
     pub type StringSymbol = lasso::LargeSpur;
 
     pub enum Rodeo {
@@ -47,6 +47,8 @@ pub mod Interner {
             std::sync::RwLock::new()
         };
     }*/
+
+    //unsafe impl !Send for InternerReadGuard;
 
     pub struct InternerReadGuard {
         rodeo: &'static Rodeo,
@@ -102,7 +104,7 @@ pub mod Interner {
             unsafe {
                 let do_dealloc = INTERNER_READ_COUNT_LOCAL.with(|v| {
                     let val = v.get();
-                    *val += 1;
+                    *val -= 1;
                     *val == 0
                 });
 
@@ -206,6 +208,11 @@ pub mod Interner {
             }
         }
     }
+}
+
+pub enum Either<A, B> {
+    A(A),
+    B(B),
 }
 
 pub enum EitherAnd<A, B> {
@@ -492,7 +499,7 @@ impl<'context> PathIdMap {
 }
 
 pub mod lex_wrap {
-    use crate::helper::Interner::*;
+    use crate::helper::interner::*;
     use logos::Logos;
     use std::rc::Rc;
 

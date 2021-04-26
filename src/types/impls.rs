@@ -1,6 +1,6 @@
 use super::{TypeCtx, Method, TypeHandle, TypeID, CtxID};
 use crate::ast::Span;
-use std::sync;
+
 use std::any::Any;
 use smallvec::SmallVec;
 
@@ -8,7 +8,7 @@ use smallvec::SmallVec;
 ///
 /// https://users.rust-lang.org/t/workaround-for-hash-trait-not-being-object-safe/53332/3
 ///     For implementation hints on construction of hashable Any+Type instances
-mod Acks {}
+mod acks {}
 
 /// Realistically very few people will ever use a type with more than
 /// this many parameters, so optimizing for this case seems obvious.
@@ -17,7 +17,8 @@ mod Acks {}
 /// performance profiling indicates benefit
 const TYPE_PARAM_DEFAULT_COUNT: usize = 3;
 
-mod TypeHelpers {
+mod type_helpers {
+    #[allow(dead_code)]
     pub fn type_id_default() -> super::TypeID {
         std::u64::MAX
     }
@@ -165,7 +166,7 @@ impl Type for i32_t_static {
         self.tid
     }
 
-    fn add_method(&self, method: super::Method) -> bool {
+    fn add_method(&self, _method: super::Method) -> bool {
         todo!()
     }
 
@@ -263,6 +264,7 @@ impl ref_t_static {
         })
     }*/
 
+    #[allow(dead_code)]
     fn new(tid_inner: TypeID) -> Box<ref_t_static> {
         Box::new(ref_t_static {
             ctxid: std::u64::MIN,
@@ -311,7 +313,7 @@ impl Type for ref_t_static {
         "\n".to_owned()
     }
 
-    fn add_method(&self, method: super::Method) -> bool {
+    fn add_method(&self, _method: super::Method) -> bool {
         todo!()
     }
 
