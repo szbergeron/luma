@@ -42,6 +42,14 @@ pub struct EncodeLocalContext<'gbl_ctx> {
 }
 
 impl<'gbl_ctx> EncodeLocalContext<'gbl_ctx> {
+    pub fn new(egctx: &EncodeGlobalContext) -> EncodeLocalContext {
+        EncodeLocalContext {
+            local_counter: 0,
+            global_context: egctx,
+            contents: Vec::new()
+        }
+    }
+
     /// flushes the contents of this context into the global context.
     /// only use when the ordering of the current block compared to any future pushed blocks
     /// is not sequentially important, and when the llvm parser will be in a "global context"
@@ -89,6 +97,13 @@ pub struct EncodeGlobalContext {
 }
 
 impl EncodeGlobalContext {
+    pub fn new() -> EncodeGlobalContext {
+        EncodeGlobalContext {
+            global_counter: std::sync::atomic::AtomicU64::new(0),
+            buffer: std::sync::Mutex::new(Vec::new()),
+        }
+    }
+
     /// Takes contents of the given ibuffer of llvm line strings and appends them atomically
     /// to the global string buffer.
     pub fn swap_and_flush(&self, ibuffer: &mut Vec<String>) {
@@ -109,5 +124,20 @@ impl EncodeGlobalContext {
         let vtype = vtype.to_string();
 
         Variable { vname, vtype, vtid: None }
+    }
+}
+
+impl std::fmt::Display for EncodeGlobalContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "; encode output start")?;
+        let l = self.buffer.lock().expect("EncodeGlobalContext couldn't lock internal buffer during output");
+
+        for line in l.iter() {
+            writeln!(f, "{}", line)?;
+        }
+
+        writeln!(f, "; encode output end")?;
+
+        Ok(())
     }
 }

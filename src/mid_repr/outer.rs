@@ -19,9 +19,9 @@ impl<'a> SymbolDB<'a> {
 #[derive(Debug)]
 #[allow(dead_code)]
 pub struct ScopeContext {
-    scope: Vec<StringSymbol>,
-    public: bool,
-    from: Option<Arc<RwLock<SymbolDeclaration>>>,
+    pub scope: Vec<StringSymbol>,
+    pub public: bool,
+    pub from: Option<Arc<RwLock<SymbolDeclaration>>>,
 
     super_context: Option<Weak<RwLock<ScopeContext>>>,
 

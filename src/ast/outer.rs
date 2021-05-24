@@ -249,9 +249,10 @@ impl AstNode for FunctionDeclaration {
             let _ = writeln!(f, "{}(None)", indent(depth + 3));
         }
 
-        let _ = writeln!(f, "{}Return type:", indent(depth + 1));
+        let _ = write!(f, "{}Return type:", indent(depth + 1));
 
         self.return_type.display(f, depth + 3);
+        let _ = writeln!(f);
 
         let _ = writeln!(f, "{}And body:", indent(depth + 1),);
 

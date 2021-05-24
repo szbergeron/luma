@@ -14,7 +14,7 @@ use std::sync::{Arc, RwLock};
 
 use crate::ast::*;
 
-
+use crate::encode::*;
 
 use crate::helper::interner::*;
 
@@ -41,7 +41,9 @@ pub fn parse_unit<'file>(
     let p = if let iguard = interner() {
         let p = parser.entry();
         p
-    } else { panic!("irrefutable pattern") };
+    } else {
+        panic!("irrefutable pattern")
+    };
 
     if !cflags.eflags.silence_errors {
         parser.print_errors(handle);
@@ -117,7 +119,7 @@ pub fn launch(args: &[&str]) {
             if let Some(handle_ref) = file.as_ref() {
                 println!("parsing unit");
                 // TODO: potentially remove ScopeContext from this and integrate later
-                let scope_v  = scope.read().unwrap().get_scope().to_vec();
+                let scope_v = scope.read().unwrap().get_scope().to_vec();
                 let r = parse_unit(handle_ref, &*scope.read().unwrap(), scope_v, &args.flags);
                 r
             } else {
@@ -157,6 +159,16 @@ pub fn launch(args: &[&str]) {
         .handles()
         .par_iter()
         .for_each(|handle| analyze(handle));
+
+    let egctx = crate::encode::EncodeGlobalContext::new();
+
+    scope_map
+        .handles()
+        .par_iter()
+        .for_each(|handle| tollvm(handle, &egctx));
+
+    println!("sm has {} handles", scope_map.handles().len());
+    println!("egctx: \n{}", egctx);
 }
 
 #[allow(dead_code)]
@@ -243,17 +255,11 @@ pub fn explore_paths<'context>(
     pidm: &mut PathIdMap,
     sidm: &mut ScopeIdMap,
     error_sink: crossbeam::Sender<Error>,
-) -> ()
-{
+) -> () {
     let mut vd = VecDeque::new();
 
-    let global_context = ScopeContext::new(
-        error_sink.clone(),
-        vec![intern("global")],
-        None,
-        None,
-        None,
-    );
+    let global_context =
+        ScopeContext::new(error_sink.clone(), vec![intern("global")], None, None, None);
 
     sidm.set_global(global_context.clone());
 
@@ -338,8 +344,27 @@ pub fn explore_paths<'context>(
     }
 }
 
-pub fn prepass<'a>(_p: &Arc<RwLock<ScopeContext>>) {}
+pub fn prepass<'a>(p: &Arc<RwLock<ScopeContext>>) {
+    let l = p
+        .write()
+        .expect("Couldn't lock a ScopeContext during prepass");
+    println!("Prepass called on SC: {}", l);
+}
 
 pub fn analyze<'a>(_p: &Arc<RwLock<ScopeContext>>) {}
 
-pub fn tollvm<'a>(_p: &Arc<RwLock<ScopeContext>>, _filename: &str) {}
+pub fn tollvm<'a>(p: &Arc<RwLock<ScopeContext>>, egctx: &EncodeGlobalContext) {
+    let l = p
+        .write()
+        .expect("Couldn't lock a ScopeContext during encode");
+    let mut lctx = EncodeLocalContext::new(egctx);
+
+    lctx.writeln(format!(
+        "; start encode for ctx of {:?}",
+        l.scope
+            .iter()
+            .map(|spur| spur.resolve())
+            .collect::<Vec<&str>>()
+    ));
+    lctx.flush();
+}
