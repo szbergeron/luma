@@ -16,6 +16,17 @@ use crate::helper::interner::*;
 impl<'a> SymbolDB<'a> {
 }*/
 
+/*pub struct ScopeSet {
+    map: CHashMap<
+}*/
+
+/*pub struct ScopeContext {
+    pub scope: Vec<StringSymbol>,
+    pub public: bool,
+
+    super_context: Option<Weak<RwLock<ScopeContext>>>,
+}*/
+
 #[derive(Debug)]
 #[allow(dead_code)]
 pub struct ScopeContext {
@@ -29,11 +40,11 @@ pub struct ScopeContext {
 
     inner_contexts: CHashMap<StringSymbol, Arc<RwLock<ScopeContext>>>,
 
-    exported_symbols: CHashMap<StringSymbol, Weak<RwLock<SymbolDeclaration>>>,
+    //exported_symbols: CHashMap<StringSymbol, Weak<RwLock<SymbolDeclaration>>>,
 
-    imported_symbols: CHashMap<StringSymbol, Weak<RwLock<SymbolDeclaration>>>,
+    //imported_symbols: CHashMap<StringSymbol, Weak<RwLock<SymbolDeclaration>>>,
 
-    defined_symbols: CHashMap<StringSymbol, Arc<RwLock<SymbolDeclaration>>>,
+    //defined_symbols: CHashMap<StringSymbol, Arc<RwLock<SymbolDeclaration>>>,
 
     error_sink: crossbeam::Sender<Error>,
 }
