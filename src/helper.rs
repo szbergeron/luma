@@ -8,7 +8,6 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
-
 pub mod interner {
     pub type StringSymbol = lasso::LargeSpur;
 
@@ -20,7 +19,8 @@ pub mod interner {
     //static mut INTERNER_PRIV: Option<Rodeo> = None;
     //static mut INTERNER_UNLOCKED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
     lazy_static! {
-        static ref INTERNER_OWNING: std::sync::Mutex<Option<std::sync::Arc<std::sync::RwLock<Rodeo>>>> = std::sync::Mutex::new(None);
+        static ref INTERNER_OWNING: std::sync::Mutex<Option<std::sync::Arc<std::sync::RwLock<Rodeo>>>> =
+            std::sync::Mutex::new(None);
     }
 
     thread_local! {
@@ -79,16 +79,16 @@ pub mod interner {
 
                         *inner = Some(
                             //ig as std::sync::RwLockReadGuard<'static, Rodeo>,
-                            std::mem::transmute(ig)
+                            std::mem::transmute(ig),
                         );
                     }
 
-                    &**inner.as_ref().expect("Just set inner to Some, but was None")
+                    &**inner
+                        .as_ref()
+                        .expect("Just set inner to Some, but was None")
                 });
 
-                InternerReadGuard {
-                    rodeo: r,
-                }
+                InternerReadGuard { rodeo: r }
             }
         }
 
@@ -137,9 +137,10 @@ pub mod interner {
         let en = Rodeo::ThreadedRodeo(it);
         let op = Some(std::sync::Arc::new(std::sync::RwLock::new(en)));
 
-        let mut internal = INTERNER_OWNING.lock().expect("Couldn't lock outer mutex for interner");
+        let mut internal = INTERNER_OWNING
+            .lock()
+            .expect("Couldn't lock outer mutex for interner");
         *internal = op;
-
 
         //let b = Box::new(it);
 
@@ -267,7 +268,7 @@ pub enum Error {
 use crate::mid_repr::ScopeContext;
 
 pub type PathId = usize;
-pub type PathIdMapHandle<'context> = Arc<RwLock<PathIdMap>>;
+pub type PathIdMapHandle<'context> = Arc<locks::RecursiveRWLock<PathIdMap>>;
 
 #[derive(Clone, Copy)]
 pub struct FileHandleRef<'a> {
@@ -415,8 +416,8 @@ pub struct PathIdMap {
 }
 
 pub struct ScopeIdMap {
-    global_context: Option<Arc<RwLock<ScopeContext>>>,
-    scopes: Vec<Arc<RwLock<ScopeContext>>>,
+    global_context: Option<Arc<locks::RecursiveRWLock<ScopeContext>>>,
+    scopes: Vec<Arc<locks::RecursiveRWLock<ScopeContext>>>,
 }
 
 impl ScopeIdMap {
@@ -427,31 +428,31 @@ impl ScopeIdMap {
         }
     }
 
-    pub fn handles(&self) -> &[Arc<RwLock<ScopeContext>>] {
+    pub fn handles(&self) -> &[Arc<locks::RecursiveRWLock<ScopeContext>>] {
         &self.scopes[..]
     }
 
-    pub fn handles_mut(&mut self) -> &mut [Arc<RwLock<ScopeContext>>] {
+    pub fn handles_mut(&mut self) -> &mut [Arc<locks::RecursiveRWLock<ScopeContext>>] {
         &mut self.scopes[..]
     }
 
-    pub fn set_global(&mut self, global: Arc<RwLock<ScopeContext>>) {
+    pub fn set_global(&mut self, global: Arc<locks::RecursiveRWLock<ScopeContext>>) {
         self.global_context = Some(global);
     }
 
-    pub fn global(&self) -> Option<Arc<RwLock<ScopeContext>>> {
+    pub fn global(&self) -> Option<Arc<locks::RecursiveRWLock<ScopeContext>>> {
         self.global_context.clone()
     }
 
-    pub fn push_scope(&mut self, scope: Arc<RwLock<ScopeContext>>) {
+    pub fn push_scope(&mut self, scope: Arc<locks::RecursiveRWLock<ScopeContext>>) {
         self.scopes.push(scope);
     }
     //
 }
 
 impl<'context> PathIdMap {
-    pub fn new_locked() -> Arc<RwLock<PathIdMap>> {
-        Arc::new(RwLock::new(Self::new()))
+    pub fn new_locked() -> Arc<locks::RecursiveRWLock<PathIdMap>> {
+        Arc::new(locks::RecursiveRWLock::new(Self::new()))
     }
 
     pub fn new() -> PathIdMap {
@@ -774,3 +775,164 @@ pub mod lex_wrap {
         }
     }
 }*/
+
+pub mod locks {
+    /*enum RWLockState {
+        Released,
+        Shared,
+        SharedSingle,
+        Exclusive,
+    }
+
+    struct RWLockStateMachine {
+        state: std::sync::atomic::AtomicUsize,
+    }
+
+    impl RWLockStateMachine {
+        // if lock was already only being read
+        pub fn read_again(&self) -> bool {
+        }
+    }*/
+
+    /*struct RecursiveRWLockInnerGuard<T> {
+        guard: T,
+    }
+
+    impl
+
+    impl<T> RecursiveRWLockInnerGuard<T> {
+        pub fn new(guard: T) -> Self {
+            RecursiveRWLockInnerGuard { guard }
+        }
+    }*/
+    thread_local! {
+        static THREAD_LOCKS: std::cell::UnsafeCell<std::collections::HashSet<usize>> = std::cell::UnsafeCell::new(std::collections::HashSet::new());
+    }
+
+    static LOCKID: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
+
+    pub struct RecursiveRWLockWriteGuard<'a, T: ?Sized + 'a> {
+        lock: &'a RecursiveRWLock<T>,
+        guard: Option<std::sync::RwLockWriteGuard<'a, ()>>,
+    }
+
+    pub struct RecursiveRWLockReadGuard<'a, T: ?Sized + 'a> {
+        lock: &'a RecursiveRWLock<T>,
+        guard: Option<std::sync::RwLockReadGuard<'a, ()>>,
+        //outer_guard: bool,
+    }
+
+    #[derive(Debug)]
+    pub struct RecursiveRWLock<T: ?Sized> {
+        //accessors: std::sync::Mutex<std::collections::HashSet<std::thread::ThreadId>>,
+        id: usize,
+        wraps: std::sync::RwLock<()>,
+        content: std::cell::UnsafeCell<T>,
+    }
+
+    impl<T: Sized> RecursiveRWLock<T>
+    {
+        pub fn new(data: T) -> RecursiveRWLock<T> {
+            RecursiveRWLock {
+                id: LOCKID.fetch_add(1, std::sync::atomic::Ordering::SeqCst),
+                wraps: std::sync::RwLock::new(()),
+                content: std::cell::UnsafeCell::new(data),
+            }
+        }
+
+        pub fn read(&self) -> Result<RecursiveRWLockReadGuard<T>, ()> {
+            //let l = self.accessors.lock().expect("Couldn't lock internal accessors lock");
+
+            THREAD_LOCKS.with(|cell| {
+                //if std::thread::current().id()
+                unsafe {
+                    if (*cell.get()).contains(&self.id) {
+                        let g = self.wraps.read().map_err(|_| ())?;
+                        Ok(RecursiveRWLockReadGuard {
+                            lock: &self,
+                            guard: Some(g),
+                        })
+                    } else {
+                        (*cell.get()).insert(self.id);
+                        Ok(RecursiveRWLockReadGuard {
+                            lock: &self,
+                            guard: None,
+                        })
+                    }
+                }
+            })
+
+            //std::mem::drop(l);
+
+            //panic!()
+        }
+
+        pub fn write(&self) -> Result<RecursiveRWLockWriteGuard<T>, ()> {
+            //let l = self.accessors.lock().expect("Couldn't lock internal accessors lock");
+
+            THREAD_LOCKS.with(|cell| unsafe {
+                if (*cell.get()).contains(&self.id) {
+                    let g = self.wraps.write().map_err(|_| ())?;
+                    Ok(RecursiveRWLockWriteGuard {
+                        lock: &self,
+                        guard: Some(g),
+                    })
+                } else {
+                    (*cell.get()).insert(self.id);
+                    Ok(RecursiveRWLockWriteGuard {
+                        lock: &self,
+                        guard: None,
+                    })
+                }
+            })
+
+            //std::mem::drop(l);
+
+            //panic!()
+        }
+    }
+
+    unsafe impl<T: ?Sized + Send> Sync for RecursiveRWLock<T> {}
+
+    impl<T: ?Sized> std::ops::Deref for RecursiveRWLockReadGuard<'_, T> {
+        type Target = T;
+
+        fn deref(&self) -> &Self::Target {
+            unsafe { &*self.lock.content.get() }
+        }
+    }
+
+    impl<T: ?Sized> std::ops::Deref for RecursiveRWLockWriteGuard<'_, T> {
+        type Target = T;
+
+        fn deref(&self) -> &Self::Target {
+            unsafe { &*self.lock.content.get() }
+        }
+    }
+
+    impl<T: ?Sized> std::ops::DerefMut for RecursiveRWLockWriteGuard<'_, T> {
+        fn deref_mut(&mut self) -> &mut Self::Target {
+            unsafe { &mut *self.lock.content.get() }
+        }
+    }
+
+    impl<T: ?Sized> std::ops::Drop for RecursiveRWLockReadGuard<'_, T> {
+        fn drop(&mut self) {
+            if let Some(_) = self.guard.take() {
+                unsafe {
+                    THREAD_LOCKS.with(|cell| (*cell.get()).remove(&self.lock.id));
+                }
+            }
+        }
+    }
+
+    impl<T: ?Sized> std::ops::Drop for RecursiveRWLockWriteGuard<'_, T> {
+        fn drop(&mut self) {
+            if let Some(_) = self.guard.take() {
+                unsafe {
+                    THREAD_LOCKS.with(|cell| (*cell.get()).remove(&self.lock.id));
+                }
+            }
+        }
+    }
+}

@@ -4,7 +4,8 @@ use crate::helper::Error;
 use chashmap::CHashMap;
 //use crossbeam::unbounded;
 //use std::collections::HashMap;
-use std::sync::{Arc, RwLock, Weak};
+use std::sync::{Arc, Weak};
+use crate::helper::locks::RecursiveRWLock;
 
 use crate::helper::interner::*;
 
@@ -32,13 +33,13 @@ impl<'a> SymbolDB<'a> {
 pub struct ScopeContext {
     pub scope: Vec<StringSymbol>,
     pub public: bool,
-    pub from: Option<Arc<RwLock<SymbolDeclaration>>>,
+    pub from: Option<Arc<RecursiveRWLock<SymbolDeclaration>>>,
 
-    super_context: Option<Weak<RwLock<ScopeContext>>>,
+    super_context: Option<Weak<ScopeContext>>,
 
-    global_context: Option<Weak<RwLock<ScopeContext>>>,
+    global_context: Option<Weak<ScopeContext>>,
 
-    inner_contexts: CHashMap<StringSymbol, Arc<RwLock<ScopeContext>>>,
+    child_contexts: CHashMap<StringSymbol, Arc<ScopeContext>>,
 
     //exported_symbols: CHashMap<StringSymbol, Weak<RwLock<SymbolDeclaration>>>,
 
@@ -69,12 +70,12 @@ impl AstNode for ScopeContext {
             .as_ref()
             .map(|from_lock| from_lock.read().unwrap().display(f, depth + 2));
         writeln!(f, "{}Inner contexts:", indent(depth + 1)).unwrap();
-        self.inner_contexts
+        self.child_contexts
             .clone()
             .into_iter()
             .for_each(|(_, wref)| wref.read().unwrap().display(f, depth + 2));
         writeln!(f, "{}Exported symbols:", indent(depth + 1)).unwrap();
-        self.exported_symbols
+        /*self.exported_symbols
             .clone()
             .into_iter()
             .for_each(|(_, wref)| {
@@ -100,6 +101,7 @@ impl AstNode for ScopeContext {
             .clone()
             .into_iter()
             .for_each(|(_, wref)| wref.read().unwrap().display(f, depth + 2));
+            */
     }
 }
 
@@ -115,24 +117,24 @@ impl ScopeContext {
     pub fn new(
         error_sink: crossbeam::Sender<Error>,
         scope: Vec<StringSymbol>,
-        global: Option<Weak<RwLock<ScopeContext>>>,
-        parent: Option<Weak<RwLock<ScopeContext>>>,
-        from: Option<Arc<RwLock<SymbolDeclaration>>>,
-    ) -> Arc<RwLock<ScopeContext>> {
+        global: Option<Weak<RecursiveRWLock<ScopeContext>>>,
+        parent: Option<Weak<RecursiveRWLock<ScopeContext>>>,
+        from: Option<Arc<RecursiveRWLock<SymbolDeclaration>>>,
+    ) -> Arc<RecursiveRWLock<ScopeContext>> {
         let scope = ScopeContext {
             scope,
             public: true,
             super_context: parent,
             global_context: global,
-            exported_symbols: CHashMap::new(),
-            imported_symbols: CHashMap::new(),
-            defined_symbols: CHashMap::new(),
-            inner_contexts: CHashMap::new(),
+            //exported_symbols: CHashMap::new(),
+            //imported_symbols: CHashMap::new(),
+            //defined_symbols: CHashMap::new(),
+            child_contexts: CHashMap::new(),
             error_sink,
             from: None,
         };
 
-        let scope_locked = Arc::new(RwLock::new(scope));
+        let scope_locked = Arc::new(RecursiveRWLock::new(scope));
 
         let mut scope_guard = scope_locked.write().unwrap();
 
@@ -157,7 +159,7 @@ impl ScopeContext {
 
     pub fn on_root(
         &mut self,
-        self_rc: Arc<RwLock<ScopeContext>>,
+        self_rc: Arc<RecursiveRWLock<ScopeContext>>,
         outer: &OuterScope,
     ) {
         for dec in outer.declarations.iter() {
@@ -168,8 +170,8 @@ impl ScopeContext {
 
     pub fn add_context(
         &mut self,
-        self_rc: Arc<RwLock<ScopeContext>>,
-        ns: Arc<RwLock<SymbolDeclaration>>,
+        self_rc: Arc<RecursiveRWLock<ScopeContext>>,
+        ns: Arc<RecursiveRWLock<SymbolDeclaration>>,
     ) {
         //let mut self_guard = self_rc.write().unwrap();
 
@@ -201,8 +203,8 @@ impl ScopeContext {
 
     pub fn add_definition(
         &mut self,
-        self_rc: Arc<RwLock<ScopeContext>>,
-        decl: Arc<RwLock<SymbolDeclaration>>,
+        self_rc: Arc<RecursiveRWLock<ScopeContext>>,
+        decl: Arc<std::sync::RwLock<SymbolDeclaration>>,
     ) -> bool {
         let decl_guard = decl.read().unwrap();
         let is_exported = decl_guard.is_public();
@@ -224,7 +226,7 @@ impl ScopeContext {
 
         let nref = decl.clone();
 
-        if self.defined_symbols.get(&sname).is_some() {
+        /*if self.defined_symbols.get(&sname).is_some() {
             let rg = self.defined_symbols.get(&sname).unwrap();
             println!("duplicate symbol detected: {}", sname.resolve());
             self.error_sink
@@ -252,7 +254,7 @@ impl ScopeContext {
             if is_context {
                 self.add_context(self_rc.clone(), decl.clone());
             }
-        }
+        }*/
 
         result
     }
@@ -273,7 +275,7 @@ impl ScopeContext {
         }
     }*/
 
-    pub fn add_child_context(&mut self, child: Arc<RwLock<ScopeContext>>) {
+    pub fn add_child_context(&mut self, child: Arc<RecursiveRWLock<ScopeContext>>) {
         let child_guard = child.read().unwrap();
         let last_string = child_guard
             .scope
@@ -282,7 +284,7 @@ impl ScopeContext {
             .clone();
         drop(child_guard);
 
-        self.inner_contexts.insert(last_string, child);
+        self.child_contexts.insert(last_string, child);
     }
 
     pub fn get_scope(&self) -> &[StringSymbol] {

@@ -17,6 +17,7 @@ use crate::ast::*;
 use crate::encode::*;
 
 use crate::helper::interner::*;
+use crate::helper::locks::RecursiveRWLock;
 
 #[allow(unused_variables, dead_code)]
 pub fn parse_unit<'file>(
@@ -344,16 +345,16 @@ pub fn explore_paths<'context>(
     }
 }
 
-pub fn prepass<'a>(p: &Arc<RwLock<ScopeContext>>) {
+pub fn prepass<'a>(p: &Arc<RecursiveRWLock<ScopeContext>>) {
     let l = p
         .write()
         .expect("Couldn't lock a ScopeContext during prepass");
-    println!("Prepass called on SC: {}", l);
+    println!("Prepass called on SC: {}", &*l);
 }
 
-pub fn analyze<'a>(_p: &Arc<RwLock<ScopeContext>>) {}
+pub fn analyze<'a>(_p: &Arc<RecursiveRWLock<ScopeContext>>) {}
 
-pub fn tollvm<'a>(p: &Arc<RwLock<ScopeContext>>, egctx: &EncodeGlobalContext) {
+pub fn tollvm<'a>(p: &Arc<RecursiveRWLock<ScopeContext>>, egctx: &EncodeGlobalContext) {
     let l = p
         .write()
         .expect("Couldn't lock a ScopeContext during encode");

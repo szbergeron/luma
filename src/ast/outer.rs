@@ -11,6 +11,7 @@ use std::sync::RwLock;
 use super::expressions::TypeReference;
 
 use crate::helper::interner::*;
+use crate::helper::locks::RecursiveRWLock;
 
 #[derive(Debug)]
 pub struct Namespace {
