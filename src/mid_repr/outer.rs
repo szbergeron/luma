@@ -43,6 +43,7 @@ pub struct ScopeContext {
 
     child_contexts: CHashMap<StringSymbol, Arc<ScopeContext>>,
 
+    //
     //exported_symbols: CHashMap<StringSymbol, Weak<RwLock<SymbolDeclaration>>>,
 
     //imported_symbols: CHashMap<StringSymbol, Weak<RwLock<SymbolDeclaration>>>,

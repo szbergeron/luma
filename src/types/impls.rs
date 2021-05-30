@@ -41,8 +41,8 @@ pub struct TypeSignature {
 }
 
 pub trait Type: DynHash + DynEq + AsAny {
-    fn set_tid(&mut self, tid: TypeID);
-    fn canonicalized_name(&mut self, within: &TypeCtx) -> &str;
+    fn set_tid(&self, tid: TypeID);
+    fn canonicalized_name(&self, within: &TypeCtx) -> &str;
     /*// owned for simpler lifetimes,
     // shouldn't be used often, doesn't appear in src text
     canonicalized_string: String,
@@ -130,11 +130,11 @@ impl Eq for dyn Type {}
 
 #[allow(non_camel_case_types)]
 pub struct i32_t_static {
-    pub tid: TypeID,
+    pub tid: std::sync::atomic::AtomicU64,
 }
 
 impl Type for i32_t_static {
-    fn canonicalized_name(&mut self, _: &TypeCtx) -> &str {
+    fn canonicalized_name(&self, _: &TypeCtx) -> &str {
         "i32"
     }
 
@@ -163,27 +163,31 @@ impl Type for i32_t_static {
     }
 
     fn uid(&self) -> super::ctx::TypeID {
-        self.tid
+        self.tid.load(std::sync::atomic::Ordering::SeqCst)
     }
 
     fn add_method(&self, _method: super::Method) -> bool {
         todo!()
     }
 
-    fn set_tid(&mut self, tid: TypeID) {
-        self.tid = tid;
+    fn set_tid(&self, tid: TypeID) {
+        //self.tid = tid;
+        // TODO: check if this can use different ordering restriction, if this is not done
+        // after init then may be possible to just use Ordering::Release during
+        // set here
+        self.tid.store(tid, std::sync::atomic::Ordering::SeqCst);
     }
 }
 
 impl std::cmp::PartialEq for i32_t_static {
     fn eq(&self, other: &Self) -> bool {
-        self.tid == other.tid
+        self.uid() == other.uid()
     }
 }
 
 impl std::hash::Hash for i32_t_static {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.tid.hash(state);
+        self.uid().hash(state);
     }
 }
 
@@ -194,9 +198,10 @@ pub struct ProductType {}
 #[allow(non_camel_case_types)]
 pub struct ref_t_static {
     pub value_t: Option<TypeID>,
-    pub collapsed_canon_name: Option<String>,
+    pub collapsed_canon_name: once_cell::sync::OnceCell<String>,
     pub ctxid: CtxID,
-    pub tid: TypeID,
+    //pub tid: once_cell::sync::OnceCell<TypeID>,
+    pub tid: std::sync::atomic::AtomicU64,
 }
 
 impl std::hash::Hash for ref_t_static {
@@ -216,13 +221,15 @@ impl std::cmp::PartialEq for ref_t_static {
 impl std::cmp::Eq for ref_t_static {}
 
 impl ref_t_static {
-    fn build_canon_name(&mut self, within: &TypeCtx) {
-        self.collapsed_canon_name = Some(
+    fn build_canon_name(&self, within: &TypeCtx) {
+        self.collapsed_canon_name.set(
             "&".to_owned()
                 + self
                     .map_inner_rw(within, |t: &mut dyn Type| t.canonicalized_name(within).to_owned())
                     .unwrap_or("<unknown>".to_owned()).as_str(),
-        );
+        ).unwrap_or_else(|_| {
+            // not fatal if set already, this is just a caching op
+        });
     }
 
     fn map_inner_rw<F, T>(&self, within: &TypeCtx, func: F) -> Option<T> where F: Fn(&mut dyn Type) -> T {
@@ -269,17 +276,18 @@ impl ref_t_static {
         Box::new(ref_t_static {
             ctxid: std::u64::MIN,
             value_t: Some(tid_inner),
-            tid: super::ctx::generate_typeid(),
-            collapsed_canon_name: None,
+            //tid: once_cell::sync::OnceCell::from(super::ctx::generate_typeid()),
+            tid: std::sync::atomic::AtomicU64::from(super::ctx::generate_typeid()),
+            collapsed_canon_name: once_cell::sync::OnceCell::default(),
         })
     }
 }
 
 impl Type for ref_t_static {
-    fn canonicalized_name(&mut self, within: &TypeCtx) -> &str {
+    fn canonicalized_name(&self, within: &TypeCtx) -> &str {
         self.build_canon_name(within);
 
-        self.collapsed_canon_name.as_ref().map(|s| s)
+        self.collapsed_canon_name.get().as_ref().map(|s| s)
             .expect("build_canon_name didn't populate inner canon name?")
     }
 
@@ -300,7 +308,8 @@ impl Type for ref_t_static {
     }
 
     fn uid(&self) -> super::ctx::TypeID {
-        self.tid
+        //self.tid.get().expect("TID was unset")
+        self.tid.load(std::sync::atomic::Ordering::SeqCst)
     }
 
     fn encode_reference(&self, within: &TypeCtx) -> String {
@@ -321,7 +330,8 @@ impl Type for ref_t_static {
         self.value_t
     }
 
-    fn set_tid(&mut self, tid: TypeID) {
-        self.tid = tid;
+    fn set_tid(&self, tid: TypeID) {
+        //self.tid = tid;
+        self.tid.store(tid, std::sync::atomic::Ordering::SeqCst);
     }
 }
