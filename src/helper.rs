@@ -416,8 +416,8 @@ pub struct PathIdMap {
 }
 
 pub struct ScopeIdMap {
-    global_context: Option<Arc<locks::RecursiveRWLock<ScopeContext>>>,
-    scopes: Vec<Arc<locks::RecursiveRWLock<ScopeContext>>>,
+    global_context: Option<Arc<ScopeContext>>,
+    scopes: Vec<Arc<ScopeContext>>,
 }
 
 impl ScopeIdMap {
@@ -428,23 +428,23 @@ impl ScopeIdMap {
         }
     }
 
-    pub fn handles(&self) -> &[Arc<locks::RecursiveRWLock<ScopeContext>>] {
+    pub fn handles(&self) -> &[Arc<ScopeContext>] {
         &self.scopes[..]
     }
 
-    pub fn handles_mut(&mut self) -> &mut [Arc<locks::RecursiveRWLock<ScopeContext>>] {
+    pub fn handles_mut(&mut self) -> &mut [Arc<ScopeContext>] {
         &mut self.scopes[..]
     }
 
-    pub fn set_global(&mut self, global: Arc<locks::RecursiveRWLock<ScopeContext>>) {
+    pub fn set_global(&mut self, global: Arc<ScopeContext>) {
         self.global_context = Some(global);
     }
 
-    pub fn global(&self) -> Option<Arc<locks::RecursiveRWLock<ScopeContext>>> {
+    pub fn global(&self) -> Option<Arc<ScopeContext>> {
         self.global_context.clone()
     }
 
-    pub fn push_scope(&mut self, scope: Arc<locks::RecursiveRWLock<ScopeContext>>) {
+    pub fn push_scope(&mut self, scope: Arc<ScopeContext>) {
         self.scopes.push(scope);
     }
     //

@@ -488,6 +488,7 @@ dependencies = [
  "lasso",
  "lazy_static",
  "logos",
+ "once_cell",
  "rangemap",
  "rayon",
  "smallvec 1.6.1",

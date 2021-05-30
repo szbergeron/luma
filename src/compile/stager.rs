@@ -120,8 +120,8 @@ pub fn launch(args: &[&str]) {
             if let Some(handle_ref) = file.as_ref() {
                 println!("parsing unit");
                 // TODO: potentially remove ScopeContext from this and integrate later
-                let scope_v = scope.read().unwrap().get_scope().to_vec();
-                let r = parse_unit(handle_ref, &*scope.read().unwrap(), scope_v, &args.flags);
+                let scope_v = scope.get_scope().to_vec();
+                let r = parse_unit(handle_ref, &*scope, scope_v, &args.flags);
                 r
             } else {
                 Ok(OuterScope::new(NodeInfo::Builtin, Vec::new()))
@@ -137,8 +137,7 @@ pub fn launch(args: &[&str]) {
             if handle.path().is_file() {
                 if let Ok(root) = outer.as_ref() {
                     println!("root was ok");
-                    let mut scope_guard = scope_context.write().unwrap();
-                    scope_guard.on_root(scope_context.clone(), root);
+                    scope_context.on_root(scope_context.clone(), root);
                 } else {
                     println!("root was not ok");
                 }
@@ -296,7 +295,7 @@ pub fn explore_paths<'context>(
                     pidm.push_path(path);
                     sidm.push_scope(context.clone());
 
-                    parent.write().unwrap().add_child_context(context.clone());
+                    parent.add_child_context(context.clone());
                 }
             }
         } else if path.is_dir() {
@@ -336,7 +335,7 @@ pub fn explore_paths<'context>(
             pidm.push_path(path.clone());
             sidm.push_scope(context.clone());
 
-            parent.write().unwrap().add_child_context(context.clone());
+            parent.add_child_context(context.clone());
         }
     }
 
@@ -345,24 +344,18 @@ pub fn explore_paths<'context>(
     }
 }
 
-pub fn prepass<'a>(p: &Arc<RecursiveRWLock<ScopeContext>>) {
-    let l = p
-        .write()
-        .expect("Couldn't lock a ScopeContext during prepass");
-    println!("Prepass called on SC: {}", &*l);
+pub fn prepass<'a>(p: &Arc<ScopeContext>) {
+    println!("Prepass called on SC: {}", &*p);
 }
 
-pub fn analyze<'a>(_p: &Arc<RecursiveRWLock<ScopeContext>>) {}
+pub fn analyze<'a>(_p: &Arc<ScopeContext>) {}
 
-pub fn tollvm<'a>(p: &Arc<RecursiveRWLock<ScopeContext>>, egctx: &EncodeGlobalContext) {
-    let l = p
-        .write()
-        .expect("Couldn't lock a ScopeContext during encode");
+pub fn tollvm<'a>(p: &Arc<ScopeContext>, egctx: &EncodeGlobalContext) {
     let mut lctx = EncodeLocalContext::new(egctx);
 
     lctx.writeln(format!(
         "; start encode for ctx of {:?}",
-        l.scope
+        p.scope
             .iter()
             .map(|spur| spur.resolve())
             .collect::<Vec<&str>>()

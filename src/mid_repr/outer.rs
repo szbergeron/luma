@@ -7,6 +7,8 @@ use chashmap::CHashMap;
 use std::sync::{Arc, Weak};
 use crate::helper::locks::RecursiveRWLock;
 
+use once_cell::sync::OnceCell;
+
 use crate::helper::interner::*;
 
 /*pub struct SymbolDB<'a> {
@@ -33,11 +35,11 @@ impl<'a> SymbolDB<'a> {
 pub struct ScopeContext {
     pub scope: Vec<StringSymbol>,
     pub public: bool,
-    pub from: Option<Arc<RecursiveRWLock<SymbolDeclaration>>>,
+    pub from: OnceCell<Arc<SymbolDeclaration>>,
 
-    super_context: Option<Weak<ScopeContext>>,
+    super_context: OnceCell<Weak<ScopeContext>>,
 
-    global_context: Option<Weak<ScopeContext>>,
+    global_context: OnceCell<Weak<ScopeContext>>,
 
     child_contexts: CHashMap<StringSymbol, Arc<ScopeContext>>,
 
@@ -54,11 +56,11 @@ use std::mem::drop;
 
 impl AstNode for ScopeContext {
     fn node_info(&self) -> NodeInfo {
-        match self.from.as_ref() {
+        match self.from.get().as_ref() {
             None => NodeInfo::Builtin,
-            Some(ns_lock) => {
-                let ns_guard = ns_lock.read().unwrap();
-                ns_guard.as_node().node_info()
+            Some(ns) => {
+                //let ns_guard = ns_lock.read().unwrap();
+                ns.as_node().node_info()
             }
         }
     }
@@ -67,13 +69,14 @@ impl AstNode for ScopeContext {
         let _ = writeln!(f, "{}ScopeContext at scope{:?}", indent(depth), self.scope);
         writeln!(f, "{}From:", indent(depth + 1)).unwrap();
         self.from
+            .get()
             .as_ref()
-            .map(|from_lock| from_lock.read().unwrap().display(f, depth + 2));
+            .map(|from_lock| from_lock.display(f, depth + 2));
         writeln!(f, "{}Inner contexts:", indent(depth + 1)).unwrap();
         self.child_contexts
             .clone()
             .into_iter()
-            .for_each(|(_, wref)| wref.read().unwrap().display(f, depth + 2));
+            .for_each(|(_, wref)| wref.display(f, depth + 2));
         writeln!(f, "{}Exported symbols:", indent(depth + 1)).unwrap();
         /*self.exported_symbols
             .clone()
@@ -117,31 +120,31 @@ impl ScopeContext {
     pub fn new(
         error_sink: crossbeam::Sender<Error>,
         scope: Vec<StringSymbol>,
-        global: Option<Weak<RecursiveRWLock<ScopeContext>>>,
-        parent: Option<Weak<RecursiveRWLock<ScopeContext>>>,
-        from: Option<Arc<RecursiveRWLock<SymbolDeclaration>>>,
-    ) -> Arc<RecursiveRWLock<ScopeContext>> {
+        global: Option<Weak<ScopeContext>>,
+        parent: Option<Weak<ScopeContext>>,
+        from: Option<Arc<SymbolDeclaration>>,
+    ) -> Arc<ScopeContext> {
         let scope = ScopeContext {
             scope,
             public: true,
-            super_context: parent,
-            global_context: global,
+            super_context: parent.map(|sc| OnceCell::from(sc)).unwrap_or(OnceCell::default()),
+            global_context: global.map(|sc| OnceCell::from(sc)).unwrap_or(OnceCell::default()),
             //exported_symbols: CHashMap::new(),
             //imported_symbols: CHashMap::new(),
             //defined_symbols: CHashMap::new(),
             child_contexts: CHashMap::new(),
             error_sink,
-            from: None,
+            from: OnceCell::default(),
         };
 
-        let scope_locked = Arc::new(RecursiveRWLock::new(scope));
+        let scope = Arc::new(scope);
 
-        let mut scope_guard = scope_locked.write().unwrap();
+        //let mut scope_guard = scope_locked.write().unwrap();
 
         if let Some(ns) = from.as_ref() {
-            let ns_guard = ns.read().unwrap();
-            for dec in ns_guard.symbols() {
-                scope_guard.add_definition(scope_locked.clone(), dec.clone());
+            //let ns_guard = ns.read().unwrap();
+            for dec in ns.symbols() {
+                scope.add_definition(scope.clone(), dec.clone());
             }
             /*if let Ok(outer) = ns_guard.contents.as_ref() {
                 for dec in outer.declarations.iter() {
@@ -149,17 +152,18 @@ impl ScopeContext {
                 }
             }*/
 
-            scope_guard.from = Some(ns.clone());
+            //scope.from = Some(ns.clone());
+            scope.from.set(ns.clone());
         }
 
-        std::mem::drop(scope_guard);
+        //std::mem::drop(scope_guard);
 
-        scope_locked
+        scope
     }
 
     pub fn on_root(
-        &mut self,
-        self_rc: Arc<RecursiveRWLock<ScopeContext>>,
+        &self,
+        self_rc: Arc<ScopeContext>,
         outer: &OuterScope,
     ) {
         for dec in outer.declarations.iter() {
@@ -170,29 +174,29 @@ impl ScopeContext {
 
     pub fn add_context(
         &mut self,
-        self_rc: Arc<RecursiveRWLock<ScopeContext>>,
-        ns: Arc<RecursiveRWLock<SymbolDeclaration>>,
+        self_rc: Arc<ScopeContext>,
+        ns: Arc<SymbolDeclaration>,
     ) {
         //let mut self_guard = self_rc.write().unwrap();
 
-        let ctx_guard = ns.read().unwrap();
+        //let ns = ns.read().unwrap();
 
         let mut scope = self.scope.clone();
         //scope.push(String::from(ctx_guard.symbol_name().unwrap_or("")));
         //scope.push(interner().resolve(interner().get(ctx_guard.symbol_name().unwrap_or(&interner().get_or_intern_static("")))).to_owned());
         //scope.push(interner().get_or_intern(ctx_guard.symbol_name().unwrap_or()));
-        scope.push(ctx_guard.symbol_name().unwrap_or(intern_static("")));
+        scope.push(ns.symbol_name().unwrap_or(intern_static("")));
 
         let error = self.error_sink.clone();
 
-        let global = self.global_context.as_ref().unwrap().clone();
+        let global = self.global_context.get().as_ref().unwrap().clone();
 
         let parent = self_rc.clone();
 
         let scope = Self::new(
             error,
             scope,
-            Some(global),
+            Some(global.clone()),
             Some(Arc::downgrade(&parent)),
             Some(ns.clone()),
         );
@@ -202,8 +206,8 @@ impl ScopeContext {
     }
 
     pub fn add_definition(
-        &mut self,
-        self_rc: Arc<RecursiveRWLock<ScopeContext>>,
+        &self,
+        self_rc: Arc<ScopeContext>,
         decl: Arc<std::sync::RwLock<SymbolDeclaration>>,
     ) -> bool {
         let decl_guard = decl.read().unwrap();
@@ -275,14 +279,14 @@ impl ScopeContext {
         }
     }*/
 
-    pub fn add_child_context(&mut self, child: Arc<RecursiveRWLock<ScopeContext>>) {
-        let child_guard = child.read().unwrap();
-        let last_string = child_guard
+    pub fn add_child_context(&self, child: Arc<ScopeContext>) {
+        //let child = child.read().unwrap();
+        let last_string = child
             .scope
             .last()
             .expect("child had no last scope string")
             .clone();
-        drop(child_guard);
+        //drop(child);
 
         self.child_contexts.insert(last_string, child);
     }
