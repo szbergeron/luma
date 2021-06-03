@@ -20,7 +20,7 @@ const TYPE_PARAM_DEFAULT_COUNT: usize = 3;
 mod type_helpers {
     #[allow(dead_code)]
     pub fn type_id_default() -> super::TypeID {
-        std::u64::MAX
+        super::TypeID(std::u64::MAX)
     }
 }
 
@@ -57,7 +57,7 @@ pub trait Type: DynHash + DynEq + AsAny {
     // */
     fn supers(&self) -> &[TypeHandle];
 
-    fn implementation_blocks(&self) -> &[Span];
+    //fn implementation_blocks(&self) -> &[Span];
 
     fn definition_blocks(&self) -> &[Span];
 
@@ -150,9 +150,9 @@ impl Type for i32_t_static {
         &[]
     }
 
-    fn implementation_blocks(&self) -> &[Span] {
+    /*fn implementation_blocks(&self) -> &[Span] {
         &[]
-    }
+    }*/
 
     fn encode_reference(&self, _: &TypeCtx) -> String {
         "<llvm 32 bit int>".to_owned()
@@ -163,7 +163,7 @@ impl Type for i32_t_static {
     }
 
     fn uid(&self) -> super::ctx::TypeID {
-        self.tid.load(std::sync::atomic::Ordering::SeqCst)
+        TypeID(self.tid.load(std::sync::atomic::Ordering::SeqCst))
     }
 
     fn add_method(&self, _method: super::Method) -> bool {
@@ -175,7 +175,7 @@ impl Type for i32_t_static {
         // TODO: check if this can use different ordering restriction, if this is not done
         // after init then may be possible to just use Ordering::Release during
         // set here
-        self.tid.store(tid, std::sync::atomic::Ordering::SeqCst);
+        self.tid.store(tid.0, std::sync::atomic::Ordering::SeqCst);
     }
 }
 
@@ -274,10 +274,10 @@ impl ref_t_static {
     #[allow(dead_code)]
     fn new(tid_inner: TypeID) -> Box<ref_t_static> {
         Box::new(ref_t_static {
-            ctxid: std::u64::MIN,
+            ctxid: CtxID(std::u64::MIN),
             value_t: Some(tid_inner),
             //tid: once_cell::sync::OnceCell::from(super::ctx::generate_typeid()),
-            tid: std::sync::atomic::AtomicU64::from(super::ctx::generate_typeid()),
+            tid: std::sync::atomic::AtomicU64::from(super::ctx::generate_typeid().0),
             collapsed_canon_name: once_cell::sync::OnceCell::default(),
         })
     }
@@ -295,9 +295,9 @@ impl Type for ref_t_static {
         todo!()
     }
 
-    fn implementation_blocks(&self) -> &[Span] {
+    /*fn implementation_blocks(&self) -> &[Span] {
         todo!()
-    }
+    }*/
 
     fn definition_blocks(&self) -> &[Span] {
         todo!()
@@ -309,7 +309,7 @@ impl Type for ref_t_static {
 
     fn uid(&self) -> super::ctx::TypeID {
         //self.tid.get().expect("TID was unset")
-        self.tid.load(std::sync::atomic::Ordering::SeqCst)
+        TypeID(self.tid.load(std::sync::atomic::Ordering::SeqCst))
     }
 
     fn encode_reference(&self, within: &TypeCtx) -> String {
@@ -332,6 +332,6 @@ impl Type for ref_t_static {
 
     fn set_tid(&self, tid: TypeID) {
         //self.tid = tid;
-        self.tid.store(tid, std::sync::atomic::Ordering::SeqCst);
+        self.tid.store(tid.0, std::sync::atomic::Ordering::SeqCst);
     }
 }

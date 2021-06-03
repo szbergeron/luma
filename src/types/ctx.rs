@@ -11,8 +11,28 @@ use std::sync::atomic::Ordering;
 
 pub type TypeHandle = Arc<RwLock<dyn Type>>;
 
-pub type TypeID = u64;
-pub type CtxID = u64;
+//pub type TypeID = u64;
+#[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy)]
+pub struct TypeID(pub u64);
+
+/*impl std::ops::Deref for TypeID {
+    type Target = u64;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}*/
+
+//pub type CtxID = u64;
+#[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy)]
+pub struct CtxID(pub u64);
+
+#[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy)]
+pub struct SymbolID(pub u64);
+//pub type SymbolID = u64;
+
+pub type GlobalTypeID = (CtxID, TypeID);
+pub type GlobalSymbolID = (CtxID, SymbolID);
 
 #[allow(dead_code)]
 enum Implementation {
@@ -94,7 +114,7 @@ static CTX_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(
 
 pub fn generate_typeid() -> TypeID {
     static GENERATOR: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
-    GENERATOR.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    TypeID(GENERATOR.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
 }
 
 // interior mut type
@@ -185,8 +205,8 @@ impl GlobalCtxNode {
                     .entry(first.to_string())
                     .or_insert_with(|| {
                         let id = CTX_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                        let gcn = GlobalCtxNode::new(first, id);
-                        into.insert(id, gcn.clone());
+                        let gcn = GlobalCtxNode::new(first, CtxID(id));
+                        into.insert(CtxID(id), gcn.clone());
                         gcn
                     })
                     .register_nsctx(rest, into);
@@ -207,7 +227,7 @@ pub struct GlobalCtx {
 
 impl GlobalCtx {
     pub fn new() -> GlobalCtx {
-        GlobalCtx { entry: GlobalCtxNode::new("global", CTX_ID.fetch_add(1, Ordering::SeqCst)), contexts: DashMap::new(), }
+        GlobalCtx { entry: GlobalCtxNode::new("global", CtxID(CTX_ID.fetch_add(1, Ordering::SeqCst))), contexts: DashMap::new(), }
     }
 
     /// tries to get a namespace ctx if one exists, and None if not
