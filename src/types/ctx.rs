@@ -6,6 +6,8 @@ use std::cell::UnsafeCell;
 use std::fmt::Write;
 use std::sync::RwLock;
 use std::sync::{Arc, Weak};
+use std::sync::atomic;
+use std::sync::atomic::Ordering;
 
 pub type TypeHandle = Arc<RwLock<dyn Type>>;
 
@@ -68,6 +70,8 @@ impl Method {
 
 const TYPE_SIGNATURE_DUPLICATE_MAX_FREQ: usize = 3;
 
+static CTX_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
 /*impl Method {
     fn returns(&self) -> TypeID {
         self.return_type
@@ -99,16 +103,21 @@ struct GlobalCtxNode {
     children: DashMap<String, Arc<GlobalCtxNode>>,
     //localtypes: DashMap<&'input str, Arc<Ctx<'input>>>,
     type_ctx: Arc<TypeCtx>,
+    func_ctx: Arc<FuncCtx>,
+
     selfref: std::cell::UnsafeCell<Weak<GlobalCtxNode>>,
+    id: CtxID,
 }
 
 impl GlobalCtxNode {
-    fn new(name: &str) -> Arc<GlobalCtxNode> {
+    fn new(name: &str, id: CtxID) -> Arc<GlobalCtxNode> {
         let ctxnode = GlobalCtxNode {
             canonical_local_name: name.to_owned(),
             children: DashMap::new(),
             type_ctx: Arc::new(TypeCtx::new()),
+            func_ctx: Arc::new(FuncCtx::new()),
             selfref: UnsafeCell::new(Weak::default()),
+            id,
         };
 
         std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
@@ -166,7 +175,7 @@ impl GlobalCtxNode {
         }
     }
 
-    fn register_nsctx(&self, scope: &[&str]) {
+    fn register_nsctx(&self, scope: &[&str], into: &DashMap<CtxID, Arc<GlobalCtxNode>>) {
         match scope {
             [] => {
                 // no action for empty case, this is base case (self is already registered)
@@ -175,10 +184,12 @@ impl GlobalCtxNode {
                 self.children
                     .entry(first.to_string())
                     .or_insert_with(|| {
-                        let gcn = GlobalCtxNode::new(first);
+                        let id = CTX_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                        let gcn = GlobalCtxNode::new(first, id);
+                        into.insert(id, gcn.clone());
                         gcn
                     })
-                    .register_nsctx(rest);
+                    .register_nsctx(rest, into);
             }
         }
     }
@@ -190,11 +201,13 @@ impl GlobalCtxNode {
 
 pub struct GlobalCtx {
     entry: Arc<GlobalCtxNode>,
+    
+    contexts: DashMap<CtxID, Arc<GlobalCtxNode>>,
 }
 
 impl GlobalCtx {
     pub fn new() -> GlobalCtx {
-        GlobalCtx { entry: GlobalCtxNode::new("global") }
+        GlobalCtx { entry: GlobalCtxNode::new("global", CTX_ID.fetch_add(1, Ordering::SeqCst)), contexts: DashMap::new(), }
     }
 
     /// tries to get a namespace ctx if one exists, and None if not
@@ -209,7 +222,7 @@ impl GlobalCtx {
     /// strict read-query lookups
     #[allow(unused)]
     fn get_or_create_nsctx(&self, scope: &[&str]) -> Arc<GlobalCtxNode> {
-        self.entry.register_nsctx(scope);
+        self.entry.register_nsctx(scope, &self.contexts);
 
         self.get_nsctx(scope).expect(
             "Created nsctx was not found directly afterward, failed to create? Failed to search?",
@@ -230,9 +243,18 @@ impl GlobalCtx {
         match scope {
             // global scope handled same as default scope
             ["global", rest @ ..] | [rest @ ..] => {
-                self.entry.register_nsctx(rest);
+                self.entry.register_nsctx(rest, &self.contexts);
             }
         }
+    }
+}
+
+pub struct FuncCtx {
+}
+
+impl FuncCtx {
+    pub fn new() -> FuncCtx {
+        FuncCtx {}
     }
 }
 
