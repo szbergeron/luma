@@ -16,6 +16,7 @@ mod acks {}
 /// This number can be tweaked later on, and may be reduced to 2 if
 /// performance profiling indicates benefit
 const TYPE_PARAM_DEFAULT_COUNT: usize = 3;
+const FUNCTION_PARAM_DEFAULT_COUNT: usize = 3;
 
 mod type_helpers {
     #[allow(dead_code)]
@@ -38,6 +39,12 @@ impl<T: Any> AsAny for T {
 pub struct TypeSignature {
     name: String,
     params: SmallVec<[Option<TypeID>; TYPE_PARAM_DEFAULT_COUNT]>,
+}
+
+#[derive(Clone, Hash, Eq, PartialEq)]
+pub struct FunctionSignature {
+    name: String,
+    params: SmallVec<[TypeID; FUNCTION_PARAM_DEFAULT_COUNT]>,
 }
 
 pub trait Type: DynHash + DynEq + AsAny {

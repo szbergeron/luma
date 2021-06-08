@@ -9,11 +9,16 @@ use std::sync::{Arc, Weak};
 use std::sync::atomic;
 use std::sync::atomic::Ordering;
 
-pub type TypeHandle = Arc<RwLock<dyn Type>>;
+pub type TypeHandle = Arc<dyn Type>;
+
+pub type FunctionHandle = Arc<Function>;
 
 //pub type TypeID = u64;
 #[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy)]
 pub struct TypeID(pub u64);
+
+#[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy)]
+pub struct FunctionID(pub u64);
 
 /*impl std::ops::Deref for TypeID {
     type Target = u64;
@@ -22,6 +27,9 @@ pub struct TypeID(pub u64);
         &self.0
     }
 }*/
+
+pub struct Function {
+}
 
 //pub type CtxID = u64;
 #[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy)]
@@ -269,13 +277,29 @@ impl GlobalCtx {
     }
 }
 
+/// Interior mutable container representing a function context
+/// (set of functions from a module context)
 pub struct FuncCtx {
+    by_id: DashMap<FunctionID, FunctionHandle>,
+    by_signature: DashMap<FunctionSignature, FunctionHandle>,
 }
 
 impl FuncCtx {
     pub fn new() -> FuncCtx {
-        FuncCtx {}
+        FuncCtx { by_id: DashMap::new(), by_signature: DashMap::new() }
     }
+
+    pub fn define(&self, mut newfunc: Function) -> FunctionID {
+        unimplemented!()
+    }
+
+    pub fn lookup(&self, fid: FunctionID) -> Option<FunctionHandle> {
+        unimplemented!()
+    }
+
+    /*pub fn id_to_sig(&self, fid: FunctionID) -> Option<TypeSignature> {
+        self.
+    }*/
 }
 
 /// Interior mutable container representing a type context
@@ -301,7 +325,8 @@ impl TypeCtx {
     {
         let tid = generate_typeid();
         newtype.set_tid(tid);
-        let arcd = Arc::new(RwLock::new(newtype));
+        //let arcd = Arc::new(RwLock::new(newtype));
+        let arcd = Arc::new(newtype);
         self.types.insert(tid, arcd);
         tid
     }
