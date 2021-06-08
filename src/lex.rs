@@ -6,8 +6,26 @@ pub enum Token {
     #[token("mod")]
     Module,
 
-    #[token("pub")]
+    #[token("public")]
     Public,
+
+    #[token("private")]
+    Private,
+
+    //#[token("private")]
+    //Private,
+
+    #[token("mut")]
+    Mutable,
+
+    #[token("nomut")]
+    Immutable,
+
+    #[token("dyn")]
+    Dynamic,
+
+    #[token("nodyn")]
+    Nodynamic,
 
     #[token("fn")]
     Function,

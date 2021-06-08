@@ -54,6 +54,32 @@ impl<'lexer> Parser<'lexer> {
         })
     }
 
+    pub fn parse_symbol_specifier(&mut self) -> (bool, bool, bool) {
+        let mut public = Option::None;
+        let mut mutable = Option::None;
+        let mut dynamic = Option::None;
+
+        while let Some(tok) = self.eat_match_in(&[Token::Public, Token::Mutable, Token::Dynamic]) {
+            match tok.token {
+                Token::Dynamic | Token::Nodynamic => match dynamic.replace(if let Token::Dynamic = tok.token { true } else { false }) {
+                    Some(_val) => self.report_err(ParseResultError::SemanticIssue("tried to mark a symbol dyn/nodyn when dyn/nodyn was already specified", tok.start, tok.end)),
+                    None => {},
+                },
+                Token::Mutable | Token::Immutable => match mutable.replace(if let Token::Mutable = tok.token { true } else { false }) {
+                    Some(_val) => self.report_err(ParseResultError::SemanticIssue("tried to mark a symbol mut/nomut when mut/nomut was already specified", tok.start, tok.end)),
+                    None => {},
+                },
+                Token::Public | Token::Private => match public.replace(if let Token::Public = tok.token { true } else { false }) {
+                    Some(_val) => self.report_err(ParseResultError::SemanticIssue("tried to mark a symbol pub/nopub when pub/nopub was already specified", tok.start, tok.end)),
+                    None => {},
+                },
+                _ => { unreachable!("Guarded by eat_match_in") },
+            }
+        }
+
+        (public.unwrap_or(false), mutable.unwrap_or(false), dynamic.unwrap_or(false))
+    }
+
     /*pub fn parse_where_clause(
         &mut self,
     ) -> Result<Vec<ast::TypeConstraint<'input>>, ParseResultError<'input>> {
@@ -61,9 +87,7 @@ impl<'lexer> Parser<'lexer> {
     }*/
 
     //const first_struct: [Token; 1] = [Token::Struct];
-    pub fn parse_struct_declaration(
-        &mut self,
-    ) -> Result<ast::StructDeclaration, ParseResultError> {
+    pub fn parse_struct_declaration(&mut self) -> Result<ast::StructDeclaration, ParseResultError> {
         let start = self.hard_expect(Token::Struct)?.start;
         let id = self.hard_expect(Token::Identifier)?.slice;
         let mut typeparams = Vec::new();
@@ -128,9 +152,7 @@ impl<'lexer> Parser<'lexer> {
 
     #[allow(non_upper_case_globals)]
     const first_global: [Token; 3] = [Token::Module, Token::Function, Token::Struct];
-    pub fn parse_global_declaration(
-        &mut self,
-    ) -> Result<ast::SymbolDeclaration, ParseResultError> {
+    pub fn parse_global_declaration(&mut self) -> Result<ast::SymbolDeclaration, ParseResultError> {
         let has_pub = self.eat_match(Token::Public);
         let mut failed = false;
 
@@ -279,17 +301,8 @@ impl<'lexer> Parser<'lexer> {
 
     pub fn parse_function_param_list(
         &mut self,
-    ) -> Result<
-        Vec<(
-            Box<ast::ExpressionWrapper>,
-            ast::TypeReference,
-        )>,
-        ParseResultError,
-    > {
-        let mut rvec: Vec<(
-            Box<ast::ExpressionWrapper>,
-            ast::TypeReference,
-        )> = Vec::new();
+    ) -> Result<Vec<(Box<ast::ExpressionWrapper>, ast::TypeReference)>, ParseResultError> {
+        let mut rvec: Vec<(Box<ast::ExpressionWrapper>, ast::TypeReference)> = Vec::new();
         while let Ok(a) = self.atomic_expression() {
             self.hard_expect(Token::Colon)?;
             let tr = self.parse_type_specifier()?;
