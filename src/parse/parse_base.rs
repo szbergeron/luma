@@ -54,7 +54,7 @@ impl<'lexer> Parser<'lexer> {
         })
     }
 
-    pub fn parse_symbol_specifier(&mut self) -> (bool, bool, bool) {
+    pub fn parse_symbol_specifiers(&mut self) -> (bool, bool, bool) {
         let mut public = Option::None;
         let mut mutable = Option::None;
         let mut dynamic = Option::None;
@@ -153,17 +153,20 @@ impl<'lexer> Parser<'lexer> {
     #[allow(non_upper_case_globals)]
     const first_global: [Token; 3] = [Token::Module, Token::Function, Token::Struct];
     pub fn parse_global_declaration(&mut self) -> Result<ast::SymbolDeclaration, ParseResultError> {
-        let has_pub = self.eat_match(Token::Public);
+        //let has_pub = self.eat_match(Token::Public);
         let mut failed = false;
 
+        let (public, mutable, dynamic) = self.parse_symbol_specifiers();
+
         self.expect_next_in(&[Token::Module, Token::Function, Token::Struct, Token::Let])?;
+
 
         if let Ok(tw) = self.lex.la(0) {
             let r = match tw.token {
                 Token::Module => self
                     .parse_namespace()
                     .map(|mut ns| {
-                        ns.set_public(has_pub.is_some());
+                        ns.set_public(public);
                         ast::SymbolDeclaration::NamespaceDeclaration(ns)
                     })
                     .map_err(|e| {
@@ -187,13 +190,13 @@ impl<'lexer> Parser<'lexer> {
                     }),
                 // only parse let expressions for now, since other (pure) expressions would be
                 // useless
-                Token::Let => self.parse_static_declaration().map(|sd| {
+                /*Token::Let => self.parse_static_declaration().map(|sd| {
                     let mut ed = ast::SymbolDeclaration::ExpressionDeclaration(sd);
                     if has_pub.is_some() {
                         ed.mark_public()
                     }
                     ed
-                }),
+                }),*/
                 _ => {
                     // may be expression?
 

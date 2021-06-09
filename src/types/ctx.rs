@@ -29,6 +29,16 @@ pub struct FunctionID(pub u64);
 }*/
 
 pub struct Function {
+    pub signature: FunctionSignature,
+    pub id: FunctionID,
+
+    params: Vec<(TypeID, String)>,
+    returns: TypeID,
+
+    from: Implementation,
+}
+
+impl Function {
 }
 
 //pub type CtxID = u64;
