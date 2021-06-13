@@ -1,14 +1,14 @@
 use super::impls::*;
 
+use crate::helper::interner::StringSymbol;
 use dashmap::DashMap;
 use smallvec::SmallVec;
 use std::cell::UnsafeCell;
 use std::fmt::Write;
-use std::sync::RwLock;
-use std::sync::{Arc, Weak};
 use std::sync::atomic;
 use std::sync::atomic::Ordering;
-use crate::helper::interner::StringSymbol;
+use std::sync::RwLock;
+use std::sync::{Arc, Weak};
 
 pub type TypeHandle = Arc<dyn Type>;
 
@@ -38,11 +38,14 @@ pub struct FunctionID(pub u64);
 ///
 /// CastDistance has the Infinite() variant for representing an impossible
 /// cast, or one that is currently unable to be computed by the type checker
-pub enum CastDistance {
+///
+/// @Obsolete: decided against allowing explicit inheritance.
+/// This may change in the future, but for now cast distance is not a useful metric
+/*pub enum CastDistance {
     FiniteImplicit(u64),
     FiniteExplicit(u64),
     Infinite(),
-}
+}*/
 
 pub struct Function {
     pub signature: FunctionSignature,
@@ -54,8 +57,7 @@ pub struct Function {
     from: Implementation,
 }
 
-impl Function {
-}
+impl Function {}
 
 //pub type CtxID = u64;
 #[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy)]
@@ -255,13 +257,16 @@ impl GlobalCtxNode {
 
 pub struct GlobalCtx {
     entry: Arc<GlobalCtxNode>,
-    
+
     contexts: DashMap<CtxID, Arc<GlobalCtxNode>>,
 }
 
 impl GlobalCtx {
     pub fn new() -> GlobalCtx {
-        GlobalCtx { entry: GlobalCtxNode::new("global", CtxID(CTX_ID.fetch_add(1, Ordering::SeqCst))), contexts: DashMap::new(), }
+        GlobalCtx {
+            entry: GlobalCtxNode::new("global", CtxID(CTX_ID.fetch_add(1, Ordering::SeqCst))),
+            contexts: DashMap::new(),
+        }
     }
 
     /// tries to get a namespace ctx if one exists, and None if not
@@ -307,13 +312,17 @@ impl GlobalCtx {
 /// (set of functions from a module context)
 pub struct FuncCtx {
     by_id: DashMap<FunctionID, FunctionHandle>,
-    by_signature: DashMap<FunctionSignature, FunctionHandle>,
-    by_name: DashMap<StringSymbol, FunctionHandle>,
+    //by_signature: DashMap<FunctionSignature, FunctionHandle>,
+    by_name: DashMap<StringSymbol, Vec<FunctionHandle>>,
 }
 
 impl FuncCtx {
     pub fn new() -> FuncCtx {
-        FuncCtx { by_id: DashMap::new(), by_signature: DashMap::new(), by_name: DashMap::new(), }
+        FuncCtx {
+            by_id: DashMap::new(),
+            /*by_signature: DashMap::new(),*/
+            by_name: DashMap::new(),
+        }
     }
 
     pub fn define(&self, mut newfunc: Function) -> FunctionID {
@@ -324,6 +333,15 @@ impl FuncCtx {
         unimplemented!()
     }
 
+    pub fn query(
+        &self,
+        name: Option<StringSymbol>,
+        params: &[Option<TypeID>],
+        returns: Option<TypeID>,
+    ) -> Vec<FunctionID> {
+        //
+    }
+
     /*pub fn id_to_sig(&self, fid: FunctionID) -> Option<TypeSignature> {
         self.
     }*/
@@ -332,8 +350,7 @@ impl FuncCtx {
 /// Interior mutable container representing a type context
 pub struct TypeCtx {
     types: DashMap<TypeID, TypeHandle>,
-    signatures:
-        DashMap<TypeSignature, SmallVec<[TypeID; TYPE_SIGNATURE_DUPLICATE_MAX_FREQ]>>,
+    signatures: DashMap<TypeSignature, SmallVec<[TypeID; TYPE_SIGNATURE_DUPLICATE_MAX_FREQ]>>,
     ids: DashMap<TypeID, TypeSignature>,
 }
 
