@@ -8,6 +8,7 @@ use std::sync::RwLock;
 use std::sync::{Arc, Weak};
 use std::sync::atomic;
 use std::sync::atomic::Ordering;
+use crate::helper::interner::StringSymbol;
 
 pub type TypeHandle = Arc<dyn Type>;
 
@@ -27,6 +28,21 @@ pub struct FunctionID(pub u64);
         &self.0
     }
 }*/
+
+/// CastDistance represents how far one type is from another
+/// It can be applied to individual types (a class to its direct supertype is
+/// Finite(1) distance from the supertype), or to composite types such as
+/// tuples (distance is sum of distances of elements) or function objects
+/// (distance is the sum of the contravariant distance of the tuple of parameters and the
+/// covariant distance of the return type)
+///
+/// CastDistance has the Infinite() variant for representing an impossible
+/// cast, or one that is currently unable to be computed by the type checker
+pub enum CastDistance {
+    FiniteImplicit(u64),
+    FiniteExplicit(u64),
+    Infinite(),
+}
 
 pub struct Function {
     pub signature: FunctionSignature,
@@ -292,11 +308,12 @@ impl GlobalCtx {
 pub struct FuncCtx {
     by_id: DashMap<FunctionID, FunctionHandle>,
     by_signature: DashMap<FunctionSignature, FunctionHandle>,
+    by_name: DashMap<StringSymbol, FunctionHandle>,
 }
 
 impl FuncCtx {
     pub fn new() -> FuncCtx {
-        FuncCtx { by_id: DashMap::new(), by_signature: DashMap::new() }
+        FuncCtx { by_id: DashMap::new(), by_signature: DashMap::new(), by_name: DashMap::new(), }
     }
 
     pub fn define(&self, mut newfunc: Function) -> FunctionID {
