@@ -339,7 +339,6 @@ impl FuncCtx {
         params: &[Option<TypeID>],
         returns: Option<TypeID>,
     ) -> Vec<FunctionID> {
-        //
     }
 
     /*pub fn id_to_sig(&self, fid: FunctionID) -> Option<TypeSignature> {
