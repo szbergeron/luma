@@ -31,12 +31,14 @@ impl Query {
 /// This could be something such as `i32` or `SomeStruct`,
 /// but is not the same as a dyn trait reference
 pub struct BasicConstraint {
+    pub name: StringSymbol,
 }
 
 /// A TraitConstraint (TCst) represents a reference to 
 /// a dyn trait in some context, and
 /// may or may not be generic.
 pub struct TraitConstraint {
+    pub name: StringSymbol,
 }
 
 /// A GenericConstraint (GCst) represents a reference
@@ -49,7 +51,11 @@ pub struct TraitConstraint {
 /// and alternatively if all parameters provided are
 /// either BCst or FQ GCsts, then the GCst itself is then also FQ
 pub struct GenericConstraint {
-    //
+    // TODO: potentially limit primary to be
+    // of some NameConstraint type that omits
+    // any generic type itself
+    pub primary: Box<Constraint>,
+    pub params: Vec<Constraint>,
 }
 
 /// An UnConstraint (UCst) is a wildcard constraint,
@@ -61,13 +67,13 @@ pub struct GenericConstraint {
 pub struct UnConstraint {
 }
 
-pub enum NameConstraint {
+/*pub enum NameConstraint {
     Basic(BasicConstraint),
     Trait(TraitConstraint),
     Wildcard(UnConstraint),
-}
+}*/
 
-impl Into<Constraint> for NameConstraint {
+/*impl Into<Constraint> for NameConstraint {
     fn into(self) -> Constraint {
         match self {
             Self::Basic(b) => Constraint::Basic(b),
@@ -75,7 +81,7 @@ impl Into<Constraint> for NameConstraint {
             Self::Wildcard(w) => Constraint::Wildcard(w),
         }
     }
-}
+}*/
 
 pub enum Constraint {
     Wildcard(UnConstraint),
@@ -84,7 +90,7 @@ pub enum Constraint {
     Basic(BasicConstraint),
 }
 
-impl Into<Option<NameConstraint>> for Constraint {
+/*impl Into<Option<NameConstraint>> for Constraint {
     fn into(self) -> Option<NameConstraint> {
         match self {
             Self::Basic(b) => Some(NameConstraint::Basic(b)),
@@ -93,7 +99,7 @@ impl Into<Option<NameConstraint>> for Constraint {
             Self::Generic(_) => None,
         }
     }
-}
+}*/
 
 //pub struct {}
 
