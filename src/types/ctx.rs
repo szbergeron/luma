@@ -80,7 +80,7 @@ enum Implementation {
 }
 
 #[allow(dead_code)]
-pub struct Method {
+pub struct FunctionImplementation {
     self_type: TypeID,
     name: String,
     return_type: TypeID,
@@ -89,7 +89,7 @@ pub struct Method {
     implementation: Implementation,
 }
 
-impl Method {
+impl FunctionImplementation {
     pub fn new_from_builtin(
         self_type: TypeID,
         name: String,
@@ -98,8 +98,8 @@ impl Method {
         ll_vars: Vec<(String, String)>,
         ll_result: String,
         ll_content: String,
-    ) -> Method {
-        Method {
+    ) -> FunctionImplementation {
+        FunctionImplementation {
             self_type,
             name,
             return_type,
