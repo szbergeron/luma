@@ -47,6 +47,36 @@ pub struct FunctionID(pub u64);
     Infinite(),
 }*/
 
+pub struct FunctionCall {
+    pub name: StringSymbol,
+    pub arguments: Vec<StringSymbol>,
+
+    pub generic_specifications: Vec<TypeID>,
+
+    /// If this was a method call or a qualifying path was provided,
+    /// this is set to true
+    ///
+    /// If this call was instead unscoped and "bare" then this is set to false
+    ///
+    /// If true, search primary context first
+    ///
+    /// If false, only search secondary context
+    ///
+    /// This may obsolete having primary and secondary contexts separate later, but TBD
+    pub scoped_call: bool,
+
+    /// Represents the context of the type that this (may have been) called on,
+    /// so this could be a method of some sort, and if it was we 
+    /// want to make sure we search the type this was called in first
+    pub primary_context: Option<Arc<GlobalCtxNode>>,
+
+    /// Represents the context for the *position* in the code this was called in,
+    /// this could be a function that was just locally defined or that was imported
+    /// into the current context
+    pub secondary_context: Option<Arc<GlobalCtxNode>>,
+
+}
+
 pub struct Function {
     pub signature: FunctionSignature,
     pub id: FunctionID,

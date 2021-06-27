@@ -1,6 +1,9 @@
 /**
  * Quark: lowering engine to take mid-repr type representation
- * and lower to prolog for querying
+ * and eventually, lower to prolog for querying
+ *
+ * Current implementation to act as stub for type propagation
+ * from fully specified usage sites instead
  **/
 
 //use super::types::GlobalTypeID;
