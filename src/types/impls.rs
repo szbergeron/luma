@@ -62,7 +62,7 @@ pub trait Type: DynHash + DynEq + AsAny {
     is_value_type: bool,
 
     // */
-    fn supers(&self) -> &[TypeHandle];
+    //fn supers(&self) -> &[TypeHandle];
 
     //fn implementation_blocks(&self) -> &[Span];
 
@@ -74,6 +74,10 @@ pub trait Type: DynHash + DynEq + AsAny {
         return !self.is_reference_type();
     }
 
+    /// Some(TypeID) if this type allows deref to a type,
+    /// with the contents of the Some(_) being the type it derefs to.
+    ///
+    /// If the type does not deref, returns None
     fn derefs_to(&self) -> Option<TypeID> {
         None
     }

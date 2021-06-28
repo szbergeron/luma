@@ -74,7 +74,13 @@ pub struct FunctionCall {
     /// this could be a function that was just locally defined or that was imported
     /// into the current context
     pub secondary_context: Option<Arc<GlobalCtxNode>>,
+}
 
+/// This links a call to a function, and forces creation of
+/// monomorphized versions of any generic functions.
+pub struct MonomorphisedFunction {
+    //pub munged_id: 
+    //
 }
 
 pub struct Function {
