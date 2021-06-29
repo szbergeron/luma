@@ -412,8 +412,8 @@ impl FuncCtx {
         let initial_set = name
             .map(|st| self.by_name.get(&st))
             .flatten()
-            .map(|entry| entry.value().iter())
-            .unwrap_or_else(|| (0..self.all.len()).map(|idx| FunctionID(idx as u64));
+            .map(|entry| entry.value().clone())
+            .unwrap_or_else(|| (0..self.all.len()).map(|idx| FunctionID(idx as u64)).collect());
 
         //self.by_name.get(&name).map(|map_entry| map_entry.value().first())
 
