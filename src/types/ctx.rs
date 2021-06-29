@@ -9,6 +9,7 @@ use std::sync::atomic;
 use std::sync::atomic::Ordering;
 use std::sync::RwLock;
 use std::sync::{Arc, Weak};
+use rayon::prelude::*;
 
 pub type TypeHandle = Arc<dyn Type>;
 
@@ -103,8 +104,21 @@ pub struct CtxID(pub u64);
 pub struct SymbolID(pub u64);
 //pub type SymbolID = u64;
 
-pub type GlobalTypeID = (CtxID, TypeID);
-pub type GlobalSymbolID = (CtxID, SymbolID);
+//pub type GlobalTypeID = (CtxID, TypeID);
+#[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy)]
+pub struct GlobalTypeID {
+    pub cid: CtxID,
+    pub tid: TypeID
+}
+
+#[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy)]
+pub struct GlobalFunctionID {
+    pub cid: CtxID,
+    pub fid: FunctionID
+}
+
+//pub type GlobalFunctionID = (CtxID, FunctionID);
+//pub type GlobalSymbolID = (CtxID, SymbolID);
 
 #[allow(dead_code)]
 enum Implementation {
@@ -117,16 +131,16 @@ enum Implementation {
 
 #[allow(dead_code)]
 pub struct FunctionImplementation {
-    self_type: TypeID,
+    self_type: GlobalTypeID,
     name: String,
-    return_type: TypeID,
-    params: Vec<(TypeID, String)>,
+    return_type: GlobalTypeID,
+    params: Vec<(GlobalTypeID, String)>,
 
     implementation: Implementation,
 }
 
 impl FunctionImplementation {
-    pub fn new_from_builtin(
+    /*pub fn new_from_builtin(
         self_type: TypeID,
         name: String,
         params: Vec<(TypeID, String)>,
@@ -146,7 +160,7 @@ impl FunctionImplementation {
                 ll_vars,
             },
         }
-    }
+    }*/
 
     pub fn encode_definition(&self) -> Result<String, Box<dyn std::error::Error>> {
         let mut builder = String::new();
@@ -206,8 +220,8 @@ impl GlobalCtxNode {
         let ctxnode = GlobalCtxNode {
             canonical_local_name: name.to_owned(),
             children: DashMap::new(),
-            type_ctx: Arc::new(TypeCtx::new()),
-            func_ctx: Arc::new(FuncCtx::new()),
+            type_ctx: Arc::new(TypeCtx::new(id)),
+            func_ctx: Arc::new(FuncCtx::new(id)),
             selfref: UnsafeCell::new(Weak::default()),
             id,
         };
@@ -347,9 +361,10 @@ impl GlobalCtx {
 /// Interior mutable container representing a function context
 /// (set of functions from a module context)
 pub struct FuncCtx {
+    ctx_id: CtxID,
     //by_id: DashMap<FunctionID, FunctionHandle>,
     //by_signature: DashMap<FunctionSignature, FunctionHandle>,
-    by_name: DashMap<StringSymbol, Vec<FunctionID>>,
+    by_name: DashMap<StringSymbol, Vec<GlobalFunctionID>>,
 
     all: Vec<FunctionHandle>,
 
@@ -357,12 +372,13 @@ pub struct FuncCtx {
 }
 
 impl FuncCtx {
-    pub fn new() -> FuncCtx {
+    pub fn new(within: CtxID) -> FuncCtx {
         FuncCtx {
             //by_id: DashMap::new(),
             /*by_signature: DashMap::new(),*/
             by_name: DashMap::new(),
             //id_gen: 1,
+            ctx_id: within,
 
             all: Vec::new(),
         }
@@ -409,11 +425,26 @@ impl FuncCtx {
             param.expect("TODO: function lookups on partial parameter types");
         }
 
-        let initial_set = name
+        let mut initial_set = name
             .map(|st| self.by_name.get(&st))
             .flatten()
             .map(|entry| entry.value().clone())
-            .unwrap_or_else(|| (0..self.all.len()).map(|idx| FunctionID(idx as u64)).collect());
+            .unwrap_or_else(|| (0..self.all.len()).map(|idx| GlobalFunctionID { cid: self.ctx_id, fid: FunctionID(idx as u64) }).collect());
+
+        initial_set = initial_set.into_par_iter().filter(|gfid| {
+            if let Some(f) = self.lookup(gfid.fid) {
+                if f.params.len() != params.len() { return false };
+
+                for (arg_opt, param) in params.iter().zip(f.params.iter().map(|(tid, _)| tid)) {
+                    if let Some(arg) = arg_opt {
+                    }
+                }
+
+                unimplemented!()
+            } else {
+                false
+            }
+        }).collect();
 
         //self.by_name.get(&name).map(|map_entry| map_entry.value().first())
 
@@ -427,14 +458,17 @@ impl FuncCtx {
 
 /// Interior mutable container representing a type context
 pub struct TypeCtx {
+    ctx_id: CtxID,
+
     types: DashMap<TypeID, TypeHandle>,
     signatures: DashMap<TypeSignature, SmallVec<[TypeID; TYPE_SIGNATURE_DUPLICATE_MAX_FREQ]>>,
     ids: DashMap<TypeID, TypeSignature>,
 }
 
 impl TypeCtx {
-    pub fn new() -> TypeCtx {
+    pub fn new(within: CtxID) -> TypeCtx {
         TypeCtx {
+            ctx_id: within,
             types: DashMap::new(),
             signatures: DashMap::new(),
             ids: DashMap::new(),

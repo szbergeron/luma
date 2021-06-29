@@ -1,4 +1,4 @@
-use super::{CtxID, FunctionImplementation, TypeCtx, TypeHandle, TypeID};
+use super::{CtxID, FunctionImplementation, TypeCtx, TypeHandle, TypeID, GlobalTypeID};
 use crate::ast::Span;
 
 use smallvec::SmallVec;
@@ -38,13 +38,13 @@ impl<T: Any> AsAny for T {
 #[derive(Clone, Hash, Eq, PartialEq)]
 pub struct TypeSignature {
     name: String,
-    params: SmallVec<[Option<TypeID>; TYPE_PARAM_DEFAULT_COUNT]>,
+    params: SmallVec<[Option<GlobalTypeID>; TYPE_PARAM_DEFAULT_COUNT]>,
 }
 
 #[derive(Clone, Hash, Eq, PartialEq)]
 pub struct FunctionSignature {
     name: String,
-    params: SmallVec<[TypeID; FUNCTION_PARAM_DEFAULT_COUNT]>,
+    params: SmallVec<[GlobalTypeID; FUNCTION_PARAM_DEFAULT_COUNT]>,
 }
 
 pub trait Type: DynHash + DynEq + AsAny {
