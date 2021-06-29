@@ -311,7 +311,15 @@ pub struct GlobalCtx {
     contexts: DashMap<CtxID, Arc<GlobalCtxNode>>,
 }
 
+
+
 impl GlobalCtx {
+    pub fn get() -> &'static GlobalCtx {
+        static GCTX: GlobalCtx = GlobalCtx::new();
+
+        &GCTX
+    }
+
     pub fn new() -> GlobalCtx {
         GlobalCtx {
             entry: GlobalCtxNode::new("global", CtxID(CTX_ID.fetch_add(1, Ordering::SeqCst))),

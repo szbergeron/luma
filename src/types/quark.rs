@@ -7,7 +7,7 @@
  **/
 
 //use super::types::GlobalTypeID;
-use super::{GlobalTypeID, GlobalSymbolID};
+use super::{GlobalTypeID, GlobalFunctionID};
 use crate::helper::interner::StringSymbol;
 
 /// A Quark represents a query context, with an opaque implementation
@@ -28,6 +28,8 @@ impl Query {
         unimplemented!()
     }
 }
+
+pub struct Fact {}
 
 /// An BasicConstraint (BCst) represents a fully specified
 /// reference to a distinct, non-generic, type
@@ -113,4 +115,6 @@ impl Quark {
 
     pub fn add_to_trait(&mut self, p_trait: QuarkDeclID, trait_member_name: StringSymbol, trait_member_id: GlobalTypeID) -> () {
     }
+
+    //pub fn 
 }
