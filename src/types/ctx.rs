@@ -66,7 +66,7 @@ pub struct FunctionCall {
     pub scoped_call: bool,
 
     /// Represents the context of the type that this (may have been) called on,
-    /// so this could be a method of some sort, and if it was we 
+    /// so this could be a method of some sort, and if it was we
     /// want to make sure we search the type this was called in first
     pub primary_context: Option<Arc<GlobalCtxNode>>,
 
@@ -79,8 +79,8 @@ pub struct FunctionCall {
 /// This links a call to a function, and forces creation of
 /// monomorphized versions of any generic functions.
 pub struct MonomorphisedFunction {
-    //pub munged_id: 
-    //
+    //pub munged_id:
+//
 }
 
 pub struct Function {
@@ -347,26 +347,54 @@ impl GlobalCtx {
 /// Interior mutable container representing a function context
 /// (set of functions from a module context)
 pub struct FuncCtx {
-    by_id: DashMap<FunctionID, FunctionHandle>,
+    //by_id: DashMap<FunctionID, FunctionHandle>,
     //by_signature: DashMap<FunctionSignature, FunctionHandle>,
-    by_name: DashMap<StringSymbol, Vec<FunctionHandle>>,
+    by_name: DashMap<StringSymbol, Vec<FunctionID>>,
+
+    all: Vec<FunctionHandle>,
+
+    //id_gen: u64,
 }
 
 impl FuncCtx {
     pub fn new() -> FuncCtx {
         FuncCtx {
-            by_id: DashMap::new(),
+            //by_id: DashMap::new(),
             /*by_signature: DashMap::new(),*/
             by_name: DashMap::new(),
+            //id_gen: 1,
+
+            all: Vec::new(),
         }
     }
 
     pub fn define(&self, mut newfunc: Function) -> FunctionID {
-        unimplemented!()
+        //let id = self.id_gen;
+        //self.id_gen += 1;
+        //newfunc.set_id(id);
+        //newfunc.id = FunctionID(id);
+
+
+        //let id = self.all.len();
+        let id = FunctionID(self.all.len() as u64);
+
+        newfunc.id = id;
+
+        let fh = Arc::new(newfunc);
+
+        self.all.push(fh);
+
+        id
+
+        //self.by_id.insert(FunctionID(id), fh.clone());
     }
 
     pub fn lookup(&self, fid: FunctionID) -> Option<FunctionHandle> {
-        unimplemented!()
+        /*self.by_id
+            .get(&fid)
+            .map(|map_entry| map_entry.value().clone())*/
+        //unimplemented!()
+        self.all.get(fid.0 as usize).map(|r| r.clone())
     }
 
     pub fn query(
@@ -375,6 +403,21 @@ impl FuncCtx {
         params: &[Option<TypeID>],
         returns: Option<TypeID>,
     ) -> Vec<FunctionID> {
+        //let name = name.expect("TODO: function name elision");
+
+        for param in params.iter() {
+            param.expect("TODO: function lookups on partial parameter types");
+        }
+
+        let initial_set = name
+            .map(|st| self.by_name.get(&st))
+            .flatten()
+            .map(|entry| entry.value().iter())
+            .unwrap_or_else(|| (0..self.all.len()).map(|idx| FunctionID(idx as u64));
+
+        //self.by_name.get(&name).map(|map_entry| map_entry.value().first())
+
+        unimplemented!()
     }
 
     /*pub fn id_to_sig(&self, fid: FunctionID) -> Option<TypeSignature> {

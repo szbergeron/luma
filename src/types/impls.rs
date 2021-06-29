@@ -149,9 +149,9 @@ impl Type for i32_t_static {
         "i32"
     }
 
-    fn supers(&self) -> &[TypeHandle] {
+    /*fn supers(&self) -> &[TypeHandle] {
         &[]
-    }
+    }*/
 
     fn is_reference_type(&self) -> bool {
         false
@@ -313,9 +313,9 @@ impl Type for ref_t_static {
             .expect("build_canon_name didn't populate inner canon name?")
     }
 
-    fn supers(&self) -> &[TypeHandle] {
+    /*fn supers(&self) -> &[TypeHandle] {
         todo!()
-    }
+    }*/
 
     /*fn implementation_blocks(&self) -> &[Span] {
         todo!()
@@ -335,9 +335,13 @@ impl Type for ref_t_static {
     }
 
     fn encode_reference(&self, within: &TypeCtx) -> String {
-        self.map_inner_r(within, |t| t.encode_reference(within).to_owned())
+        /*self.map_inner_r(within, |t| t.encode_reference(within).to_owned())
             .expect("No inner type present when trying to encode reference")
-            + "*"
+            + "*"*/
+        //let t = within.lookup(self.value_t).expect("Can't encode reference, inner type does not exist");
+        let t = self.value_t.map(|id| within.lookup(id)).flatten().expect("Can't encode reference, inner type does not exist");
+        t.encode_reference(within) + "*"
+        //self.value_t.as_ref().expect("Tried to encode a reference to a non-existant type").encode_reference(within) + "*"
     }
 
     /// Definition is implicit within llvm,
