@@ -356,6 +356,10 @@ impl GlobalCtx {
             }
         }
     }
+
+    pub fn by_id(&self, id: CtxID) -> Option<Arc<GlobalCtxNode>> {
+        self.contexts.get(&id).map(|opt| opt.value().to_owned())
+    }
 }
 
 /// Interior mutable container representing a function context
