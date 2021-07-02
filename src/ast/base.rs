@@ -90,6 +90,7 @@ impl std::fmt::Display for NodeInfo {
     }
 }
 
+#[allow(dead_code)]
 pub trait AstNode: std::fmt::Debug + Send + Sync {
     fn node_info(&self) -> NodeInfo;
     //fn start(&self) -> CodeLocation;
@@ -102,7 +103,8 @@ pub trait AstNode: std::fmt::Debug + Send + Sync {
     /// and is allowed to include type information, but should
     /// omit things like location, parse success, strict node type and such
     fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
-        todo!("[ast_prettyprint]");
+
+        panic!("[ast_prettyprint] not yet implemented for {}", std::any::type_name::<Self>());
     }
 
     fn start(&self) -> Option<CodeLocation> {

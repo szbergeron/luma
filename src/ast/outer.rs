@@ -52,6 +52,15 @@ impl AstNode for Namespace {
             .for_each(|contents| contents.display(f, depth + 1));
     }
 
+    fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
+        let _ = writeln!(f, "\n{}mod {} {{", indent(depth), self.name.map(|ss| ss.resolve()).unwrap_or("<unknown"));
+
+        if let Ok(os) = self.contents.as_ref() {
+            os.pretty(f, depth + 1);
+        }
+        let _ = writeln!(f, "{}}}", indent(depth));
+    }
+
 }
 
 #[derive(Debug)]
@@ -119,7 +128,7 @@ impl AstNode for OuterScope {
 
     fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
         
-        let _ = writeln!(f, "{}File {}", indent(depth), self.node_info);
+        //let _ = writeln!(f, "{}File {}", indent(depth), self.node_info);
 
         for decl in self.declarations.iter() {
             let l = decl.read();
@@ -347,6 +356,11 @@ impl AstNode for UseDeclaration {
                  uses,
                  "<unaliased>",
                  );
+    }
+
+    fn pretty(&self, f: &mut dyn std::fmt::Write, _depth: usize) {
+        let uses: Vec<&'static str> = self.scope.iter().map(|ss| ss.resolve()).collect();
+        let _ = writeln!(f, "use {:?}", uses);
     }
 
 }
