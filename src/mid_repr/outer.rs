@@ -106,6 +106,10 @@ impl AstNode for ScopeContext {
             .for_each(|(_, wref)| wref.read().unwrap().display(f, depth + 2));
             */
     }
+
+    fn pretty(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
+        todo!("[ast_prettyprint]")
+    }
 }
 
 impl std::fmt::Display for ScopeContext {
@@ -153,7 +157,7 @@ impl ScopeContext {
             }*/
 
             //scope.from = Some(ns.clone());
-            scope.from.set(ns.clone());
+            scope.from.set(ns.clone()).expect("Couldn't set inner oncecell for SC");
         }
 
         //std::mem::drop(scope_guard);

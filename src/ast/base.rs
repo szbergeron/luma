@@ -94,7 +94,14 @@ pub trait AstNode: std::fmt::Debug + Send + Sync {
     fn node_info(&self) -> NodeInfo;
     //fn start(&self) -> CodeLocation;
     //fn end(&self) -> CodeLocation;
+
+    /// Should display detailed debug info, node type, child info
     fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize);
+
+    /// Should display as a "source like" form. May be parenthesized,
+    /// and is allowed to include type information, but should
+    /// omit things like location, parse success, strict node type and such
+    fn pretty(&self, f: &mut std::fmt::Formatter<'_>, depth: usize);
 
     fn start(&self) -> Option<CodeLocation> {
         self.node_info().as_parsed().map(|node| node.span.start)
@@ -124,6 +131,10 @@ impl AstNode for Option<&dyn AstNode> {
             Some(n) => n.display(f, depth),
             None => write!(f, "<none>").unwrap(),
         }
+    }
+
+    fn pretty(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
+        todo!("[ast_prettyprint]")
     }
 }
 

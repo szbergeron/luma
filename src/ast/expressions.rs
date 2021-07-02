@@ -59,6 +59,10 @@ impl AstNode for TypeReference {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
+
+    fn pretty(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
+        todo!("[ast_prettyprint]")
+    }
 }
 
 impl IntoAstNode for TypeReference {
@@ -187,6 +191,10 @@ impl AstNode for WildcardExpression {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
+
+    fn pretty(&self, f: &mut std::fmt::Formatter<'_>, _depth: usize) {
+        let _ = writeln!(f, "*");
+    }
 }
 
 #[derive(Debug)]
@@ -223,6 +231,10 @@ impl AstNode for StatementExpression {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
+
+    fn pretty(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+        self.subexpr.as_node().pretty(f, depth);
+    }
 }
 
 #[derive(Debug)]
@@ -255,6 +267,17 @@ impl AstNode for Pattern {
 
     fn node_info(&self) -> NodeInfo {
         self.node_info
+    }
+
+    fn pretty(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+        let _ = write!(f, "(");
+
+        for exp in self.expressions.iter() {
+            exp.as_node().pretty(f, depth);
+            let _ = write!(f, ",");
+        }
+
+        let _ = write!(f, ")");
     }
 }
 
@@ -291,6 +314,15 @@ impl AstNode for WhileExpression {
 
     fn node_info(&self) -> NodeInfo {
         self.node_info
+    }
+
+    fn pretty(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+        let _ = write!(f, "while(");
+        self.if_exp.as_node().pretty(f, depth);
+        let _ = writeln!(f, ") {{");
+        let _ = write!(f, "{}", indent(depth + 1));
+        self.then_exp.as_node().pretty(f, depth + 1);
+        let _ = writeln!(f, "\n}}");
     }
 }
 
@@ -333,6 +365,19 @@ impl AstNode for IfThenElseExpression {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
+
+    fn pretty(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+        let _ = write!(f, "if(");
+        self.if_exp.as_node().pretty(f, depth);
+        let _ = writeln!(f, ") then {{");
+        let _ = write!(f, "{}", indent(depth + 1));
+        self.then_exp.as_node().pretty(f, depth + 1);
+        let _ = writeln!(f, "\n}} else {{");
+
+        let _ = write!(f, "{}", indent(depth + 1));
+        self.else_exp.as_node().pretty(f, depth + 1);
+        let _ = writeln!(f, "\n}}");
+    }
 }
 
 #[derive(Debug)]
@@ -355,6 +400,10 @@ impl AstNode for BlockExpression {
             elem.iter()
                 .for_each(|elem| elem.as_node().display(f, depth + 1))
         });
+    }
+
+    fn pretty(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
+        todo!("[ast_prettyprint]")
     }
 }
 
@@ -410,6 +459,11 @@ impl AstNode for LetExpression {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
+
+    fn pretty(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
+        todo!("[ast_prettyprint]")
+
+    }
 }
 
 #[derive(Debug)]
@@ -453,6 +507,10 @@ impl AstNode for AssignmentExpression {
 
     fn node_info(&self) -> NodeInfo {
         self.node_info
+    }
+
+    fn pretty(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
+        todo!("[ast_prettyprint]")
     }
 }
 
@@ -504,6 +562,10 @@ impl AstNode for BinaryOperationExpression {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
+
+    fn pretty(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
+        todo!("[ast_prettyprint]")
+    }
 }
 
 #[derive(Debug)]
@@ -553,6 +615,10 @@ impl AstNode for ComparisonOperationExpression {
 
     fn node_info(&self) -> NodeInfo {
         self.node_info
+    }
+
+    fn pretty(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
+        todo!("[ast_prettyprint]")
     }
 }
 
@@ -680,6 +746,10 @@ impl AstNode for AccessExpression {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
+
+    fn pretty(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
+        todo!("[ast_prettyprint]")
+    }
 }
 
 #[derive(Debug)]
@@ -734,6 +804,10 @@ impl AstNode for UnaryOperationExpression {
 
     fn node_info(&self) -> NodeInfo {
         self.node_info
+    }
+
+    fn pretty(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
+        todo!("[ast_prettyprint]")
     }
 }
 
@@ -797,6 +871,10 @@ impl AstNode for ReturnExpression {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
+
+    fn pretty(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
+        todo!("[ast_prettyprint]")
+    }
 }
 
 impl AstNode for CastExpression {
@@ -811,6 +889,10 @@ impl AstNode for CastExpression {
 
     fn node_info(&self) -> NodeInfo {
         self.node_info
+    }
+
+    fn pretty(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
+        todo!("[ast_prettyprint]")
     }
 }
 
@@ -924,6 +1006,10 @@ impl AstNode for LiteralExpression {
 
     fn node_info(&self) -> NodeInfo {
         self.node_info
+    }
+
+    fn pretty(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
+        todo!("[ast_prettyprint]")
     }
 }
 

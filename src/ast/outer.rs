@@ -50,6 +50,12 @@ impl AstNode for Namespace {
             .iter()
             .for_each(|contents| contents.display(f, depth + 1));
     }
+
+    fn pretty(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
+        
+        todo!("[ast_prettyprint]")
+
+    }
 }
 
 #[derive(Debug)]
@@ -113,6 +119,12 @@ impl AstNode for OuterScope {
                 //.for_each(|elem| elem.display(f, depth + 1))
                 .display(f, depth + 1)
         });
+    }
+
+    fn pretty(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
+        
+        todo!("[ast_prettyprint]")
+
     }
 }
 
@@ -194,6 +206,12 @@ impl AstNode for LetComponent {
             },
         }
     }
+
+    fn pretty(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
+        
+        todo!("[ast_prettyprint]")
+
+    }
 }
 
 #[derive(Debug)]
@@ -259,6 +277,12 @@ impl AstNode for FunctionDeclaration {
 
         self.body.as_node().display(f, depth + 2);
     }
+
+    fn pretty(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
+        
+        todo!("[ast_prettyprint]")
+
+    }
 }
 
 #[derive(Debug)]
@@ -304,6 +328,12 @@ impl AstNode for StructDeclaration {
             }
         }
     }
+
+    fn pretty(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
+        
+        todo!("[ast_prettyprint]")
+
+    }
 }
 
 #[derive(Debug)]
@@ -325,6 +355,10 @@ impl AstNode for UseDeclaration {
 
     fn display(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
         unimplemented!()
+    }
+
+    fn pretty(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
+        todo!("[ast_prettyprint]")
     }
 }
 
@@ -355,6 +389,10 @@ impl AstNode for ScopedNameReference {
                 write!(f, "::").unwrap();
             }
         }
+    }
+
+    fn pretty(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
+        todo!("[ast_prettyprint]")
     }
 }
 
@@ -394,6 +432,10 @@ impl AstNode for StaticVariableDeclaration {
 
     fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         self.expression.as_node().display(f, depth);
+    }
+
+    fn pretty(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
+        todo!("[ast_prettyprint]")
     }
 }
 
