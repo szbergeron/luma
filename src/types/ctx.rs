@@ -2,6 +2,7 @@ use super::impls::*;
 
 use crate::helper::interner::StringSymbol;
 use dashmap::DashMap;
+use rayon::prelude::*;
 use smallvec::SmallVec;
 use std::cell::UnsafeCell;
 use std::fmt::Write;
@@ -9,7 +10,6 @@ use std::sync::atomic;
 use std::sync::atomic::Ordering;
 use std::sync::RwLock;
 use std::sync::{Arc, Weak};
-use rayon::prelude::*;
 
 pub type TypeHandle = Arc<dyn Type>;
 
@@ -137,13 +137,13 @@ pub struct SymbolID(pub u64);
 #[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy)]
 pub struct GlobalTypeID {
     pub cid: CtxID,
-    pub tid: TypeID
+    pub tid: TypeID,
 }
 
 #[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy)]
 pub struct GlobalFunctionID {
     pub cid: CtxID,
-    pub fid: FunctionID
+    pub fid: FunctionID,
 }
 
 //pub type GlobalFunctionID = (CtxID, FunctionID);
@@ -237,7 +237,7 @@ pub struct GlobalCtxNode {
     canonical_local_name: String,
 
     children: DashMap<String, Arc<GlobalCtxNode>>,
-    parent: Weak<GlobalCtxNode>,
+    parent: Option<Weak<GlobalCtxNode>>,
 
     type_ctx: Arc<TypeCtx>,
     func_ctx: Arc<FuncCtx>,
@@ -245,59 +245,40 @@ pub struct GlobalCtxNode {
 
     selfref: Weak<GlobalCtxNode>,
     id: CtxID,
-
     //quark: Arc<super::quark::Quark>,
 }
 
 impl GlobalCtxNode {
-    fn new(name: &str, id: CtxID, parent: Weak<GlobalCtxNode>, global: Weak<GlobalCtxNode>) -> Arc<GlobalCtxNode> {
-        let ctxnode = Arc::new_cyclic(|wr| {
-            GlobalCtxNode {
-                canonical_local_name: name.to_owned(),
-                children: DashMap::new(),
-                type_ctx: Arc::new(TypeCtx::new(id)),
-                func_ctx: Arc::new(FuncCtx::new(id)),
+    fn type_ctx(&self) -> Arc<TypeCtx> {
+        self.type_ctx.clone()
+    }
 
-                //selfref: UnsafeCell::new(Weak::default()),
-                selfref: wr.clone(),
-                quark: super::Quark::new_within(*wr, global),
-                //quark: Arc::new(Quark::empty()),
-                parent,
-                id,
-            }
+    fn new(
+        name: &str,
+        id: CtxID,
+        parent: Option<Weak<GlobalCtxNode>>,
+        global: Option<Weak<GlobalCtxNode>>,
+    ) -> Arc<GlobalCtxNode> {
+        let ctxnode = Arc::new_cyclic(|wr| GlobalCtxNode {
+            canonical_local_name: name.to_owned(),
+            children: DashMap::new(),
+            type_ctx: Arc::new(TypeCtx::new(id)),
+            func_ctx: Arc::new(FuncCtx::new(id)),
+
+            selfref: wr.clone(),
+            quark: match global {
+                Some(global) => super::Quark::new_within(*wr, global),
+                None => super::Quark::new_within(wr.clone(), *wr),
+            },
+            parent,
+            id,
         });
-
-        /*std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
-        let owner = unsafe {
-            let owner = Arc::new(ctxnode);
-
-            // TODO: check how to avoid this being unsafe/potentially UB (*const is
-            // given by Arc::as_ptr, not sure how to make the circular
-            // ref in a safe way during init without requiring mutex + interior mut
-            GlobalCtxNode::set_selfref(Arc::as_ptr(&owner), Arc::downgrade(&owner));
-
-            owner
-        };
-        std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);*/
 
         ctxnode
     }
 
-    // takes ptr to hopefully avoid aliasing concerns
-    /// Only call during a context where s is not concurrently
-    /// accessible!! This modifies s.selfref in a way that is unchecked
-    /*unsafe fn set_selfref(s: *const Self, sr: Weak<Self>) {
-        //(*s).selfref = sr;
-        *((*s).selfref).get() = sr
-    }*/
-
     fn get_selfref_arc(&self) -> Option<Arc<GlobalCtxNode>> {
-        unsafe {
-            // NOTE: relies on selfref being initialized during construction before this
-            // point
-            //(*self.selfref.get()).upgrade()
-            self.selfref.upgrade()
-        }
+        unsafe { self.selfref.upgrade() }
     }
 
     fn name(&self) -> &str {
@@ -333,7 +314,12 @@ impl GlobalCtxNode {
                     .entry(first.to_string())
                     .or_insert_with(|| {
                         let id = CTX_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                        let gcn = GlobalCtxNode::new(first, CtxID(id));
+                        let gcn = GlobalCtxNode::new(
+                            first,
+                            CtxID(id),
+                            None,
+                            Some(Arc::downgrade(&GlobalCtx::get().get_global())),
+                        );
                         into.insert(CtxID(id), gcn.clone());
                         gcn
                     })
@@ -351,11 +337,15 @@ pub struct GlobalCtx {
     entry: Arc<GlobalCtxNode>,
 
     contexts: DashMap<CtxID, Arc<GlobalCtxNode>>,
+    functions: DashMap<GlobalFunctionID, Arc<FunctionImplementation>>,
+    types: DashMap<GlobalTypeID, TypeHandle>,
 }
 
-
-
 impl GlobalCtx {
+    pub fn get_global(&self) -> Arc<GlobalCtxNode> {
+        self.entry.clone()
+    }
+
     pub fn get() -> &'static GlobalCtx {
         static GCTX: GlobalCtx = GlobalCtx::new();
 
@@ -364,8 +354,15 @@ impl GlobalCtx {
 
     pub fn new() -> GlobalCtx {
         GlobalCtx {
-            entry: GlobalCtxNode::new("global", CtxID(CTX_ID.fetch_add(1, Ordering::SeqCst))),
+            entry: GlobalCtxNode::new(
+                "global",
+                CtxID(CTX_ID.fetch_add(1, Ordering::SeqCst)),
+                None,
+                None,
+            ),
             contexts: DashMap::new(),
+            functions: DashMap::new(),
+            types: DashMap::new(),
         }
     }
 
@@ -421,7 +418,6 @@ pub struct FuncCtx {
     by_name: DashMap<StringSymbol, Vec<GlobalFunctionID>>,
 
     all: Vec<FunctionHandle>,
-
     //id_gen: u64,
 }
 
@@ -444,7 +440,6 @@ impl FuncCtx {
         //newfunc.set_id(id);
         //newfunc.id = FunctionID(id);
 
-
         //let id = self.all.len();
         let id = FunctionID(self.all.len() as u64);
 
@@ -461,8 +456,8 @@ impl FuncCtx {
 
     pub fn lookup(&self, fid: FunctionID) -> Option<FunctionHandle> {
         /*self.by_id
-            .get(&fid)
-            .map(|map_entry| map_entry.value().clone())*/
+        .get(&fid)
+        .map(|map_entry| map_entry.value().clone())*/
         //unimplemented!()
         self.all.get(fid.0 as usize).map(|r| r.clone())
     }
@@ -483,22 +478,33 @@ impl FuncCtx {
             .map(|st| self.by_name.get(&st))
             .flatten()
             .map(|entry| entry.value().clone())
-            .unwrap_or_else(|| (0..self.all.len()).map(|idx| GlobalFunctionID { cid: self.ctx_id, fid: FunctionID(idx as u64) }).collect());
+            .unwrap_or_else(|| {
+                (0..self.all.len())
+                    .map(|idx| GlobalFunctionID {
+                        cid: self.ctx_id,
+                        fid: FunctionID(idx as u64),
+                    })
+                    .collect()
+            });
 
-        initial_set = initial_set.into_par_iter().filter(|gfid| {
-            if let Some(f) = self.lookup(gfid.fid) {
-                if f.params.len() != params.len() { return false };
+        initial_set = initial_set
+            .into_par_iter()
+            .filter(|gfid| {
+                if let Some(f) = self.lookup(gfid.fid) {
+                    if f.params.len() != params.len() {
+                        return false;
+                    };
 
-                for (arg_opt, param) in params.iter().zip(f.params.iter().map(|(tid, _)| tid)) {
-                    if let Some(arg) = arg_opt {
+                    for (arg_opt, param) in params.iter().zip(f.params.iter().map(|(tid, _)| tid)) {
+                        if let Some(arg) = arg_opt {}
                     }
-                }
 
-                unimplemented!()
-            } else {
-                false
-            }
-        }).collect();
+                    unimplemented!()
+                } else {
+                    false
+                }
+            })
+            .collect();
 
         //self.by_name.get(&name).map(|map_entry| map_entry.value().first())
 
