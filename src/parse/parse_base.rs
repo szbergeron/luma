@@ -156,7 +156,7 @@ impl<'lexer> Parser<'lexer> {
         //let has_pub = self.eat_match(Token::Public);
         let mut failed = false;
 
-        let (public, mutable, dynamic) = self.parse_symbol_specifiers();
+        let (public, _mutable, _dynamic) = self.parse_symbol_specifiers();
 
         self.expect_next_in(&[Token::Module, Token::Function, Token::Struct, Token::Let])?;
 
@@ -310,15 +310,16 @@ impl<'lexer> Parser<'lexer> {
         }
     }*/
 
+    #[allow(dead_code, unreachable_code)]
     pub fn parse_function_param_list(
         &mut self,
     ) -> Result<Vec<(Box<ast::ExpressionWrapper>, ast::TypeReference)>, ParseResultError> {
-        let mut rvec: Vec<(Box<ast::ExpressionWrapper>, ast::TypeReference)> = Vec::new();
+        let rvec: Vec<(Box<ast::ExpressionWrapper>, ast::TypeReference)> = Vec::new();
         while let Ok(a) = self.atomic_expression() {
             self.hard_expect(Token::Colon)?;
             let tr = self.parse_type_specifier()?;
 
-            let r = (a, tr);
+            let _r = (a, tr);
 
             //rvec.push(r);
             todo!("Function param list parsing is WIP");
@@ -366,7 +367,7 @@ impl<'lexer> Parser<'lexer> {
     ) -> Result<ast::UseDeclaration, ParseResultError> {
         let start = self.hard_expect(Token::Use)?.start;
 
-        let scope = Vec::new();
+        let mut scope = Vec::new();
 
         self.expect_next_in(&[Token::Identifier, Token::Global, Token::Super])
             .hint("Use statements should only start with an identifier or the 'global' or 'super' keywords")?;
@@ -389,8 +390,6 @@ impl<'lexer> Parser<'lexer> {
             scope.push(tw.slice);
 
             end = tw.end;
-
-            unimplemented!()
         }
 
         let node_info = ast::NodeInfo::from_indices(start, end);

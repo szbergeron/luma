@@ -11,7 +11,7 @@ use std::sync::RwLock;
 use super::expressions::TypeReference;
 
 use crate::helper::interner::*;
-use crate::helper::locks::RecursiveRWLock;
+
 
 #[derive(Debug)]
 pub struct Namespace {
@@ -323,7 +323,7 @@ impl AstNode for UseDeclaration {
         self.node_info
     }
 
-    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+    fn display(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
         unimplemented!()
     }
 }
@@ -467,7 +467,7 @@ impl SymbolDeclaration {
             Self::NamespaceDeclaration(ns) => ns.name,
             Self::StructDeclaration(sd) => Some(sd.name),
             Self::ExpressionDeclaration(_ed) => None, // no symbol to export
-            Self::UseDeclaration(fd) => None,
+            Self::UseDeclaration(_ud) => None,
         }
     }
 

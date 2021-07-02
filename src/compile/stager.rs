@@ -10,14 +10,14 @@ use std::path::{Path, PathBuf};
 use std::process;
 
 use crate::mid_repr::ScopeContext;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use crate::ast::*;
 
 use crate::encode::*;
 
 use crate::helper::interner::*;
-use crate::helper::locks::RecursiveRWLock;
+
 
 #[allow(unused_variables, dead_code)]
 pub fn parse_unit<'file>(

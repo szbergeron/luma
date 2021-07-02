@@ -1,4 +1,4 @@
-use super::{CtxID, FunctionImplementation, TypeCtx, TypeHandle, TypeID, GlobalTypeID};
+use super::{CtxID, FunctionImplementation, TypeCtx, TypeID, GlobalTypeID};
 use crate::ast::Span;
 
 use smallvec::SmallVec;
@@ -47,7 +47,7 @@ pub struct FunctionSignature {
     params: SmallVec<[GlobalTypeID; FUNCTION_PARAM_DEFAULT_COUNT]>,
 }
 
-pub trait Type: DynHash + DynEq + AsAny {
+pub trait Type: DynHash + DynEq + AsAny + Send + Sync {
     fn set_tid(&self, tid: TypeID);
     fn canonicalized_name(&self, within: &TypeCtx) -> &str;
     /*// owned for simpler lifetimes,

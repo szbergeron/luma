@@ -5,7 +5,7 @@ use chashmap::CHashMap;
 //use crossbeam::unbounded;
 //use std::collections::HashMap;
 use std::sync::{Arc, Weak};
-use crate::helper::locks::RecursiveRWLock;
+//use crate::helper::locks::RecursiveRWLock;
 
 use once_cell::sync::OnceCell;
 
@@ -53,7 +53,6 @@ pub struct ScopeContext {
     error_sink: crossbeam::Sender<Error>,
 }
 
-use std::mem::drop;
 
 impl AstNode for ScopeContext {
     fn node_info(&self) -> NodeInfo {
@@ -208,11 +207,11 @@ impl ScopeContext {
 
     pub fn add_definition(
         &self,
-        self_rc: Arc<ScopeContext>,
+        _self_rc: Arc<ScopeContext>,
         decl: Arc<std::sync::RwLock<SymbolDeclaration>>,
     ) -> bool {
         let decl_guard = decl.read().unwrap();
-        let is_exported = decl_guard.is_public();
+        let _is_exported = decl_guard.is_public();
         let sname = if let Some(sname) = decl_guard.symbol_name() {
             sname
         } else {
@@ -220,16 +219,16 @@ impl ScopeContext {
             return false;
         };
 
-        let is_context = decl_guard.is_context();
+        let _is_context = decl_guard.is_context();
 
         println!("adding a definition");
         println!("symbol name is {}", sname.resolve());
 
         std::mem::drop(decl_guard);
 
-        let mut result = true;
+        let result = true;
 
-        let nref = decl.clone();
+        let _nref = decl.clone();
 
         /*if self.defined_symbols.get(&sname).is_some() {
             let rg = self.defined_symbols.get(&sname).unwrap();

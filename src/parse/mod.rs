@@ -180,27 +180,7 @@ impl<'lexer> Parser<'lexer> {
         map
     }*/
 
-    pub fn print_errors(&self, handle: FileHandleRef) {
-        //let linemap = self.build_line_map(input);
-        //let input: std::sync::Arc<String> = handle.get().unwrap();
-        //let input = handle.slice().unwrap();
-        let input = handle.contents;
-        let lines_iter = input.lines();
-        //let v: Vec<&str> = lines.collect();
-        let lines: Vec<&str> = lines_iter.collect();
-        //let _read_borrow = path_handle.read().unwrap();
-        let stdout = std::io::stdout();
-        let handle = stdout.lock();
-
-        println!();
-        println!("{}", "Errors:".red());
-        if self.errors.len() == 0 {
-            println!("{}", "No errors reported".blue());
-        }
-        self.print_bar();
-        println!();
-        for e in self.errors.iter() {
-            println!();
+    fn print_err(&self, e: &ParseResultError, lines: &Vec<&str>) {
             match e {
                 ParseResultError::InternalParseIssue => {}
                 ParseResultError::EndOfFile => {
@@ -230,8 +210,36 @@ impl<'lexer> Parser<'lexer> {
                         start,
                         end,
                     );
+                },
+                ParseResultError::ErrorWithHint { hint, original } => {
+                    self.print_err(&original, lines);
+                    eprintln!("Hint: {}", hint);
                 }
             }
+    }
+
+    pub fn print_errors(&self, handle: FileHandleRef) {
+        //let linemap = self.build_line_map(input);
+        //let input: std::sync::Arc<String> = handle.get().unwrap();
+        //let input = handle.slice().unwrap();
+        let input = handle.contents;
+        let lines_iter = input.lines();
+        //let v: Vec<&str> = lines.collect();
+        let lines: Vec<&str> = lines_iter.collect();
+        //let _read_borrow = path_handle.read().unwrap();
+        let stdout = std::io::stdout();
+        let handle = stdout.lock();
+
+        println!();
+        println!("{}", "Errors:".red());
+        if self.errors.len() == 0 {
+            println!("{}", "No errors reported".blue());
+        }
+        self.print_bar();
+        println!();
+        for e in self.errors.iter() {
+            println!();
+            self.print_err(e, &lines);
             println!();
 
             self.print_bar();

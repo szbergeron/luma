@@ -7,10 +7,10 @@
  **/
 
 //use super::types::GlobalTypeID;
-use super::{GlobalTypeID, GlobalFunctionID, GlobalCtxNode, FuncCtx, TypeCtx};
+use super::{GlobalTypeID, GlobalFunctionID, GlobalCtxNode};
 use crate::helper::interner::StringSymbol;
 
-use std::sync::{Arc, Weak};
+use std::sync::Weak;
 
 pub struct QuarkDeclID(usize);
 
@@ -19,8 +19,8 @@ pub struct Query {
 }
 
 impl Query {
-    pub fn filter_name(self, name: StringSymbol) -> Self {
-        let b: Vec<_> = Vec::new();
+    pub fn filter_name(self, _name: StringSymbol) -> Self {
+        let mut b: Vec<_> = Vec::new();
         b.push(5);
         unimplemented!()
     }
@@ -105,24 +105,24 @@ pub enum Constraint {
 
 //pub struct {}
 
-pub struct QueryResult {
+/*pub struct QueryResult {
     yes: bool,
-}
+}*/
 
 /// A Quark represents a query context, with an opaque implementation
 /// for how queries are computed
 pub struct Quark {
-    within: Weak<GlobalCtxNode>,
-    global: Weak<GlobalCtxNode>,
+    _within: Weak<GlobalCtxNode>,
+    _global: Weak<GlobalCtxNode>,
 
 }
 
 impl Quark {
-    pub fn declare_trait(&mut self, name: StringSymbol) -> QuarkDeclID {
+    pub fn declare_trait(&mut self, _name: StringSymbol) -> QuarkDeclID {
         unimplemented!()
     }
 
-    pub fn add_to_trait(&mut self, p_trait: QuarkDeclID, trait_member_name: StringSymbol, trait_member_id: GlobalTypeID) -> () {
+    pub fn add_to_trait(&mut self, _p_trait: QuarkDeclID, _trait_member_name: StringSymbol, _trait_member_id: GlobalTypeID) -> () {
     }
 
     /// If a coercion from the argument type to the target type exists,
@@ -140,8 +140,8 @@ impl Quark {
 
     pub fn new_within(within: Weak<GlobalCtxNode>, global: Weak<GlobalCtxNode>) -> Quark {
         Quark {
-            within,
-            global,
+            _within: within,
+            _global: global,
         }
     }
     

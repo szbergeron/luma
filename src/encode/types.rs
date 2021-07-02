@@ -10,7 +10,7 @@ impl Variable {
 
         within.writeln(format!("; phi node with variables {} and {}", self.vname, other.vname));
 
-        let new_var = within.next_local("phi_local_", &self.vtype);
+        let _new_var = within.next_local("phi_local_", &self.vtype);
 
         //within.writeln(format!("phi 
         todo!("Phi nodes not yet complete")

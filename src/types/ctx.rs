@@ -4,14 +4,15 @@ use crate::helper::interner::{SpurHelper, StringSymbol};
 use dashmap::DashMap;
 use rayon::prelude::*;
 use smallvec::SmallVec;
-use std::cell::UnsafeCell;
+
 use std::fmt::Write;
-use std::sync::atomic;
+
 use std::sync::atomic::Ordering;
-use std::sync::RwLock;
+
 use std::sync::{Arc, Weak};
 
-use crate::ast::{indent, AstNode};
+use crate::ast::indent;
+use once_cell::sync::OnceCell;
 
 pub type TypeHandle = Arc<dyn Type>;
 
@@ -198,9 +199,9 @@ pub struct Function {
     pub id: FunctionID,
 
     params: Vec<(TypeID, String)>,
-    returns: TypeID,
+    _returns: TypeID,
 
-    from: Implementation,
+    _from: Implementation,
 }
 
 impl Function {}
@@ -298,7 +299,7 @@ pub struct GlobalCtxNode {
     canonical_local_name: String,
 
     children: DashMap<String, Arc<GlobalCtxNode>>,
-    parent: Option<Weak<GlobalCtxNode>>,
+    _parent: Option<Weak<GlobalCtxNode>>,
 
     type_ctx: Arc<TypeCtx>,
     func_ctx: Arc<FuncCtx>,
@@ -312,7 +313,7 @@ pub struct GlobalCtxNode {
 }
 
 impl GlobalCtxNode {
-    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+    pub fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let _ = writeln!(
             f,
             "{}Global context <canon {}> has id {}",
@@ -322,18 +323,26 @@ impl GlobalCtxNode {
         );
 
         let _ = writeln!(f, "{}Imports:", indent(depth + 1));
-        for (_, ipt) in self.imports {
-            let _ = writeln!(f, "{}{}", indent(depth + 2), ipt);
+        for dr in self.imports.iter() {
+            let _ = writeln!(f, "{}{}", indent(depth + 2), dr.value());
         }
 
         let _ = writeln!(f, "{} Exports:", indent(depth + 1));
-        for (_, ept) in self.exports {
-            let _ = writeln!(f, "{}{}", indent(depth + 2), ept);
+        for dr in self.exports.iter() {
+            let _ = writeln!(f, "{}{}", indent(depth + 2), dr.value());
         }
     }
 
-    fn type_ctx(&self) -> Arc<TypeCtx> {
+    pub fn type_ctx(&self) -> Arc<TypeCtx> {
         self.type_ctx.clone()
+    }
+
+    pub fn func_ctx(&self) -> Arc<FuncCtx> {
+        self.func_ctx.clone()
+    }
+
+    pub fn quark(&self) -> &super::Quark {
+        &self.quark
     }
 
     fn new(
@@ -353,10 +362,10 @@ impl GlobalCtxNode {
 
             selfref: wr.clone(),
             quark: match global {
-                Some(global) => super::Quark::new_within(*wr, global),
-                None => super::Quark::new_within(wr.clone(), *wr),
+                Some(global) => super::Quark::new_within(wr.clone(), global),
+                None => super::Quark::new_within(wr.clone(), wr.clone()),
             },
-            parent,
+            _parent: parent,
             id,
         });
 
@@ -364,10 +373,10 @@ impl GlobalCtxNode {
     }
 
     fn get_selfref_arc(&self) -> Option<Arc<GlobalCtxNode>> {
-        unsafe { self.selfref.upgrade() }
+        self.selfref.upgrade()
     }
 
-    fn name(&self) -> &str {
+    pub fn name(&self) -> &str {
         self.canonical_local_name.as_str()
     }
 
@@ -434,9 +443,9 @@ impl GlobalCtx {
     }
 
     pub fn get() -> &'static GlobalCtx {
-        static GCTX: GlobalCtx = GlobalCtx::new();
+        static GCTX: OnceCell<GlobalCtx> = OnceCell::new(); //GlobalCtx::new();
 
-        &GCTX
+        GCTX.get_or_init(|| GlobalCtx::new())
     }
 
     pub fn new() -> GlobalCtx {
@@ -521,7 +530,7 @@ impl FuncCtx {
         }
     }
 
-    pub fn define(&self, mut newfunc: Function) -> FunctionID {
+    pub fn define(&mut self, mut newfunc: Function) -> FunctionID {
         //let id = self.id_gen;
         //self.id_gen += 1;
         //newfunc.set_id(id);
@@ -553,7 +562,7 @@ impl FuncCtx {
         &self,
         name: Option<StringSymbol>,
         params: &[Option<TypeID>],
-        returns: Option<TypeID>,
+        _returns: Option<TypeID>,
     ) -> Vec<FunctionID> {
         //let name = name.expect("TODO: function name elision");
 
@@ -582,8 +591,8 @@ impl FuncCtx {
                         return false;
                     };
 
-                    for (arg_opt, param) in params.iter().zip(f.params.iter().map(|(tid, _)| tid)) {
-                        if let Some(arg) = arg_opt {}
+                    for (arg_opt, _param) in params.iter().zip(f.params.iter().map(|(tid, _)| tid)) {
+                        if let Some(_arg) = arg_opt {}
                     }
 
                     unimplemented!()
@@ -613,6 +622,10 @@ pub struct TypeCtx {
 }
 
 impl TypeCtx {
+    pub fn id(&self) -> CtxID {
+        self.ctx_id
+    }
+
     pub fn new(within: CtxID) -> TypeCtx {
         TypeCtx {
             ctx_id: within,
@@ -622,7 +635,7 @@ impl TypeCtx {
         }
     }
 
-    pub fn define<T: 'static>(&self, mut newtype: T) -> TypeID
+    pub fn define<T: 'static>(&self, newtype: T) -> TypeID
     where
         T: Type,
     {
