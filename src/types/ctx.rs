@@ -1,6 +1,6 @@
 use super::impls::*;
 
-use crate::helper::interner::StringSymbol;
+use crate::helper::interner::{StringSymbol, SpurHelper};
 use dashmap::DashMap;
 use rayon::prelude::*;
 use smallvec::SmallVec;
@@ -11,26 +11,58 @@ use std::sync::atomic::Ordering;
 use std::sync::RwLock;
 use std::sync::{Arc, Weak};
 
+use crate::ast::{AstNode, indent};
+
 pub type TypeHandle = Arc<dyn Type>;
 
 pub type FunctionHandle = Arc<Function>;
 
 //pub type TypeID = u64;
-#[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy)]
+#[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy, Debug)]
 pub struct TypeID(pub u64);
 
-#[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy)]
+#[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy, Debug)]
 pub struct FunctionID(pub u64);
 
-/*impl std::ops::Deref for TypeID {
-    type Target = u64;
+#[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy, Debug)]
+pub struct CtxID(pub u64);
 
-    fn deref(&self) -> &Self::Target {
-        &self.0
+#[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy, Debug)]
+pub struct SymbolID(pub u64);
+//pub type SymbolID = u64;
+
+//pub type GlobalTypeID = (CtxID, TypeID);
+#[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy, Debug)]
+pub struct GlobalTypeID {
+    pub cid: CtxID,
+    pub tid: TypeID,
+}
+
+#[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy, Debug)]
+pub struct GlobalFunctionID {
+    pub cid: CtxID,
+    pub fid: FunctionID,
+}
+
+impl std::fmt::Display for GlobalFunctionID {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "GlobalFunctionID({}, {})", self.cid.0, self.fid.0)
     }
-}*/
+}
 
-pub enum ImportTarget {
+impl std::fmt::Display for GlobalTypeID {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "GlobalTypeID({}, {})", self.cid.0, self.tid.0)
+    }
+}
+
+impl std::fmt::Display for CtxID {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "CtxID({})", self.0)
+    }
+}
+
+pub enum Resolution {
     /// An unresolved import is represented by the sequence of
     /// qualifying strings (including the final qualification)
     /// that were provided with the statement within a context
@@ -54,9 +86,43 @@ pub enum ImportTarget {
     Scope(CtxID),
 }
 
+impl std::fmt::Display for Resolution {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Unresolved(v) => {
+                let s: String = v.iter().fold(String::new(), |p, ss| { p + ss.resolve() });
+
+                write!(f, "{}", s)
+            },
+            Self::Function(fid) => write!(f, "{}", fid),
+            Self::Type(tid) => write!(f, "{}", tid),
+            Self::Scope(cid) => write!(f, "{}", cid),
+        }
+    }
+}
+
 pub struct Import {
     pub alias: Option<StringSymbol>,
-    pub resolution: ImportTarget,
+    pub resolution: Resolution,
+}
+
+pub struct Export {
+    pub alias: Option<StringSymbol>,
+    pub resolution: Resolution,
+}
+
+impl std::fmt::Display for Import {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        //write!(f, "({})", self.0)
+        write!(f, "use {} {}", self.resolution, self.alias.map(|ss| "as ".to_owned() + ss.resolve()).unwrap_or(String::new()))
+    }
+}
+
+impl std::fmt::Display for Export {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        //write!(f, "({})", self.0)
+        write!(f, "export {} {}", self.resolution, self.alias.map(|ss| "as ".to_owned() + ss.resolve()).unwrap_or(String::new()))
+    }
 }
 
 /// CastDistance represents how far one type is from another
@@ -126,25 +192,6 @@ pub struct Function {
 impl Function {}
 
 //pub type CtxID = u64;
-#[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy)]
-pub struct CtxID(pub u64);
-
-#[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy)]
-pub struct SymbolID(pub u64);
-//pub type SymbolID = u64;
-
-//pub type GlobalTypeID = (CtxID, TypeID);
-#[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy)]
-pub struct GlobalTypeID {
-    pub cid: CtxID,
-    pub tid: TypeID,
-}
-
-#[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy)]
-pub struct GlobalFunctionID {
-    pub cid: CtxID,
-    pub fid: FunctionID,
-}
 
 //pub type GlobalFunctionID = (CtxID, FunctionID);
 //pub type GlobalSymbolID = (CtxID, SymbolID);
@@ -245,10 +292,31 @@ pub struct GlobalCtxNode {
 
     selfref: Weak<GlobalCtxNode>,
     id: CtxID,
-    //quark: Arc<super::quark::Quark>,
+
+    imports: DashMap<StringSymbol, Import>,
+    exports: DashMap<StringSymbol, Export>,
 }
 
 impl GlobalCtxNode {
+    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+        let _ = writeln!(
+            f,
+            "{} Global context <canon {}> has id {}",
+            indent(depth),
+            self.canonical_local_name,
+            self.id);
+
+        let _ = writeln!(
+            f,
+            "{} Imports:",
+            indent(depth + 1));
+
+        let _ = writeln!(
+            f,
+            "{} Exports:",
+            indent(depth + 1));
+    }
+
     fn type_ctx(&self) -> Arc<TypeCtx> {
         self.type_ctx.clone()
     }
@@ -264,6 +332,9 @@ impl GlobalCtxNode {
             children: DashMap::new(),
             type_ctx: Arc::new(TypeCtx::new(id)),
             func_ctx: Arc::new(FuncCtx::new(id)),
+
+            imports: DashMap::new(),
+            exports: DashMap::new(),
 
             selfref: wr.clone(),
             quark: match global {
@@ -337,8 +408,10 @@ pub struct GlobalCtx {
     entry: Arc<GlobalCtxNode>,
 
     contexts: DashMap<CtxID, Arc<GlobalCtxNode>>,
+
     functions: DashMap<GlobalFunctionID, Arc<FunctionImplementation>>,
     types: DashMap<GlobalTypeID, TypeHandle>,
+
 }
 
 impl GlobalCtx {
