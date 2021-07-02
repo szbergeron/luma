@@ -113,9 +113,8 @@ pub struct QueryResult {
 /// for how queries are computed
 pub struct Quark {
     within: Weak<GlobalCtxNode>,
+    global: Weak<GlobalCtxNode>,
 
-    type_ctx: Arc<TypeCtx>,
-    func_ctx: Arc<FuncCtx>,
 }
 
 impl Quark {
@@ -136,6 +135,13 @@ impl Quark {
             None
         } else {
             unimplemented!()
+        }
+    }
+
+    pub fn new_within(within: Weak<GlobalCtxNode>, global: Weak<GlobalCtxNode>) -> Quark {
+        Quark {
+            within,
+            global,
         }
     }
     

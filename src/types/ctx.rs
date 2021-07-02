@@ -55,8 +55,8 @@ pub enum ImportTarget {
 }
 
 pub struct Import {
-    pub alias: StringSymbol,
-    pub target: ImportTarget,
+    pub alias: Option<StringSymbol>,
+    pub resolution: ImportTarget,
 }
 
 /// CastDistance represents how far one type is from another
@@ -239,27 +239,35 @@ pub struct GlobalCtxNode {
     children: DashMap<String, Arc<GlobalCtxNode>>,
     parent: Weak<GlobalCtxNode>,
 
+    type_ctx: Arc<TypeCtx>,
+    func_ctx: Arc<FuncCtx>,
+    quark: super::Quark,
 
-    selfref: std::cell::UnsafeCell<Weak<GlobalCtxNode>>,
+    selfref: Weak<GlobalCtxNode>,
     id: CtxID,
 
-    quark: Arc<super::quark::Quark>,
+    //quark: Arc<super::quark::Quark>,
 }
 
 impl GlobalCtxNode {
-    fn new(name: &str, id: CtxID, parent: Weak<GlobalCtxNode>) -> Arc<GlobalCtxNode> {
-        let ctxnode = GlobalCtxNode {
-            canonical_local_name: name.to_owned(),
-            children: DashMap::new(),
-            //type_ctx: Arc::new(TypeCtx::new(id)),
-            //func_ctx: Arc::new(FuncCtx::new(id)),
-            selfref: UnsafeCell::new(Weak::default()),
-            quark: Arc::new(Quark::empty()),
-            parent,
-            id,
-        };
+    fn new(name: &str, id: CtxID, parent: Weak<GlobalCtxNode>, global: Weak<GlobalCtxNode>) -> Arc<GlobalCtxNode> {
+        let ctxnode = Arc::new_cyclic(|wr| {
+            GlobalCtxNode {
+                canonical_local_name: name.to_owned(),
+                children: DashMap::new(),
+                type_ctx: Arc::new(TypeCtx::new(id)),
+                func_ctx: Arc::new(FuncCtx::new(id)),
 
-        std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
+                //selfref: UnsafeCell::new(Weak::default()),
+                selfref: wr.clone(),
+                quark: super::Quark::new_within(*wr, global),
+                //quark: Arc::new(Quark::empty()),
+                parent,
+                id,
+            }
+        });
+
+        /*std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
         let owner = unsafe {
             let owner = Arc::new(ctxnode);
 
@@ -270,24 +278,25 @@ impl GlobalCtxNode {
 
             owner
         };
-        std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
+        std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);*/
 
-        owner
+        ctxnode
     }
 
     // takes ptr to hopefully avoid aliasing concerns
     /// Only call during a context where s is not concurrently
     /// accessible!! This modifies s.selfref in a way that is unchecked
-    unsafe fn set_selfref(s: *const Self, sr: Weak<Self>) {
+    /*unsafe fn set_selfref(s: *const Self, sr: Weak<Self>) {
         //(*s).selfref = sr;
         *((*s).selfref).get() = sr
-    }
+    }*/
 
     fn get_selfref_arc(&self) -> Option<Arc<GlobalCtxNode>> {
         unsafe {
             // NOTE: relies on selfref being initialized during construction before this
             // point
-            (*self.selfref.get()).upgrade()
+            //(*self.selfref.get()).upgrade()
+            self.selfref.upgrade()
         }
     }
 
