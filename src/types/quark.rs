@@ -7,12 +7,13 @@
  **/
 
 //use super::types::GlobalTypeID;
-use super::{GlobalTypeID, GlobalFunctionID};
+use super::{GlobalTypeID, GlobalFunctionID, GlobalCtxNode};
 use crate::helper::interner::StringSymbol;
 
 /// A Quark represents a query context, with an opaque implementation
 /// for how queries are computed
 pub struct Quark {
+    within: *const GlobalCtxNode,
 }
 
 pub struct QuarkDeclID(usize);
@@ -108,12 +109,35 @@ pub enum Constraint {
 
 //pub struct {}
 
+pub struct QueryResult {
+    yes: bool,
+}
+
 impl Quark {
     pub fn declare_trait(&mut self, name: StringSymbol) -> QuarkDeclID {
         unimplemented!()
     }
 
     pub fn add_to_trait(&mut self, p_trait: QuarkDeclID, trait_member_name: StringSymbol, trait_member_id: GlobalTypeID) -> () {
+    }
+
+    /// If a coercion from the argument type to the target type exists,
+    /// a function that accomplishes the conversion is provided as a Some(_) return value
+    ///
+    /// If no conversion exists, or any conversion is not resolvable, then None is returned
+    pub fn coerces(&self, argument: GlobalTypeID, target: GlobalTypeID) -> Option<GlobalFunctionID> {
+        if argument != target {
+            // TODO: don't currently handle upcasting/traitcasting of params
+            None
+        } else {
+            unimplemented!()
+        }
+    }
+
+    fn inner_ref(&self) -> &GlobalCtxNode {
+        unsafe {
+            &*self.within
+        }
     }
 
     //pub fn 

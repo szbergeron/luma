@@ -204,7 +204,7 @@ pub fn generate_typeid() -> TypeID {
 }
 
 // interior mut type
-struct GlobalCtxNode {
+pub struct GlobalCtxNode {
     canonical_local_name: String,
     children: DashMap<String, Arc<GlobalCtxNode>>,
     //localtypes: DashMap<&'input str, Arc<Ctx<'input>>>,
