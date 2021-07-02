@@ -7,14 +7,10 @@
  **/
 
 //use super::types::GlobalTypeID;
-use super::{GlobalTypeID, GlobalFunctionID, GlobalCtxNode};
+use super::{GlobalTypeID, GlobalFunctionID, GlobalCtxNode, FuncCtx, TypeCtx};
 use crate::helper::interner::StringSymbol;
 
-/// A Quark represents a query context, with an opaque implementation
-/// for how queries are computed
-pub struct Quark {
-    within: *const GlobalCtxNode,
-}
+use std::sync::{Arc, Weak};
 
 pub struct QuarkDeclID(usize);
 
@@ -113,6 +109,15 @@ pub struct QueryResult {
     yes: bool,
 }
 
+/// A Quark represents a query context, with an opaque implementation
+/// for how queries are computed
+pub struct Quark {
+    within: Weak<GlobalCtxNode>,
+
+    type_ctx: Arc<TypeCtx>,
+    func_ctx: Arc<FuncCtx>,
+}
+
 impl Quark {
     pub fn declare_trait(&mut self, name: StringSymbol) -> QuarkDeclID {
         unimplemented!()
@@ -133,12 +138,19 @@ impl Quark {
             unimplemented!()
         }
     }
+    
 
-    fn inner_ref(&self) -> &GlobalCtxNode {
+    /*fn within_ref(&self) -> &GlobalCtxNode {
         unsafe {
-            &*self.within
+            //&*self.within
         }
     }
+
+    fn global_ref(&self) -> &GlobalCtxNode {
+        unsafe {
+            &*self.global
+        }
+    }*/
 
     //pub fn 
 }

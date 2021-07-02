@@ -30,6 +30,35 @@ pub struct FunctionID(pub u64);
     }
 }*/
 
+pub enum ImportTarget {
+    /// An unresolved import is represented by the sequence of
+    /// qualifying strings (including the final qualification)
+    /// that were provided with the statement within a context
+    Unresolved(Vec<StringSymbol>),
+
+    /// A resolved function import specifies a global
+    /// function reference within this scope. This
+    /// refers to the definition only, not any monomorphization
+    /// or de-canonicalized form of the function
+    Function(GlobalFunctionID),
+
+    /// A resolved type import specifies a global
+    /// type reference within this scope. This
+    /// refers to the definition only, not any monomorphization
+    /// or de-canonicalized form of the type
+    Type(GlobalTypeID),
+
+    /// A resolved scope import specifies the id
+    /// of a GlobalCtxNode, and can be used for doing
+    /// further qualifying resolutions later
+    Scope(CtxID),
+}
+
+pub struct Import {
+    pub alias: StringSymbol,
+    pub target: ImportTarget,
+}
+
 /// CastDistance represents how far one type is from another
 /// It can be applied to individual types (a class to its direct supertype is
 /// Finite(1) distance from the supertype), or to composite types such as
@@ -206,23 +235,27 @@ pub fn generate_typeid() -> TypeID {
 // interior mut type
 pub struct GlobalCtxNode {
     canonical_local_name: String,
+
     children: DashMap<String, Arc<GlobalCtxNode>>,
-    //localtypes: DashMap<&'input str, Arc<Ctx<'input>>>,
-    type_ctx: Arc<TypeCtx>,
-    func_ctx: Arc<FuncCtx>,
+    parent: Weak<GlobalCtxNode>,
+
 
     selfref: std::cell::UnsafeCell<Weak<GlobalCtxNode>>,
     id: CtxID,
+
+    quark: Arc<super::quark::Quark>,
 }
 
 impl GlobalCtxNode {
-    fn new(name: &str, id: CtxID) -> Arc<GlobalCtxNode> {
+    fn new(name: &str, id: CtxID, parent: Weak<GlobalCtxNode>) -> Arc<GlobalCtxNode> {
         let ctxnode = GlobalCtxNode {
             canonical_local_name: name.to_owned(),
             children: DashMap::new(),
-            type_ctx: Arc::new(TypeCtx::new(id)),
-            func_ctx: Arc::new(FuncCtx::new(id)),
+            //type_ctx: Arc::new(TypeCtx::new(id)),
+            //func_ctx: Arc::new(FuncCtx::new(id)),
             selfref: UnsafeCell::new(Weak::default()),
+            quark: Arc::new(Quark::empty()),
+            parent,
             id,
         };
 
@@ -262,9 +295,9 @@ impl GlobalCtxNode {
         self.canonical_local_name.as_str()
     }
 
-    fn type_ctx(&self) -> Arc<TypeCtx> {
+    /*fn type_ctx(&self) -> Arc<TypeCtx> {
         self.type_ctx.clone()
-    }
+    }*/
 
     fn nsctx_for(&self, scope: &[&str]) -> Option<Arc<GlobalCtxNode>> {
         //match scope {
