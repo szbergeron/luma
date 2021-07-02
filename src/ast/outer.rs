@@ -2,6 +2,7 @@ use super::base::*;
 use super::expressions::ExpressionWrapper;
 
 
+
 use crate::helper::lex_wrap::ParseResultError;
 //use std::rc::Rc;
 use std::sync::Arc;
@@ -51,11 +52,6 @@ impl AstNode for Namespace {
             .for_each(|contents| contents.display(f, depth + 1));
     }
 
-    fn pretty(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
-        
-        todo!("[ast_prettyprint]")
-
-    }
 }
 
 #[derive(Debug)]
@@ -121,10 +117,16 @@ impl AstNode for OuterScope {
         });
     }
 
-    fn pretty(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
+    fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
         
-        todo!("[ast_prettyprint]")
+        let _ = writeln!(f, "{}File {}", indent(depth), self.node_info);
 
+        for decl in self.declarations.iter() {
+            let l = decl.read();
+            let _ = write!(f, "{}", indent(depth + 1));
+
+            l.unwrap().as_node().pretty(f, depth + 1);
+        }
     }
 }
 
@@ -207,11 +209,6 @@ impl AstNode for LetComponent {
         }
     }
 
-    fn pretty(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
-        
-        todo!("[ast_prettyprint]")
-
-    }
 }
 
 #[derive(Debug)]
@@ -278,11 +275,6 @@ impl AstNode for FunctionDeclaration {
         self.body.as_node().display(f, depth + 2);
     }
 
-    fn pretty(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
-        
-        todo!("[ast_prettyprint]")
-
-    }
 }
 
 #[derive(Debug)]
@@ -329,11 +321,6 @@ impl AstNode for StructDeclaration {
         }
     }
 
-    fn pretty(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
-        
-        todo!("[ast_prettyprint]")
-
-    }
 }
 
 #[derive(Debug)]
@@ -353,13 +340,15 @@ impl AstNode for UseDeclaration {
         self.node_info
     }
 
-    fn display(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
-        unimplemented!()
+    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+        let uses: Vec<&'static str> = self.scope.iter().map(|ss| ss.resolve()).collect();
+        let _ = writeln!(f, "{}UseDeclaration of {:?} as {}",
+                 indent(depth),
+                 uses,
+                 "<unaliased>",
+                 );
     }
 
-    fn pretty(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
-        todo!("[ast_prettyprint]")
-    }
 }
 
 #[derive(Debug)]
@@ -391,9 +380,6 @@ impl AstNode for ScopedNameReference {
         }
     }
 
-    fn pretty(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
-        todo!("[ast_prettyprint]")
-    }
 }
 
 impl IntoAstNode for ScopedNameReference {
@@ -434,9 +420,6 @@ impl AstNode for StaticVariableDeclaration {
         self.expression.as_node().display(f, depth);
     }
 
-    fn pretty(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
-        todo!("[ast_prettyprint]")
-    }
 }
 
 #[derive(Debug)]

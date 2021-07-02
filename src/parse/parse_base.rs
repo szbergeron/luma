@@ -158,7 +158,7 @@ impl<'lexer> Parser<'lexer> {
 
         let (public, _mutable, _dynamic) = self.parse_symbol_specifiers();
 
-        self.expect_next_in(&[Token::Module, Token::Function, Token::Struct, Token::Let])?;
+        self.expect_next_in(&[Token::Module, Token::Function, Token::Struct, Token::Let, Token::Use])?;
 
 
         if let Ok(tw) = self.lex.la(0) {

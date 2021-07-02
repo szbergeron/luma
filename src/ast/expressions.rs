@@ -60,9 +60,6 @@ impl AstNode for TypeReference {
         self.node_info
     }
 
-    fn pretty(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
-        todo!("[ast_prettyprint]")
-    }
 }
 
 impl IntoAstNode for TypeReference {
@@ -192,7 +189,7 @@ impl AstNode for WildcardExpression {
         self.node_info
     }
 
-    fn pretty(&self, f: &mut std::fmt::Formatter<'_>, _depth: usize) {
+    fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
         let _ = writeln!(f, "*");
     }
 }
@@ -232,7 +229,7 @@ impl AstNode for StatementExpression {
         self.node_info
     }
 
-    fn pretty(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+    fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
         self.subexpr.as_node().pretty(f, depth);
     }
 }
@@ -269,7 +266,7 @@ impl AstNode for Pattern {
         self.node_info
     }
 
-    fn pretty(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+    fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
         let _ = write!(f, "(");
 
         for exp in self.expressions.iter() {
@@ -316,7 +313,7 @@ impl AstNode for WhileExpression {
         self.node_info
     }
 
-    fn pretty(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+    fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
         let _ = write!(f, "while(");
         self.if_exp.as_node().pretty(f, depth);
         let _ = writeln!(f, ") {{");
@@ -366,7 +363,7 @@ impl AstNode for IfThenElseExpression {
         self.node_info
     }
 
-    fn pretty(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+    fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
         let _ = write!(f, "if(");
         self.if_exp.as_node().pretty(f, depth);
         let _ = writeln!(f, ") then {{");
@@ -402,9 +399,6 @@ impl AstNode for BlockExpression {
         });
     }
 
-    fn pretty(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
-        todo!("[ast_prettyprint]")
-    }
 }
 
 impl BlockExpression {
@@ -460,10 +454,6 @@ impl AstNode for LetExpression {
         self.node_info
     }
 
-    fn pretty(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
-        todo!("[ast_prettyprint]")
-
-    }
 }
 
 #[derive(Debug)]
@@ -509,9 +499,6 @@ impl AstNode for AssignmentExpression {
         self.node_info
     }
 
-    fn pretty(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
-        todo!("[ast_prettyprint]")
-    }
 }
 
 #[derive(Debug)]
@@ -563,9 +550,6 @@ impl AstNode for BinaryOperationExpression {
         self.node_info
     }
 
-    fn pretty(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
-        todo!("[ast_prettyprint]")
-    }
 }
 
 #[derive(Debug)]
@@ -617,9 +601,6 @@ impl AstNode for ComparisonOperationExpression {
         self.node_info
     }
 
-    fn pretty(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
-        todo!("[ast_prettyprint]")
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -747,9 +728,6 @@ impl AstNode for AccessExpression {
         self.node_info
     }
 
-    fn pretty(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
-        todo!("[ast_prettyprint]")
-    }
 }
 
 #[derive(Debug)]
@@ -806,9 +784,6 @@ impl AstNode for UnaryOperationExpression {
         self.node_info
     }
 
-    fn pretty(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
-        todo!("[ast_prettyprint]")
-    }
 }
 
 #[derive(Debug)]
@@ -872,9 +847,6 @@ impl AstNode for ReturnExpression {
         self.node_info
     }
 
-    fn pretty(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
-        todo!("[ast_prettyprint]")
-    }
 }
 
 impl AstNode for CastExpression {
@@ -891,9 +863,6 @@ impl AstNode for CastExpression {
         self.node_info
     }
 
-    fn pretty(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
-        todo!("[ast_prettyprint]")
-    }
 }
 
 #[derive(Debug)]
@@ -1008,9 +977,6 @@ impl AstNode for LiteralExpression {
         self.node_info
     }
 
-    fn pretty(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
-        todo!("[ast_prettyprint]")
-    }
 }
 
 /*pub trait Type: std::fmt::Debug + std::clone::Clone {

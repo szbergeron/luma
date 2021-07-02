@@ -101,7 +101,9 @@ pub trait AstNode: std::fmt::Debug + Send + Sync {
     /// Should display as a "source like" form. May be parenthesized,
     /// and is allowed to include type information, but should
     /// omit things like location, parse success, strict node type and such
-    fn pretty(&self, f: &mut std::fmt::Formatter<'_>, depth: usize);
+    fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
+        todo!("[ast_prettyprint]");
+    }
 
     fn start(&self) -> Option<CodeLocation> {
         self.node_info().as_parsed().map(|node| node.span.start)
@@ -133,7 +135,7 @@ impl AstNode for Option<&dyn AstNode> {
         }
     }
 
-    fn pretty(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
+    fn pretty(&self, _f: &mut dyn std::fmt::Write, _depth: usize) {
         todo!("[ast_prettyprint]")
     }
 }

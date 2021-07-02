@@ -107,7 +107,7 @@ impl AstNode for ScopeContext {
             */
     }
 
-    fn pretty(&self, _f: &mut std::fmt::Formatter<'_>, _depth: usize) {
+    fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
         todo!("[ast_prettyprint]")
     }
 }

@@ -55,6 +55,11 @@ pub fn parse_unit<'file>(
             if cflags.dump_tree {
                 println!("Gets AST of: {}", punit);
             }
+            if cflags.dump_pretty {
+                let mut s = String::new();
+                punit.pretty(&mut s, 0);
+                println!("{}", s);
+            }
         }
         Err(err) => {
             println!("Failed to parse with error: {:?}", err);
@@ -75,6 +80,7 @@ pub struct EFlags {
 pub struct CFlags {
     pub arg_parsing_failed: bool,
     pub dump_tree: bool,
+    pub dump_pretty: bool,
     pub eflags: EFlags,
     pub thread_count: usize,
 }
@@ -205,6 +211,7 @@ fn parse_args(args: &[&str]) -> Result<ArgResult, &'static str> {
             "-i" => state = State::ExpectInput,
             "-Cthreads" => state = State::ExpectThreadCount,
             "-Dtree" => cflags.dump_tree = true,
+            "-Dpretty" => cflags.dump_pretty = true,
             "-Esilent" => cflags.eflags.silence_errors = true,
             //"-Olib" => cflags.output_library = true,
             //"-Obin" => cflags.output_binary = true,
