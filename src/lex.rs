@@ -12,6 +12,15 @@ pub enum Token {
     #[token("private")]
     Private,
 
+    #[token("use")]
+    Use,
+
+    #[token("global")]
+    Global,
+
+    #[token("super")]
+    Super,
+
     //#[token("private")]
     //Private,
 

@@ -306,42 +306,27 @@ impl AstNode for StructDeclaration {
     }
 }
 
-/*#[derive(Debug)]
-pub struct VariableDeclaration<'a> {
+#[derive(Debug)]
+pub struct UseDeclaration {
     pub node_info: NodeInfo,
 
-    //pub name: &'a str,
-    pub lhs: Box<ExpressionWrapper<'a>>,
-    pub var_expr: Option<Box<ExpressionWrapper<'a>>>,
-    pub var_type: Option<TypeReference<'a>>, // None indicates request for type inference
+    pub public: bool,
+
+    pub scope: Vec<StringSymbol>,
 }
 
-impl<'a> AstNode<'a> for VariableDeclaration<'a> {
+impl UseDeclaration {
+}
+
+impl AstNode for UseDeclaration {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
 
     fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
-        let _ = writeln!(
-            f,
-            "{}VariableDeclaration that parsed {} has lhs:",
-            indent(depth),
-            self.node_info(),
-            );
-        self.lhs.as_node().display(f, depth+2);
-        let _ = writeln!(
-            f,
-            "{}And type {:?} comes from expression:",
-            indent(depth+1),
-            self.var_type,
-            );
-
-        match &self.var_expr {
-            Some(e) => e.as_node().display(f, depth+2),
-            None => { let _ = writeln!(f, "{} unassigned", indent(depth+2)); },
-        }
+        unimplemented!()
     }
-}*/
+}
 
 #[derive(Debug)]
 pub struct ScopedNameReference {
@@ -383,12 +368,6 @@ impl IntoAstNode for ScopedNameReference {
     }
 }
 
-/*impl<'a> std::cmp::PartialEq for ScopedNameReference<'a> {
-    fn eq(&self, other: &ScopedNameReference) -> bool {
-        other.scope == self.scope
-    }
-}*/
-
 #[derive(Debug, PartialEq, Hash)]
 pub struct ScopedName {
     pub scope: Vec<StringSymbol>,
@@ -424,6 +403,7 @@ pub enum SymbolDeclaration {
     NamespaceDeclaration(Namespace),
     StructDeclaration(StructDeclaration),
     ExpressionDeclaration(StaticVariableDeclaration),
+    UseDeclaration(UseDeclaration),
     //VariableDeclaration(VariableDeclaration),
 }
 
@@ -434,6 +414,7 @@ impl IntoAstNode for SymbolDeclaration {
             Self::NamespaceDeclaration(nd) => nd,
             Self::StructDeclaration(sd) => sd,
             Self::ExpressionDeclaration(ed) => ed,
+            Self::UseDeclaration(ud) => ud,
         }
     }
 
@@ -443,6 +424,7 @@ impl IntoAstNode for SymbolDeclaration {
             Self::NamespaceDeclaration(nd) => nd,
             Self::StructDeclaration(sd) => sd,
             Self::ExpressionDeclaration(ed) => ed,
+            Self::UseDeclaration(ud) => ud,
         }
     }
 }
@@ -455,15 +437,17 @@ impl SymbolDeclaration {
             Self::NamespaceDeclaration(ns) => ns.display(f, depth),
             Self::StructDeclaration(sd) => sd.display(f, depth),
             Self::ExpressionDeclaration(sd) => sd.display(f, depth),
+            Self::UseDeclaration(ud) => ud.display(f, depth),
         }
     }
 
     pub fn mark_public(&mut self) {
         match self {
-            Self::FunctionDeclaration(fd) => fd.public = true,
-            Self::NamespaceDeclaration(fd) => fd.public = true,
-            Self::StructDeclaration(fd) => fd.public = true,
-            Self::ExpressionDeclaration(fd) => fd.public = true,
+            Self::FunctionDeclaration(v) => v.public = true,
+            Self::NamespaceDeclaration(v) => v.public = true,
+            Self::StructDeclaration(v) => v.public = true,
+            Self::ExpressionDeclaration(v) => v.public = true,
+            Self::UseDeclaration(v) => v.public = true,
         }
     }
 
@@ -473,6 +457,7 @@ impl SymbolDeclaration {
             Self::NamespaceDeclaration(fd) => fd.public,
             Self::StructDeclaration(fd) => fd.public,
             Self::ExpressionDeclaration(fd) => fd.public,
+            Self::UseDeclaration(fd) => fd.public,
         }
     }
 
@@ -482,6 +467,7 @@ impl SymbolDeclaration {
             Self::NamespaceDeclaration(ns) => ns.name,
             Self::StructDeclaration(sd) => Some(sd.name),
             Self::ExpressionDeclaration(_ed) => None, // no symbol to export
+            Self::UseDeclaration(fd) => None,
         }
     }
 

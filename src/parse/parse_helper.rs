@@ -5,6 +5,16 @@ use crate::helper::lex_wrap::TokenWrapper;
 use crate::parse::*;
 //use std::collections::HashSet;
 
+pub trait ResultHint {
+    fn hint(self, hint: &'static str) -> Self;
+}
+
+impl<T> ResultHint for Result<T, ParseResultError> {
+    fn hint(self, hint: &'static str) -> Self {
+        self.map_err(|pre| { ParseResultError::ErrorWithHint { hint, original: Box::new(pre) } })
+    }
+}
+
 impl<'lexer> Parser<'lexer> {
     /// Mark what tokens could feasibly come after some recursive parse state call that the current
     /// parse state wants to capture and handle.

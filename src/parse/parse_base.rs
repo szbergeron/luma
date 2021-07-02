@@ -188,6 +188,14 @@ impl<'lexer> Parser<'lexer> {
                         failed = true;
                         e
                     }),
+                Token::Use => self
+                    .parse_use_declaration()
+                    .map(|ud| ast::SymbolDeclaration::UseDeclaration(ud))
+                    .map_err(|e| {
+                        failed = true;
+                        e
+                    }),
+
                 // only parse let expressions for now, since other (pure) expressions would be
                 // useless
                 /*Token::Let => self.parse_static_declaration().map(|sd| {
@@ -351,6 +359,43 @@ impl<'lexer> Parser<'lexer> {
             name: function_name.slice,
             public: false,
         })
+    }
+
+    pub fn parse_use_declaration(
+        &mut self,
+    ) -> Result<ast::UseDeclaration, ParseResultError> {
+        let start = self.hard_expect(Token::Use)?.start;
+
+        let scope = Vec::new();
+
+        self.expect_next_in(&[Token::Identifier, Token::Global, Token::Super])
+            .hint("Use statements should only start with an identifier or the 'global' or 'super' keywords")?;
+        let tw = self.lex.next()?;
+
+        /*let first_str = match tw {
+            Token::Super | Token::Global | Token::*/
+        //let first = self.hard_expect(Token::Identifier)
+
+        scope.push(tw.slice);
+
+        let mut end = tw.end;
+
+        while let Some(_) = self.eat_match(Token::DoubleColon) {
+            self.expect_next_in(&[Token::Asterisk, Token::Identifier])
+            .hint("Use statements should only either specify a more specific scope (an identifier) or a glob (*) after specifying an initial starting scope")?;
+
+            let tw = self.lex.next()?;
+
+            scope.push(tw.slice);
+
+            end = tw.end;
+
+            unimplemented!()
+        }
+
+        let node_info = ast::NodeInfo::from_indices(start, end);
+
+        Ok(ast::UseDeclaration { public: false, scope, node_info })
     }
 
     /*pub fn builtin_declaration(

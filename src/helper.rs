@@ -570,6 +570,7 @@ pub mod lex_wrap {
         /// a message (if applicable)
         UnexpectedToken(TokenWrapper, Vec<crate::lex::Token>, Option<&'static str>),
         SemanticIssue(&'static str, CodeLocation, CodeLocation),
+        ErrorWithHint { hint: &'static str, original: Box<ParseResultError> },
     }
 
     impl ParseResultError {

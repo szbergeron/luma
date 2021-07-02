@@ -315,15 +315,21 @@ impl GlobalCtxNode {
     fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let _ = writeln!(
             f,
-            "{} Global context <canon {}> has id {}",
+            "{}Global context <canon {}> has id {}",
             indent(depth),
             self.canonical_local_name,
             self.id
         );
 
-        let _ = writeln!(f, "{} Imports:", indent(depth + 1));
+        let _ = writeln!(f, "{}Imports:", indent(depth + 1));
+        for (_, ipt) in self.imports {
+            let _ = writeln!(f, "{}{}", indent(depth + 2), ipt);
+        }
 
         let _ = writeln!(f, "{} Exports:", indent(depth + 1));
+        for (_, ept) in self.exports {
+            let _ = writeln!(f, "{}{}", indent(depth + 2), ept);
+        }
     }
 
     fn type_ctx(&self) -> Arc<TypeCtx> {
