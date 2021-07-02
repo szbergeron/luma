@@ -1,6 +1,6 @@
 use super::impls::*;
 
-use crate::helper::interner::{StringSymbol, SpurHelper};
+use crate::helper::interner::{SpurHelper, StringSymbol};
 use dashmap::DashMap;
 use rayon::prelude::*;
 use smallvec::SmallVec;
@@ -11,7 +11,7 @@ use std::sync::atomic::Ordering;
 use std::sync::RwLock;
 use std::sync::{Arc, Weak};
 
-use crate::ast::{AstNode, indent};
+use crate::ast::{indent, AstNode};
 
 pub type TypeHandle = Arc<dyn Type>;
 
@@ -90,10 +90,10 @@ impl std::fmt::Display for Resolution {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Unresolved(v) => {
-                let s: String = v.iter().fold(String::new(), |p, ss| { p + ss.resolve() });
+                let s: String = v.iter().fold(String::new(), |p, ss| p + ss.resolve());
 
                 write!(f, "{}", s)
-            },
+            }
             Self::Function(fid) => write!(f, "{}", fid),
             Self::Type(tid) => write!(f, "{}", tid),
             Self::Scope(cid) => write!(f, "{}", cid),
@@ -114,14 +114,28 @@ pub struct Export {
 impl std::fmt::Display for Import {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         //write!(f, "({})", self.0)
-        write!(f, "use {} {}", self.resolution, self.alias.map(|ss| "as ".to_owned() + ss.resolve()).unwrap_or(String::new()))
+        write!(
+            f,
+            "use {} {}",
+            self.resolution,
+            self.alias
+                .map(|ss| "as ".to_owned() + ss.resolve())
+                .unwrap_or(String::new())
+        )
     }
 }
 
 impl std::fmt::Display for Export {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         //write!(f, "({})", self.0)
-        write!(f, "export {} {}", self.resolution, self.alias.map(|ss| "as ".to_owned() + ss.resolve()).unwrap_or(String::new()))
+        write!(
+            f,
+            "export {} {}",
+            self.resolution,
+            self.alias
+                .map(|ss| "as ".to_owned() + ss.resolve())
+                .unwrap_or(String::new())
+        )
     }
 }
 
@@ -304,17 +318,12 @@ impl GlobalCtxNode {
             "{} Global context <canon {}> has id {}",
             indent(depth),
             self.canonical_local_name,
-            self.id);
+            self.id
+        );
 
-        let _ = writeln!(
-            f,
-            "{} Imports:",
-            indent(depth + 1));
+        let _ = writeln!(f, "{} Imports:", indent(depth + 1));
 
-        let _ = writeln!(
-            f,
-            "{} Exports:",
-            indent(depth + 1));
+        let _ = writeln!(f, "{} Exports:", indent(depth + 1));
     }
 
     fn type_ctx(&self) -> Arc<TypeCtx> {
@@ -411,7 +420,6 @@ pub struct GlobalCtx {
 
     functions: DashMap<GlobalFunctionID, Arc<FunctionImplementation>>,
     types: DashMap<GlobalTypeID, TypeHandle>,
-
 }
 
 impl GlobalCtx {
