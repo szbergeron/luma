@@ -392,9 +392,19 @@ impl<'lexer> Parser<'lexer> {
             end = tw.end;
         }
 
+        let mut alias: Option<StringSymbol> = None;
+
+        if let Some(_) = self.eat_match(Token::As) {
+            let id = self.hard_expect(Token::Identifier)?; // don't bubble, recoverable
+            
+            alias = Some(id.slice);
+        }
+
+        end = self.hard_expect(Token::Semicolon)?.end; // don't need to directly bubble, since this individual statement is recoverable
+
         let node_info = ast::NodeInfo::from_indices(start, end);
 
-        Ok(ast::UseDeclaration { public: false, scope, node_info })
+        Ok(ast::UseDeclaration { public: false, scope, node_info, alias })
     }
 
     /*pub fn builtin_declaration(

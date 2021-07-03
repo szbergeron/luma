@@ -339,6 +339,8 @@ pub struct UseDeclaration {
     pub public: bool,
 
     pub scope: Vec<StringSymbol>,
+
+    pub alias: Option<StringSymbol>,
 }
 
 impl UseDeclaration {
@@ -359,8 +361,19 @@ impl AstNode for UseDeclaration {
     }
 
     fn pretty(&self, f: &mut dyn std::fmt::Write, _depth: usize) {
-        let uses: Vec<&'static str> = self.scope.iter().map(|ss| ss.resolve()).collect();
-        let _ = writeln!(f, "use {:?}", uses);
+        //let uses: Vec<&'static str> = self.scope.iter().map(|ss| ss.resolve()).collect();
+
+        let first = self.scope[0].resolve(); // a valid `use` statement always has at least a first string
+
+        let mut ui = self.scope.iter();
+        ui.next();
+
+        let uses = first.to_owned() + &ui.fold(String::new(), |acc, next| { acc + "::" + next.resolve() })[..];
+
+        //let uses = first.to_owned() + ui.fold(String::new(), |inc, next| { inc.to_owned() + "::".to_owned() + next.resolve() });
+
+        //let uses = uses.iter().fold("".to_owned(), |inc, next| { inc
+        let _ = writeln!(f, "use {}{}", uses, self.alias.map(|ss| " as ".to_owned() + ss.resolve()).unwrap_or("".to_owned()));
     }
 
 }
