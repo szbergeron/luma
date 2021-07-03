@@ -128,6 +128,7 @@ impl ScopeContext {
         parent: Option<Weak<ScopeContext>>,
         from: Option<Arc<SymbolDeclaration>>,
     ) -> Arc<ScopeContext> {
+        println!("Created a scopecontext for scope {:?}", scope);
         let scope = ScopeContext {
             scope,
             public: true,
