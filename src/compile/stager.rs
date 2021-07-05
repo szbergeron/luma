@@ -2,9 +2,7 @@
 use crate::helper::lex_wrap::{LookaheadStream, ParseResultError, Wrapper};
 use crate::helper::*;
 use crate::parse::Parser;
-use rayon::prelude::*;
 use std::collections::HashSet;
-use std::collections::VecDeque;
 
 use std::path::{Path, PathBuf};
 use std::process;
@@ -23,7 +21,6 @@ use tokio::runtime::*;
 #[allow(unused_variables, dead_code)]
 pub fn parse_unit<'file>(
     handle: FileHandleRef,
-    //context: &ScopeContext,
     scope: Vec<StringSymbol>,
     cflags: &CFlags,
 ) -> Result<OuterScope, ParseResultError> {
@@ -87,104 +84,17 @@ pub struct CFlags {
 }
 
 async fn async_launch(args: ArgResult) {
-    let (error_sender, error_reciever) = crossbeam::unbounded();
+    let (error_sender, _error_reciever) = crossbeam::unbounded();
 
     let root = super::tree::TreeRoot::initial(error_sender, args).await;
 }
 
-fn launch_old(args: ArgResult) {
-
-
-    let mut path_map = PathIdMap::new();
-    let mut scope_map = ScopeIdMap::new();
-
-    //let interner: Arc<ThreadedRodeo<LargeSpur>> = Arc::new(ThreadedRodeo::new());
-
-    let (error_sender, _error_reciever) = crossbeam::unbounded();
-
-    // start spawning the parser threads
-    let _pool = rayon::ThreadPoolBuilder::new()
-        .num_threads(args.flags.thread_count)
-        .build()
-        .expect("couldn't build thread pool");
-
-    args.inputs.iter().for_each(|path| {
-        path_map.push_path(path.clone());
-    });
-
-    explore_paths(&mut path_map, &mut scope_map, error_sender);
-
-    println!("going to iter and open files");
-
-    path_map.handles_mut().par_iter_mut().for_each(|file| {
-        file.open();
-    });
-
-    println!("opened files");
-
-    let mut outers = Vec::new();
-
-    // take files, parse each, and pair (by index) each file path with its AST root
-    path_map
-        .handles()
-        .par_iter()
-        .zip(scope_map.handles().par_iter())
-        .map(|(file, scope)| {
-            if let Some(handle_ref) = file.as_ref() {
-                println!("parsing unit");
-                // TODO: potentially remove ScopeContext from this and integrate later
-                let scope_v = scope.get_scope().to_vec();
-                let r = parse_unit(handle_ref, scope_v, &args.flags);
-                r
-            } else {
-                Ok(OuterScope::new(NodeInfo::Builtin, Vec::new()))
-            }
-        })
-        .collect_into_vec(&mut outers);
-
-    outers
-        .par_iter()
-        .zip(path_map.handles().par_iter())
-        .zip(scope_map.handles_mut().par_iter_mut())
-        .for_each(|((outer, handle), scope_context)| {
-            if handle.path().is_file() {
-                if let Ok(root) = outer.as_ref() {
-                    println!("root was ok");
-                    scope_context.on_root(scope_context.clone(), root);
-                } else {
-                    println!("root was not ok");
-                }
-            } else {
-                println!("handle was not file");
-            }
-        });
-
-    println!("context tree:");
-    println!("<output disabled>");
-    //println!("{}", scope_map.global().unwrap().read().unwrap());
-
-    scope_map
-        .handles()
-        .par_iter()
-        .for_each(|handle| prepass(handle));
-
-    scope_map
-        .handles()
-        .par_iter()
-        .for_each(|handle| analyze(handle));
-
-    let egctx = crate::encode::EncodeGlobalContext::new();
-
-    scope_map
-        .handles()
-        .par_iter()
-        .for_each(|handle| tollvm(handle, &egctx));
-
-    println!("sm has {} handles", scope_map.handles().len());
-    println!("egctx: \n{}", egctx);
-}
-
 pub fn launch(args: &[&str]) {
+    // do initial setup actions
+    unsafe {
+        crate::helper::interner::init_interner();
+    }
+
     let args = parse_args(args).expect("couldn't parse arguments");
 
     let thread_count = args.flags.thread_count;
@@ -277,99 +187,6 @@ fn parse_args(args: &[&str]) -> Result<ArgResult, &'static str> {
         outputs,
         flags: cflags,
     })
-}
-
-pub fn explore_paths<'context>(
-    pidm: &mut PathIdMap,
-    sidm: &mut ScopeIdMap,
-    error_sink: crossbeam::Sender<Error>,
-) -> () {
-    let mut vd = VecDeque::new();
-
-    let global_context =
-        ScopeContext::new(error_sink.clone(), vec![intern("global")], None, None, None);
-
-    sidm.set_global(global_context.clone());
-
-    //let scopes = ScopeIdMap::new();
-
-    for p in pidm.drain() {
-        vd.push_back((vec![intern("crate")], p, global_context.clone()));
-    }
-
-    while !vd.is_empty() {
-        let (scope, handle, parent) = vd
-            .pop_front()
-            .expect("paths was not empty but had no front");
-        let mut base_scope = scope.clone();
-        let path = handle.path().clone();
-
-        let stem: String = path
-            .file_stem()
-            .expect("couldn't get file stem for a file")
-            .to_string_lossy()
-            .into();
-
-        if path.is_file() {
-            if let Some(ext) = path.extension() {
-                if ext.to_string_lossy().to_string() == "rsh" {
-                    let context = ScopeContext::new(
-                        error_sink.clone(),
-                        base_scope,
-                        Some(Arc::downgrade(&global_context)),
-                        Some(Arc::downgrade(&parent)),
-                        None,
-                    );
-                    pidm.push_path(path);
-                    sidm.push_scope(context.clone());
-
-                    parent.add_child_context(context.clone());
-                }
-            }
-        } else if path.is_dir() {
-            base_scope.push(intern(stem.as_str()));
-
-            let context = ScopeContext::new(
-                error_sink.clone(),
-                base_scope.clone(),
-                Some(Arc::downgrade(&global_context)),
-                Some(Arc::downgrade(&parent)),
-                None,
-            );
-
-            let mut path = path;
-
-            for subpath in path
-                .read_dir()
-                .expect("couldn't read a directory in passed trees")
-            {
-                if let Ok(subpath) = subpath {
-                    if subpath
-                        .path()
-                        .file_name()
-                        .expect("couldn't get file name of directory child")
-                        .to_string_lossy()
-                        .as_parallel_string()
-                        == "mod.rsh"
-                    {
-                        path = subpath.path();
-                    } else {
-                        let new_handle = FileHandle::new(subpath.path(), None);
-                        vd.push_back((base_scope.clone(), new_handle, context.clone()));
-                    }
-                }
-            }
-
-            pidm.push_path(path.clone());
-            sidm.push_scope(context.clone());
-
-            parent.add_child_context(context.clone());
-        }
-    }
-
-    for (id, handle) in pidm.handles_mut().iter_mut().enumerate() {
-        handle.set_id(id);
-    }
 }
 
 pub fn prepass<'a>(p: &Arc<ScopeContext>) {

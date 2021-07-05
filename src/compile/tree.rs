@@ -1,28 +1,20 @@
-use super::CFlags;
 use super::stager::ArgResult;
-use crate::helper::lex_wrap::{LookaheadStream, ParseResultError, Wrapper};
+use super::CFlags;
+
 use crate::helper::Error;
 use crate::helper::*;
-use crate::parse::Parser;
 use dashmap::DashMap;
-use rayon::prelude::*;
-use std::collections::HashSet;
-use std::collections::VecDeque;
 
-use std::path::{Path, PathBuf};
-use std::process;
+#[allow(unused_imports)]
+use rayon::prelude::*;
+
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::mid_repr::ScopeContext;
-use std::sync::Arc;
 
-use crate::ast::*;
-
-use crate::encode::*;
 
 use crate::helper::interner::*;
 use futures::future::join_all;
-use tokio::runtime::*;
 
 use async_recursion::async_recursion;
 
@@ -71,6 +63,7 @@ impl FileRegistry {
     }
 }
 
+#[allow(dead_code)]
 pub struct TreeRoot {
     args: ArgResult,
     children: Vec<TreeNode>,
@@ -83,6 +76,7 @@ pub struct DirNode {
     error_channel: ErrorChannel,
 }
 
+#[allow(dead_code)]
 pub struct FileNode {
     path: PathBuf,
     module: Vec<StringSymbol>,
@@ -106,7 +100,7 @@ impl DirNode {
     ) -> TreeNode {
         println!("Created a DirNode with mod {:?}", module);
         TreeNode::DirNode(DirNode {
-            module, 
+            module,
             children,
             error_channel: ec,
         })
@@ -114,10 +108,10 @@ impl DirNode {
 
     #[async_recursion]
     pub async fn parse(self, reg: &FileRegistry) -> TreeNode {
-        let children = join_all(self.children.into_iter().map(|child| { child.parse(reg) })).await;
+        let children = join_all(self.children.into_iter().map(|child| child.parse(reg))).await;
 
         /*TreeNode::DirNode(DirNode {
-            children, module: self.module, error_channel: self.error_channel })*/
+        children, module: self.module, error_channel: self.error_channel })*/
         Self::new(self.module, children, self.error_channel).await
     }
 }
@@ -153,7 +147,7 @@ impl FileNode {
 
         let handle = fh.as_ref().expect("File didn't open nicely");
 
-        //let ref = 
+        //let ref =
         let r = super::parse_unit(handle, self.module.clone(), &self.cflags);
 
         TreeNode::FileNode(self)
@@ -250,7 +244,11 @@ impl TreeRoot {
         }))
         .await;
 
-        TreeRoot {children: res, args, files: reg }
+        TreeRoot {
+            children: res,
+            args,
+            files: reg,
+        }
     }
 }
 
