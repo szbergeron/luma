@@ -17,12 +17,13 @@ use crate::ast::*;
 use crate::encode::*;
 
 use crate::helper::interner::*;
+use tokio::runtime::*;
 
 
 #[allow(unused_variables, dead_code)]
 pub fn parse_unit<'file>(
     handle: FileHandleRef,
-    context: &ScopeContext,
+    //context: &ScopeContext,
     scope: Vec<StringSymbol>,
     cflags: &CFlags,
 ) -> Result<OuterScope, ParseResultError> {
@@ -69,14 +70,14 @@ pub fn parse_unit<'file>(
     p
 }
 
-#[derive(Default)]
+#[derive(Default, Copy, Clone)]
 pub struct EFlags {
     pub warnings_as_errors: bool,
     pub silence_warnings_below_level: i32,
     pub silence_errors: bool,
 }
 
-#[derive(Default)]
+#[derive(Default, Copy, Clone)]
 pub struct CFlags {
     pub arg_parsing_failed: bool,
     pub dump_tree: bool,
@@ -85,8 +86,14 @@ pub struct CFlags {
     pub thread_count: usize,
 }
 
-pub fn launch(args: &[&str]) {
-    let args = parse_args(args).expect("couldn't parse arguments");
+async fn async_launch(args: ArgResult) {
+    let (error_sender, error_reciever) = crossbeam::unbounded();
+
+    let root = super::tree::TreeRoot::initial(error_sender, args).await;
+}
+
+fn launch_old(args: ArgResult) {
+
 
     let mut path_map = PathIdMap::new();
     let mut scope_map = ScopeIdMap::new();
@@ -127,7 +134,7 @@ pub fn launch(args: &[&str]) {
                 println!("parsing unit");
                 // TODO: potentially remove ScopeContext from this and integrate later
                 let scope_v = scope.get_scope().to_vec();
-                let r = parse_unit(handle_ref, &*scope, scope_v, &args.flags);
+                let r = parse_unit(handle_ref, scope_v, &args.flags);
                 r
             } else {
                 Ok(OuterScope::new(NodeInfo::Builtin, Vec::new()))
@@ -177,11 +184,25 @@ pub fn launch(args: &[&str]) {
     println!("egctx: \n{}", egctx);
 }
 
+pub fn launch(args: &[&str]) {
+    let args = parse_args(args).expect("couldn't parse arguments");
+
+    let thread_count = args.flags.thread_count;
+
+    let tokio_rt = Builder::new_multi_thread()
+        .worker_threads(thread_count)
+        .build()
+        .expect("Couldn't initialize an async worker pool, bad args?");
+
+    tokio_rt.block_on(async { async_launch(args).await });
+
+}
+
 #[allow(dead_code)]
-struct ArgResult {
-    flags: CFlags,
-    inputs: HashSet<PathBuf>,
-    outputs: HashSet<PathBuf>,
+pub struct ArgResult {
+    pub flags: CFlags,
+    pub inputs: HashSet<PathBuf>,
+    pub outputs: HashSet<PathBuf>,
 }
 
 fn parse_args(args: &[&str]) -> Result<ArgResult, &'static str> {

@@ -17,6 +17,7 @@ extern crate lazy_static;
 //extern crate lazy_static;
 
 use std::env;
+use tokio::runtime::*;
 //use std::fs;
 //use logos::Logos;
 
@@ -40,11 +41,12 @@ pub mod types;
 //lalrpop_mod!(pub grammar);
 
 //pub type StringSymbol = lasso::LargeSpur;
-
+//#[tokio::main]
 fn main() {
     unsafe {
         crate::helper::interner::init_interner();
     }
+
     let args: Vec<String> = env::args().collect();
     println!("Args: {:?}", args);
     let sliced: Vec<&str> = args.iter().map(|s| &s[..]).collect();
@@ -54,6 +56,7 @@ fn main() {
     println!("stripped args: {:?}", sliced);
 
     compile::launch(sliced);
+
     /*let files = &args[1..];
     for file in files {
         //let contents = fs::read_to_string(file).expect("Couldn't read source code file");
@@ -62,3 +65,6 @@ fn main() {
     //
     //let mut lex = Token::lexer(
 }
+
+/*fn main_inner() {
+}*/

@@ -6,6 +6,7 @@ use crate::ast::*;
 //use lock_api::RawRwLockRecursive;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicUsize;
 use std::sync::{Arc, RwLock};
 
 pub mod interner {
@@ -560,6 +561,15 @@ pub mod lex_wrap {
         pub end: CodeLocation,
     }
 
+    pub enum Error {
+        FileError(FileResultError),
+        ParseError(ParseResultError),
+    }
+
+    pub enum FileResultError {
+        FileNotFound { filename: String },
+    }
+
     #[derive(Debug, Clone)]
     pub enum ParseResultError {
         InternalParseIssue,
@@ -937,3 +947,27 @@ pub mod locks {
         }
     }
 }
+
+/// Inefficient stub for now, will implement the multivec algo described in the
+/// architecture notes document eventually.
+///
+/// Interface is designed to be compatible with that as a drop-in
+pub struct AtomicVec<T> {
+    self_key: usize,
+    content_vec: RwLock<Vec<RwLock<T>>>,
+}
+
+/*impl<T> AtomicVec<T> {
+    pub fn new() {
+        static init_key: AtomicUsize = AtomicUsize::new(0);
+
+        AtomicVec {
+            self_key: init_key.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+            content_vec: RwLock::new(Vec::new()),
+    }
+}
+
+pub struct AtomicVecIndex {
+    idx: i64, // intentionally not public, should not be possible to construct this type externally
+    self_key: usize, // used to verify that this index came from the vec it is trying to index into
+}*/
