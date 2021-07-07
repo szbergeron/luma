@@ -86,7 +86,7 @@ pub struct CFlags {
 async fn async_launch(args: ArgResult) {
     let (error_sender, _error_reciever) = crossbeam::unbounded();
 
-    let root = super::tree::TreeRoot::initial(error_sender, args).await;
+    let root = super::tree::CompilationRoot::initial(error_sender, args).await;
 }
 
 pub fn launch(args: &[&str]) {

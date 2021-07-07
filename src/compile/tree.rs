@@ -64,7 +64,7 @@ impl FileRegistry {
 }
 
 #[allow(dead_code)]
-pub struct TreeRoot {
+pub struct CompilationRoot {
     args: ArgResult,
     children: Vec<TreeNode>,
     files: FileRegistry,
@@ -232,8 +232,8 @@ async fn first_pass(
     node.await.parse(reg).await
 }
 
-impl TreeRoot {
-    pub async fn initial(error_channel: ErrorChannel, args: ArgResult) -> TreeRoot {
+impl CompilationRoot {
+    pub async fn initial(error_channel: ErrorChannel, args: ArgResult) -> CompilationRoot {
         /*for input in args.inputs {
         }*/
         let reg = FileRegistry::new();
@@ -244,7 +244,7 @@ impl TreeRoot {
         }))
         .await;
 
-        TreeRoot {
+        CompilationRoot {
             children: res,
             args,
             files: reg,

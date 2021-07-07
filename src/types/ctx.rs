@@ -313,6 +313,22 @@ pub struct GlobalCtxNode {
 }
 
 impl GlobalCtxNode {
+
+    /// The passed GCN should not have any children, this
+    /// transformation is only to be used for taking the `mod.rsh`
+    /// context and inlining it into the parent context
+    pub fn merge_local(&self, other: GlobalCtxNode) {
+        /*for (key, mut child) in other.children.into_iter() {
+            /*if self.children.contains_key(&key) {
+                eprintln!("Already had key {} within ctx {}", key, self.canonical_local_name);
+                panic!("failed to merge ctx");
+            }*/
+
+            //child._parent = Some(self.get_selfref_arc().as_ref().map(|arc| Arc::downgrade(arc)).unwrap());
+            self.children.insert(key, child);
+        }*/
+    }
+
     pub fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let _ = writeln!(
             f,
@@ -412,7 +428,7 @@ impl GlobalCtxNode {
                         let gcn = GlobalCtxNode::new(
                             first,
                             CtxID(id),
-                            None,
+                            self.get_selfref_arc().map(|arc| Arc::downgrade(&arc)),
                             Some(Arc::downgrade(&GlobalCtx::get().get_global())),
                         );
                         into.insert(CtxID(id), gcn.clone());

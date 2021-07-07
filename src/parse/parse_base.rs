@@ -314,6 +314,7 @@ impl<'lexer> Parser<'lexer> {
     pub fn parse_function_param_list(
         &mut self,
     ) -> Result<Vec<(Box<ast::ExpressionWrapper>, ast::TypeReference)>, ParseResultError> {
+        return Err(ParseResultError::InternalParseIssue);
         let rvec: Vec<(Box<ast::ExpressionWrapper>, ast::TypeReference)> = Vec::new();
         while let Ok(a) = self.atomic_expression() {
             self.hard_expect(Token::Colon)?;

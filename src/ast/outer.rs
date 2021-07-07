@@ -4,6 +4,7 @@ use super::expressions::ExpressionWrapper;
 
 
 use crate::helper::lex_wrap::ParseResultError;
+use crate::types::GlobalCtxNode;
 //use std::rc::Rc;
 use std::sync::Arc;
 //use std::cell::RefCell;
@@ -26,6 +27,10 @@ pub struct Namespace {
 impl Namespace {
     pub fn set_public(&mut self, public: bool) {
         self.public = public;
+    }
+
+    pub fn into_ctx(self) -> Arc<GlobalCtxNode> {
+        todo!()
     }
 }
 
