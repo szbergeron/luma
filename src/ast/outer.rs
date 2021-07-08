@@ -1,9 +1,11 @@
 use super::base::*;
 use super::expressions::ExpressionWrapper;
+use crate::helper::VecOps;
 
 
 
 use crate::helper::lex_wrap::ParseResultError;
+use crate::types::GlobalCtx;
 use crate::types::GlobalCtxNode;
 //use std::rc::Rc;
 use std::sync::Arc;
@@ -29,8 +31,34 @@ impl Namespace {
         self.public = public;
     }
 
-    pub fn into_ctx(self) -> Arc<GlobalCtxNode> {
+    pub fn into_ctx(self, parent_scope: &[StringSymbol]) -> Arc<GlobalCtxNode> {
+        let new_slice = parent_scope.to_vec().appended(self.name.unwrap());
+        let ctx = GlobalCtx::get().get_or_create_nsctx(new_slice.as_slice());
+
+        /*if let Ok(outer) = self.contents {
+            for dec in outer.declarations.into_iter() {
+            }
+        }*/
+
+        let sym = self.as_symbol();
+
+        for dec in sym.symbols().iter() {
+            match dec {
+                FunctionDeclaration(fd) => {
+                    //ctx.func_ctx().define(
+                },
+                NamespaceDeclaration(nd) => {
+                    ctx.
+                }
+            }
+        }
+
+        //self.contents.map(|outer| outer.into_ctxlist(new_slice.as_slice())
         todo!()
+    }
+
+    fn as_symbol(self) -> SymbolDeclaration {
+        SymbolDeclaration::NamespaceDeclaration(self)
     }
 }
 
@@ -73,7 +101,7 @@ pub struct OuterScope {
     pub node_info: NodeInfo,
 
     //pub declarations: Vec<Arc<RwLock<Result<SymbolDeclaration, ParseResultError>>>>,
-    pub declarations: Vec<Arc<RwLock<SymbolDeclaration>>>,
+    pub declarations: Vec<SymbolDeclaration>,
 }
 
 impl OuterScope {
@@ -90,7 +118,7 @@ impl OuterScope {
 
     pub fn new(
         node_info: NodeInfo,
-        declarations: Vec<Arc<RwLock<SymbolDeclaration>>>,
+        declarations: Vec<SymbolDeclaration>,
     ) -> OuterScope {
         OuterScope {
             node_info,
@@ -123,8 +151,8 @@ impl AstNode for OuterScope {
         let _ = writeln!(f, "ParseUnit {} with children:", self.node_info());
 
         self.declarations.iter().for_each(|elem| {
-            elem.read()
-                .expect("locking error within parsunit display")
+            elem
+                //.expect("locking error within parsunit display")
                 //.iter()
                 //.for_each(|elem| elem.display(f, depth + 1))
                 .display(f, depth + 1)
@@ -136,10 +164,10 @@ impl AstNode for OuterScope {
         //let _ = writeln!(f, "{}File {}", indent(depth), self.node_info);
 
         for decl in self.declarations.iter() {
-            let l = decl.read();
+            let l = decl;
             let _ = write!(f, "{}", indent(depth + 1));
 
-            l.unwrap().as_node().pretty(f, depth + 1);
+            l.as_node().pretty(f, depth + 1);
         }
     }
 }
@@ -535,7 +563,7 @@ impl SymbolDeclaration {
         }
     }
 
-    pub fn symbols(&self) -> &[Arc<RwLock<SymbolDeclaration>>] {
+    pub fn symbols(&self) -> &[SymbolDeclaration] {
         match self {
             Self::NamespaceDeclaration(ns) => match ns.contents.as_ref() {
                 Ok(contents) => &contents.declarations[..],

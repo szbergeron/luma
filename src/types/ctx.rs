@@ -1,7 +1,7 @@
 use super::impls::*;
 
-use crate::helper::interner::{SpurHelper, StringSymbol};
-use dashmap::DashMap;
+use crate::helper::interner::{SpurHelper, StringSymbol, intern};
+use dashmap::{DashMap, DashSet};
 use rayon::prelude::*;
 use smallvec::SmallVec;
 
@@ -63,6 +63,7 @@ impl std::fmt::Display for CtxID {
     }
 }
 
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Resolution {
     /// An unresolved import is represented by the sequence of
     /// qualifying strings (including the final qualification)
@@ -102,11 +103,13 @@ impl std::fmt::Display for Resolution {
     }
 }
 
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Import {
     pub alias: Option<StringSymbol>,
     pub resolution: Resolution,
 }
 
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Export {
     pub alias: Option<StringSymbol>,
     pub resolution: Resolution,
@@ -296,9 +299,9 @@ pub fn generate_typeid() -> TypeID {
 
 // interior mut type
 pub struct GlobalCtxNode {
-    canonical_local_name: String,
+    canonical_local_name: StringSymbol,
 
-    children: DashMap<String, Arc<GlobalCtxNode>>,
+    children: DashMap<StringSymbol, Arc<GlobalCtxNode>>,
     _parent: Option<Weak<GlobalCtxNode>>,
 
     type_ctx: Arc<TypeCtx>,
@@ -308,16 +311,23 @@ pub struct GlobalCtxNode {
     selfref: Weak<GlobalCtxNode>,
     id: CtxID,
 
-    imports: DashMap<StringSymbol, Import>,
-    exports: DashMap<StringSymbol, Export>,
+    //imports: DashMap<StringSymbol, Import>,
+    //exports: DashMap<StringSymbol, Export>,
+    imports: DashSet<Import>,
+    exports: DashSet<Export>,
 }
 
 impl GlobalCtxNode {
-
     /// The passed GCN should not have any children, this
     /// transformation is only to be used for taking the `mod.rsh`
     /// context and inlining it into the parent context
-    pub fn merge_local(&self, other: GlobalCtxNode) {
+    ///
+    /// The GCN is passed as the relative direct-descending child path
+    /// from this `self` GCN. For example, if we wish to pull up the
+    /// `ns::mod1` GCN into `ns` directly, then we would pass `mod1`
+    ///
+    /// returns OK(()) on success, and Err with a string message if the merge fails
+    pub fn merge_local(&self, other: StringSymbol) -> Result<(), &str> {
         /*for (key, mut child) in other.children.into_iter() {
             /*if self.children.contains_key(&key) {
                 eprintln!("Already had key {} within ctx {}", key, self.canonical_local_name);
@@ -327,6 +337,31 @@ impl GlobalCtxNode {
             //child._parent = Some(self.get_selfref_arc().as_ref().map(|arc| Arc::downgrade(arc)).unwrap());
             self.children.insert(key, child);
         }*/
+
+        //self.imports.extend(other.imports.into_iter());
+
+        let other = self.remove_child(other)?;
+
+        other.imports.iter().for_each(|item| {
+            self.imports.insert(item.clone());
+        });
+        other.exports.iter().for_each(|item| {
+            self.exports.insert(item.clone());
+        });
+
+        self.func_ctx.merge_local(other.func_ctx.clone());
+        self.type_ctx.merge_local(other.type_ctx.clone());
+
+        Ok(())
+    }
+
+    pub fn remove_child(&self, other: StringSymbol) -> Result<Arc<GlobalCtxNode>, &str> {
+        let o = self.children.remove(&other);
+        match o {
+            None => Err("Couldn't remove child, none existed by given spur id"),
+            Some((key, node)) => Ok(node),
+        }
+        //
     }
 
     pub fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
@@ -334,19 +369,27 @@ impl GlobalCtxNode {
             f,
             "{}Global context <canon {}> has id {}",
             indent(depth),
-            self.canonical_local_name,
+            self.canonical_local_name.resolve(),
             self.id
         );
 
         let _ = writeln!(f, "{}Imports:", indent(depth + 1));
         for dr in self.imports.iter() {
-            let _ = writeln!(f, "{}{}", indent(depth + 2), dr.value());
+            let _ = writeln!(f, "{}{}", indent(depth + 2), *dr);
         }
 
         let _ = writeln!(f, "{} Exports:", indent(depth + 1));
         for dr in self.exports.iter() {
-            let _ = writeln!(f, "{}{}", indent(depth + 2), dr.value());
+            let _ = writeln!(f, "{}{}", indent(depth + 2), *dr);
         }
+    }
+
+    pub fn import(&self, import: Import) {
+        self.imports.insert(import);
+    }
+
+    pub fn export(&self, export: Export) {
+        self.exports.insert(export);
     }
 
     pub fn type_ctx(&self) -> Arc<TypeCtx> {
@@ -362,19 +405,19 @@ impl GlobalCtxNode {
     }
 
     fn new(
-        name: &str,
+        name: StringSymbol,
         id: CtxID,
         parent: Option<Weak<GlobalCtxNode>>,
         global: Option<Weak<GlobalCtxNode>>,
     ) -> Arc<GlobalCtxNode> {
         let ctxnode = Arc::new_cyclic(|wr| GlobalCtxNode {
-            canonical_local_name: name.to_owned(),
+            canonical_local_name: name,
             children: DashMap::new(),
             type_ctx: Arc::new(TypeCtx::new(id)),
             func_ctx: Arc::new(FuncCtx::new(id)),
 
-            imports: DashMap::new(),
-            exports: DashMap::new(),
+            imports: DashSet::new(),
+            exports: DashSet::new(),
 
             selfref: wr.clone(),
             quark: match global {
@@ -393,14 +436,14 @@ impl GlobalCtxNode {
     }
 
     pub fn name(&self) -> &str {
-        self.canonical_local_name.as_str()
+        self.canonical_local_name.resolve()
     }
 
     /*fn type_ctx(&self) -> Arc<TypeCtx> {
         self.type_ctx.clone()
     }*/
 
-    fn nsctx_for(&self, scope: &[&str]) -> Option<Arc<GlobalCtxNode>> {
+    fn nsctx_for(&self, scope: &[StringSymbol]) -> Option<Arc<GlobalCtxNode>> {
         //match scope {
         //[last] //
         match scope {
@@ -408,25 +451,25 @@ impl GlobalCtxNode {
             [first, rest @ ..] => {
                 //self.
                 self.children
-                    .get(first.to_owned())
+                    .get(first)
                     .map(|nsctx| nsctx.nsctx_for(rest))
                     .flatten()
             }
         }
     }
 
-    fn register_nsctx(&self, scope: &[&str], into: &DashMap<CtxID, Arc<GlobalCtxNode>>) {
+    fn register_nsctx(&self, scope: &[StringSymbol], into: &DashMap<CtxID, Arc<GlobalCtxNode>>) {
         match scope {
             [] => {
                 // no action for empty case, this is base case (self is already registered)
             }
             [first, rest @ ..] => {
                 self.children
-                    .entry(first.to_string())
+                    .entry(*first)
                     .or_insert_with(|| {
                         let id = CTX_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                         let gcn = GlobalCtxNode::new(
-                            first,
+                            *first,
                             CtxID(id),
                             self.get_selfref_arc().map(|arc| Arc::downgrade(&arc)),
                             Some(Arc::downgrade(&GlobalCtx::get().get_global())),
@@ -467,7 +510,7 @@ impl GlobalCtx {
     pub fn new() -> GlobalCtx {
         GlobalCtx {
             entry: GlobalCtxNode::new(
-                "global",
+                intern("global"),
                 CtxID(CTX_ID.fetch_add(1, Ordering::SeqCst)),
                 None,
                 None,
@@ -480,7 +523,7 @@ impl GlobalCtx {
 
     /// tries to get a namespace ctx if one exists, and None if not
     #[allow(unused)]
-    fn get_nsctx(&self, scope: &[&str]) -> Option<Arc<GlobalCtxNode>> {
+    fn get_nsctx(&self, scope: &[StringSymbol]) -> Option<Arc<GlobalCtxNode>> {
         self.entry.nsctx_for(scope)
     }
 
@@ -489,7 +532,7 @@ impl GlobalCtx {
     /// believe that an ns was actually declared/referenced and should thus be avoided for
     /// strict read-query lookups
     #[allow(unused)]
-    fn get_or_create_nsctx(&self, scope: &[&str]) -> Arc<GlobalCtxNode> {
+    pub fn get_or_create_nsctx(&self, scope: &[StringSymbol]) -> Arc<GlobalCtxNode> {
         self.entry.register_nsctx(scope, &self.contexts);
 
         self.get_nsctx(scope).expect(
@@ -503,17 +546,21 @@ impl GlobalCtx {
     /// believe that an ns was actually declared/referenced and should thus be avoided for
     /// strict read-query lookups. This returns the TypeCtx directly off of the
     /// internal NS looked up by `scope`, so that the last level type (decl itself) can be inserted
-    pub fn get_or_create_typectx(&self, scope: &[&str]) -> Arc<TypeCtx> {
+    pub fn get_or_create_typectx(&self, scope: &[StringSymbol]) -> Arc<TypeCtx> {
         self.get_or_create_nsctx(scope).type_ctx()
     }
 
-    pub fn register_name_ctx(&self, scope: &[&str]) {
-        match scope {
+    pub fn register_name_ctx(&self, scope: &[StringSymbol]) {
+        let global_symbol = intern("global");
+        /*match scope {
             // global scope handled same as default scope
-            ["global", rest @ ..] | [rest @ ..] => {
+            //[g, rest @ ..] if g == global_symbol | [rest @ ..] => {
                 self.entry.register_nsctx(rest, &self.contexts);
             }
-        }
+        }*/
+        let stripped = scope.strip_prefix(&[global_symbol]).unwrap();
+
+        self.entry.register_nsctx(stripped, &self.contexts);
     }
 
     pub fn by_id(&self, id: CtxID) -> Option<Arc<GlobalCtxNode>> {
@@ -544,6 +591,9 @@ impl FuncCtx {
 
             all: Vec::new(),
         }
+    }
+
+    pub fn merge_local(&self, other: Arc<FuncCtx>) {
     }
 
     pub fn define(&mut self, mut newfunc: Function) -> FunctionID {
@@ -607,7 +657,8 @@ impl FuncCtx {
                         return false;
                     };
 
-                    for (arg_opt, _param) in params.iter().zip(f.params.iter().map(|(tid, _)| tid)) {
+                    for (arg_opt, _param) in params.iter().zip(f.params.iter().map(|(tid, _)| tid))
+                    {
                         if let Some(_arg) = arg_opt {}
                     }
 
@@ -640,6 +691,9 @@ pub struct TypeCtx {
 impl TypeCtx {
     pub fn id(&self) -> CtxID {
         self.ctx_id
+    }
+
+    pub fn merge_local(&self, other: Arc<TypeCtx>) {
     }
 
     pub fn new(within: CtxID) -> TypeCtx {

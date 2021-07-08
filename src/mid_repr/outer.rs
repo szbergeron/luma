@@ -149,7 +149,7 @@ impl ScopeContext {
         if let Some(ns) = from.as_ref() {
             //let ns_guard = ns.read().unwrap();
             for dec in ns.symbols() {
-                scope.add_definition(scope.clone(), dec.clone());
+                //scope.add_definition(scope.clone(), dec.clone());
             }
             /*if let Ok(outer) = ns_guard.contents.as_ref() {
                 for dec in outer.declarations.iter() {
@@ -173,7 +173,7 @@ impl ScopeContext {
     ) {
         for dec in outer.declarations.iter() {
             //let mut self_guard = self_rc.write().unwrap();
-            self.add_definition(self_rc.clone(), dec.clone());
+            //self.add_definition(self_rc.clone(), dec.clone());
         }
     }
 

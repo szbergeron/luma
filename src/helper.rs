@@ -10,7 +10,21 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::{Arc, RwLock};
 
 pub mod interner {
-    pub type StringSymbol = lasso::LargeSpur;
+    //pub type StringSymbol = lasso::LargeSpur;
+    #[derive(Copy, Clone, Hash, Debug, Eq, PartialEq)]
+    pub struct StringSymbol {
+        internal: usize,
+    }
+
+    unsafe impl lasso::Key for StringSymbol {
+        fn into_usize(self) -> usize {
+            self.internal
+        }
+
+        fn try_from_usize(int: usize) -> Option<Self> {
+            Some(StringSymbol { internal: int })
+        }
+    }
 
     pub enum Rodeo {
         ThreadedRodeo(lasso::ThreadedRodeo<StringSymbol>),
@@ -971,3 +985,17 @@ pub struct AtomicVecIndex {
     idx: i64, // intentionally not public, should not be possible to construct this type externally
     self_key: usize, // used to verify that this index came from the vec it is trying to index into
 }*/
+
+pub trait VecOps {
+    type Item;
+    fn appended(self, i: Self::Item) -> Self;
+}
+
+impl<T> VecOps for Vec<T> {
+    type Item = T;
+
+    fn appended(mut self, i: Self::Item) -> Self {
+        self.push(i);
+        self
+    }
+}

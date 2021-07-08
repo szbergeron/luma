@@ -37,7 +37,7 @@ impl<'lexer> Parser<'lexer> {
                             //self.eat_through(vec![Token::RBrace, Token::Semicolon]);
                         }
                         Ok(ok) => {
-                            declarations.push(Arc::new(RwLock::new(ok)));
+                            declarations.push(ok);
                         }
                     };
                 }
