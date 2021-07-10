@@ -143,9 +143,9 @@ impl AstNode for Option<&dyn AstNode> {
 }
 
 impl IntoAstNode for Option<&dyn AstNode> {
-    fn as_node_mut(&mut self) -> &mut dyn AstNode {
-        self
-    }
+    /*fn as_node_mut(&mut self) -> Option<&mut dyn AstNode> {
+        Some(self)
+    }*/
 
     fn as_node(&self) -> &dyn AstNode {
         self
@@ -168,7 +168,6 @@ impl std::fmt::Display for &dyn AstNode {
 }*/
 
 pub trait IntoAstNode {
-    fn as_node_mut(&mut self) -> &mut dyn AstNode;
     fn as_node(&self) -> &dyn AstNode;
 }
 

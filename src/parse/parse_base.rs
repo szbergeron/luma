@@ -167,7 +167,7 @@ impl<'lexer> Parser<'lexer> {
                     .parse_namespace()
                     .map(|mut ns| {
                         ns.set_public(public);
-                        ast::SymbolDeclaration::NamespaceDeclaration(ns)
+                        ast::SymbolDeclaration::NamespaceDeclaration(Arc::new(ns))
                     })
                     .map_err(|e| {
                         failed = true;
@@ -175,7 +175,7 @@ impl<'lexer> Parser<'lexer> {
                     }),
                 Token::Function => self
                     .parse_function_declaration()
-                    .map(|fd| ast::SymbolDeclaration::FunctionDeclaration(fd))
+                    .map(|fd| ast::SymbolDeclaration::FunctionDeclaration(Arc::new(fd)))
                     .map_err(|e| {
                         failed = true;
                         e
@@ -183,14 +183,14 @@ impl<'lexer> Parser<'lexer> {
                 // TODO: maybe add global variable declaration?
                 Token::Struct => self
                     .parse_struct_declaration()
-                    .map(|sd| ast::SymbolDeclaration::StructDeclaration(sd))
+                    .map(|sd| ast::SymbolDeclaration::StructDeclaration(Arc::new(sd)))
                     .map_err(|e| {
                         failed = true;
                         e
                     }),
                 Token::Use => self
                     .parse_use_declaration()
-                    .map(|ud| ast::SymbolDeclaration::UseDeclaration(ud))
+                    .map(|ud| ast::SymbolDeclaration::UseDeclaration(Arc::new(ud)))
                     .map_err(|e| {
                         failed = true;
                         e

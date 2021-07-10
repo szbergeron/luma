@@ -31,7 +31,7 @@ impl Namespace {
         self.public = public;
     }
 
-    pub fn into_ctx(self, parent_scope: &[StringSymbol]) -> Arc<GlobalCtxNode> {
+    pub fn into_ctx(&self, parent_scope: &[StringSymbol]) -> Arc<GlobalCtxNode> {
         let new_slice = parent_scope.to_vec().appended(self.name.unwrap());
         let ctx = GlobalCtx::get().get_or_create_nsctx(new_slice.as_slice());
 
@@ -40,15 +40,19 @@ impl Namespace {
             }
         }*/
 
-        let sym = self.as_symbol();
+        //let sym = self.as_symbol();
 
-        for dec in sym.symbols().iter() {
-            match dec {
-                FunctionDeclaration(fd) => {
-                    //ctx.func_ctx().define(
-                },
-                NamespaceDeclaration(nd) => {
-                    ctx.
+        if let Ok(content) = self.contents.as_ref() {
+            for dec in content.declarations.iter() {
+                match dec {
+                    SymbolDeclaration::FunctionDeclaration(fd) => {
+                        //ctx.func_ctx().define(
+                        ctx.func_ctx().add(fd.clone());
+                    },
+                    SymbolDeclaration::NamespaceDeclaration(nd) => {
+                        nd.into_ctx(&new_slice);
+                    },
+                    _ => todo!(),
                 }
             }
         }
@@ -57,9 +61,9 @@ impl Namespace {
         todo!()
     }
 
-    fn as_symbol(self) -> SymbolDeclaration {
-        SymbolDeclaration::NamespaceDeclaration(self)
-    }
+    /*fn as_symbol(&self) -> SymbolDeclaration {
+        SymbolDeclaration::NamespaceDeclaration(Arc::new(self))
+    }*/
 }
 
 impl AstNode for Namespace {
@@ -172,13 +176,13 @@ impl AstNode for OuterScope {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LetComponentScopedDestructure {
     // TODO: need to pub more work into this, revisit when relevant for
     // product types down the line
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LetComponentTuple {
     pub node_info: NodeInfo,
 
@@ -189,7 +193,7 @@ pub struct LetComponentTuple {
     pub type_specifier: Option<Box<TypeReference>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LetComponentIdentifier {
     pub node_info: NodeInfo,
 
@@ -198,7 +202,7 @@ pub struct LetComponentIdentifier {
     pub type_specifier: Option<Box<TypeReference>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum LetComponent {
     ScopedDestructure(LetComponentScopedDestructure),
     Tuple(LetComponentTuple),
@@ -207,9 +211,9 @@ pub enum LetComponent {
 }
 
 impl IntoAstNode for LetComponent {
-    fn as_node_mut(&mut self) -> &mut dyn AstNode {
-        self
-    }
+    /*fn as_node_mut(&mut self) -> Option<&mut dyn AstNode> {
+        Some(self)
+    }*/
 
     fn as_node(&self) -> &dyn AstNode {
         self
@@ -253,7 +257,7 @@ impl AstNode for LetComponent {
 
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LetExpression {
     pub node_info: NodeInfo,
 
@@ -263,7 +267,7 @@ pub struct LetExpression {
     pub expression: Box<ExpressionWrapper>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FunctionDeclaration {
     pub node_info: NodeInfo,
 
@@ -411,7 +415,7 @@ impl AstNode for UseDeclaration {
 
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ScopedNameReference {
     pub node_info: NodeInfo,
 
@@ -443,9 +447,9 @@ impl AstNode for ScopedNameReference {
 }
 
 impl IntoAstNode for ScopedNameReference {
-    fn as_node_mut(&mut self) -> &mut dyn AstNode {
+    /*fn as_node_mut(&mut self) -> &mut dyn AstNode {
         self
-    }
+    }*/
 
     fn as_node(&self) -> &dyn AstNode {
         self
@@ -484,16 +488,19 @@ impl AstNode for StaticVariableDeclaration {
 
 #[derive(Debug)]
 pub enum SymbolDeclaration {
-    FunctionDeclaration(FunctionDeclaration),
-    NamespaceDeclaration(Namespace),
-    StructDeclaration(StructDeclaration),
-    ExpressionDeclaration(StaticVariableDeclaration),
-    UseDeclaration(UseDeclaration),
+    FunctionDeclaration(Arc<FunctionDeclaration>),
+    NamespaceDeclaration(Arc<Namespace>),
+    StructDeclaration(Arc<StructDeclaration>),
+    ExpressionDeclaration(Arc<StaticVariableDeclaration>),
+    UseDeclaration(Arc<UseDeclaration>),
     //VariableDeclaration(VariableDeclaration),
 }
 
 impl IntoAstNode for SymbolDeclaration {
-    fn as_node_mut(&mut self) -> &mut dyn AstNode {
+    /*fn as_node_mut(&mut self) -> Option<&mut dyn AstNode> {
+        None
+    }*/
+    /*fn as_node_mut(&mut self) -> &mut dyn AstNode {
         match self {
             Self::FunctionDeclaration(fd) => fd,
             Self::NamespaceDeclaration(nd) => nd,
@@ -501,15 +508,15 @@ impl IntoAstNode for SymbolDeclaration {
             Self::ExpressionDeclaration(ed) => ed,
             Self::UseDeclaration(ud) => ud,
         }
-    }
+    }*/
 
     fn as_node(&self) -> &dyn AstNode {
         match self {
-            Self::FunctionDeclaration(fd) => fd,
-            Self::NamespaceDeclaration(nd) => nd,
-            Self::StructDeclaration(sd) => sd,
-            Self::ExpressionDeclaration(ed) => ed,
-            Self::UseDeclaration(ud) => ud,
+            Self::FunctionDeclaration(fd) => fd.as_ref(),
+            Self::NamespaceDeclaration(nd) => nd.as_ref(),
+            Self::StructDeclaration(sd) => sd.as_ref(),
+            Self::ExpressionDeclaration(ed) => ed.as_ref(),
+            Self::UseDeclaration(ud) => ud.as_ref(),
         }
     }
 }
@@ -526,7 +533,7 @@ impl SymbolDeclaration {
         }
     }
 
-    pub fn mark_public(&mut self) {
+    /*pub fn mark_public(&mut self) {
         match self {
             Self::FunctionDeclaration(v) => v.public = true,
             Self::NamespaceDeclaration(v) => v.public = true,
@@ -534,7 +541,7 @@ impl SymbolDeclaration {
             Self::ExpressionDeclaration(v) => v.public = true,
             Self::UseDeclaration(v) => v.public = true,
         }
-    }
+    }*/
 
     pub fn is_public(&self) -> bool {
         match self {

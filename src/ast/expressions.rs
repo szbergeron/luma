@@ -11,7 +11,7 @@ pub trait Expression: AstNode {
     fn expr_type(&self) -> Box<dyn types::Type>;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TypeReference {
     node_info: NodeInfo,
 
@@ -63,16 +63,16 @@ impl AstNode for TypeReference {
 }
 
 impl IntoAstNode for TypeReference {
-    fn as_node_mut(&mut self) -> &mut dyn AstNode {
+    /*fn as_node_mut(&mut self) -> &mut dyn AstNode {
         self
-    }
+    }*/
 
     fn as_node(&self) -> &dyn AstNode {
         self
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ExpressionWrapper {
     Assignment(AssignmentExpression),
     BinaryOperation(BinaryOperationExpression),
@@ -156,12 +156,12 @@ impl IntoAstNode for ExpressionWrapper {
         }
     }
 
-    fn as_node_mut(&mut self) -> &mut dyn AstNode {
+    /*fn as_node_mut(&mut self) -> &mut dyn AstNode {
         todo!()
-    }
+    }*/
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct WildcardExpression {
     node_info: NodeInfo,
 }
@@ -194,7 +194,7 @@ impl AstNode for WildcardExpression {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct StatementExpression {
     node_info: NodeInfo,
 
@@ -234,7 +234,7 @@ impl AstNode for StatementExpression {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Pattern {
     pub node_info: NodeInfo,
 
@@ -278,7 +278,7 @@ impl AstNode for Pattern {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct WhileExpression {
     node_info: NodeInfo,
 
@@ -323,7 +323,7 @@ impl AstNode for WhileExpression {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct IfThenElseExpression {
     node_info: NodeInfo,
 
@@ -377,7 +377,7 @@ impl AstNode for IfThenElseExpression {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BlockExpression {
     pub node_info: NodeInfo,
 
@@ -456,7 +456,7 @@ impl AstNode for LetExpression {
 
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AssignmentExpression {
     node_info: NodeInfo,
     //lhs: Box<dyn Expression>,
@@ -501,7 +501,7 @@ impl AstNode for AssignmentExpression {
 
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BinaryOperationExpression {
     node_info: NodeInfo,
 
@@ -552,7 +552,7 @@ impl AstNode for BinaryOperationExpression {
 
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ComparisonOperationExpression {
     node_info: NodeInfo,
 
@@ -667,7 +667,7 @@ impl UnaryOperation {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AccessExpression {
     pub node_info: NodeInfo,
 
@@ -730,7 +730,7 @@ impl AstNode for AccessExpression {
 
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MethodCall {
     node_info: NodeInfo,
 
@@ -740,7 +740,7 @@ pub struct MethodCall {
     pub arguments: Vec<Box<ExpressionWrapper>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct UnaryOperationExpression {
     node_info: NodeInfo,
 
@@ -786,7 +786,7 @@ impl AstNode for UnaryOperationExpression {
 
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CastExpression {
     node_info: NodeInfo,
 
@@ -811,7 +811,7 @@ impl CastExpression {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ReturnExpression {
     node_info: NodeInfo,
 
@@ -913,7 +913,7 @@ impl AstNode for IdentifierExpression {
     }
 }*/
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[allow(non_camel_case_types)]
 pub enum Literal {
     StringLiteral(StringSymbol),
@@ -936,7 +936,7 @@ pub enum Literal {
     UnknownIntegerLiteral(u128),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LiteralExpression {
     node_info: NodeInfo,
 

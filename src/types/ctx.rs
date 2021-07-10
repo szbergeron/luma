@@ -11,7 +11,7 @@ use std::sync::atomic::Ordering;
 
 use std::sync::{Arc, Weak};
 
-use crate::ast::indent;
+use crate::ast::{FunctionDeclaration, indent};
 use once_cell::sync::OnceCell;
 
 pub type TypeHandle = Arc<dyn Type>;
@@ -594,6 +594,9 @@ impl FuncCtx {
     }
 
     pub fn merge_local(&self, other: Arc<FuncCtx>) {
+    }
+
+    pub fn add(&self, func: Arc<FunctionDeclaration>) {
     }
 
     pub fn define(&mut self, mut newfunc: Function) -> FunctionID {
