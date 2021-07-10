@@ -11,7 +11,7 @@ use std::sync::atomic::Ordering;
 
 use std::sync::{Arc, Weak};
 
-use crate::ast::{FunctionDeclaration, indent};
+use crate::ast::{FunctionDeclaration, NodeInfo, UseDeclaration, indent};
 use once_cell::sync::OnceCell;
 
 pub type TypeHandle = Arc<dyn Type>;
@@ -105,6 +105,7 @@ impl std::fmt::Display for Resolution {
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Import {
+    pub origin: NodeInfo,
     pub alias: Option<StringSymbol>,
     pub resolution: Resolution,
 }
@@ -596,7 +597,7 @@ impl FuncCtx {
     pub fn merge_local(&self, other: Arc<FuncCtx>) {
     }
 
-    pub fn add(&self, func: Arc<FunctionDeclaration>) {
+    pub fn add(&self, func: FunctionDeclaration) {
     }
 
     pub fn define(&mut self, mut newfunc: Function) -> FunctionID {

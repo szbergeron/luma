@@ -18,7 +18,7 @@ pub fn findent(f: &mut std::fmt::Formatter<'_>, depth: usize) {
 
 //pub type CodeLocation = Loc;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub struct Span {
     pub start: CodeLocation,
     pub end: CodeLocation,
@@ -30,13 +30,13 @@ impl std::fmt::Display for Span {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub enum NodeInfo {
     Builtin,
     Parsed(ParsedNodeInfo),
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub struct ParsedNodeInfo {
     pub span: Span,
     //pub parsed: bool,

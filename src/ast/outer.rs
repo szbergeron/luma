@@ -7,6 +7,8 @@ use crate::helper::VecOps;
 use crate::helper::lex_wrap::ParseResultError;
 use crate::types::GlobalCtx;
 use crate::types::GlobalCtxNode;
+use crate::types::Import;
+use crate::types::Resolution;
 //use std::rc::Rc;
 use std::sync::Arc;
 //use std::cell::RefCell;
@@ -15,6 +17,8 @@ use std::sync::RwLock;
 use super::expressions::TypeReference;
 
 use crate::helper::interner::*;
+use async_recursion::async_recursion;
+use futures::future::join_all;
 
 
 #[derive(Debug)]
@@ -31,7 +35,8 @@ impl Namespace {
         self.public = public;
     }
 
-    pub fn into_ctx(&self, parent_scope: &[StringSymbol]) -> Arc<GlobalCtxNode> {
+    #[async_recursion]
+    pub async fn into_ctx(self, parent_scope: &[StringSymbol]) -> Arc<GlobalCtxNode> {
         let new_slice = parent_scope.to_vec().appended(self.name.unwrap());
         let ctx = GlobalCtx::get().get_or_create_nsctx(new_slice.as_slice());
 
@@ -41,13 +46,37 @@ impl Namespace {
         }*/
 
         //let sym = self.as_symbol();
+        
+        let mut ctxs = Vec::new();
 
-        if let Ok(content) = self.contents.as_ref() {
+        if let Ok(os) = self.contents {
+            let items = os.declarations;
+            for dec in items.into_iter() {
+                match dec {
+                    SymbolDeclaration::FunctionDeclaration(fd) => {
+                        //ctx.func_ctx().define(
+                        ctx.func_ctx().add(fd);
+                    },
+                    SymbolDeclaration::NamespaceDeclaration(nd) => {
+                        ctxs.push(nd.into_ctx(&new_slice));
+                    },
+                    SymbolDeclaration::UseDeclaration(ud) => {
+                        ctx.import(ud.into_import());
+                    },
+                    _ => todo!(),
+                }
+            }
+        }
+
+        // force destructuring the rest of the subtree
+        let joined: Vec<Arc<GlobalCtxNode>> = join_all(ctxs).await;
+
+        /*if let Ok(content) = self.contents.as {
             for dec in content.declarations.iter() {
                 match dec {
                     SymbolDeclaration::FunctionDeclaration(fd) => {
                         //ctx.func_ctx().define(
-                        ctx.func_ctx().add(fd.clone());
+                        ctx.func_ctx().add(fd);
                     },
                     SymbolDeclaration::NamespaceDeclaration(nd) => {
                         nd.into_ctx(&new_slice);
@@ -55,7 +84,7 @@ impl Namespace {
                     _ => todo!(),
                 }
             }
-        }
+        }*/
 
         //self.contents.map(|outer| outer.into_ctxlist(new_slice.as_slice())
         todo!()
@@ -381,6 +410,13 @@ pub struct UseDeclaration {
 }
 
 impl UseDeclaration {
+    pub fn into_import(self) -> Import {
+        Import {
+            alias: self.alias.clone(),
+            resolution: Resolution::Unresolved(self.scope.clone()),
+            origin: self.node_info,
+        }
+    }
 }
 
 impl AstNode for UseDeclaration {
@@ -488,11 +524,11 @@ impl AstNode for StaticVariableDeclaration {
 
 #[derive(Debug)]
 pub enum SymbolDeclaration {
-    FunctionDeclaration(Arc<FunctionDeclaration>),
-    NamespaceDeclaration(Arc<Namespace>),
-    StructDeclaration(Arc<StructDeclaration>),
-    ExpressionDeclaration(Arc<StaticVariableDeclaration>),
-    UseDeclaration(Arc<UseDeclaration>),
+    FunctionDeclaration(FunctionDeclaration),
+    NamespaceDeclaration(Namespace),
+    StructDeclaration(StructDeclaration),
+    ExpressionDeclaration(StaticVariableDeclaration),
+    UseDeclaration(UseDeclaration),
     //VariableDeclaration(VariableDeclaration),
 }
 
@@ -512,11 +548,11 @@ impl IntoAstNode for SymbolDeclaration {
 
     fn as_node(&self) -> &dyn AstNode {
         match self {
-            Self::FunctionDeclaration(fd) => fd.as_ref(),
-            Self::NamespaceDeclaration(nd) => nd.as_ref(),
-            Self::StructDeclaration(sd) => sd.as_ref(),
-            Self::ExpressionDeclaration(ed) => ed.as_ref(),
-            Self::UseDeclaration(ud) => ud.as_ref(),
+            Self::FunctionDeclaration(fd) => fd,
+            Self::NamespaceDeclaration(nd) => nd,
+            Self::StructDeclaration(sd) => sd,
+            Self::ExpressionDeclaration(ed) => ed,
+            Self::UseDeclaration(ud) => ud,
         }
     }
 }

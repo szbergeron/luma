@@ -530,7 +530,7 @@ pub mod lex_wrap {
         file_id: usize,
     }
 
-    #[derive(Debug, Clone, Copy)]
+    #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
     pub enum CodeLocation {
         Parsed(Loc),
         Builtin,
@@ -549,7 +549,7 @@ pub mod lex_wrap {
         }
     }
 
-    #[derive(Debug, Clone, Copy)]
+    #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
     pub struct Loc {
         //pub absolute: usize,
         pub line: isize,
