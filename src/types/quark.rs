@@ -10,7 +10,7 @@
 use super::{GlobalTypeID, GlobalFunctionID, GlobalCtxNode};
 use crate::helper::interner::StringSymbol;
 
-use std::sync::Weak;
+use std::{ptr::NonNull, sync::Weak};
 
 pub struct QuarkDeclID(usize);
 
@@ -112,8 +112,7 @@ pub enum Constraint {
 /// A Quark represents a query context, with an opaque implementation
 /// for how queries are computed
 pub struct Quark {
-    _within: Weak<GlobalCtxNode>,
-    _global: Weak<GlobalCtxNode>,
+    within: NonNull<GlobalCtxNode>,
 
 }
 
@@ -138,12 +137,18 @@ impl Quark {
         }
     }
 
-    pub fn new_within(within: Weak<GlobalCtxNode>, global: Weak<GlobalCtxNode>) -> Quark {
+    pub fn new_within(direct: NonNull<GlobalCtxNode>) -> Quark {
+        Quark {
+            within: direct
+        }
+    }
+
+    /*pub fn new_within(within: Weak<GlobalCtxNode>, global: Weak<GlobalCtxNode>) -> Quark {
         Quark {
             _within: within,
             _global: global,
         }
-    }
+    }*/
     
 
     /*fn within_ref(&self) -> &GlobalCtxNode {

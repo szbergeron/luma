@@ -2,7 +2,7 @@
 //#[macro_use] extern crate lalrpop_util;
 //#![feature(associated_type_defaults)]
 #![feature(option_expect_none)]
-#![feature(arc_new_cyclic)]
+#![feature(arc_new_cyclic, once_cell, new_uninit)]
 
 #[allow(unused_imports)]
 #[macro_use]

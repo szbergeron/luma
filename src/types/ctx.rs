@@ -1,18 +1,24 @@
 use super::impls::*;
 
-use crate::helper::interner::{SpurHelper, StringSymbol, intern};
+use crate::helper::interner::{intern, SpurHelper, StringSymbol};
+use crate::types::Quark;
 use dashmap::{DashMap, DashSet};
 use rayon::prelude::*;
 use smallvec::SmallVec;
+//use tokio::sync::OnceCell;
 
 use std::fmt::Write;
 
-use std::sync::atomic::Ordering;
+use std::lazy::SyncOnceCell;
+use std::mem::MaybeUninit;
+use std::ptr::{NonNull, addr_of_mut};
+use std::sync::atomic::{Ordering, fence};
 
-use std::sync::{Arc, Weak};
+use std::sync::{Arc, Once, Weak};
 
-use crate::ast::{FunctionDeclaration, NodeInfo, UseDeclaration, indent};
-use once_cell::sync::OnceCell;
+use crate::ast::{indent, FunctionDeclaration, NodeInfo, UseDeclaration};
+//use once_cell::sync::OnceCell;
+use std::pin::Pin;
 
 pub type TypeHandle = Arc<dyn Type>;
 
@@ -299,17 +305,29 @@ pub fn generate_typeid() -> TypeID {
 }
 
 // interior mut type
+/// Note to modifiers: ownership must travel down the tree.
+/// No references using & notation should ever refer to a child node,
+/// since children may be removed and dropped before a node "above" in the tree.
+///
+/// Any downward references should use either ID notation or scoped identification
 pub struct GlobalCtxNode {
     canonical_local_name: StringSymbol,
 
-    children: DashMap<StringSymbol, Arc<GlobalCtxNode>>,
-    _parent: Option<Weak<GlobalCtxNode>>,
+    children: DashMap<StringSymbol, Pin<Box<GlobalCtxNode>>>,
 
-    type_ctx: Arc<TypeCtx>,
-    func_ctx: Arc<FuncCtx>,
-    quark: super::Quark,
+    //parent: OnceCell<&'tree GlobalCtxNode<'tree>>,
+    //global: OnceCell<&'tree GlobalCtxNode<'tree>>,
+    parent: &'static GlobalCtxNode,
+    global: &'static GlobalCtxNode,
 
-    selfref: Weak<GlobalCtxNode>,
+    selfref: &'static GlobalCtxNode,
+
+    type_ctx: Option<TypeCtx>,
+    func_ctx: Option<FuncCtx>,
+
+    quark: Option<super::Quark>,
+
+    //selfref: OnceCell<&'tree GlobalCtxNode<'tree>>,
     id: CtxID,
 
     //imports: DashMap<StringSymbol, Import>,
@@ -318,6 +336,8 @@ pub struct GlobalCtxNode {
     exports: DashSet<Export>,
 }
 
+/// NOTE: lots of unsafe here, major contracts around the parent/global/selfref members,
+/// tread carefully when modifying this code!
 impl GlobalCtxNode {
     /// The passed GCN should not have any children, this
     /// transformation is only to be used for taking the `mod.rsh`
@@ -329,6 +349,7 @@ impl GlobalCtxNode {
     ///
     /// returns OK(()) on success, and Err with a string message if the merge fails
     pub fn merge_local(&self, other: StringSymbol) -> Result<(), &str> {
+        panic!("not done with local merge, need to eval if it's good to have");
         /*for (key, mut child) in other.children.into_iter() {
             /*if self.children.contains_key(&key) {
                 eprintln!("Already had key {} within ctx {}", key, self.canonical_local_name);
@@ -341,7 +362,7 @@ impl GlobalCtxNode {
 
         //self.imports.extend(other.imports.into_iter());
 
-        let other = self.remove_child(other)?;
+        /*let other = self.remove_child(other)?;
 
         other.imports.iter().for_each(|item| {
             self.imports.insert(item.clone());
@@ -350,20 +371,22 @@ impl GlobalCtxNode {
             self.exports.insert(item.clone());
         });
 
-        self.func_ctx.merge_local(other.func_ctx.clone());
-        self.type_ctx.merge_local(other.type_ctx.clone());
+        self.func_ctx().merge_local(other.func_ctx.clone());
+        self.type_ctx().merge_local(other.type_ctx.clone());
 
-        Ok(())
+        Ok(())*/
     }
 
-    pub fn remove_child(&self, other: StringSymbol) -> Result<Arc<GlobalCtxNode>, &str> {
+    /*pub fn remove_child(&self, other: StringSymbol) -> Result<Box<GlobalCtxNode>, &str> {
+        todo!();
+
         let o = self.children.remove(&other);
         match o {
             None => Err("Couldn't remove child, none existed by given spur id"),
             Some((key, node)) => Ok(node),
         }
         //
-    }
+    }*/
 
     pub fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let _ = writeln!(
@@ -393,23 +416,116 @@ impl GlobalCtxNode {
         self.exports.insert(export);
     }
 
-    pub fn type_ctx(&self) -> Arc<TypeCtx> {
-        self.type_ctx.clone()
+    pub fn type_ctx(&self) -> &TypeCtx {
+        self.type_ctx.as_ref().unwrap()
     }
 
-    pub fn func_ctx(&self) -> Arc<FuncCtx> {
-        self.func_ctx.clone()
+    pub fn func_ctx(&self) -> &FuncCtx {
+        self.func_ctx.as_ref().unwrap()
     }
 
     pub fn quark(&self) -> &super::Quark {
-        &self.quark
+        &self.quark.unwrap()
     }
 
-    fn new(
+    pub fn add_child(&self, child: Pin<Box<GlobalCtxNode>>) {
+        self.children.insert(child.canonical_local_name, child);
+    }
+
+    /// Constructs a "questionably initialized" (originally dangling) reference to a GlobalCtxNode
+    ///
+    /// DO NOT CALL AND EXPECT A VALUE THAT CAN BE DEREF'D or that has any meaningful contents,
+    /// only for usage as a momentary default while doing setup
+    pub unsafe fn static_dangling() -> &'static GlobalCtxNode {
+        static once: SyncOnceCell<Pin<Box<GlobalCtxNode>>> = SyncOnceCell::new();
+        once.get_or_init(|| {
+            let inner_ctx = Box::new(std::mem::MaybeUninit::zeroed());
+            let inner_ctx = Box::leak(inner_ctx);
+
+
+            let ptr: *mut GlobalCtxNode = (*inner_ctx).as_mut_ptr();
+
+
+            addr_of_mut!((*ptr).id).write(CtxID(u64::max_value()));
+            addr_of_mut!((*ptr).func_ctx).write(None);
+            addr_of_mut!((*ptr).type_ctx).write(None);
+            addr_of_mut!((*ptr).quark).write(None);
+            addr_of_mut!((*ptr).children).write(DashMap::new());
+            addr_of_mut!((*ptr).imports).write(DashSet::new());
+            addr_of_mut!((*ptr).exports).write(DashSet::new());
+
+            addr_of_mut!((*ptr).parent).write(ptr.as_ref().unwrap());
+            addr_of_mut!((*ptr).global).write(ptr.as_ref().unwrap());
+            addr_of_mut!((*ptr).selfref).write(ptr.as_ref().unwrap());
+
+
+
+            let val = Box::from_raw(ptr);
+            Pin::new(val)
+            //Pin::new(Box::assume_init::<MaybeUninit<GlobalCtxNode>>(inner_ctx))
+        }).get_selfref()
+        //let inner_ctx = std::mem::MaybeUninit::zeroed()
+        //NonNull::dangling().as_ref()
+    }
+
+    /// See notes inside function for notes on soundness/safety contracts for usage,
+    /// the 'parent lifetime is of significant importance here
+    unsafe fn new<'parent>(
         name: StringSymbol,
         id: CtxID,
-        parent: Option<Weak<GlobalCtxNode>>,
-        global: Option<Weak<GlobalCtxNode>>,
+        parent: Option<&'parent GlobalCtxNode>,
+        global: Option<&'parent GlobalCtxNode>,
+    ) -> Pin<Box<GlobalCtxNode>> {
+        unsafe {
+            let mut node = GlobalCtxNode {
+                id,
+                imports: DashSet::new(),
+                exports: DashSet::new(),
+
+                canonical_local_name: name,
+                children: DashMap::new(),
+
+                parent: GlobalCtxNode::static_dangling(),
+                global: GlobalCtxNode::static_dangling(),
+                selfref: GlobalCtxNode::static_dangling(),
+
+                type_ctx: Some(TypeCtx::new(id)),
+                func_ctx: Some(FuncCtx::new(id)),
+
+                quark: None,
+                //quark: std::mem::MaybeUninit::uninit(),
+            };
+            let boxed = Pin::new(Box::new(node));
+
+            let mref = boxed.as_mut();
+            Pin::get_unchecked_mut(mref).quark =
+                Some(Quark::new_within(NonNull::from(mref.get_unchecked_mut())));
+
+            mref.get_unchecked_mut().parent = match parent {
+                // NOTE: this transmute is only sound if the parent ref truly only lives for the
+                // parent lifetime
+                //
+                // This transition is why this function is marked as unsafe,
+                // as the contract that parent live at least as long as 'self
+                // must be upheld
+                Some(ptr) => std::mem::transmute(ptr),
+                None => mref.get_unchecked_mut(),
+            };
+
+            mref.get_unchecked_mut().global = match global {
+                Some(ptr) => std::mem::transmute(ptr),
+                None => mref.get_unchecked_mut(),
+            };
+
+            fence(Ordering::Release);
+
+            boxed
+        }
+    }
+
+    /*fn new_old(
+        name: StringSymbol,
+        id: CtxID,
     ) -> Arc<GlobalCtxNode> {
         let ctxnode = Arc::new_cyclic(|wr| GlobalCtxNode {
             canonical_local_name: name,
@@ -430,10 +546,14 @@ impl GlobalCtxNode {
         });
 
         ctxnode
-    }
+    }*/
 
-    fn get_selfref_arc(&self) -> Option<Arc<GlobalCtxNode>> {
+    /*fn get_selfref_arc(&self) -> Option<Arc<GlobalCtxNode>> {
         self.selfref.upgrade()
+    }*/
+
+    fn get_selfref(&self) -> &GlobalCtxNode {
+        unsafe { self.selfref }
     }
 
     pub fn name(&self) -> &str {
@@ -444,7 +564,7 @@ impl GlobalCtxNode {
         self.type_ctx.clone()
     }*/
 
-    fn nsctx_for(&self, scope: &[StringSymbol]) -> Option<Arc<GlobalCtxNode>> {
+    /*fn nsctx_for(&self, scope: &[StringSymbol]) -> Option<Arc<GlobalCtxNode>> {
         //match scope {
         //[last] //
         match scope {
@@ -481,7 +601,7 @@ impl GlobalCtxNode {
                     .register_nsctx(rest, into);
             }
         }
-    }
+    }*/
 
     //fn register_type_ctx(&self, scope: &[&'input str])
 
@@ -594,11 +714,9 @@ impl FuncCtx {
         }
     }
 
-    pub fn merge_local(&self, other: Arc<FuncCtx>) {
-    }
+    pub fn merge_local(&self, other: Arc<FuncCtx>) {}
 
-    pub fn add(&self, func: FunctionDeclaration) {
-    }
+    pub fn add(&self, func: FunctionDeclaration) {}
 
     pub fn define(&mut self, mut newfunc: Function) -> FunctionID {
         //let id = self.id_gen;
@@ -697,8 +815,7 @@ impl TypeCtx {
         self.ctx_id
     }
 
-    pub fn merge_local(&self, other: Arc<TypeCtx>) {
-    }
+    pub fn merge_local(&self, other: Arc<TypeCtx>) {}
 
     pub fn new(within: CtxID) -> TypeCtx {
         TypeCtx {
