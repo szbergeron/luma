@@ -3,15 +3,16 @@ use super::CFlags;
 
 use crate::helper::Error;
 use crate::helper::*;
+use crate::types::{GlobalCtx, GlobalCtxNode};
 use dashmap::DashMap;
 
 #[allow(unused_imports)]
 use rayon::prelude::*;
 
+use async_trait::async_trait;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
-
-
 
 use crate::helper::interner::*;
 use futures::future::join_all;
@@ -63,11 +64,32 @@ impl FileRegistry {
     }
 }
 
+#[async_trait]
+pub trait IntoCtxNode {
+    async fn into_ctx(self) -> Option<Pin<Box<GlobalCtxNode>>>;
+}
+
+/*#[async_trait]
+pub trait AsCtxNode {
+    async fn convert(&mut self) -> Pin<Box<GlobalCtxNode>>;
+}*/
+
 #[allow(dead_code)]
 pub struct CompilationRoot {
     args: ArgResult,
     children: Vec<TreeNode>,
     files: FileRegistry,
+}
+
+impl CompilationRoot {
+    pub fn into_ctx(self) -> (ArgResult, FileRegistry, GlobalCtx) {
+        let first_children = self
+            .children
+            .into_iter()
+            .map(|treenode| treenode.into_ctx());
+
+        todo!()
+    }
 }
 
 pub struct DirNode {
@@ -160,6 +182,13 @@ pub enum TreeNode {
     DirNode(DirNode),
     FileNode(FileNode),
     ErrorNode(ErrorNode),
+}
+
+#[async_trait]
+impl IntoCtxNode for TreeNode {
+    async fn into_ctx(self) -> Option<Pin<Box<GlobalCtxNode>>> {
+        todo!()
+    }
 }
 
 /*impl UnknownNode {

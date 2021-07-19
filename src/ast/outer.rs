@@ -37,8 +37,10 @@ impl Namespace {
 
     #[async_recursion]
     pub async fn into_ctx(self, parent_scope: &[StringSymbol]) -> Arc<GlobalCtxNode> {
-        let new_slice = parent_scope.to_vec().appended(self.name.unwrap());
-        let ctx = GlobalCtx::get().get_or_create_nsctx(new_slice.as_slice());
+        todo!();
+
+        /*let new_slice = parent_scope.to_vec().appended(self.name.unwrap());
+        let ctx = GlobalCtx::get().get_nsctx(new_slice.as_slice());
 
         /*if let Ok(outer) = self.contents {
             for dec in outer.declarations.into_iter() {
@@ -87,7 +89,7 @@ impl Namespace {
         }*/
 
         //self.contents.map(|outer| outer.into_ctxlist(new_slice.as_slice())
-        todo!()
+        todo!()*/
     }
 
     /*fn as_symbol(&self) -> SymbolDeclaration {

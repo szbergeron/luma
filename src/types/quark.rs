@@ -112,7 +112,7 @@ pub enum Constraint {
 /// A Quark represents a query context, with an opaque implementation
 /// for how queries are computed
 pub struct Quark {
-    within: NonNull<GlobalCtxNode>,
+    within: &'static GlobalCtxNode,
 
 }
 
@@ -137,11 +137,20 @@ impl Quark {
         }
     }
 
-    pub fn new_within(direct: NonNull<GlobalCtxNode>) -> Quark {
+    /// Unsafe contract: requires that `direct` be valid for at least as long as self, but
+    /// not necessarily for the full 'static lifetime
+    pub unsafe fn new_within(direct: &'static GlobalCtxNode) -> Quark {
         Quark {
             within: direct
         }
     }
+
+    /*/// Mutates the `within` member to align with the provided ref.
+    /// This is unsafe as the given ref is actually not required to be 'static,
+    /// and instead is only required to live as long as 'self
+    pub unsafe fn set_within(&mut self, r: &'static GlobalCtxNode) {
+        self.within = r;
+    }*/
 
     /*pub fn new_within(within: Weak<GlobalCtxNode>, global: Weak<GlobalCtxNode>) -> Quark {
         Quark {

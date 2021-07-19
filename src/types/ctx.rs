@@ -11,13 +11,14 @@ use std::fmt::Write;
 
 use std::lazy::SyncOnceCell;
 use std::mem::MaybeUninit;
-use std::ptr::{NonNull, addr_of_mut};
-use std::sync::atomic::{Ordering, fence};
+use std::ptr::{addr_of_mut, NonNull};
+use std::sync::atomic::{fence, Ordering};
 
 use std::sync::{Arc, Once, Weak};
 
 use crate::ast::{indent, FunctionDeclaration, NodeInfo, UseDeclaration};
 //use once_cell::sync::OnceCell;
+use static_assertions::assert_impl_all;
 use std::pin::Pin;
 
 pub type TypeHandle = Arc<dyn Type>;
@@ -336,6 +337,8 @@ pub struct GlobalCtxNode {
     exports: DashSet<Export>,
 }
 
+assert_impl_all!(GlobalCtxNode: Send);
+
 /// NOTE: lots of unsafe here, major contracts around the parent/global/selfref members,
 /// tread carefully when modifying this code!
 impl GlobalCtxNode {
@@ -425,7 +428,8 @@ impl GlobalCtxNode {
     }
 
     pub fn quark(&self) -> &super::Quark {
-        &self.quark.unwrap()
+        self.quark.as_ref().unwrap()
+        //&self.quark.unwrap()
     }
 
     pub fn add_child(&self, child: Pin<Box<GlobalCtxNode>>) {
@@ -442,9 +446,7 @@ impl GlobalCtxNode {
             let inner_ctx = Box::new(std::mem::MaybeUninit::zeroed());
             let inner_ctx = Box::leak(inner_ctx);
 
-
             let ptr: *mut GlobalCtxNode = (*inner_ctx).as_mut_ptr();
-
 
             addr_of_mut!((*ptr).id).write(CtxID(u64::max_value()));
             addr_of_mut!((*ptr).func_ctx).write(None);
@@ -458,12 +460,11 @@ impl GlobalCtxNode {
             addr_of_mut!((*ptr).global).write(ptr.as_ref().unwrap());
             addr_of_mut!((*ptr).selfref).write(ptr.as_ref().unwrap());
 
-
-
             let val = Box::from_raw(ptr);
             Pin::new(val)
             //Pin::new(Box::assume_init::<MaybeUninit<GlobalCtxNode>>(inner_ctx))
-        }).get_selfref()
+        })
+        .get_selfref()
         //let inner_ctx = std::mem::MaybeUninit::zeroed()
         //NonNull::dangling().as_ref()
     }
@@ -495,13 +496,14 @@ impl GlobalCtxNode {
                 quark: None,
                 //quark: std::mem::MaybeUninit::uninit(),
             };
-            let boxed = Pin::new(Box::new(node));
+            let as_ptr: *mut GlobalCtxNode = Box::into_raw(Box::new(node));
+            //let boxed = Pin::new(Box::new(node));
 
-            let mref = boxed.as_mut();
-            Pin::get_unchecked_mut(mref).quark =
-                Some(Quark::new_within(NonNull::from(mref.get_unchecked_mut())));
+            let mref = as_ptr.as_ref().expect("directly leaked box was null");
 
-            mref.get_unchecked_mut().parent = match parent {
+            (*as_ptr).quark = Some(Quark::new_within(mref));
+
+            (*as_ptr).parent = match parent {
                 // NOTE: this transmute is only sound if the parent ref truly only lives for the
                 // parent lifetime
                 //
@@ -509,17 +511,19 @@ impl GlobalCtxNode {
                 // as the contract that parent live at least as long as 'self
                 // must be upheld
                 Some(ptr) => std::mem::transmute(ptr),
-                None => mref.get_unchecked_mut(),
+                None => mref,
             };
 
-            mref.get_unchecked_mut().global = match global {
+            (*as_ptr).global = match global {
                 Some(ptr) => std::mem::transmute(ptr),
-                None => mref.get_unchecked_mut(),
+                None => mref,
             };
+
+            let pinned = Pin::new_unchecked(Box::from_raw(as_ptr));
 
             fence(Ordering::Release);
 
-            boxed
+            pinned
         }
     }
 
@@ -564,22 +568,29 @@ impl GlobalCtxNode {
         self.type_ctx.clone()
     }*/
 
-    /*fn nsctx_for(&self, scope: &[StringSymbol]) -> Option<Arc<GlobalCtxNode>> {
+    fn nsctx_for(&self, scope: &[StringSymbol]) -> Option<&GlobalCtxNode> {
         //match scope {
         //[last] //
         match scope {
-            [] => self.get_selfref_arc(),
+            [] => Some(self.get_selfref()),
             [first, rest @ ..] => {
                 //self.
                 self.children
                     .get(first)
-                    .map(|nsctx| nsctx.nsctx_for(rest))
+                    .map(|nsctx|
+                         unsafe {
+                             // NOTE: this is sound because of the drop ordering guarantees
+                             // for this structure.
+                             // The ref here may only go invalid during the drop of
+                             // self, and thus must be valid until drop for self is first
+                             // called
+                             std::mem::transmute(nsctx.nsctx_for(rest)) })
                     .flatten()
             }
         }
     }
 
-    fn register_nsctx(&self, scope: &[StringSymbol], into: &DashMap<CtxID, Arc<GlobalCtxNode>>) {
+    /*fn register_nsctx(&self, scope: &[StringSymbol], into: &DashMap<CtxID, Arc<GlobalCtxNode>>) {
         match scope {
             [] => {
                 // no action for empty case, this is base case (self is already registered)
@@ -609,42 +620,44 @@ impl GlobalCtxNode {
 }
 
 pub struct GlobalCtx {
-    entry: Arc<GlobalCtxNode>,
+    entry: Pin<Box<GlobalCtxNode>>,
 
-    contexts: DashMap<CtxID, Arc<GlobalCtxNode>>,
+    contexts: DashMap<CtxID, Pin<Box<GlobalCtxNode>>>,
 
     functions: DashMap<GlobalFunctionID, Arc<FunctionImplementation>>,
     types: DashMap<GlobalTypeID, TypeHandle>,
 }
 
 impl GlobalCtx {
-    pub fn get_global(&self) -> Arc<GlobalCtxNode> {
-        self.entry.clone()
+    pub fn get_global(&self) -> &GlobalCtxNode {
+        self.entry.get_selfref()
     }
 
     pub fn get() -> &'static GlobalCtx {
-        static GCTX: OnceCell<GlobalCtx> = OnceCell::new(); //GlobalCtx::new();
+        static GCTX: SyncOnceCell<GlobalCtx> = SyncOnceCell::new(); //GlobalCtx::new();
 
         GCTX.get_or_init(|| GlobalCtx::new())
     }
 
     pub fn new() -> GlobalCtx {
-        GlobalCtx {
-            entry: GlobalCtxNode::new(
-                intern("global"),
-                CtxID(CTX_ID.fetch_add(1, Ordering::SeqCst)),
-                None,
-                None,
-            ),
-            contexts: DashMap::new(),
-            functions: DashMap::new(),
-            types: DashMap::new(),
+        unsafe {
+            GlobalCtx {
+                entry: GlobalCtxNode::new(
+                    intern("global"),
+                    CtxID(CTX_ID.fetch_add(1, Ordering::SeqCst)),
+                    None,
+                    None,
+                ),
+                contexts: DashMap::new(),
+                functions: DashMap::new(),
+                types: DashMap::new(),
+            }
         }
     }
 
     /// tries to get a namespace ctx if one exists, and None if not
     #[allow(unused)]
-    fn get_nsctx(&self, scope: &[StringSymbol]) -> Option<Arc<GlobalCtxNode>> {
+    fn get_nsctx(&self, scope: &[StringSymbol]) -> Option<&GlobalCtxNode> {
         self.entry.nsctx_for(scope)
     }
 
@@ -653,25 +666,24 @@ impl GlobalCtx {
     /// believe that an ns was actually declared/referenced and should thus be avoided for
     /// strict read-query lookups
     #[allow(unused)]
-    pub fn get_or_create_nsctx(&self, scope: &[StringSymbol]) -> Arc<GlobalCtxNode> {
+    /*pub fn get_or_create_nsctx(&self, scope: &[StringSymbol]) -> Arc<GlobalCtxNode> {
         self.entry.register_nsctx(scope, &self.contexts);
 
         self.get_nsctx(scope).expect(
             "Created nsctx was not found directly afterward, failed to create? Failed to search?",
         )
-    }
-
+    }*/
     #[allow(unused)]
     /// tries to get a namespace ctx if one exists, and not then creates the necessary path of
     /// nsctxs to have one to use for the return value. This builds out the tree, but can make future ns lookups
     /// believe that an ns was actually declared/referenced and should thus be avoided for
     /// strict read-query lookups. This returns the TypeCtx directly off of the
     /// internal NS looked up by `scope`, so that the last level type (decl itself) can be inserted
-    pub fn get_or_create_typectx(&self, scope: &[StringSymbol]) -> Arc<TypeCtx> {
+    /*pub fn get_or_create_typectx(&self, scope: &[StringSymbol]) -> Arc<TypeCtx> {
         self.get_or_create_nsctx(scope).type_ctx()
-    }
+    }*/
 
-    pub fn register_name_ctx(&self, scope: &[StringSymbol]) {
+    /*pub fn register_name_ctx(&self, scope: &[StringSymbol]) {
         let global_symbol = intern("global");
         /*match scope {
             // global scope handled same as default scope
@@ -682,10 +694,24 @@ impl GlobalCtx {
         let stripped = scope.strip_prefix(&[global_symbol]).unwrap();
 
         self.entry.register_nsctx(stripped, &self.contexts);
-    }
+    }*/
 
-    pub fn by_id(&self, id: CtxID) -> Option<Arc<GlobalCtxNode>> {
-        self.contexts.get(&id).map(|opt| opt.value().to_owned())
+    pub fn by_id(&self, id: CtxID) -> Option<Pin<&GlobalCtxNode>> {
+        //self.contexts.get(&id).map(|opt| opt.value().get_selfref())
+        let opt = self.contexts.get(&id)?;
+        let opt = opt.value();
+
+        unsafe {
+            let r = opt.get_selfref();
+
+            // we know the ref inside the pin must live as long as we do not drop a child,
+            // so long as we maintain that invariant we can take the ref and return it
+
+            Some(std::mem::transmute(r))
+        }
+        //let opt = opt.value();
+        //Some(opt.as_ref())
+        //Some(opt.get_selfref())
     }
 }
 
