@@ -2,9 +2,9 @@ use super::stager::ArgResult;
 use super::CFlags;
 
 use crate::ast::OuterScope;
+use crate::helper::lex_wrap::ParseResultError;
 use crate::helper::Error;
 use crate::helper::*;
-use crate::helper::lex_wrap::ParseResultError;
 use crate::types::{GlobalCtx, GlobalCtxNode};
 use dashmap::DashMap;
 
@@ -47,11 +47,14 @@ impl PathNode {
         children: Vec<Node>,
         module_file: Option<PathBuf>,
     ) -> Node {
-        Node::PathNode(
-            PathNode {
-                path, module, module_file, children, error_channel: ec, cflags: args.flags
-            }
-        )
+        Node::PathNode(PathNode {
+            path,
+            module,
+            module_file,
+            children,
+            error_channel: ec,
+            cflags: args.flags,
+        })
     }
 
     #[async_recursion]
@@ -76,12 +79,12 @@ impl PathNode {
 
         let mut module_file = None;
 
-        let mut child_set = Vec::new();
+        //let mut child_set = Vec::new();
 
         let interned_mod = intern(stem.as_str());
         self_module.push(interned_mod);
 
-        let children = join_all(path.read_dir()
+        let children: Vec<Node> = join_all(path.read_dir()
             .expect("couldn't read a directory in the passed source tree")
             .filter_map(|entry| match entry {
                 Ok(entry) => {
@@ -91,9 +94,16 @@ impl PathNode {
                             let ext = path.extension()?;
                             match ext.to_string_lossy().to_string().as_str() {
                                 "rsh" => match path.file_stem().expect("There was no file stem?").to_str().expect("file stem was invalid unicode") {
-                                    "mod" => None, // we filter out the mod.rsh file since it is merged into toplevel
+                                    "mod" => {
+                                        // NOTE: mut warn, this reaches around to set the "module
+                                        // file". Borrowing rules allow this but it's good to note
+                                        // where this gets set
+                                        module_file = Some(path);
+                                        None
+                                    }, // we filter out the mod.rsh file since it is merged into toplevel
                                     other => Some(Self::from_path(path, &self_module, channel.clone(), args)),
                                 }
+                                _ => Some(Self::async_err()),
                             }
                         },
                         EitherNone::B(_) => {
@@ -105,45 +115,7 @@ impl PathNode {
                 Err(_) => Some(Self::async_err()),
             })).await;
 
-        if path.is_file() {
-            if let Some(ext) = path.extension() {
-                if ext.to_string_lossy().to_string() == "rsh" {
-                    /*let merges_nextlevel =
-                    if stem == "mod" {
-                        // don't prefix the filename to the path
-                        true
-                    } else {
-                        let interned_mod = intern(stem.as_str());
-                        self_module.push(interned_mod);
-                        false
-                    };*/
-
-                    //TreeNode::FileNode(FileNode { module: self_module, file: path })
-                    PathNode::new(path, self_module, args, merges_nextlevel, channel).await
-                } else {
-                    TreeNode::ErrorNode(ErrorNode {})
-                }
-            } else {
-                TreeNode::ErrorNode(ErrorNode {})
-            }
-        } else if path.is_dir() {
-
-            let children: Vec<TreeNode> = join_all(
-                path.read_dir()
-                    .expect("couldn't read a directory in the passed source tree")
-                    .filter_map(|entry| match entry {
-                        Ok(entry) => Some(from_path(entry.path(), &self_module, channel.clone(), args)),
-                        Err(_) => None,
-                    }),
-            )
-            .await;
-
-            //TreeNode::DirNode(DirNode { children, module: self_module })
-            DirNode::new(self_module, children, channel).await
-        } else {
-            Node::ErrorNode(ErrorNode {})
-        }
-
+        PathNode::new(path, self_module, args, channel, children, module_file)
     }
 }
 
@@ -309,11 +281,10 @@ impl FileNode {
 
         match r {
             Err(_) => TreeNode::ErrorNode(ErrorNode {}),
-            Ok(os) => TreeNode::FileNode(
-                FileNode {
-                    parsed: Some(os),
-                    ..self
-                })
+            Ok(os) => TreeNode::FileNode(FileNode {
+                parsed: Some(os),
+                ..self
+            }),
         }
     }
 }
@@ -339,12 +310,12 @@ impl TreeNode {
         }
     }
 
-    pub fn merge(self) -> Self {
+    /*pub fn merge(self) -> Self {
         match self {
             Self::DirNode(dn) => Self::DirNode(dn.merge()),
             other => other,
         }
-    }
+    }*/
 }
 
 #[async_trait]
@@ -378,8 +349,7 @@ async fn from_path(
     if path.is_file() {
         if let Some(ext) = path.extension() {
             if ext.to_string_lossy().to_string() == "rsh" {
-                let merges_nextlevel =
-                if stem == "mod" {
+                let merges_nextlevel = if stem == "mod" {
                     // don't prefix the filename to the path
                     true
                 } else {
