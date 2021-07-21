@@ -999,3 +999,29 @@ impl<T> VecOps for Vec<T> {
         self
     }
 }
+
+pub enum EitherNone<TA, TB> {
+    A(TA),
+    B(TB),
+    Neither(),
+    Both(TA, TB),
+}
+
+impl<TA, TB> EitherNone<TA, TB> {
+    pub fn of(a: Option<TA>, b: Option<TB>) -> EitherNone<TA, TB> {
+        match a {
+            Some(a) => match b {
+                    Some(b) => EitherNone::Both(a, b),
+                    None => EitherNone::A(a),
+                },
+            None => match b {
+                Some(b) => EitherNone::B(b),
+                None => EitherNone::Neither(),
+            }
+        }
+    }
+
+    pub fn of_bool(a: bool, b: bool) -> EitherNone<bool, bool> {
+        EitherNone::of(a.into(), b.into())
+    }
+}
