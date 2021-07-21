@@ -5,9 +5,10 @@ use crate::types::Quark;
 use dashmap::{DashMap, DashSet};
 use rayon::prelude::*;
 use smallvec::SmallVec;
+use std::fmt::Formatter;
 //use tokio::sync::OnceCell;
 
-use std::fmt::Write;
+use std::fmt::{Debug, Write};
 
 use std::lazy::SyncOnceCell;
 use std::mem::MaybeUninit;
@@ -337,6 +338,12 @@ pub struct GlobalCtxNode {
     exports: DashSet<Export>,
 }
 
+impl Debug for GlobalCtxNode {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(f, "GlobalCtxNode named {}", self.canonical_local_name.resolve())
+    }
+}
+
 assert_impl_all!(GlobalCtxNode: Send);
 
 /// NOTE: lots of unsafe here, major contracts around the parent/global/selfref members,
@@ -471,7 +478,7 @@ impl GlobalCtxNode {
 
     /// See notes inside function for notes on soundness/safety contracts for usage,
     /// the 'parent lifetime is of significant importance here
-    unsafe fn new<'parent>(
+    pub unsafe fn new<'parent>(
         name: StringSymbol,
         id: CtxID,
         parent: Option<&'parent GlobalCtxNode>,
@@ -556,7 +563,7 @@ impl GlobalCtxNode {
         self.selfref.upgrade()
     }*/
 
-    fn get_selfref(&self) -> &GlobalCtxNode {
+    pub fn get_selfref(&self) -> &GlobalCtxNode {
         unsafe { self.selfref }
     }
 
@@ -567,6 +574,12 @@ impl GlobalCtxNode {
     /*fn type_ctx(&self) -> Arc<TypeCtx> {
         self.type_ctx.clone()
     }*/
+
+    pub fn generate_ctxid() -> CtxID {
+        let id = CTX_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let id = CtxID(id);
+        id
+    }
 
     fn nsctx_for(&self, scope: &[StringSymbol]) -> Option<&GlobalCtxNode> {
         //match scope {

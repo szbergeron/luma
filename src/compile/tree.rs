@@ -189,6 +189,46 @@ impl PathNode {
     }*/
 }
 
+
+#[async_trait]
+impl IntoCtxNode for PathNode {
+    async unsafe fn into_ctx(self, parent: &GlobalCtxNode, global: &GlobalCtxNode) -> Option<Pin<Box<GlobalCtxNode>>> {
+                let self_ctx = match self.parsed {
+                    None => {
+                        GlobalCtxNode::new(
+                            self.module.last().cloned().unwrap_or_else(|| intern("")),
+                            GlobalCtxNode::generate_ctxid(),
+                            Some(parent), Some(global))
+                    },
+                    Some(outerscope) => {
+                        outerscope.into_ctx(self.module, parent, global).await
+                    }
+                };
+
+                let children = join_all(self.children.into_iter().map(|child| child.into_ctx(self_ctx.get_selfref(), global))).await;
+
+                for child in children {
+                    if let Some(child) = child {
+                        self_ctx.add_child(child);
+                    } else {
+                        println!("Failed to add a child");
+                    }
+                }
+
+                Some(self_ctx)
+    }
+}
+
+#[async_trait]
+impl IntoCtxNode for Node {
+    async unsafe fn into_ctx(self, parent: &GlobalCtxNode, global: &GlobalCtxNode) -> Option<Pin<Box<GlobalCtxNode>>> {
+        match self {
+            Self::PathNode(pn) => pn.into_ctx(parent, global).await,
+            Self::ErrorNode(_) => None,
+        }
+    }
+}
+
 pub struct FileRegistry {
     //files: Vec<FileHandle>,
     id: AtomicUsize,
@@ -234,7 +274,7 @@ impl FileRegistry {
 
 #[async_trait]
 pub trait IntoCtxNode {
-    async fn into_ctx(self) -> Option<Pin<Box<GlobalCtxNode>>>;
+    async unsafe fn into_ctx(self, parent: &GlobalCtxNode, global: &GlobalCtxNode) -> Option<Pin<Box<GlobalCtxNode>>>;
 }
 
 /*#[async_trait]
@@ -250,24 +290,32 @@ pub struct CompilationRoot {
 }
 
 impl CompilationRoot {
-    pub fn into_ctx(self) -> (ArgResult, FileRegistry, GlobalCtx) {
+    pub async fn into_ctx(self) -> (ArgResult, FileRegistry, GlobalCtx) {
+        let gbl = unsafe {
+            GlobalCtxNode::new(intern("global"), GlobalCtxNode::generate_ctxid(), None, None)
+        };
+
         let first_children = self
             .children
             .into_iter()
-            .map(|treenode| treenode.into_ctx());
+            // NOTE: unsafe because we need to guarantee that the lifetimes of gbl last long(er)
+            // enough that the child nodes do not hold dangling parent refs
+            .map(|treenode| unsafe { treenode.into_ctx(&gbl, &gbl) });
 
+        for child in join_all(first_children).await {
+            match child {
+                Some(c) => gbl.add_child(c),
+                None => (),
+            }
+        }
+
+
+        dbg!(gbl);
         todo!()
     }
 }
 
 pub struct ErrorNode {}
-
-#[async_trait]
-impl IntoCtxNode for Node {
-    async fn into_ctx(self) -> Option<Pin<Box<GlobalCtxNode>>> {
-        todo!()
-    }
-}
 
 /*impl UnknownNode {
     pub async fn explore(self) -> TreeNode {

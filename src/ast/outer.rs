@@ -2,24 +2,22 @@ use super::base::*;
 use super::expressions::ExpressionWrapper;
 use crate::helper::VecOps;
 
-
-
 use crate::helper::lex_wrap::ParseResultError;
 use crate::types::GlobalCtx;
 use crate::types::GlobalCtxNode;
 use crate::types::Import;
 use crate::types::Resolution;
+use std::pin::Pin;
 //use std::rc::Rc;
 use std::sync::Arc;
 //use std::cell::RefCell;
 
-use std::sync::RwLock;
 use super::expressions::TypeReference;
+use std::sync::RwLock;
 
 use crate::helper::interner::*;
 use async_recursion::async_recursion;
 use futures::future::join_all;
-
 
 #[derive(Debug)]
 pub struct Namespace {
@@ -48,7 +46,7 @@ impl Namespace {
         }*/
 
         //let sym = self.as_symbol();
-        
+
         let mut ctxs = Vec::new();
 
         if let Ok(os) = self.contents {
@@ -121,14 +119,18 @@ impl AstNode for Namespace {
     }
 
     fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
-        let _ = writeln!(f, "\n{}mod {} {{", indent(depth), self.name.map(|ss| ss.resolve()).unwrap_or("<unknown"));
+        let _ = writeln!(
+            f,
+            "\n{}mod {} {{",
+            indent(depth),
+            self.name.map(|ss| ss.resolve()).unwrap_or("<unknown")
+        );
 
         if let Ok(os) = self.contents.as_ref() {
             os.pretty(f, depth + 1);
         }
         let _ = writeln!(f, "{}}}", indent(depth));
     }
-
 }
 
 #[derive(Debug)]
@@ -140,6 +142,19 @@ pub struct OuterScope {
 }
 
 impl OuterScope {
+    pub async unsafe fn into_ctx(
+        self,
+        module: Vec<StringSymbol>,
+        parent: &GlobalCtxNode,
+        global: &GlobalCtxNode,
+    ) -> Pin<Box<GlobalCtxNode>> {
+        GlobalCtxNode::new(
+            module.last().cloned().unwrap_or_else(|| intern("")),
+            GlobalCtxNode::generate_ctxid(),
+            Some(parent),
+            Some(global),
+        )
+    }
     /*pub fn prepass<'context>(&self, context: &Arc<RwLock<ScopeContext<'context, 'context>>>) where 'a: 'context {
         let mut context = context.write().unwrap();
         for dec in self.declarations.iter() {
@@ -151,10 +166,7 @@ impl OuterScope {
         std::mem::drop(context);
     }*/
 
-    pub fn new(
-        node_info: NodeInfo,
-        declarations: Vec<SymbolDeclaration>,
-    ) -> OuterScope {
+    pub fn new(node_info: NodeInfo, declarations: Vec<SymbolDeclaration>) -> OuterScope {
         OuterScope {
             node_info,
             declarations,
@@ -195,7 +207,6 @@ impl AstNode for OuterScope {
     }
 
     fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
-        
         //let _ = writeln!(f, "{}File {}", indent(depth), self.node_info);
 
         for decl in self.declarations.iter() {
@@ -210,7 +221,7 @@ impl AstNode for OuterScope {
 #[derive(Debug, Clone)]
 pub struct LetComponentScopedDestructure {
     // TODO: need to pub more work into this, revisit when relevant for
-    // product types down the line
+// product types down the line
 }
 
 #[derive(Debug, Clone)]
@@ -218,7 +229,6 @@ pub struct LetComponentTuple {
     pub node_info: NodeInfo,
 
     // pub arity: usize, // implicit in length of component vec
-
     pub elements: Vec<LetComponent>,
 
     pub type_specifier: Option<Box<TypeReference>>,
@@ -254,7 +264,9 @@ impl IntoAstNode for LetComponent {
 impl AstNode for LetComponent {
     fn node_info(&self) -> NodeInfo {
         match self {
-            Self::ScopedDestructure(_lcsd) => todo!("LetComponentScopedDestructure not implemented for fmt"),
+            Self::ScopedDestructure(_lcsd) => {
+                todo!("LetComponentScopedDestructure not implemented for fmt")
+            }
             Self::Discard(ni) => *ni,
             Self::Tuple(lct) => lct.node_info,
             Self::Identifier(lci) => lci.node_info,
@@ -263,11 +275,19 @@ impl AstNode for LetComponent {
 
     fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         match self {
-            Self::ScopedDestructure(_lcsd) => todo!("LetComponentScopedDestructure not implemented for fmt"),
+            Self::ScopedDestructure(_lcsd) => {
+                todo!("LetComponentScopedDestructure not implemented for fmt")
+            }
             Self::Discard(_) => write!(f, "_").unwrap(),
             Self::Identifier(lci) => {
-                write!(f, "{}: {}", lci.identifier_string.resolve(), lci.type_specifier.as_ref().map(|tr| tr.as_node()).as_node()).unwrap();
-            },
+                write!(
+                    f,
+                    "{}: {}",
+                    lci.identifier_string.resolve(),
+                    lci.type_specifier.as_ref().map(|tr| tr.as_node()).as_node()
+                )
+                .unwrap();
+            }
             Self::Tuple(lct) => {
                 write!(f, "(").unwrap();
                 for idx in 0..lct.elements.len() {
@@ -281,11 +301,15 @@ impl AstNode for LetComponent {
                     write!(f, ", ").unwrap();
                 }*/
                 write!(f, ")").unwrap();
-                write!(f, ": {}", lct.type_specifier.as_ref().map(|tr| tr.as_node()).as_node()).unwrap();
-            },
+                write!(
+                    f,
+                    ": {}",
+                    lct.type_specifier.as_ref().map(|tr| tr.as_node()).as_node()
+                )
+                .unwrap();
+            }
         }
     }
-
 }
 
 #[derive(Debug, Clone)]
@@ -351,7 +375,6 @@ impl AstNode for FunctionDeclaration {
 
         self.body.as_node().display(f, depth + 2);
     }
-
 }
 
 #[derive(Debug)]
@@ -397,7 +420,6 @@ impl AstNode for StructDeclaration {
             }
         }
     }
-
 }
 
 #[derive(Debug)]
@@ -428,11 +450,13 @@ impl AstNode for UseDeclaration {
 
     fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let uses: Vec<&'static str> = self.scope.iter().map(|ss| ss.resolve()).collect();
-        let _ = writeln!(f, "{}UseDeclaration of {:?} as {}",
-                 indent(depth),
-                 uses,
-                 "<unaliased>",
-                 );
+        let _ = writeln!(
+            f,
+            "{}UseDeclaration of {:?} as {}",
+            indent(depth),
+            uses,
+            "<unaliased>",
+        );
     }
 
     fn pretty(&self, f: &mut dyn std::fmt::Write, _depth: usize) {
@@ -443,14 +467,21 @@ impl AstNode for UseDeclaration {
         let mut ui = self.scope.iter();
         ui.next();
 
-        let uses = first.to_owned() + &ui.fold(String::new(), |acc, next| { acc + "::" + next.resolve() })[..];
+        let uses =
+            first.to_owned() + &ui.fold(String::new(), |acc, next| acc + "::" + next.resolve())[..];
 
         //let uses = first.to_owned() + ui.fold(String::new(), |inc, next| { inc.to_owned() + "::".to_owned() + next.resolve() });
 
         //let uses = uses.iter().fold("".to_owned(), |inc, next| { inc
-        let _ = writeln!(f, "use {}{}", uses, self.alias.map(|ss| " as ".to_owned() + ss.resolve()).unwrap_or("".to_owned()));
+        let _ = writeln!(
+            f,
+            "use {}{}",
+            uses,
+            self.alias
+                .map(|ss| " as ".to_owned() + ss.resolve())
+                .unwrap_or("".to_owned())
+        );
     }
-
 }
 
 #[derive(Debug, Clone)]
@@ -481,7 +512,6 @@ impl AstNode for ScopedNameReference {
             }
         }
     }
-
 }
 
 impl IntoAstNode for ScopedNameReference {
@@ -521,7 +551,6 @@ impl AstNode for StaticVariableDeclaration {
     fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         self.expression.as_node().display(f, depth);
     }
-
 }
 
 #[derive(Debug)]

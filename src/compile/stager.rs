@@ -87,6 +87,7 @@ async fn async_launch(args: ArgResult) {
     let (error_sender, _error_reciever) = crossbeam::unbounded();
 
     let root = super::tree::CompilationRoot::initial(error_sender, args).await;
+    let root_ctx = root.into_ctx().await;
 }
 
 pub fn launch(args: &[&str]) {
