@@ -103,6 +103,7 @@ pub struct FileNode {
     path: PathBuf,
     module: Vec<StringSymbol>,
     error_channel: ErrorChannel,
+    merges_to_parent: bool,
     cflags: CFlags,
 }
 
@@ -143,6 +144,7 @@ impl FileNode {
         path: PathBuf,
         module: Vec<StringSymbol>,
         args: &ArgResult,
+        merges_to_parent: bool,
         ec: ErrorChannel,
     ) -> TreeNode {
         println!("Created a filenode at {:?}", path);
@@ -151,7 +153,12 @@ impl FileNode {
             error_channel: ec,
             module,
             cflags: args.flags,
+            merges_to_parent,
         })
+    }
+
+    pub fn substitutes_nextlevel_member(&self) -> bool {
+        self.merges_to_parent
     }
 
     pub async fn parse(self, reg: &FileRegistry) -> TreeNode {
@@ -182,6 +189,20 @@ pub enum TreeNode {
     DirNode(DirNode),
     FileNode(FileNode),
     ErrorNode(ErrorNode),
+}
+
+impl TreeNode {
+    /// Used currently for detecting when a file is named `mod.rsh`,
+    /// and should act as the member directly above.
+    ///
+    /// If this returns true, then take the result of converting this member
+    /// and use it namespaced as a substitute for self
+    pub fn substitutes_nextlevel_member(&self) -> bool {
+        match self {
+            Self::FileNode(f) => f.substitutes_nextlevel_member(),
+            _ => false,
+        }
+    }
 }
 
 #[async_trait]
@@ -215,14 +236,18 @@ async fn from_path(
     if path.is_file() {
         if let Some(ext) = path.extension() {
             if ext.to_string_lossy().to_string() == "rsh" {
+                let merges_nextlevel =
                 if stem == "mod" {
                     // don't prefix the filename to the path
+                    true
                 } else {
                     let interned_mod = intern(stem.as_str());
                     self_module.push(interned_mod);
-                }
+                    false
+                };
+
                 //TreeNode::FileNode(FileNode { module: self_module, file: path })
-                FileNode::new(path, self_module, args, channel).await
+                FileNode::new(path, self_module, args, merges_nextlevel, channel).await
             } else {
                 TreeNode::ErrorNode(ErrorNode {})
             }
