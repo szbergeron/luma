@@ -26,7 +26,10 @@ type ErrorChannel = crossbeam::Sender<Error>;
 pub struct PathNode {
     path: PathBuf,
     module: Vec<StringSymbol>,
+
     module_file: Option<PathBuf>,
+    parsed: Option<OuterScope>,
+
     cflags: CFlags,
     children: Vec<Node>,
     error_channel: ErrorChannel,
@@ -35,6 +38,15 @@ pub struct PathNode {
 pub enum Node {
     PathNode(PathNode),
     ErrorNode(ErrorNode),
+}
+
+impl Node {
+    pub async fn parse(self, reg: &FileRegistry) -> Node {
+        match self {
+            Self::PathNode(pn) => pn.parse(reg).await,
+            other => other,
+        }
+    }
 }
 
 impl PathNode {
@@ -54,6 +66,7 @@ impl PathNode {
             children,
             error_channel: ec,
             cflags: args.flags,
+            parsed: None,
         })
     }
 
@@ -77,46 +90,103 @@ impl PathNode {
 
         let mut self_module = module_prefix.clone();
 
-        let mut module_file = None;
+        let (module_file, children) = match EitherNone::of_bool(path.is_file(), path.is_dir()) {
+            EitherNone::A(_) => (Some(path.clone()), Vec::new()),
+            EitherNone::B(_) => {
 
-        //let mut child_set = Vec::new();
 
-        let interned_mod = intern(stem.as_str());
-        self_module.push(interned_mod);
+                //let mut child_set = Vec::new();
+                let mut mod_file = None;
 
-        let children: Vec<Node> = join_all(path.read_dir()
-            .expect("couldn't read a directory in the passed source tree")
-            .filter_map(|entry| match entry {
-                Ok(entry) => {
-                    let path = entry.path();
-                    match EitherNone::of_bool(path.is_file(), path.is_dir()) {
-                        EitherNone::A(_) => {
-                            let ext = path.extension()?;
-                            match ext.to_string_lossy().to_string().as_str() {
-                                "rsh" => match path.file_stem().expect("There was no file stem?").to_str().expect("file stem was invalid unicode") {
-                                    "mod" => {
-                                        // NOTE: mut warn, this reaches around to set the "module
-                                        // file". Borrowing rules allow this but it's good to note
-                                        // where this gets set
-                                        module_file = Some(path);
-                                        None
-                                    }, // we filter out the mod.rsh file since it is merged into toplevel
-                                    other => Some(Self::from_path(path, &self_module, channel.clone(), args)),
-                                }
-                                _ => Some(Self::async_err()),
+                let interned_mod = intern(stem.as_str());
+                self_module.push(interned_mod);
+
+                let children: Vec<Node> = join_all(path.read_dir()
+                    .expect("couldn't read a directory in the passed source tree")
+                    .filter_map(|entry| match entry {
+                        Ok(entry) => {
+                            let entry_path = entry.path();
+                            match EitherNone::of_bool(entry_path.is_file(), entry_path.is_dir()) {
+                                EitherNone::A(_) => {
+                                    let ext = entry_path.extension()?;
+                                    match ext.to_string_lossy().to_string().as_str() {
+                                        "rsh" => match entry_path.file_stem().expect("There was no file stem?").to_str().expect("file stem was invalid unicode") {
+                                            "mod" => {
+                                                // NOTE: mut warn, this reaches around to set the "module
+                                                // file". Borrowing rules allow this but it's good to note
+                                                // where this gets set
+                                                mod_file = Some(entry_path);
+                                                None
+                                            }, // we filter out the mod.rsh file since it is merged into toplevel
+                                            _other => Some(Self::from_path(entry_path, &self_module, channel.clone(), args)),
+                                        }
+                                        _ => None,
+                                    }
+                                },
+                                EitherNone::B(_) => {
+                                    Some(Self::from_path(entry_path, &self_module, channel.clone(), args))
+                                },
+                                _ => panic!("didn't expect this but something is either both a file and a directory or is neither one"),
                             }
                         },
-                        EitherNone::B(_) => {
-                            Some(Self::from_path(path, &self_module, channel.clone(), args))
-                        },
-                        other => panic!("didn't expect this but something is either both a file and a directory or is neither one"),
-                    }
-                },
-                Err(_) => Some(Self::async_err()),
-            })).await;
+                        Err(_) => Some(Self::async_err()),
+                    })).await;
+
+                (mod_file, children)
+            },
+            other => {
+                match other {
+                    EitherNone::A(_) => println!("v A"),
+                    EitherNone::B(_) => println!("v B"),
+                    EitherNone::Both(_, _) => println!("v Both"),
+                    EitherNone::Neither() => println!("v Neither"),
+                };
+                println!("path was {:?}, with is_file {} and is_dir {}", path, path.is_file(), path.is_dir());
+                panic!("Can't handle something being both file and dir or neither file nor dir")
+            }
+        };
 
         PathNode::new(path, self_module, args, channel, children, module_file)
     }
+
+    #[async_recursion]
+    pub async fn parse(self, reg: &FileRegistry) -> Node {
+        let children = join_all(self.children.into_iter().map(|child| child.parse(reg))).await;
+
+        let id = reg.register(self.path.clone());
+        let fho = reg.read(id).await;
+
+        let mut fh = match fho {
+            None => return Node::ErrorNode(ErrorNode {}),
+            Some(fh) => fh,
+        };
+
+        fh.open();
+
+
+        let handle = fh.as_ref().expect("File didn't open nicely");
+
+        //let ref =
+        let r = super::parse_unit(handle, self.module.clone(), &self.cflags);
+
+        match r {
+            Err(_) => Node::ErrorNode(ErrorNode {}),
+            Ok(os) => Node::PathNode(PathNode {
+                parsed: Some(os),
+                children,
+                ..self
+            }),
+        }
+    }
+
+    /*#[async_recursion]
+    pub async fn parse(self, reg: &FileRegistry) -> TreeNode {
+        let children = join_all(self.children.into_iter().map(|child| child.parse(reg))).await;
+
+        /*TreeNode::DirNode(DirNode {
+        children, module: self.module, error_channel: self.error_channel })*/
+        Self::new(self.module, children, self.error_channel).await
+    }*/
 }
 
 pub struct FileRegistry {
@@ -175,7 +245,7 @@ pub trait AsCtxNode {
 #[allow(dead_code)]
 pub struct CompilationRoot {
     args: ArgResult,
-    children: Vec<TreeNode>,
+    children: Vec<Node>,
     files: FileRegistry,
 }
 
@@ -190,136 +260,10 @@ impl CompilationRoot {
     }
 }
 
-pub struct DirNode {
-    module: Vec<StringSymbol>,
-    children: Vec<TreeNode>,
-    error_channel: ErrorChannel,
-}
-
-#[allow(dead_code)]
-pub struct FileNode {
-    path: PathBuf,
-    module: Vec<StringSymbol>,
-    parsed: Option<OuterScope>,
-    error_channel: ErrorChannel,
-    merges_to_parent: bool,
-    cflags: CFlags,
-}
-
-/*pub struct ParsedFileNode {
-    file: PathBuf,
-    module: Vec<StringSymbol>,
-    error_channel: ErrorChannel,
-    contents: Option<String>,
-}*/
-
-impl DirNode {
-    pub async fn new(
-        //path: PathBuf,
-        module: Vec<StringSymbol>,
-        children: Vec<TreeNode>,
-        ec: ErrorChannel,
-    ) -> TreeNode {
-        println!("Created a DirNode with mod {:?}", module);
-        TreeNode::DirNode(DirNode {
-            module,
-            children,
-            error_channel: ec,
-        })
-    }
-
-    #[async_recursion]
-    pub async fn parse(self, reg: &FileRegistry) -> TreeNode {
-        let children = join_all(self.children.into_iter().map(|child| child.parse(reg))).await;
-
-        /*TreeNode::DirNode(DirNode {
-        children, module: self.module, error_channel: self.error_channel })*/
-        Self::new(self.module, children, self.error_channel).await
-    }
-}
-
-impl FileNode {
-    pub async fn new(
-        path: PathBuf,
-        module: Vec<StringSymbol>,
-        args: &ArgResult,
-        merges_to_parent: bool,
-        ec: ErrorChannel,
-    ) -> TreeNode {
-        println!("Created a filenode at {:?}", path);
-        TreeNode::FileNode(FileNode {
-            parsed: None,
-            path,
-            error_channel: ec,
-            module,
-            cflags: args.flags,
-            merges_to_parent,
-        })
-    }
-
-    pub fn substitutes_nextlevel_member(&self) -> bool {
-        self.merges_to_parent
-    }
-
-    pub async fn parse(self, reg: &FileRegistry) -> TreeNode {
-        /*let mut fh: FileHandle = FileHandle::new(self.path.clone(), None);
-        fh.open();*/
-        let id = reg.register(self.path.clone());
-        let fho = reg.read(id).await;
-
-        let mut fh = match fho {
-            None => return TreeNode::ErrorNode(ErrorNode {}),
-            Some(fh) => fh,
-        };
-
-        fh.open();
-
-        let handle = fh.as_ref().expect("File didn't open nicely");
-
-        //let ref =
-        let r = super::parse_unit(handle, self.module.clone(), &self.cflags);
-
-        match r {
-            Err(_) => TreeNode::ErrorNode(ErrorNode {}),
-            Ok(os) => TreeNode::FileNode(FileNode {
-                parsed: Some(os),
-                ..self
-            }),
-        }
-    }
-}
-
 pub struct ErrorNode {}
 
-pub enum TreeNode {
-    DirNode(DirNode),
-    FileNode(FileNode),
-    ErrorNode(ErrorNode),
-}
-
-impl TreeNode {
-    /// Used currently for detecting when a file is named `mod.rsh`,
-    /// and should act as the member directly above.
-    ///
-    /// If this returns true, then take the result of converting this member
-    /// and use it namespaced as a substitute for self
-    pub fn substitutes_nextlevel_member(&self) -> bool {
-        match self {
-            Self::FileNode(f) => f.substitutes_nextlevel_member(),
-            _ => false,
-        }
-    }
-
-    /*pub fn merge(self) -> Self {
-        match self {
-            Self::DirNode(dn) => Self::DirNode(dn.merge()),
-            other => other,
-        }
-    }*/
-}
-
 #[async_trait]
-impl IntoCtxNode for TreeNode {
+impl IntoCtxNode for Node {
     async fn into_ctx(self) -> Option<Pin<Box<GlobalCtxNode>>> {
         todo!()
     }
@@ -330,71 +274,14 @@ impl IntoCtxNode for TreeNode {
         unimplemented!()
     }
 }*/
-
-#[async_recursion]
-async fn from_path(
-    path: PathBuf,
-    module_prefix: &Vec<StringSymbol>,
-    channel: ErrorChannel,
-    args: &ArgResult,
-) -> TreeNode {
-    let stem: String = path
-        .file_stem()
-        .expect("couldn't get stem for a file")
-        .to_string_lossy()
-        .into();
-
-    let mut self_module = module_prefix.clone();
-
-    if path.is_file() {
-        if let Some(ext) = path.extension() {
-            if ext.to_string_lossy().to_string() == "rsh" {
-                let merges_nextlevel = if stem == "mod" {
-                    // don't prefix the filename to the path
-                    true
-                } else {
-                    let interned_mod = intern(stem.as_str());
-                    self_module.push(interned_mod);
-                    false
-                };
-
-                //TreeNode::FileNode(FileNode { module: self_module, file: path })
-                FileNode::new(path, self_module, args, merges_nextlevel, channel).await
-            } else {
-                TreeNode::ErrorNode(ErrorNode {})
-            }
-        } else {
-            TreeNode::ErrorNode(ErrorNode {})
-        }
-    } else if path.is_dir() {
-        let interned_mod = intern(stem.as_str());
-        self_module.push(interned_mod);
-
-        let children: Vec<TreeNode> = join_all(
-            path.read_dir()
-                .expect("couldn't read a directory in the passed source tree")
-                .filter_map(|entry| match entry {
-                    Ok(entry) => Some(from_path(entry.path(), &self_module, channel.clone(), args)),
-                    Err(_) => None,
-                }),
-        )
-        .await;
-
-        //TreeNode::DirNode(DirNode { children, module: self_module })
-        DirNode::new(self_module, children, channel).await
-    } else {
-        TreeNode::ErrorNode(ErrorNode {})
-    }
-}
-
 async fn first_pass(
     path: PathBuf,
     module_prefix: Vec<StringSymbol>,
     channel: ErrorChannel,
     reg: &FileRegistry,
     args: &ArgResult,
-) -> TreeNode {
-    let node = from_path(path, &module_prefix, channel, args);
+) -> Node {
+    let node = PathNode::from_path(path, &module_prefix, channel, args);
     node.await.parse(reg).await
 }
 
@@ -404,7 +291,7 @@ impl CompilationRoot {
         }*/
         let reg = FileRegistry::new();
 
-        let res: Vec<TreeNode> = join_all(args.inputs.iter().map(|pb| {
+        let res: Vec<Node> = join_all(args.inputs.iter().map(|pb| {
             let v = Vec::new();
             first_pass(pb.clone(), v, error_channel.clone(), &reg, &args)
         }))
@@ -414,16 +301,6 @@ impl CompilationRoot {
             children: res,
             args,
             files: reg,
-        }
-    }
-}
-
-impl TreeNode {
-    pub async fn parse(self, reg: &FileRegistry) -> TreeNode {
-        match self {
-            Self::DirNode(d) => d.parse(reg).await,
-            Self::FileNode(f) => f.parse(reg).await,
-            Self::ErrorNode(e) => Self::ErrorNode(e),
         }
     }
 }

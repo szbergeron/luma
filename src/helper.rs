@@ -1022,8 +1022,8 @@ impl<TA, TB> EitherNone<TA, TB> {
     }
 }
 
-impl EitherNone<bool, bool> {
-    pub fn of_bool(a: bool, b: bool) -> EitherNone<bool, bool> {
-        EitherNone::of(a.into(), b.into())
+impl EitherNone<(), ()> {
+    pub fn of_bool(a: bool, b: bool) -> EitherNone<(), ()> {
+        EitherNone::of(a.then_some(()), b.then_some(()))
     }
 }
