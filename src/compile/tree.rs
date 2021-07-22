@@ -291,9 +291,12 @@ pub struct CompilationRoot {
 
 impl CompilationRoot {
     pub async fn into_ctx(self) -> (ArgResult, FileRegistry, GlobalCtx) {
-        let gbl = unsafe {
+        /*let gbl = unsafe {
             GlobalCtxNode::new(intern("global"), GlobalCtxNode::generate_ctxid(), None, None)
-        };
+        };*/
+
+        let ogbl = GlobalCtx::new();
+        let gbl = ogbl.get_global();
 
         let first_children = self
             .children
@@ -309,9 +312,9 @@ impl CompilationRoot {
             }
         }
 
-
         dbg!(gbl);
-        todo!()
+
+        (self.args, self.files, ogbl)
     }
 }
 
