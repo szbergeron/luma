@@ -10,8 +10,10 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::{Arc, RwLock};
 
 pub mod interner {
+    use std::fmt::{Debug, Display};
+
     //pub type StringSymbol = lasso::LargeSpur;
-    #[derive(Copy, Clone, Hash, Debug, Eq, PartialEq)]
+    #[derive(Copy, Clone, Hash, Eq, PartialEq)]
     pub struct StringSymbol {
         internal: usize,
     }
@@ -23,6 +25,18 @@ pub mod interner {
 
         fn try_from_usize(int: usize) -> Option<Self> {
             Some(StringSymbol { internal: int })
+        }
+    }
+    
+    impl Display for StringSymbol {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "{}", self.resolve())
+        }
+    }
+
+    impl Debug for StringSymbol {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "S('{}')", self.resolve())
         }
     }
 
@@ -989,6 +1003,7 @@ pub struct AtomicVecIndex {
 pub trait VecOps {
     type Item;
     fn appended(self, i: Self::Item) -> Self;
+    fn appended_opt(self, i: Option<Self::Item>) -> Self;
 }
 
 impl<T> VecOps for Vec<T> {
@@ -996,6 +1011,15 @@ impl<T> VecOps for Vec<T> {
 
     fn appended(mut self, i: Self::Item) -> Self {
         self.push(i);
+        self
+    }
+
+    fn appended_opt(mut self, i: Option<Self::Item>) -> Self {
+        match i {
+            Some(i) => self.push(i),
+            None => (),
+        }
+
         self
     }
 }

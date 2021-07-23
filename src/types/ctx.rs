@@ -17,7 +17,7 @@ use std::sync::atomic::{fence, Ordering};
 
 use std::sync::{Arc, Once, Weak};
 
-use crate::ast::{indent, FunctionDeclaration, NodeInfo, UseDeclaration};
+use crate::ast::{AstNode, FunctionDeclaration, NodeInfo, UseDeclaration, indent};
 //use once_cell::sync::OnceCell;
 use static_assertions::assert_impl_all;
 use std::pin::Pin;
@@ -340,7 +340,36 @@ pub struct GlobalCtxNode {
 
 impl Debug for GlobalCtxNode {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        write!(f, "GlobalCtxNode named {}", self.canonical_local_name.resolve())
+        self.display(f, 0);
+        /*writeln!(f, "in GlobalCtxNode named {} [[", self.canonical_local_name.resolve());
+
+        for child in self.children.iter() {
+            writeln!(f, "{:?}, ", child.value());
+            //child.value().fmt(f);
+        }
+
+        writeln!(f, "]]")*/
+        Ok(())
+    }
+}
+
+impl AstNode for GlobalCtxNode {
+    fn node_info(&self) -> NodeInfo {
+        todo!()
+    }
+
+    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+        let _ = writeln!(
+            f,
+            "{}GlobalCtxNode with name {} has children:",
+            indent(depth),
+            self.canonical_local_name.resolve(),
+            );
+
+        for child in self.children.iter() {
+            child.value().display(f, depth + 1);
+            //child.value().fmt(f);
+        }
     }
 }
 
@@ -398,7 +427,7 @@ impl GlobalCtxNode {
         //
     }*/
 
-    pub fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+    pub fn display_internal(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let _ = writeln!(
             f,
             "{}Global context <canon {}> has id {}",
@@ -480,10 +509,12 @@ impl GlobalCtxNode {
     /// the 'parent lifetime is of significant importance here
     pub unsafe fn new<'parent>(
         name: StringSymbol,
-        id: CtxID,
         parent: Option<&'parent GlobalCtxNode>,
         global: Option<&'parent GlobalCtxNode>,
+        id: Option<CtxID>,
     ) -> Pin<Box<GlobalCtxNode>> {
+        let id = id.unwrap_or_else(|| Self::generate_ctxid());
+
         unsafe {
             let mut node = GlobalCtxNode {
                 id,
@@ -657,7 +688,7 @@ impl GlobalCtx {
             GlobalCtx {
                 entry: GlobalCtxNode::new(
                     intern("global"),
-                    CtxID(CTX_ID.fetch_add(1, Ordering::SeqCst)),
+                    None,
                     None,
                     None,
                 ),
