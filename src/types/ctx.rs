@@ -387,13 +387,24 @@ impl AstNode for GlobalCtxNode {
     fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let _ = writeln!(
             f,
-            "{}GlobalCtxNode with name {} has children:",
+            "{}GlobalCtxNode with name {}",
             indent(depth),
             self.canonical_local_name.resolve(),
             );
 
+        let _ = writeln!(f, "{}Imports: ", indent(depth + 1));
+        for dr in self.imports.iter() {
+            let _ = writeln!(f, "{}{}", indent(depth + 2), *dr);
+        }
+
+        let _ = writeln!(f, "{}Exports: ", indent(depth + 1));
+        for dr in self.exports.iter() {
+            let _ = writeln!(f, "{}{}", indent(depth + 2), *dr);
+        }
+
+        let _ = writeln!(f, "{}Children: ", indent(depth + 1));
         for child in self.children.iter() {
-            child.value().display(f, depth + 1);
+            child.value().display(f, depth + 2);
             //child.value().fmt(f);
         }
     }
@@ -470,6 +481,11 @@ impl GlobalCtxNode {
         let _ = writeln!(f, "{} Exports:", indent(depth + 1));
         for dr in self.exports.iter() {
             let _ = writeln!(f, "{}{}", indent(depth + 2), *dr);
+        }
+
+        let _ = writeln!(f, "{}Children:", indent(depth + 1));
+        for child in self.children.iter() {
+            child.value().display(f, depth + 2);
         }
     }
 
@@ -602,35 +618,6 @@ impl GlobalCtxNode {
             pinned
         }
     }
-
-    /*fn new_old(
-        name: StringSymbol,
-        id: CtxID,
-    ) -> Arc<GlobalCtxNode> {
-        let ctxnode = Arc::new_cyclic(|wr| GlobalCtxNode {
-            canonical_local_name: name,
-            children: DashMap::new(),
-            type_ctx: Arc::new(TypeCtx::new(id)),
-            func_ctx: Arc::new(FuncCtx::new(id)),
-
-            imports: DashSet::new(),
-            exports: DashSet::new(),
-
-            selfref: wr.clone(),
-            quark: match global {
-                Some(global) => super::Quark::new_within(wr.clone(), global),
-                None => super::Quark::new_within(wr.clone(), wr.clone()),
-            },
-            _parent: parent,
-            id,
-        });
-
-        ctxnode
-    }*/
-
-    /*fn get_selfref_arc(&self) -> Option<Arc<GlobalCtxNode>> {
-        self.selfref.upgrade()
-    }*/
 
     pub fn get_selfref(&self) -> &GlobalCtxNode {
         unsafe { self.selfref.as_ref() }
