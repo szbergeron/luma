@@ -17,7 +17,7 @@ use std::sync::atomic::{fence, Ordering};
 
 use std::sync::{Arc, Once, Weak};
 
-use crate::ast::{indent, FunctionDefinition, NodeInfo, UseDeclaration};
+use crate::ast::{indent, AstNode, FunctionDefinition, NodeInfo, UseDeclaration};
 //use once_cell::sync::OnceCell;
 use static_assertions::assert_impl_all;
 use std::pin::Pin;
@@ -25,6 +25,32 @@ use std::pin::Pin;
 pub type TypeHandle = Arc<dyn Type>;
 
 pub type FunctionHandle = Arc<Function>;
+
+
+struct RefPtr<T> { inner: NonNull<T> }
+
+unsafe impl<T> Send for RefPtr<T> {}
+unsafe impl<T> Sync for RefPtr<T> {}
+
+impl<T> RefPtr<T> {
+
+    /// only sound to call if this refptr has been created
+    /// from `from` with a valid pointer, never sound if created
+    /// through `dangling`
+    pub unsafe fn as_ref(&self) -> &T {
+        self.inner.as_ref()
+    }
+
+    pub unsafe fn dangling() -> RefPtr<T> {
+        Self { inner: NonNull::dangling() }
+    }
+
+    pub unsafe fn from(from: *const T) -> RefPtr<T> {
+        // the cast here is only sound because this type exposes an immutable ref
+        // to T only
+        Self { inner: NonNull::new(from as *mut T).expect("was given a null `from`") }
+    }
+}
 
 //pub type TypeID = u64;
 #[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy, Debug)]
@@ -328,10 +354,10 @@ pub struct GlobalCtxNode {
 
     //parent: OnceCell<&'tree GlobalCtxNode<'tree>>,
     //global: OnceCell<&'tree GlobalCtxNode<'tree>>,
-    parent: &'static GlobalCtxNode,
-    global: &'static GlobalCtxNode,
+    parent: RefPtr<GlobalCtxNode>,
+    global: RefPtr<GlobalCtxNode>,
 
-    selfref: &'static GlobalCtxNode,
+    selfref: RefPtr<GlobalCtxNode>,
 
     type_ctx: Option<TypeCtx>,
     func_ctx: Option<FuncCtx>,
@@ -349,7 +375,47 @@ pub struct GlobalCtxNode {
 
 impl Debug for GlobalCtxNode {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        write!(f, "GlobalCtxNode named {}", self.canonical_local_name.resolve())
+        self.display(f, 0);
+        /*writeln!(f, "in GlobalCtxNode named {} [[", self.canonical_local_name.resolve());
+
+        for child in self.children.iter() {
+            writeln!(f, "{:?}, ", child.value());
+            //child.value().fmt(f);
+        }
+
+        writeln!(f, "]]")*/
+        Ok(())
+    }
+}
+
+impl AstNode for GlobalCtxNode {
+    fn node_info(&self) -> NodeInfo {
+        todo!()
+    }
+
+    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+        let _ = writeln!(
+            f,
+            "{}GlobalCtxNode with name {}",
+            indent(depth),
+            self.canonical_local_name.resolve(),
+            );
+
+        let _ = writeln!(f, "{}Imports: ", indent(depth + 1));
+        for dr in self.imports.iter() {
+            let _ = writeln!(f, "{}{}", indent(depth + 2), *dr);
+        }
+
+        let _ = writeln!(f, "{}Exports: ", indent(depth + 1));
+        for dr in self.exports.iter() {
+            let _ = writeln!(f, "{}{}", indent(depth + 2), *dr);
+        }
+
+        let _ = writeln!(f, "{}Children: ", indent(depth + 1));
+        for child in self.children.iter() {
+            child.value().display(f, depth + 2);
+            //child.value().fmt(f);
+        }
     }
 }
 
@@ -407,7 +473,7 @@ impl GlobalCtxNode {
         //
     }*/
 
-    pub fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+    pub fn display_internal(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let _ = writeln!(
             f,
             "{}Global context <canon {}> has id {}",
@@ -424,6 +490,11 @@ impl GlobalCtxNode {
         let _ = writeln!(f, "{} Exports:", indent(depth + 1));
         for dr in self.exports.iter() {
             let _ = writeln!(f, "{}{}", indent(depth + 2), *dr);
+        }
+
+        let _ = writeln!(f, "{}Children:", indent(depth + 1));
+        for child in self.children.iter() {
+            child.value().display(f, depth + 2);
         }
     }
 
@@ -449,6 +520,9 @@ impl GlobalCtxNode {
     }
 
     pub fn add_child(&self, child: Pin<Box<GlobalCtxNode>>) {
+        println!("Adds child {} to parent {}", child.id, self.id);
+        dbg!(child.canonical_local_name);
+        dbg!(self.canonical_local_name);
         self.children.insert(child.canonical_local_name, child);
     }
 
@@ -456,7 +530,7 @@ impl GlobalCtxNode {
     ///
     /// DO NOT CALL AND EXPECT A VALUE THAT CAN BE DEREF'D or that has any meaningful contents,
     /// only for usage as a momentary default while doing setup
-    pub unsafe fn static_dangling() -> &'static GlobalCtxNode {
+    /*pub unsafe fn static_dangling() -> &'static GlobalCtxNode {
         static once: SyncOnceCell<Pin<Box<GlobalCtxNode>>> = SyncOnceCell::new();
         once.get_or_init(|| {
             let inner_ctx = Box::new(std::mem::MaybeUninit::zeroed());
@@ -472,6 +546,10 @@ impl GlobalCtxNode {
             addr_of_mut!((*ptr).imports).write(DashSet::new());
             addr_of_mut!((*ptr).exports).write(DashSet::new());
 
+            //addr_of_mut!((*ptr).parent).write(ptr.as_ref().unwrap());
+            //addr_of_mut!((*ptr).global).write(ptr.as_ref().unwrap());
+            //addr_of_mut!((*ptr).selfref).write(ptr.as_ref().unwrap());
+            //
             addr_of_mut!((*ptr).parent).write(ptr.as_ref().unwrap());
             addr_of_mut!((*ptr).global).write(ptr.as_ref().unwrap());
             addr_of_mut!((*ptr).selfref).write(ptr.as_ref().unwrap());
@@ -483,16 +561,21 @@ impl GlobalCtxNode {
         .get_selfref()
         //let inner_ctx = std::mem::MaybeUninit::zeroed()
         //NonNull::dangling().as_ref()
-    }
+    }*/
 
+    /// TODO: change how we pass ptr to parent/global to be actual pointer instead of ref
     /// See notes inside function for notes on soundness/safety contracts for usage,
     /// the 'parent lifetime is of significant importance here
     pub unsafe fn new<'parent>(
         name: StringSymbol,
-        id: CtxID,
         parent: Option<&'parent GlobalCtxNode>,
         global: Option<&'parent GlobalCtxNode>,
+        id: Option<CtxID>,
     ) -> Pin<Box<GlobalCtxNode>> {
+        let id = id.unwrap_or_else(|| Self::generate_ctxid());
+        dbg!(name.resolve());
+        dbg!(id);
+
         unsafe {
             let mut node = GlobalCtxNode {
                 id,
@@ -502,9 +585,9 @@ impl GlobalCtxNode {
                 canonical_local_name: name,
                 children: DashMap::new(),
 
-                parent: GlobalCtxNode::static_dangling(),
-                global: GlobalCtxNode::static_dangling(),
-                selfref: GlobalCtxNode::static_dangling(),
+                parent: RefPtr::dangling(),
+                global: RefPtr::dangling(),
+                selfref: RefPtr::dangling(),
 
                 type_ctx: Some(TypeCtx::new(id)),
                 func_ctx: Some(FuncCtx::new(id)),
@@ -517,6 +600,8 @@ impl GlobalCtxNode {
 
             let mref = as_ptr.as_ref().expect("directly leaked box was null");
 
+            (*as_ptr).selfref = std::mem::transmute(as_ptr);
+
             (*as_ptr).quark = Some(Quark::new_within(mref));
 
             (*as_ptr).parent = match parent {
@@ -527,12 +612,12 @@ impl GlobalCtxNode {
                 // as the contract that parent live at least as long as 'self
                 // must be upheld
                 Some(ptr) => std::mem::transmute(ptr),
-                None => mref,
+                None => RefPtr::from(as_ptr),
             };
 
             (*as_ptr).global = match global {
                 Some(ptr) => std::mem::transmute(ptr),
-                None => mref,
+                None => RefPtr::from(as_ptr),
             };
 
             let pinned = Pin::new_unchecked(Box::from_raw(as_ptr));
@@ -543,37 +628,8 @@ impl GlobalCtxNode {
         }
     }
 
-    /*fn new_old(
-        name: StringSymbol,
-        id: CtxID,
-    ) -> Arc<GlobalCtxNode> {
-        let ctxnode = Arc::new_cyclic(|wr| GlobalCtxNode {
-            canonical_local_name: name,
-            children: DashMap::new(),
-            type_ctx: Arc::new(TypeCtx::new(id)),
-            func_ctx: Arc::new(FuncCtx::new(id)),
-
-            imports: DashSet::new(),
-            exports: DashSet::new(),
-
-            selfref: wr.clone(),
-            quark: match global {
-                Some(global) => super::Quark::new_within(wr.clone(), global),
-                None => super::Quark::new_within(wr.clone(), wr.clone()),
-            },
-            _parent: parent,
-            id,
-        });
-
-        ctxnode
-    }*/
-
-    /*fn get_selfref_arc(&self) -> Option<Arc<GlobalCtxNode>> {
-        self.selfref.upgrade()
-    }*/
-
     pub fn get_selfref(&self) -> &GlobalCtxNode {
-        unsafe { self.selfref }
+        unsafe { self.selfref.as_ref() }
     }
 
     pub fn name(&self) -> &str {
@@ -672,7 +728,7 @@ impl GlobalCtx {
             GlobalCtx {
                 entry: GlobalCtxNode::new(
                     intern("global"),
-                    CtxID(CTX_ID.fetch_add(1, Ordering::SeqCst)),
+                    None,
                     None,
                     None,
                 ),

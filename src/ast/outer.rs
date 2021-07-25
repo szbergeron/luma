@@ -34,11 +34,25 @@ impl Namespace {
     }
 
     #[async_recursion]
-    pub async fn into_ctx(self, parent_scope: &[StringSymbol]) -> Arc<GlobalCtxNode> {
-        todo!();
+    /// Unsafe: requires &parent and &global to live at least as long as self, even if this is not
+    /// specified
+    pub async unsafe fn into_ctx(
+        self,
+        parent_scope: &[StringSymbol],
+        parent: &GlobalCtxNode,
+        global: &GlobalCtxNode,
+    ) -> Pin<Box<GlobalCtxNode>> {
+        let new_slice = parent_scope.to_vec().appended(self.name.unwrap());
 
-        /*let new_slice = parent_scope.to_vec().appended(self.name.unwrap());
-        let ctx = GlobalCtx::get().get_nsctx(new_slice.as_slice());
+        //let ctx = GlobalCtx::get().get_nsctx(new_slice.as_slice());
+        /*let ctx = GlobalCtxNode::new(
+            *parent_scope
+                .last()
+                .expect("parent_scope had no last member"),
+            Some(parent),
+            Some(global),
+            None,
+        );*/
 
         /*if let Ok(outer) = self.contents {
             for dec in outer.declarations.into_iter() {
@@ -47,29 +61,24 @@ impl Namespace {
 
         //let sym = self.as_symbol();
 
-        let mut ctxs = Vec::new();
+        //let mut ctxs = Vec::new();
 
         if let Ok(os) = self.contents {
-            let items = os.declarations;
-            for dec in items.into_iter() {
-                match dec {
-                    SymbolDeclaration::FunctionDeclaration(fd) => {
-                        //ctx.func_ctx().define(
-                        ctx.func_ctx().add(fd);
-                    },
-                    SymbolDeclaration::NamespaceDeclaration(nd) => {
-                        ctxs.push(nd.into_ctx(&new_slice));
-                    },
-                    SymbolDeclaration::UseDeclaration(ud) => {
-                        ctx.import(ud.into_import());
-                    },
-                    _ => todo!(),
-                }
-            }
+            return os.into_ctx(
+                parent_scope.to_vec().appended_opt(self.name),
+                parent,
+                global,
+            ).await;
+        } else {
+            todo!("Need to handle unhappy path for parse failure");
         }
 
         // force destructuring the rest of the subtree
-        let joined: Vec<Arc<GlobalCtxNode>> = join_all(ctxs).await;
+        //let joined: Vec<Pin<Box<GlobalCtxNode>>> = join_all(ctxs).await;
+
+        /*for cctx in joined {
+            ctx.add_child(cctx);
+        }*/
 
         /*if let Ok(content) = self.contents.as {
             for dec in content.declarations.iter() {
@@ -87,7 +96,8 @@ impl Namespace {
         }*/
 
         //self.contents.map(|outer| outer.into_ctxlist(new_slice.as_slice())
-        todo!()*/
+        //todo!()
+        //ctx
     }
 
     /*fn as_symbol(&self) -> SymbolDeclaration {
@@ -142,18 +152,48 @@ pub struct OuterScope {
 }
 
 impl OuterScope {
+    #[async_recursion]
     pub async unsafe fn into_ctx(
         self,
         module: Vec<StringSymbol>,
         parent: &GlobalCtxNode,
         global: &GlobalCtxNode,
     ) -> Pin<Box<GlobalCtxNode>> {
-        GlobalCtxNode::new(
+        let ctx = GlobalCtxNode::new(
             module.last().cloned().unwrap_or_else(|| intern("")),
-            GlobalCtxNode::generate_ctxid(),
             Some(parent),
             Some(global),
-        )
+            None,
+        );
+
+        let mut ctxs = Vec::new();
+
+        let items = self.declarations;
+
+        for dec in items.into_iter() {
+            match dec {
+                SymbolDeclaration::FunctionDeclaration(fd) => {
+                    //ctx.func_ctx().define(
+                    ctx.func_ctx().add(fd);
+                }
+                SymbolDeclaration::NamespaceDeclaration(nd) => {
+                    ctxs.push(nd.into_ctx(&module, parent, global));
+                }
+                SymbolDeclaration::UseDeclaration(ud) => {
+                    ctx.import(ud.into_import());
+                }
+                _ => todo!(),
+            }
+        }
+
+        // force destructuring the rest of the subtree
+        let joined: Vec<Pin<Box<GlobalCtxNode>>> = join_all(ctxs).await;
+
+        for cctx in joined {
+            ctx.add_child(cctx);
+        }
+
+        ctx
     }
     /*pub fn prepass<'context>(&self, context: &Arc<RwLock<ScopeContext<'context, 'context>>>) where 'a: 'context {
         let mut context = context.write().unwrap();

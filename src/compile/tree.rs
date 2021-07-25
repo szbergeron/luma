@@ -88,18 +88,28 @@ impl PathNode {
             .to_string_lossy()
             .into();
 
+        println!("Got file stem {}", stem);
+        dbg!(module_prefix);
+
         let mut self_module = module_prefix.clone();
 
+        let interned_mod = intern(stem.as_str());
+        dbg!(interned_mod);
+        dbg!(stem.as_str());
+        self_module.push(interned_mod);
+
         let (module_file, children) = match EitherNone::of_bool(path.is_file(), path.is_dir()) {
-            EitherNone::A(_) => (Some(path.clone()), Vec::new()),
+            EitherNone::A(_) => {
+                dbg!("is a file");
+                dbg!(&module_prefix);
+                dbg!(&path);
+                (Some(path.clone()), Vec::new())
+            },
             EitherNone::B(_) => {
-
-
                 //let mut child_set = Vec::new();
                 let mut mod_file = None;
 
-                let interned_mod = intern(stem.as_str());
-                self_module.push(interned_mod);
+                dbg!(&self_module);
 
                 let children: Vec<Node> = join_all(path.read_dir()
                     .expect("couldn't read a directory in the passed source tree")
@@ -108,22 +118,31 @@ impl PathNode {
                             let entry_path = entry.path();
                             match EitherNone::of_bool(entry_path.is_file(), entry_path.is_dir()) {
                                 EitherNone::A(_) => {
+                                    dbg!("got a file for from_path");
                                     let ext = entry_path.extension()?;
                                     match ext.to_string_lossy().to_string().as_str() {
                                         "rsh" => match entry_path.file_stem().expect("There was no file stem?").to_str().expect("file stem was invalid unicode") {
                                             "mod" => {
+                                                dbg!("Was an rsh file with mod");
                                                 // NOTE: mut warn, this reaches around to set the "module
                                                 // file". Borrowing rules allow this but it's good to note
                                                 // where this gets set
                                                 mod_file = Some(entry_path);
                                                 None
                                             }, // we filter out the mod.rsh file since it is merged into toplevel
-                                            _other => Some(Self::from_path(entry_path, &self_module, channel.clone(), args)),
+                                            _other => {
+                                                dbg!("Was an other rsh file");
+                                                dbg!(&entry_path);
+                                                dbg!(&self_module);
+                                                Some(Self::from_path(entry_path, &self_module, channel.clone(), args))
+                                            }
                                         }
                                         _ => None,
                                     }
                                 },
                                 EitherNone::B(_) => {
+                                    dbg!(&entry_path);
+                                    dbg!(&self_module);
                                     Some(Self::from_path(entry_path, &self_module, channel.clone(), args))
                                 },
                                 _ => panic!("didn't expect this but something is either both a file and a directory or is neither one"),
@@ -133,7 +152,7 @@ impl PathNode {
                     })).await;
 
                 (mod_file, children)
-            },
+            }
             other => {
                 match other {
                     EitherNone::A(_) => println!("v A"),
@@ -141,7 +160,12 @@ impl PathNode {
                     EitherNone::Both(_, _) => println!("v Both"),
                     EitherNone::Neither() => println!("v Neither"),
                 };
-                println!("path was {:?}, with is_file {} and is_dir {}", path, path.is_file(), path.is_dir());
+                println!(
+                    "path was {:?}, with is_file {} and is_dir {}",
+                    path,
+                    path.is_file(),
+                    path.is_dir()
+                );
                 panic!("Can't handle something being both file and dir or neither file nor dir")
             }
         };
@@ -162,7 +186,6 @@ impl PathNode {
         };
 
         fh.open();
-
 
         let handle = fh.as_ref().expect("File didn't open nicely");
 
@@ -189,39 +212,51 @@ impl PathNode {
     }*/
 }
 
-
 #[async_trait]
 impl IntoCtxNode for PathNode {
-    async unsafe fn into_ctx(self, parent: &GlobalCtxNode, global: &GlobalCtxNode) -> Option<Pin<Box<GlobalCtxNode>>> {
-                let self_ctx = match self.parsed {
-                    None => {
-                        GlobalCtxNode::new(
-                            self.module.last().cloned().unwrap_or_else(|| intern("")),
-                            GlobalCtxNode::generate_ctxid(),
-                            Some(parent), Some(global))
-                    },
-                    Some(outerscope) => {
-                        outerscope.into_ctx(self.module, parent, global).await
-                    }
-                };
+    async unsafe fn into_ctx(
+        self,
+        parent: &GlobalCtxNode,
+        global: &GlobalCtxNode,
+    ) -> Option<Pin<Box<GlobalCtxNode>>> {
+        println!("PathNode {:?} is being into_ctx'd", self.module);
+        //dbg!(&self.parsed);
+        let self_ctx = match self.parsed {
+            None => GlobalCtxNode::new(
+                self.module.last().cloned().unwrap_or_else(|| intern("")),
+                Some(parent),
+                Some(global),
+                None,
+            ),
+            Some(outerscope) => outerscope.into_ctx(self.module, parent, global).await,
+        };
 
-                let children = join_all(self.children.into_iter().map(|child| child.into_ctx(self_ctx.get_selfref(), global))).await;
+        let children = join_all(
+            self.children
+                .into_iter()
+                .map(|child| child.into_ctx(self_ctx.get_selfref(), global)),
+        )
+        .await;
 
-                for child in children {
-                    if let Some(child) = child {
-                        self_ctx.add_child(child);
-                    } else {
-                        println!("Failed to add a child");
-                    }
-                }
+        for child in children {
+            if let Some(child) = child {
+                self_ctx.add_child(child);
+            } else {
+                println!("Failed to add a child");
+            }
+        }
 
-                Some(self_ctx)
+        Some(self_ctx)
     }
 }
 
 #[async_trait]
 impl IntoCtxNode for Node {
-    async unsafe fn into_ctx(self, parent: &GlobalCtxNode, global: &GlobalCtxNode) -> Option<Pin<Box<GlobalCtxNode>>> {
+    async unsafe fn into_ctx(
+        self,
+        parent: &GlobalCtxNode,
+        global: &GlobalCtxNode,
+    ) -> Option<Pin<Box<GlobalCtxNode>>> {
         match self {
             Self::PathNode(pn) => pn.into_ctx(parent, global).await,
             Self::ErrorNode(_) => None,
@@ -274,7 +309,11 @@ impl FileRegistry {
 
 #[async_trait]
 pub trait IntoCtxNode {
-    async unsafe fn into_ctx(self, parent: &GlobalCtxNode, global: &GlobalCtxNode) -> Option<Pin<Box<GlobalCtxNode>>>;
+    async unsafe fn into_ctx(
+        self,
+        parent: &GlobalCtxNode,
+        global: &GlobalCtxNode,
+    ) -> Option<Pin<Box<GlobalCtxNode>>>;
 }
 
 /*#[async_trait]
@@ -312,7 +351,8 @@ impl CompilationRoot {
             }
         }
 
-        dbg!(gbl);
+        //dbg!(gbl);
+        println!("{:?}", gbl);
 
         (self.args, self.files, ogbl)
     }
