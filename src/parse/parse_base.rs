@@ -337,7 +337,7 @@ impl<'lexer> Parser<'lexer> {
     //const first_function: [Token; 1] = [Token::Function];
     pub fn parse_function_declaration(
         &mut self,
-    ) -> Result<ast::FunctionDeclaration, ParseResultError> {
+    ) -> Result<ast::FunctionDefinition, ParseResultError> {
         let start = self.hard_expect(Token::Function)?.start;
         let function_name = self.hard_expect(Token::Identifier)?;
         self.hard_expect(Token::LParen)?;
@@ -353,7 +353,7 @@ impl<'lexer> Parser<'lexer> {
 
         let node_info = ast::NodeInfo::from_indices(start, end);
 
-        Ok(ast::FunctionDeclaration {
+        Ok(ast::FunctionDefinition {
             node_info,
             body,
             params,

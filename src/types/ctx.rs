@@ -17,7 +17,7 @@ use std::sync::atomic::{fence, Ordering};
 
 use std::sync::{Arc, Once, Weak};
 
-use crate::ast::{indent, FunctionDeclaration, NodeInfo, UseDeclaration};
+use crate::ast::{indent, FunctionDefinition, NodeInfo, UseDeclaration};
 //use once_cell::sync::OnceCell;
 use static_assertions::assert_impl_all;
 use std::pin::Pin;
@@ -226,18 +226,22 @@ impl Function {}
 #[allow(dead_code)]
 enum Implementation {
     Builtin {
-        ll_content: String,
-        ll_result: String,
-        ll_vars: Vec<(String, String)>,
+        ll_content: StringSymbol,
+        ll_result: StringSymbol,
+        ll_vars: Vec<(StringSymbol, StringSymbol)>,
+    },
+    Defined {
+        func: FunctionDefinition
     },
 }
 
 #[allow(dead_code)]
 pub struct FunctionImplementation {
-    self_type: GlobalTypeID,
-    name: String,
+    //self_type: GlobalTypeID,
+    name: StringSymbol,
+
     return_type: GlobalTypeID,
-    params: Vec<(GlobalTypeID, String)>,
+    params: Vec<(GlobalTypeID, StringSymbol)>,
 
     implementation: Implementation,
 }
@@ -265,6 +269,10 @@ impl FunctionImplementation {
         }
     }*/
 
+    pub fn from_declaration(fd: FunctionDefinition) -> FunctionImplementation {
+        let name = fd.name;
+    }
+
     pub fn encode_definition(&self) -> Result<String, Box<dyn std::error::Error>> {
         let mut builder = String::new();
 
@@ -280,6 +288,7 @@ impl FunctionImplementation {
 const TYPE_SIGNATURE_DUPLICATE_MAX_FREQ: usize = 3;
 
 static CTX_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+static TCTX_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 /*impl Method {
     fn returns(&self) -> TypeID {
@@ -581,6 +590,12 @@ impl GlobalCtxNode {
         id
     }
 
+    pub fn generate_tctxid(within: CtxID) -> GlobalTypeID {
+        let id = TCTX_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let id = GlobalTypeID { cid: within, tid: TypeID(id) };
+        id
+    }
+
     fn nsctx_for(&self, scope: &[StringSymbol]) -> Option<&GlobalCtxNode> {
         //match scope {
         //[last] //
@@ -755,9 +770,35 @@ impl FuncCtx {
 
     pub fn merge_local(&self, other: Arc<FuncCtx>) {}
 
-    pub fn add(&self, func: FunctionDeclaration) {}
+    fn _obs_generate_fctxid(within: CtxID) -> GlobalFunctionID {
+        static FCTX_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        let id = FCTX_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let id = GlobalFunctionID { cid: within, fid: FunctionID(id) };
+        id
+    }
 
-    pub fn define(&mut self, mut newfunc: Function) -> FunctionID {
+    /*fn generate_fctxid(&self) -> GlobalFunctionID {
+    }*/
+
+    pub fn add(&self, func: FunctionDefinition) {
+        let id = Self::generate_fctxid(self.ctx_id);
+
+        //GlobalCtx::get().functions.insert(id, Arc::new(func));
+
+        // make sure that we have inserted the function before we propagate the ID anywhere
+
+        fence(Ordering::Release);
+
+        self.by_name.entry(func.name)
+            .or_insert(Vec::new()) // note: vec::new is (basically) free and doesn't allocate :)
+            .push(id);
+
+        todo!();
+
+        //self.by_name.insert(func.
+    }
+
+    pub fn define(&mut self, mut newfunc: FunctionDefinition) -> FunctionID {
         //let id = self.id_gen;
         //self.id_gen += 1;
         //newfunc.set_id(id);

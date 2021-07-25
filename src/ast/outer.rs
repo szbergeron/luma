@@ -323,7 +323,7 @@ pub struct LetExpression {
 }
 
 #[derive(Debug, Clone)]
-pub struct FunctionDeclaration {
+pub struct FunctionDefinition {
     pub node_info: NodeInfo,
 
     pub public: bool,
@@ -334,7 +334,7 @@ pub struct FunctionDeclaration {
     pub params: Vec<(Box<super::ExpressionWrapper>, super::TypeReference)>,
 }
 
-impl AstNode for FunctionDeclaration {
+impl AstNode for FunctionDefinition {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
@@ -555,7 +555,7 @@ impl AstNode for StaticVariableDeclaration {
 
 #[derive(Debug)]
 pub enum SymbolDeclaration {
-    FunctionDeclaration(FunctionDeclaration),
+    FunctionDeclaration(FunctionDefinition),
     NamespaceDeclaration(Namespace),
     StructDeclaration(StructDeclaration),
     ExpressionDeclaration(StaticVariableDeclaration),
