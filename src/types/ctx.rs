@@ -101,7 +101,7 @@ impl std::fmt::Display for CtxID {
 /// This repr exists before any specialization or resolution,
 /// and does not actually contain any type resolutions
 pub struct FunctionDeclaration {
-    //
+    //   
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -457,43 +457,6 @@ impl GlobalCtxNode {
         self.children.insert(child.canonical_local_name, child);
     }
 
-    /// Constructs a "questionably initialized" (originally dangling) reference to a GlobalCtxNode
-    ///
-    /// DO NOT CALL AND EXPECT A VALUE THAT CAN BE DEREF'D or that has any meaningful contents,
-    /// only for usage as a momentary default while doing setup
-    /*pub unsafe fn static_dangling() -> &'static GlobalCtxNode {
-        static once: SyncOnceCell<Pin<Box<GlobalCtxNode>>> = SyncOnceCell::new();
-        once.get_or_init(|| {
-            let inner_ctx = Box::new(std::mem::MaybeUninit::zeroed());
-            let inner_ctx = Box::leak(inner_ctx);
-
-            let ptr: *mut GlobalCtxNode = (*inner_ctx).as_mut_ptr();
-
-            addr_of_mut!((*ptr).id).write(CtxID(u64::max_value()));
-            addr_of_mut!((*ptr).func_ctx).write(None);
-            addr_of_mut!((*ptr).type_ctx).write(None);
-            addr_of_mut!((*ptr).quark).write(None);
-            addr_of_mut!((*ptr).children).write(DashMap::new());
-            addr_of_mut!((*ptr).imports).write(DashSet::new());
-            addr_of_mut!((*ptr).exports).write(DashSet::new());
-
-            //addr_of_mut!((*ptr).parent).write(ptr.as_ref().unwrap());
-            //addr_of_mut!((*ptr).global).write(ptr.as_ref().unwrap());
-            //addr_of_mut!((*ptr).selfref).write(ptr.as_ref().unwrap());
-            //
-            addr_of_mut!((*ptr).parent).write(ptr.as_ref().unwrap());
-            addr_of_mut!((*ptr).global).write(ptr.as_ref().unwrap());
-            addr_of_mut!((*ptr).selfref).write(ptr.as_ref().unwrap());
-
-            let val = Box::from_raw(ptr);
-            Pin::new(val)
-            //Pin::new(Box::assume_init::<MaybeUninit<GlobalCtxNode>>(inner_ctx))
-        })
-        .get_selfref()
-        //let inner_ctx = std::mem::MaybeUninit::zeroed()
-        //NonNull::dangling().as_ref()
-    }*/
-
     /// TODO: change how we pass ptr to parent/global to be actual pointer instead of ref
     /// See notes inside function for notes on soundness/safety contracts for usage,
     /// the 'parent lifetime is of significant importance here
@@ -604,40 +567,14 @@ impl GlobalCtxNode {
             }
         }
     }
-
-    /*fn register_nsctx(&self, scope: &[StringSymbol], into: &DashMap<CtxID, Arc<GlobalCtxNode>>) {
-        match scope {
-            [] => {
-                // no action for empty case, this is base case (self is already registered)
-            }
-            [first, rest @ ..] => {
-                self.children
-                    .entry(*first)
-                    .or_insert_with(|| {
-                        let id = CTX_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                        let gcn = GlobalCtxNode::new(
-                            *first,
-                            CtxID(id),
-                            self.get_selfref_arc().map(|arc| Arc::downgrade(&arc)),
-                            Some(Arc::downgrade(&GlobalCtx::get().get_global())),
-                        );
-                        into.insert(CtxID(id), gcn.clone());
-                        gcn
-                    })
-                    .register_nsctx(rest, into);
-            }
-        }
-    }*/
-
-    //fn register_type_ctx(&self, scope: &[&'input str])
-
-    //fn register_type_ctx
 }
 
 pub struct GlobalCtx {
     entry: Pin<Box<GlobalCtxNode>>,
 
     contexts: DashMap<CtxID, Pin<Box<GlobalCtxNode>>>,
+    
+    funcs: GlobalFuncCtx,
 
     //functions: DashMap<GlobalFunctionID, Arc<FunctionImplementation>>,
     //types: DashMap<GlobalTypeID, TypeHandle>,
@@ -664,6 +601,7 @@ impl GlobalCtx {
                     None,
                 ),
                 contexts: DashMap::new(),
+                funcs: GlobalFuncCtx::new(),
                 //functions: DashMap::new(),
                 //types: DashMap::new(),
             }
@@ -675,41 +613,6 @@ impl GlobalCtx {
     fn get_nsctx(&self, scope: &[StringSymbol]) -> Option<&GlobalCtxNode> {
         self.entry.nsctx_for(scope)
     }
-
-    /// tries to get a namespace ctx if one exists, and not then creates the necessary path of
-    /// nsctxs to have one to return. This builds out the tree, but can make future ns lookups
-    /// believe that an ns was actually declared/referenced and should thus be avoided for
-    /// strict read-query lookups
-    #[allow(unused)]
-    /*pub fn get_or_create_nsctx(&self, scope: &[StringSymbol]) -> Arc<GlobalCtxNode> {
-        self.entry.register_nsctx(scope, &self.contexts);
-
-        self.get_nsctx(scope).expect(
-            "Created nsctx was not found directly afterward, failed to create? Failed to search?",
-        )
-    }*/
-    #[allow(unused)]
-    /// tries to get a namespace ctx if one exists, and not then creates the necessary path of
-    /// nsctxs to have one to use for the return value. This builds out the tree, but can make future ns lookups
-    /// believe that an ns was actually declared/referenced and should thus be avoided for
-    /// strict read-query lookups. This returns the TypeCtx directly off of the
-    /// internal NS looked up by `scope`, so that the last level type (decl itself) can be inserted
-    /*pub fn get_or_create_typectx(&self, scope: &[StringSymbol]) -> Arc<TypeCtx> {
-        self.get_or_create_nsctx(scope).type_ctx()
-    }*/
-
-    /*pub fn register_name_ctx(&self, scope: &[StringSymbol]) {
-        let global_symbol = intern("global");
-        /*match scope {
-            // global scope handled same as default scope
-            //[g, rest @ ..] if g == global_symbol | [rest @ ..] => {
-                self.entry.register_nsctx(rest, &self.contexts);
-            }
-        }*/
-        let stripped = scope.strip_prefix(&[global_symbol]).unwrap();
-
-        self.entry.register_nsctx(stripped, &self.contexts);
-    }*/
 
     pub fn by_id(&self, id: CtxID) -> Option<Pin<&GlobalCtxNode>> {
         //self.contexts.get(&id).map(|opt| opt.value().get_selfref())
@@ -727,6 +630,10 @@ impl GlobalCtx {
         //let opt = opt.value();
         //Some(opt.as_ref())
         //Some(opt.get_selfref())
+    }
+
+    pub fn type_ctx(&self) -> &GlobalFuncCtx {
+        &self.funcs
     }
 }
 
@@ -757,41 +664,16 @@ impl FuncCtx {
 
     pub fn merge_local(&self, other: Arc<FuncCtx>) {}
 
-    fn _obs_generate_fctxid(within: CtxID) -> GlobalFunctionID {
-        static FCTX_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
-        let id = FCTX_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        let id = GlobalFunctionID { cid: within, fid: FunctionID(id) };
-        id
-    }
-
-    /*fn generate_fctxid(&self) -> GlobalFunctionID {
-    }*/
-
     pub fn add(&self, func: FunctionDefinition) {
-        //let id = Self::generate_fctxid(self.ctx_id);
-        let id = todo!();
-
-        //GlobalCtx::get().functions.insert(id, Arc::new(func));
-
-        // make sure that we have inserted the function before we propagate the ID anywhere
+        let name = func.name;
+        
+        let id = GlobalCtx::get().type_ctx().define(self.ctx_id, func);
 
         fence(Ordering::Release);
 
         self.by_name.entry(func.name)
             .or_insert(Vec::new()) // note: vec::new is (basically) free and doesn't allocate :)
             .push(id);
-
-        todo!();
-
-        //self.by_name.insert(func.
-    }
-
-    pub fn lookup(&self, fid: FunctionID) -> Option<()> {
-        /*self.by_id
-        .get(&fid)
-        .map(|map_entry| map_entry.value().clone())*/
-        //unimplemented!()
-        self.all.get(fid.0 as usize).map(|r| r.clone())
     }
 
     /*pub fn query(
@@ -847,6 +729,25 @@ impl FuncCtx {
     /*pub fn id_to_sig(&self, fid: FunctionID) -> Option<TypeSignature> {
         self.
     }*/
+}
+
+pub struct GlobalFuncCtx {
+    functions: DashMap<GlobalFunctionID, FunctionDefinition>,
+}
+
+impl GlobalFuncCtx {
+    pub fn new() -> GlobalFuncCtx {
+        GlobalFuncCtx { functions: DashMap::new() }
+    }
+    pub fn define(&self, within: CtxID, func: FunctionDefinition) -> GlobalFunctionID {
+        static FCTX_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        let id = FCTX_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let id = GlobalFunctionID { cid: within, fid: FunctionID(id) };
+
+        self.functions.insert(id, func);
+
+        id
+    }
 }
 
 /// Interior mutable container representing a type context
