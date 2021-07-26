@@ -24,9 +24,6 @@ use std::pin::Pin;
 
 pub type TypeHandle = Arc<dyn Type>;
 
-pub type FunctionHandle = Arc<Function>;
-
-
 struct RefPtr<T> { inner: NonNull<T> }
 
 unsafe impl<T> Send for RefPtr<T> {}
@@ -225,90 +222,14 @@ pub struct FunctionCall {
     pub secondary_context: Option<Arc<GlobalCtxNode>>,
 }
 
-/// This links a call to a function, and forces creation of
-/// monomorphized versions of any generic functions.
-pub struct MonomorphisedFunction {
-    //pub munged_id:
-//
-}
-
-pub struct Function {
-    pub signature: FunctionSignature,
-    pub id: FunctionID,
-
-    params: Vec<(TypeID, String)>,
-    _returns: TypeID,
-
-    _from: Implementation,
-}
-
-impl Function {}
-
-//pub type CtxID = u64;
-
-//pub type GlobalFunctionID = (CtxID, FunctionID);
-//pub type GlobalSymbolID = (CtxID, SymbolID);
-
-#[allow(dead_code)]
-enum Implementation {
-    Builtin {
-        ll_content: StringSymbol,
-        ll_result: StringSymbol,
-        ll_vars: Vec<(StringSymbol, StringSymbol)>,
-    },
-    Defined {
-        func: FunctionDefinition
-    },
-}
-
-#[allow(dead_code)]
-pub struct FunctionImplementation {
-    //self_type: GlobalTypeID,
-    name: StringSymbol,
-
-    return_type: GlobalTypeID,
-    params: Vec<(GlobalTypeID, StringSymbol)>,
-
-    implementation: Implementation,
-}
-
-impl FunctionImplementation {
-    /*pub fn new_from_builtin(
-        self_type: TypeID,
-        name: String,
-        params: Vec<(TypeID, String)>,
-        return_type: TypeID,
-        ll_vars: Vec<(String, String)>,
-        ll_result: String,
-        ll_content: String,
-    ) -> FunctionImplementation {
-        FunctionImplementation {
-            self_type,
-            name,
-            return_type,
-            params,
-            implementation: Implementation::Builtin {
-                ll_content,
-                ll_result,
-                ll_vars,
-            },
-        }
-    }*/
-
-    pub fn from_declaration(fd: FunctionDefinition) -> FunctionImplementation {
-        let name = fd.name;
-    }
-
-    pub fn encode_definition(&self) -> Result<String, Box<dyn std::error::Error>> {
-        let mut builder = String::new();
-
-        writeln!(&mut builder, "; encoding a method by name {}", self.name)?;
-        //todo!("Method encode not complete")
-
-        Ok(builder)
-    }
-
-    //pub fn encode_reference(&self,
+/// Represents a function definition with nothing resolved,
+/// and only wraps the AST node that provides the implementation
+///
+/// Types do not exist within this, and it is only a wrapper struct
+/// that may (at some point) represent a future on an actually resolved
+/// *generic supporting* function.
+pub struct NaiveFunctionDefinition {
+    definition: FunctionDefinition,
 }
 
 const TYPE_SIGNATURE_DUPLICATE_MAX_FREQ: usize = 3;
@@ -708,8 +629,8 @@ pub struct GlobalCtx {
 
     contexts: DashMap<CtxID, Pin<Box<GlobalCtxNode>>>,
 
-    functions: DashMap<GlobalFunctionID, Arc<FunctionImplementation>>,
-    types: DashMap<GlobalTypeID, TypeHandle>,
+    //functions: DashMap<GlobalFunctionID, Arc<FunctionImplementation>>,
+    //types: DashMap<GlobalTypeID, TypeHandle>,
 }
 
 impl GlobalCtx {
@@ -733,8 +654,8 @@ impl GlobalCtx {
                     None,
                 ),
                 contexts: DashMap::new(),
-                functions: DashMap::new(),
-                types: DashMap::new(),
+                //functions: DashMap::new(),
+                //types: DashMap::new(),
             }
         }
     }
@@ -807,7 +728,7 @@ pub struct FuncCtx {
     //by_signature: DashMap<FunctionSignature, FunctionHandle>,
     by_name: DashMap<StringSymbol, Vec<GlobalFunctionID>>,
 
-    all: Vec<FunctionHandle>,
+    all: Vec<()>,
     //id_gen: u64,
 }
 
@@ -837,7 +758,8 @@ impl FuncCtx {
     }*/
 
     pub fn add(&self, func: FunctionDefinition) {
-        let id = Self::generate_fctxid(self.ctx_id);
+        //let id = Self::generate_fctxid(self.ctx_id);
+        let id = todo!();
 
         //GlobalCtx::get().functions.insert(id, Arc::new(func));
 
@@ -854,27 +776,7 @@ impl FuncCtx {
         //self.by_name.insert(func.
     }
 
-    pub fn define(&mut self, mut newfunc: FunctionDefinition) -> FunctionID {
-        //let id = self.id_gen;
-        //self.id_gen += 1;
-        //newfunc.set_id(id);
-        //newfunc.id = FunctionID(id);
-
-        //let id = self.all.len();
-        let id = FunctionID(self.all.len() as u64);
-
-        newfunc.id = id;
-
-        let fh = Arc::new(newfunc);
-
-        self.all.push(fh);
-
-        id
-
-        //self.by_id.insert(FunctionID(id), fh.clone());
-    }
-
-    pub fn lookup(&self, fid: FunctionID) -> Option<FunctionHandle> {
+    pub fn lookup(&self, fid: FunctionID) -> Option<()> {
         /*self.by_id
         .get(&fid)
         .map(|map_entry| map_entry.value().clone())*/
@@ -882,7 +784,7 @@ impl FuncCtx {
         self.all.get(fid.0 as usize).map(|r| r.clone())
     }
 
-    pub fn query(
+    /*pub fn query(
         &self,
         name: Option<StringSymbol>,
         params: &[Option<TypeID>],
@@ -930,7 +832,7 @@ impl FuncCtx {
         //self.by_name.get(&name).map(|map_entry| map_entry.value().first())
 
         unimplemented!()
-    }
+    }*/
 
     /*pub fn id_to_sig(&self, fid: FunctionID) -> Option<TypeSignature> {
         self.

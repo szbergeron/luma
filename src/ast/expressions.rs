@@ -90,6 +90,7 @@ pub enum ExpressionWrapper {
     Pattern(Pattern),
     Return(ReturnExpression),
     Wildcard(WildcardExpression),
+    LLVMLiteral(LLVMLiteralExpression),
 }
 
 impl ExpressionWrapper {
@@ -149,6 +150,7 @@ impl IntoAstNode for ExpressionWrapper {
             Self::Wildcard(e) => e,
             Self::While(e) => e,
             Self::Return(e) => e,
+            Self::LLVMLiteral(e) => e,
             _ => {
                 println!("No implemented as_node handler for type {:?}", self);
                 todo!();
@@ -808,6 +810,42 @@ impl CastExpression {
             subexpr: lhs,
             typeref,
         }))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct LLVMLiteralExpression {
+    node_info: NodeInfo,
+
+    /// This allows choosing string aliases for
+    /// a set of expressions that are to be evaluated and
+    /// placed in llvm bindings corresponding with the StringSymbols
+    /// provided.
+    ///
+    /// No additional munging is done so the user should be careful to avoid
+    /// any naming conflicts here
+    renames: Vec<(ExpressionWrapper, StringSymbol)>,
+
+    /// Contains the LLVM IR text that is to be emitted with this function
+    text: StringSymbol,
+
+    /// If this block is not `_ -> ()` then it has some output T
+    ///
+    /// The type is specified syntactically and resides in
+    /// output.unwrap().0, and the llvm binding that
+    /// the value will reside in will be referred to output.unwrap().1
+    ///
+    /// Care should be taken by the user that the binding name does not cause a name collision
+    output: Option<(TypeReference, StringSymbol)>
+}
+
+impl AstNode for LLVMLiteralExpression {
+    fn node_info(&self) -> NodeInfo {
+        self.node_info
+    }
+
+    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+        todo!()
     }
 }
 
