@@ -97,6 +97,16 @@ impl std::fmt::Display for CtxID {
     }
 }
 
+/// Contains an actual textual definition of the function
+/// as well as some related metadata so that we can track that definition
+/// uniquely.
+///
+/// This repr exists before any specialization or resolution,
+/// and does not actually contain any type resolutions
+pub struct FunctionDeclaration {
+    //
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Resolution {
     /// An unresolved import is represented by the sequence of

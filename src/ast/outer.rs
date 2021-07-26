@@ -371,7 +371,8 @@ pub struct FunctionDefinition {
 
     pub body: Box<ExpressionWrapper>,
     pub return_type: TypeReference,
-    pub params: Vec<(Box<super::ExpressionWrapper>, super::TypeReference)>,
+    //pub params: Vec<(Box<super::ExpressionWrapper>, super::TypeReference)>,
+    pub params: Vec<(StringSymbol, super::TypeReference)>,
 }
 
 impl AstNode for FunctionDefinition {
@@ -391,15 +392,16 @@ impl AstNode for FunctionDefinition {
 
         let _ = writeln!(f, "{}Parameters:", indent(depth + 1),);
 
-        for vd in self.params.iter() {
+        for (name, typeref) in self.params.iter() {
             let _ = writeln!(
                 f,
-                "{}Parameter of type {:?} which comes from expression:",
+                "{}Parameter {}: {:?}",
                 indent(depth + 2),
-                vd.1,
+                name,
+                typeref,
             );
 
-            vd.0.as_node().display(f, depth + 3);
+            //vd.0.as_node().display(f, depth + 3);
         }
 
         if self.params.is_empty() {
