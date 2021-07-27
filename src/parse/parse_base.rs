@@ -313,17 +313,16 @@ impl<'lexer> Parser<'lexer> {
     #[allow(dead_code, unreachable_code)]
     pub fn parse_function_param_list(
         &mut self,
-    ) -> Result<Vec<(Box<ast::ExpressionWrapper>, ast::TypeReference)>, ParseResultError> {
-        return Err(ParseResultError::InternalParseIssue);
-        let rvec: Vec<(Box<ast::ExpressionWrapper>, ast::TypeReference)> = Vec::new();
-        while let Ok(a) = self.atomic_expression() {
+    ) -> Result<Vec<(StringSymbol, ast::TypeReference)>, ParseResultError> {
+        let mut rvec: Vec<(StringSymbol, ast::TypeReference)> = Vec::new();
+
+        while let Some(i) = self.eat_match(Token::Identifier) {
             self.hard_expect(Token::Colon)?;
             let tr = self.parse_type_specifier()?;
 
-            let _r = (a, tr);
+            let r = (i.slice, *tr);
 
-            //rvec.push(r);
-            todo!("Function param list parsing is WIP");
+            rvec.push(r);
 
             match self.eat_match(Token::Comma) {
                 Some(_) => continue,
@@ -340,6 +339,7 @@ impl<'lexer> Parser<'lexer> {
     ) -> Result<ast::FunctionDefinition, ParseResultError> {
         let start = self.hard_expect(Token::Function)?.start;
         let function_name = self.hard_expect(Token::Identifier)?;
+
         self.hard_expect(Token::LParen)?;
         let params = self.parse_function_param_list()?;
         self.hard_expect(Token::RParen)?;
@@ -357,6 +357,7 @@ impl<'lexer> Parser<'lexer> {
             node_info,
             body,
             params,
+            //params: Vec::new(), // TODO
             return_type: *return_type,
             name: function_name.slice,
             public: false,

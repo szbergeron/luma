@@ -3,17 +3,17 @@ use super::expressions::ExpressionWrapper;
 use crate::helper::VecOps;
 
 use crate::helper::lex_wrap::ParseResultError;
-use crate::types::GlobalCtx;
+
 use crate::types::GlobalCtxNode;
 use crate::types::Import;
 use crate::types::Resolution;
 use std::pin::Pin;
 //use std::rc::Rc;
-use std::sync::Arc;
+
 //use std::cell::RefCell;
 
 use super::expressions::TypeReference;
-use std::sync::RwLock;
+
 
 use crate::helper::interner::*;
 use async_recursion::async_recursion;
@@ -42,7 +42,7 @@ impl Namespace {
         parent: &GlobalCtxNode,
         global: &GlobalCtxNode,
     ) -> Pin<Box<GlobalCtxNode>> {
-        let new_slice = parent_scope.to_vec().appended(self.name.unwrap());
+        //let new_slice = parent_scope.to_vec().appended(self.name.unwrap());
 
         //let ctx = GlobalCtx::get().get_nsctx(new_slice.as_slice());
         /*let ctx = GlobalCtxNode::new(
@@ -131,8 +131,7 @@ impl AstNode for Namespace {
     fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
         let _ = writeln!(
             f,
-            "\n{}mod {} {{",
-            indent(depth),
+            "mod {} {{",
             self.name.map(|ss| ss.resolve()).unwrap_or("<unknown")
         );
 
@@ -356,7 +355,6 @@ impl AstNode for LetComponent {
 pub struct LetExpression {
     pub node_info: NodeInfo,
 
-    //pub binding_type: TypeReference,
     pub primary_component: Box<LetComponent>,
 
     pub expression: Box<ExpressionWrapper>,
@@ -376,6 +374,28 @@ pub struct FunctionDefinition {
 }
 
 impl AstNode for FunctionDefinition {
+    fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
+        let _ = write!(
+            f,
+            "fn {} (",
+            self.name.resolve(),
+            );
+        for p in self.params.iter() {
+            let _ = write!(f, "{}:", p.0.resolve());
+            p.1.pretty(f, depth + 1);
+            let _ = write!(f, ", ");
+        }
+        let _ = write!(f, ") -> ");
+        self.return_type.pretty(f, depth + 1);
+        let _ = write!(f, " ");
+        //let _ = 
+        //let _ = writeln!(f, " {{");
+        //let _ = write!(f, "{}", indent(depth + 1));
+        
+        self.body.as_node().pretty(f, depth);
+        let _ = writeln!(f, "");
+        //let _ = writeln!(f, "\n{}}}", indent(depth));
+    }
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
@@ -542,6 +562,10 @@ impl ScopedNameReference {
 }
 
 impl AstNode for ScopedNameReference {
+    fn pretty(&self, f: &mut dyn std::fmt::Write, _depth: usize) {
+        let s: String = self.scope.iter().map(|ss| ss.resolve()).intersperse("::").collect();
+        let _ = write!(f, "{}", s);
+    }
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }

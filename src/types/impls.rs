@@ -1,4 +1,4 @@
-use super::{CtxID, FunctionImplementation, TypeCtx, TypeID, GlobalTypeID};
+use super::{CtxID, FunctionDeclaration, TypeCtx, TypeID, GlobalTypeID};
 use crate::ast::Span;
 
 use smallvec::SmallVec;
@@ -88,7 +88,7 @@ pub trait Type: DynHash + DynEq + AsAny + Send + Sync {
 
     fn encode_definition(&self) -> String;
 
-    fn add_method(&self, method: FunctionImplementation) -> bool;
+    fn add_method(&self, method: FunctionDeclaration) -> bool;
 
     //fn dyn_hash<H: std::hash::Hasher>(&self, state: &mut H);
     //fn dyn_hash(&self);
@@ -177,7 +177,7 @@ impl Type for i32_t_static {
         TypeID(self.tid.load(std::sync::atomic::Ordering::SeqCst))
     }
 
-    fn add_method(&self, _method: super::FunctionImplementation) -> bool {
+    fn add_method(&self, _method: super::FunctionDeclaration) -> bool {
         todo!()
     }
 
@@ -350,7 +350,7 @@ impl Type for ref_t_static {
         "\n".to_owned()
     }
 
-    fn add_method(&self, _method: super::FunctionImplementation) -> bool {
+    fn add_method(&self, _method: super::FunctionDeclaration) -> bool {
         todo!()
     }
 

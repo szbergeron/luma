@@ -56,6 +56,7 @@ pub fn parse_unit<'file>(
             if cflags.dump_pretty {
                 let mut s = String::new();
                 punit.pretty(&mut s, 0);
+                println!("Pretty output:");
                 println!("{}", s);
             }
         }

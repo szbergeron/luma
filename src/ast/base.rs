@@ -102,8 +102,11 @@ pub trait AstNode: std::fmt::Debug + Send + Sync {
     /// Should display as a "source like" form. May be parenthesized,
     /// and is allowed to include type information, but should
     /// omit things like location, parse success, strict node type and such
+    ///
+    /// Indentation for the first line is handled by the parent, but any newlines created inside
+    /// should be indented by the child according to the `depth` parameter
+    #[allow(unused_variables)]
     fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
-
         panic!("[ast_prettyprint] not yet implemented for {}", std::any::type_name::<Self>());
     }
 

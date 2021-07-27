@@ -3,21 +3,24 @@ use super::impls::*;
 use crate::helper::interner::{intern, SpurHelper, StringSymbol};
 use crate::types::Quark;
 use dashmap::{DashMap, DashSet};
+
+#[allow(unused_imports)]
 use rayon::prelude::*;
 use smallvec::SmallVec;
 use std::fmt::Formatter;
 //use tokio::sync::OnceCell;
 
+#[allow(unused_imports)]
 use std::fmt::{Debug, Write};
 
 use std::lazy::SyncOnceCell;
-use std::mem::MaybeUninit;
-use std::ptr::{addr_of_mut, NonNull};
+//use std::mem::MaybeUninit;
+use std::ptr::NonNull;
 use std::sync::atomic::{fence, Ordering};
 
-use std::sync::{Arc, Once, Weak};
+use std::sync::Arc;
 
-use crate::ast::{indent, AstNode, FunctionDefinition, NodeInfo, UseDeclaration};
+use crate::ast::{indent, AstNode, FunctionDefinition, NodeInfo};
 //use once_cell::sync::OnceCell;
 use static_assertions::assert_impl_all;
 use std::pin::Pin;
@@ -238,6 +241,7 @@ pub struct FunctionCall {
 /// Types do not exist within this, and it is only a wrapper struct
 /// that may (at some point) represent a future on an actually resolved
 /// *generic supporting* function.
+#[allow(dead_code)]
 pub struct NaiveFunctionDefinition {
     definition: FunctionDefinition,
 }
@@ -278,6 +282,7 @@ pub fn generate_typeid() -> TypeID {
 /// since children may be removed and dropped before a node "above" in the tree.
 ///
 /// Any downward references should use either ID notation or scoped identification
+#[allow(dead_code)]
 pub struct GlobalCtxNode {
     canonical_local_name: StringSymbol,
 
@@ -347,6 +352,30 @@ impl AstNode for GlobalCtxNode {
             child.value().display(f, depth + 2);
             //child.value().fmt(f);
         }
+
+        let _ = writeln!(f, "{}FuncCtx:", indent(depth + 1));
+        //println!("fctx is {}", self.func_ctx.is_some());
+        self.func_ctx.iter().for_each(|fctx| fctx.display(f, depth + 2));
+    }
+}
+
+impl AstNode for FuncCtx {
+    fn node_info(&self) -> NodeInfo {
+        todo!()
+    }
+
+    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+        let _ = writeln!(f, "{}FuncCtx ", indent(depth));
+
+        for fidv in self.by_name.iter() {
+            //println!("got an fidv");
+            for fid in fidv.iter() {
+                //dbg!(fid);
+                let _ = write!(f, "{}", indent(depth+1));
+                GlobalCtx::get().func_ctx().lookup(*fid).pretty(f, depth + 1);
+
+            }
+        }
     }
 }
 
@@ -355,55 +384,6 @@ assert_impl_all!(GlobalCtxNode: Send);
 /// NOTE: lots of unsafe here, major contracts around the parent/global/selfref members,
 /// tread carefully when modifying this code!
 impl GlobalCtxNode {
-    /// The passed GCN should not have any children, this
-    /// transformation is only to be used for taking the `mod.rsh`
-    /// context and inlining it into the parent context
-    ///
-    /// The GCN is passed as the relative direct-descending child path
-    /// from this `self` GCN. For example, if we wish to pull up the
-    /// `ns::mod1` GCN into `ns` directly, then we would pass `mod1`
-    ///
-    /// returns OK(()) on success, and Err with a string message if the merge fails
-    pub fn merge_local(&self, other: StringSymbol) -> Result<(), &str> {
-        panic!("not done with local merge, need to eval if it's good to have");
-        /*for (key, mut child) in other.children.into_iter() {
-            /*if self.children.contains_key(&key) {
-                eprintln!("Already had key {} within ctx {}", key, self.canonical_local_name);
-                panic!("failed to merge ctx");
-            }*/
-
-            //child._parent = Some(self.get_selfref_arc().as_ref().map(|arc| Arc::downgrade(arc)).unwrap());
-            self.children.insert(key, child);
-        }*/
-
-        //self.imports.extend(other.imports.into_iter());
-
-        /*let other = self.remove_child(other)?;
-
-        other.imports.iter().for_each(|item| {
-            self.imports.insert(item.clone());
-        });
-        other.exports.iter().for_each(|item| {
-            self.exports.insert(item.clone());
-        });
-
-        self.func_ctx().merge_local(other.func_ctx.clone());
-        self.type_ctx().merge_local(other.type_ctx.clone());
-
-        Ok(())*/
-    }
-
-    /*pub fn remove_child(&self, other: StringSymbol) -> Result<Box<GlobalCtxNode>, &str> {
-        todo!();
-
-        let o = self.children.remove(&other);
-        match o {
-            None => Err("Couldn't remove child, none existed by given spur id"),
-            Some((key, node)) => Ok(node),
-        }
-        //
-    }*/
-
     pub fn display_internal(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let _ = writeln!(
             f,
@@ -451,15 +431,16 @@ impl GlobalCtxNode {
     }
 
     pub fn add_child(&self, child: Pin<Box<GlobalCtxNode>>) {
-        println!("Adds child {} to parent {}", child.id, self.id);
-        dbg!(child.canonical_local_name);
-        dbg!(self.canonical_local_name);
+        //println!("Adds child {} to parent {}", child.id, self.id);
+        //dbg!(child.canonical_local_name);
+        //dbg!(self.canonical_local_name);
         self.children.insert(child.canonical_local_name, child);
     }
 
     /// TODO: change how we pass ptr to parent/global to be actual pointer instead of ref
     /// See notes inside function for notes on soundness/safety contracts for usage,
     /// the 'parent lifetime is of significant importance here
+    #[allow(unused_unsafe, unused_mut)]
     pub unsafe fn new<'parent>(
         name: StringSymbol,
         parent: Option<&'parent GlobalCtxNode>,
@@ -467,8 +448,8 @@ impl GlobalCtxNode {
         id: Option<CtxID>,
     ) -> Pin<Box<GlobalCtxNode>> {
         let id = id.unwrap_or_else(|| Self::generate_ctxid());
-        dbg!(name.resolve());
-        dbg!(id);
+        //dbg!(name.resolve());
+        //dbg!(id);
 
         unsafe {
             let mut node = GlobalCtxNode {
@@ -529,10 +510,6 @@ impl GlobalCtxNode {
     pub fn name(&self) -> &str {
         self.canonical_local_name.resolve()
     }
-
-    /*fn type_ctx(&self) -> Arc<TypeCtx> {
-        self.type_ctx.clone()
-    }*/
 
     pub fn generate_ctxid() -> CtxID {
         let id = CTX_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -632,13 +609,14 @@ impl GlobalCtx {
         //Some(opt.get_selfref())
     }
 
-    pub fn type_ctx(&self) -> &GlobalFuncCtx {
+    pub fn func_ctx(&self) -> &GlobalFuncCtx {
         &self.funcs
     }
 }
 
 /// Interior mutable container representing a function context
 /// (set of functions from a module context)
+#[derive(Debug)]
 pub struct FuncCtx {
     ctx_id: CtxID,
     //by_id: DashMap<FunctionID, FunctionHandle>,
@@ -662,16 +640,19 @@ impl FuncCtx {
         }
     }
 
-    pub fn merge_local(&self, other: Arc<FuncCtx>) {}
+    pub fn merge_local(&self, _other: Arc<FuncCtx>) {}
 
     pub fn add(&self, func: FunctionDefinition) {
+        println!("got a func");
+
         let name = func.name;
         
-        let id = GlobalCtx::get().type_ctx().define(self.ctx_id, func);
+        let id = GlobalCtx::get().func_ctx().define(self.ctx_id, func);
+        //println!("id was {}", id);
 
         fence(Ordering::Release);
 
-        self.by_name.entry(func.name)
+        self.by_name.entry(name)
             .or_insert(Vec::new()) // note: vec::new is (basically) free and doesn't allocate :)
             .push(id);
     }
@@ -748,6 +729,17 @@ impl GlobalFuncCtx {
 
         id
     }
+
+    pub fn lookup(&self, id: GlobalFunctionID) -> &FunctionDefinition {
+        // NOTE: this is only sound if we do not remove from self.functions, since
+        // these references should live as long as 'self
+        //
+        // This means that we can hand out refs of &'self freely since
+        // the borrow checker will verify that they do not last any longer than we do
+        unsafe {
+            std::mem::transmute(self.functions.get(&id).unwrap().value())
+        }
+    }
 }
 
 /// Interior mutable container representing a type context
@@ -764,7 +756,7 @@ impl TypeCtx {
         self.ctx_id
     }
 
-    pub fn merge_local(&self, other: Arc<TypeCtx>) {}
+    pub fn merge_local(&self, _other: Arc<TypeCtx>) {}
 
     pub fn new(within: CtxID) -> TypeCtx {
         TypeCtx {

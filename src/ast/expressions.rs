@@ -33,6 +33,12 @@ impl TypeReference {
 }
 
 impl AstNode for TypeReference {
+    fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
+        let _ = write!(f, "{}", self.canonicalized_name);
+        if !self.type_args.is_empty() {
+            let _ = write!(f, "<args: !impl>");
+        }
+    }
     fn display(&self, f: &mut std::fmt::Formatter<'_>, _depth: usize) {
         let _ = write!(
             f,
@@ -256,6 +262,12 @@ impl Pattern {
     }
 }
 
+impl IntoAstNode for Pattern {
+    fn as_node(&self) -> &dyn AstNode {
+        self
+    }
+}
+
 impl AstNode for Pattern {
     fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let _ = writeln!(f, "{}Pattern with child expressions:", indent(depth),);
@@ -387,6 +399,18 @@ pub struct BlockExpression {
 }
 
 impl AstNode for BlockExpression {
+    fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
+        let _ = writeln!(f, "{{");
+        for c in self.contents.iter() {
+            if let Ok(c) = c {
+                let _ = write!(f, "{}", indent(depth + 1));
+                c.as_node().pretty(f, depth + 1);
+                let _ = writeln!(f, "");
+            }
+        }
+
+        let _ = write!(f, "{}}}", indent(depth));
+    }
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
@@ -536,6 +560,11 @@ impl BinaryOperationExpression {
 }
 
 impl AstNode for BinaryOperationExpression {
+    fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
+        self.lhs.as_node().pretty(f, depth);
+        let _ = write!(f, " {} ", self.operation.fmt());
+        self.rhs.as_node().pretty(f, depth);
+    }
     fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let _ = writeln!(
             f,
@@ -638,6 +667,14 @@ pub enum BinaryOperation {
 }
 
 impl BinaryOperation {
+    pub fn fmt(&self) -> &'static str {
+        match self {
+            Self::Multiply => "*",
+            Self::Divide => "/",
+            Self::Add => "+",
+            Self::Subtract => "-",
+        }
+    }
     pub fn from_token(t: Token) -> Option<BinaryOperation> {
         match t {
             Token::Asterisk => Some(Self::Multiply),
@@ -697,6 +734,11 @@ impl AccessExpression {
 }
 
 impl AstNode for AccessExpression {
+    fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
+        self.scope.as_node().pretty(f, depth);
+        self.on.iter().for_each(|on| on.as_node().pretty(f, depth));
+        self.pattern.iter().for_each(|pattern| pattern.as_node().pretty(f, depth));
+    }
     fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let _ = writeln!(
             f,
