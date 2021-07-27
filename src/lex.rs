@@ -271,6 +271,12 @@ pub enum Token {
     #[token("__builtin")]
     InteriorBuiltin,
 
+    #[token("#rename")]
+    LL_Rename,
+
+    #[token("#result")]
+    LL_Result,
+
     #[token("__ll_vars")]
     InteriorLLVars,
 

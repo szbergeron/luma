@@ -857,7 +857,7 @@ impl CastExpression {
 
 #[derive(Debug, Clone)]
 pub struct LLVMLiteralExpression {
-    node_info: NodeInfo,
+    pub node_info: NodeInfo,
 
     /// This allows choosing string aliases for
     /// a set of expressions that are to be evaluated and
@@ -866,10 +866,10 @@ pub struct LLVMLiteralExpression {
     ///
     /// No additional munging is done so the user should be careful to avoid
     /// any naming conflicts here
-    renames: Vec<(ExpressionWrapper, StringSymbol)>,
+    pub renames: Vec<(ExpressionWrapper, StringSymbol)>,
 
     /// Contains the LLVM IR text that is to be emitted with this function
-    text: StringSymbol,
+    pub text: StringSymbol,
 
     /// If this block is not `_ -> ()` then it has some output T
     ///
@@ -878,7 +878,7 @@ pub struct LLVMLiteralExpression {
     /// the value will reside in will be referred to output.unwrap().1
     ///
     /// Care should be taken by the user that the binding name does not cause a name collision
-    output: Option<(TypeReference, StringSymbol)>
+    pub output: Option<(TypeReference, StringSymbol)>
 }
 
 impl AstNode for LLVMLiteralExpression {

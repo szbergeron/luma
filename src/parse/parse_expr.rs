@@ -427,6 +427,49 @@ impl<'lexer> Parser<'lexer> {
         Ok(Box::new(ExpressionWrapper::Access(ae)))
     }
 
+    pub fn parse_llvm_builtin(&mut self) -> ExpressionResult {
+        let start = self.hard_expect(Token::InteriorBuiltin)?;
+        let name = self.hard_expect(Token::Identifier)?;
+
+        let maybe_result = if let Some(_) = self.eat_match(Token::LL_Result) {
+            let name = self.hard_expect(Token::Identifier)?;
+            self.hard_expect(Token::Colon);
+            let tr = self.parse_type_specifier()?;
+            Some((*tr, name.slice))
+        } else {
+            None
+        };
+
+        let mut renames = Vec::new();
+
+        while let Some(tok) = self.eat_match(Token::LL_Rename) {
+            let exp = self.parse_expr()?;
+            let name = self.hard_expect(Token::Identifier)?;
+
+            renames.push((*exp, name.slice));
+        }
+
+        let body = self.hard_expect(Token::InteriorLLVMInlineBlock)?;
+
+        let llvmle = LLVMLiteralExpression {
+            node_info: NodeInfo::from_indices(start.start, body.end),
+            renames,
+            text: body.slice,
+            output: maybe_result,
+        };
+
+        Ok(Box::new(ExpressionWrapper::LLVMLiteral(llvmle)))
+
+        //
+
+        //let _sblock = self.hard_expect(Token::LBrace)?;
+
+        /*while let Some(tok) = self.eat_match_in(&[Token::LL_Rename, Token::InteriorLLVMInlineBlock]) {
+        }*/
+
+        //let _eblock = self.hard_expect(Token::RBrace)?;
+    }
+
     pub fn parse_if_then_else(&mut self) -> ExpressionResult {
         let start = self.hard_expect(Token::If)?.start;
         let if_exp = self.parse_expr()?;
@@ -554,6 +597,11 @@ impl<'lexer> Parser<'lexer> {
             }
             Token::If => {
                 let r = self.parse_if_then_else();
+
+                r?
+            }
+            Token::InteriorBuiltin => {
+                let r = self.parse_llvm_builtin();
 
                 r?
             }
