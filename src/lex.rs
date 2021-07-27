@@ -265,23 +265,21 @@ pub enum Token {
     #[regex(r#""([^"\\]|\\t|\\u|\\n|\\")*""#)]
     StringLiteral,
 
-    #[regex(r#""llvm\{.*\}llvm""#)]
+    //#[regex(r"\{%*%\}")]
+    #[regex(r#"llvm\{[\n\t\s'"!@#$%^&*()_\-+=\[\]\\\{\}\|;:,.<>/?a-zA-Z0-9]*\}llvm"#)]
     InteriorLLVMInlineBlock,
 
-    #[token("__builtin")]
+    #[token("#builtin")]
     InteriorBuiltin,
 
-    #[token("#rename")]
-    LL_Rename,
+    #[token("#bind")]
+    LL_Bind,
+
+    #[token("#var")]
+    LL_Var,
 
     #[token("#result")]
     LL_Result,
-
-    #[token("__ll_vars")]
-    InteriorLLVars,
-
-    #[token("__ll_results")]
-    InteriorLLResults,
 
     #[regex(r"[\t\f]+", logos::skip)]
     #[error]
@@ -323,6 +321,23 @@ impl Token {
         }
     }*/
 }
+
+#[allow(non_camel_case_types)]
+#[derive(Logos, Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub enum LLVMToken {
+    #[token("{{")]
+    Open,
+
+    #[token("}}")]
+    Close,
+
+    #[regex(r".")]
+    Other,
+
+    #[error]
+    Error,
+}
+
 
 #[test]
 fn string_literal() {

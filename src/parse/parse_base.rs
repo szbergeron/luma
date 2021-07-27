@@ -86,13 +86,17 @@ impl<'lexer> Parser<'lexer> {
         todo!()
     }*/
 
-    //const first_struct: [Token; 1] = [Token::Struct];
-    pub fn parse_struct_declaration(&mut self) -> Result<ast::StructDeclaration, ParseResultError> {
-        let start = self.hard_expect(Token::Struct)?.start;
-        let id = self.hard_expect(Token::Identifier)?.slice;
+    /// Parses the elements of a type parameter (not argument!) list,
+    /// such as with `struct a<T, U, V> {}` where those parameters
+    /// are to be used to substitute within the struct
+    ///
+    /// This will also include bounds and `where` clauses later on
+    pub fn parse_type_param_list(&mut self) -> Result<Vec<StringSymbol>, ParseResultError> {
         let mut typeparams = Vec::new();
         if let Some(_lt) = self.eat_match(Token::CmpLessThan) {
-            while let Some(id) = self.eat_match(Token::CmpLessThan) {
+            //let first = self.parse_type_specifier();
+
+            while let Some(id) = self.eat_match(Token::Identifier) {
                 typeparams.push(id.slice);
                 if let Some(_comma) = self.eat_match(Token::Comma) {
                     continue;
@@ -102,6 +106,18 @@ impl<'lexer> Parser<'lexer> {
             }
             self.hard_expect(Token::CmpGreaterThan)?;
         }
+
+        Ok(typeparams)
+
+    }
+
+    //const first_struct: [Token; 1] = [Token::Struct];
+    pub fn parse_struct_declaration(&mut self) -> Result<ast::StructDeclaration, ParseResultError> {
+        let start = self.hard_expect(Token::Struct)?.start;
+        let id = self.hard_expect(Token::Identifier)?.slice;
+
+        let typeparams = self.parse_type_param_list()?;
+
         self.hard_expect(Token::LBrace)?;
 
         let mut fields = Vec::new();
@@ -332,6 +348,7 @@ impl<'lexer> Parser<'lexer> {
 
         Ok(rvec)
     }
+    
 
     //const first_function: [Token; 1] = [Token::Function];
     pub fn parse_function_declaration(

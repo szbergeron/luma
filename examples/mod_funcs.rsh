@@ -13,6 +13,26 @@ mod m1 {
     }
 }
 
+mod flat {
+    fn add(a: i32, b: i32) -> i32 {
+        a + b
+    }
+
+    /*fn add_intrinsic(a: i32, b: i32) -> i32
+    #builtin
+    #bind a => a
+    #bind b => b
+    #var c
+    llvm{}llvm
+    //{{c}} = add i32 {{a}}, 
+    */
+
+    struct a {
+        b: T,
+        c: U,
+    }
+}
+
 mod m4 {
     mod m6 {
         fn add(a: i32, b: i32) -> i32 {

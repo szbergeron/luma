@@ -866,7 +866,13 @@ pub struct LLVMLiteralExpression {
     ///
     /// No additional munging is done so the user should be careful to avoid
     /// any naming conflicts here
-    pub renames: Vec<(ExpressionWrapper, StringSymbol)>,
+    pub bindings: Vec<(ExpressionWrapper, StringSymbol)>,
+
+    /// Vars that will be set aside for the llvm literal to use.
+    /// They may be templated in using {{var}} notation,
+    /// but will be replaced with temporary names later
+    /// during encode
+    pub vars: Vec<StringSymbol>,
 
     /// Contains the LLVM IR text that is to be emitted with this function
     pub text: StringSymbol,

@@ -429,45 +429,51 @@ impl<'lexer> Parser<'lexer> {
 
     pub fn parse_llvm_builtin(&mut self) -> ExpressionResult {
         let start = self.hard_expect(Token::InteriorBuiltin)?;
-        let name = self.hard_expect(Token::Identifier)?;
+        //let name = self.hard_expect(Token::Identifier)?;
+
+        //while let Some(llvm_directive) = self.eat_match_in(&[Token::LL_Bind
+        let mut bindings = Vec::new();
+        let mut vars = Vec::new();
+
+        while let Some(tok) = self.eat_match_in(&[Token::LL_Bind, Token::LL_Var]) {
+            match tok.token {
+                Token::LL_Bind => {
+                    let exp = self.parse_expr()?;
+                    let _ = self.hard_expect(Token::ThickArrow);
+                    let name = self.hard_expect(Token::Identifier)?;
+
+                    bindings.push((*exp, name.slice));
+                },
+                Token::LL_Var => {
+                    let name = self.hard_expect(Token::Identifier)?;
+
+                    vars.push(name.slice);
+                },
+                _ => panic!("fell out of match while parsing llvm_builtin"),
+            }
+        }
 
         let maybe_result = if let Some(_) = self.eat_match(Token::LL_Result) {
             let name = self.hard_expect(Token::Identifier)?;
-            self.hard_expect(Token::Colon);
+            self.hard_expect(Token::Colon)?;
             let tr = self.parse_type_specifier()?;
             Some((*tr, name.slice))
         } else {
             None
         };
 
-        let mut renames = Vec::new();
-
-        while let Some(tok) = self.eat_match(Token::LL_Rename) {
-            let exp = self.parse_expr()?;
-            let name = self.hard_expect(Token::Identifier)?;
-
-            renames.push((*exp, name.slice));
-        }
 
         let body = self.hard_expect(Token::InteriorLLVMInlineBlock)?;
 
         let llvmle = LLVMLiteralExpression {
             node_info: NodeInfo::from_indices(start.start, body.end),
-            renames,
+            bindings,
+            vars,
             text: body.slice,
             output: maybe_result,
         };
 
         Ok(Box::new(ExpressionWrapper::LLVMLiteral(llvmle)))
-
-        //
-
-        //let _sblock = self.hard_expect(Token::LBrace)?;
-
-        /*while let Some(tok) = self.eat_match_in(&[Token::LL_Rename, Token::InteriorLLVMInlineBlock]) {
-        }*/
-
-        //let _eblock = self.hard_expect(Token::RBrace)?;
     }
 
     pub fn parse_if_then_else(&mut self) -> ExpressionResult {
