@@ -18,14 +18,13 @@ mod flat {
         a + b
     }
 
-    /*fn add_intrinsic(a: i32, b: i32) -> i32
+    fn add_intrinsic(a: i32, b: i32) -> i32
     #builtin
     #bind a => a
     #bind b => b
     #var c
-    llvm{}llvm
+    llvm hello llvm
     //{{c}} = add i32 {{a}}, 
-    */
 
     struct a {
         b: T,

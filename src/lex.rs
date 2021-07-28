@@ -265,9 +265,14 @@ pub enum Token {
     #[regex(r#""([^"\\]|\\t|\\u|\\n|\\")*""#)]
     StringLiteral,
 
-    //#[regex(r"\{%*%\}")]
-    #[regex(r#"llvm\{[\n\t\s'"!@#$%^&*()_\-+=\[\]\\\{\}\|;:,.<>/?a-zA-Z0-9]*\}llvm"#)]
-    InteriorLLVMInlineBlock,
+    #[token("llvm{")]
+    LLVMOpen,
+
+    #[token("}llvm")]
+    LLVMClose,
+
+    //#[regex(r"llvm.*?llvm")]
+    //InteriorLLVMInlineBlock,
 
     #[token("#builtin")]
     InteriorBuiltin,
@@ -281,7 +286,7 @@ pub enum Token {
     #[token("#result")]
     LL_Result,
 
-    #[regex(r"[\t\f]+", logos::skip)]
+    //#[regex(r"[\t\f]+", logos::skip)]
     #[error]
     Error,
 }

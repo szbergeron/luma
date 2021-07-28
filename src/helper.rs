@@ -529,7 +529,7 @@ impl<'context> PathIdMap {
 }
 
 pub mod lex_wrap {
-    use crate::helper::interner::*;
+    use crate::{helper::interner::*, lex::Token};
     use logos::Logos;
     use std::rc::Rc;
 
@@ -704,7 +704,10 @@ pub mod lex_wrap {
         //latest: Option<TokenWrapper<'a>>,
     }
 
+    //use crate::lex::Token;
+
     impl LookaheadStream {
+
         pub fn new(w: &mut Wrapper) -> LookaheadStream {
             let mut v = Vec::new();
             let mut comment_level = 0;
@@ -784,13 +787,19 @@ pub mod lex_wrap {
 
         pub fn backtrack(&mut self) {
             self.index -= 1;
+            while let Some(Token::Error) = self.tokens.get(self.index as usize).map(|tw| tw.token) {
+                self.index -= 1;
+            }
         }
 
         pub fn advance(&mut self) {
             self.index += 1;
+            while let Some(Token::Error) = self.tokens.get(self.index as usize).map(|tw| tw.token) {
+                self.index += 1;
+            }
         }
 
-        pub fn la(&self, offset: isize) -> ParseResult {
+        pub fn la(&mut self, offset: isize) -> ParseResult {
             let index = self.index as isize + offset;
             if index < 0 {
                 Err(ParseResultError::NotYetParsed)
