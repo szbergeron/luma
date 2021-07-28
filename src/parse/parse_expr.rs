@@ -463,7 +463,7 @@ impl<'lexer> Parser<'lexer> {
         };
 
 
-        let body = self.hard_expect(Token::InteriorLLVMInlineBlock)?;
+        let body = self.hard_expect(Token::LLVMBlock)?;
 
         let llvmle = LLVMLiteralExpression {
             node_info: NodeInfo::from_indices(start.start, body.end),

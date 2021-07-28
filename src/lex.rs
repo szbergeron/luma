@@ -250,10 +250,10 @@ pub enum Token {
     #[regex("[0-9]+f32")]
     f32Literal,
 
-    #[token(" ", logos::skip)]
+    #[token(" ")]
     Space,
 
-    #[token("\t", logos::skip)]
+    #[token("\t")]
     Tab,
 
     #[token("\n")]
@@ -270,6 +270,12 @@ pub enum Token {
 
     #[token("}llvm")]
     LLVMClose,
+
+    #[token("llvm:")]
+    LLVMLineStart,
+
+    // no related token, this is used by LookaheadStream
+    LLVMBlock,
 
     //#[regex(r"llvm.*?llvm")]
     //InteriorLLVMInlineBlock,

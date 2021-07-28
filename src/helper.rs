@@ -712,10 +712,42 @@ pub mod lex_wrap {
             let mut v = Vec::new();
             let mut comment_level = 0;
             let mut inside_line_comment = false;
-            while let Ok(tw) = w.next() {
+
+            // NOTE: we keep this outside the loop here so that we can simply "truncate" when done
+            // with it and keep the allocation for use with later blocks
+            //
+            // This technically grows unbounded, but it's bounded same as string interner to
+            // input size in total * 2 so we don't worry about it hanging around a bit longer
+            // during lex
+            let mut llvm_rest = String::new();
+
+            while let Ok(mut tw) = w.next() {
                 // handle comments
-                use crate::lex::Token;
                 match tw.token {
+                    Token::LLVMOpen => {
+                        // do the parsing of the llvm block in its entirety here
+                        // the parser will never actually see an LLVMOpen or LLVMClose
+
+                        'llvm_collector: while let Ok(itw) = w.next() {
+                            tw.end = itw.end;
+                            match itw.token {
+                                Token::LLVMClose => {
+                                    break 'llvm_collector;
+                                }
+                                other => {
+                                    println!("llvm pushes token {:?} with slice {}", other, itw.slice);
+                                    llvm_rest.push_str(itw.slice.resolve());
+                                }
+                            }
+                        }
+
+                        tw.token = Token::LLVMBlock;
+                        tw.slice = intern(llvm_rest.as_str());
+
+                        // need to empty the string since it lives outside the loop
+                        // this preserves the allocation, though
+                        llvm_rest.truncate(0);
+                    }
                     Token::LineCommentStart => {
                         inside_line_comment = true;
                         continue;
@@ -733,6 +765,13 @@ pub mod lex_wrap {
                             comment_level -= 1; // will cause syntax error in else during parse
                         }
 
+                        continue;
+                    }
+                    Token::Tab | Token::Space => {
+                        continue;
+                    }
+                    Token::Error => {
+                        // filter these outside of llvm blocks
                         continue;
                     }
                     _ => {}
@@ -787,16 +826,10 @@ pub mod lex_wrap {
 
         pub fn backtrack(&mut self) {
             self.index -= 1;
-            while let Some(Token::Error) = self.tokens.get(self.index as usize).map(|tw| tw.token) {
-                self.index -= 1;
-            }
         }
 
         pub fn advance(&mut self) {
             self.index += 1;
-            while let Some(Token::Error) = self.tokens.get(self.index as usize).map(|tw| tw.token) {
-                self.index += 1;
-            }
         }
 
         pub fn la(&mut self, offset: isize) -> ParseResult {

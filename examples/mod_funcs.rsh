@@ -23,8 +23,13 @@ mod flat {
     #bind a => a
     #bind b => b
     #var c
-    llvm hello llvm
-    //{{c}} = add i32 {{a}}, 
+
+    llvm{
+        hello
+        ; comment
+            ; indented comment
+        {{c}} = add i32 {{a}}, 
+    }llvm
 
     struct a {
         b: T,

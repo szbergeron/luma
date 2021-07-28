@@ -138,7 +138,7 @@ impl AstNode for Namespace {
         if let Ok(os) = self.contents.as_ref() {
             os.pretty(f, depth + 1);
         }
-        let _ = writeln!(f, "{}}}", indent(depth));
+        let _ = write!(f, "{}}}", indent(depth));
     }
 }
 
@@ -253,6 +253,7 @@ impl AstNode for OuterScope {
             let _ = write!(f, "{}", indent(depth + 1));
 
             l.as_node().pretty(f, depth + 1);
+            let _ = writeln!(f, "");
         }
     }
 }
@@ -393,7 +394,7 @@ impl AstNode for FunctionDefinition {
         //let _ = write!(f, "{}", indent(depth + 1));
         
         self.body.as_node().pretty(f, depth);
-        let _ = writeln!(f, "");
+        //let _ = writeln!(f, "");
         //let _ = writeln!(f, "\n{}}}", indent(depth));
     }
     fn node_info(&self) -> NodeInfo {
@@ -454,6 +455,15 @@ pub struct StructDeclaration {
 }
 
 impl AstNode for StructDeclaration {
+    fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
+        let _ = writeln!(f, "struct {} {{", self.name);
+        for (field, ftype, _) in self.fields.iter() {
+            let _ = write!(f, "{}{}: ", indent(depth + 1), field);
+            ftype.pretty(f, depth + 1);
+            let _ = writeln!(f, "");
+        }
+        let _ = write!(f, "{}}}", indent(depth));
+    }
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
@@ -535,7 +545,7 @@ impl AstNode for UseDeclaration {
         //let uses = first.to_owned() + ui.fold(String::new(), |inc, next| { inc.to_owned() + "::".to_owned() + next.resolve() });
 
         //let uses = uses.iter().fold("".to_owned(), |inc, next| { inc
-        let _ = writeln!(
+        let _ = write!(
             f,
             "use {}{}",
             uses,
