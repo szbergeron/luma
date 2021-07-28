@@ -768,6 +768,8 @@ pub mod lex_wrap {
                         continue;
                     }
                     Token::Tab | Token::Space => {
+                        // these don't have any syntactic meaning so we simply filter them
+                        // we keep them in so that they are fed through to llvm, however
                         continue;
                     }
                     Token::Error => {
