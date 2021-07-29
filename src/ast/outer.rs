@@ -181,6 +181,9 @@ impl OuterScope {
                 SymbolDeclaration::UseDeclaration(ud) => {
                     ctx.import(ud.into_import());
                 }
+                SymbolDeclaration::StructDeclaration(sd) => {
+                    ctx.type_ctx().define_struct(sd);
+                }
                 _ => todo!(),
             }
         }

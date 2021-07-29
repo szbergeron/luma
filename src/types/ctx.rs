@@ -20,7 +20,7 @@ use std::sync::atomic::{fence, Ordering};
 
 use std::sync::Arc;
 
-use crate::ast::{indent, AstNode, FunctionDefinition, NodeInfo};
+use crate::ast::{AstNode, FunctionDefinition, NodeInfo, StructDeclaration, indent};
 //use once_cell::sync::OnceCell;
 use static_assertions::assert_impl_all;
 use std::pin::Pin;
@@ -373,6 +373,7 @@ impl AstNode for FuncCtx {
                 //dbg!(fid);
                 let _ = write!(f, "{}", indent(depth+1));
                 GlobalCtx::get().func_ctx().lookup(*fid).pretty(f, depth + 1);
+                let _ = writeln!(f, "");
 
             }
         }
@@ -777,6 +778,11 @@ impl TypeCtx {
         let arcd = Arc::new(newtype);
         self.types.insert(tid, arcd);
         tid
+    }
+
+    pub fn define_struct(&self, sd: StructDeclaration) -> () {
+       // do nothing, just drop for now 
+       // TODO
     }
 
     pub fn implement(&self /* handle */) {}

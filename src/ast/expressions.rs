@@ -889,24 +889,24 @@ pub struct LLVMLiteralExpression {
 
 impl AstNode for LLVMLiteralExpression {
     fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
-        let _ = writeln!(f, "; llvm block start:");
+        let _ = writeln!(f, " llvm{{");
         let s = self.text.resolve();
         for line in s.lines() {
             let _ = writeln!(f, "{}{}", indent(depth + 1), line);
         }
-        let _ = write!(f, "{}; llvm block end", indent(depth));
+        let _ = write!(f, "{} }}llvm", indent(depth));
     }
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
 
     fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
-        let _ = writeln!(f, "; llvm block start:");
+        let _ = writeln!(f, " llvm{{");
         let s = self.text.resolve();
         for line in s.lines() {
             let _ = writeln!(f, "{}{}", indent(depth + 1), line);
         }
-        let _ = write!(f, "{}; llvm block end", indent(depth));
+        let _ = write!(f, "{} }}llvm", indent(depth));
     }
 }
 

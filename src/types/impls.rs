@@ -207,6 +207,11 @@ impl std::cmp::Eq for i32_t_static {}
 pub struct ProductType {}
 
 #[allow(non_camel_case_types)]
+pub struct struct_t_static {
+    pub fields: 
+}
+
+#[allow(non_camel_case_types)]
 pub struct ref_t_static {
     pub value_t: Option<TypeID>,
     pub collapsed_canon_name: once_cell::sync::OnceCell<String>,
