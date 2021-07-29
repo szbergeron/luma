@@ -1,5 +1,5 @@
 use super::{CtxID, FunctionDeclaration, TypeCtx, TypeID, GlobalTypeID};
-use crate::ast::Span;
+use crate::{ast::{Span, TypeReference}, helper::interner::StringSymbol};
 
 use smallvec::SmallVec;
 use std::any::Any;
@@ -208,7 +208,10 @@ pub struct ProductType {}
 
 #[allow(non_camel_case_types)]
 pub struct struct_t_static {
-    pub fields: 
+    pub name: StringSymbol,
+    pub fields: Vec<(StringSymbol, TypeID)>,
+
+    pub tid: std::sync::atomic::AtomicU64,
 }
 
 #[allow(non_camel_case_types)]
