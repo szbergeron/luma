@@ -1,5 +1,8 @@
-use super::{CtxID, FunctionDeclaration, TypeCtx, TypeID, GlobalTypeID};
-use crate::{ast::{Span, TypeReference}, helper::interner::StringSymbol};
+use super::{CtxID, FunctionDeclaration, GlobalTypeID, TypeCtx, TypeID};
+use crate::{
+    ast::{Span, TypeReference},
+    helper::interner::StringSymbol,
+};
 
 use smallvec::SmallVec;
 use std::any::Any;
@@ -207,11 +210,61 @@ impl std::cmp::Eq for i32_t_static {}
 pub struct ProductType {}
 
 #[allow(non_camel_case_types)]
+#[derive(Debug)]
 pub struct struct_t_static {
     pub name: StringSymbol,
     pub fields: Vec<(StringSymbol, TypeID)>,
 
     pub tid: std::sync::atomic::AtomicU64,
+}
+
+impl std::hash::Hash for struct_t_static {
+    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
+        self.tid.load(std::sync::atomic::Ordering::Relaxed).hash(h);
+    }
+}
+
+impl std::cmp::PartialEq for struct_t_static {
+    fn eq(&self, other: &Self) -> bool {
+        self.tid.load(std::sync::atomic::Ordering::Relaxed)
+            == other.tid.load(std::sync::atomic::Ordering::Relaxed)
+    }
+}
+
+impl Eq for struct_t_static {}
+
+impl Type for struct_t_static {
+    fn set_tid(&self, _: TypeID) {
+        todo!()
+    }
+
+    fn canonicalized_name(&self, within: &TypeCtx) -> &str {
+        todo!()
+    }
+
+    fn definition_blocks(&self) -> &[Span] {
+        todo!()
+    }
+
+    fn is_reference_type(&self) -> bool {
+        todo!()
+    }
+
+    fn uid(&self) -> TypeID {
+        todo!()
+    }
+
+    fn encode_reference(&self, within: &TypeCtx) -> String {
+        todo!()
+    }
+
+    fn encode_definition(&self) -> String {
+        todo!()
+    }
+
+    fn add_method(&self, method: FunctionDeclaration) -> bool {
+        todo!()
+    }
 }
 
 #[allow(non_camel_case_types)]
@@ -344,10 +397,14 @@ impl Type for ref_t_static {
 
     fn encode_reference(&self, within: &TypeCtx) -> String {
         /*self.map_inner_r(within, |t| t.encode_reference(within).to_owned())
-            .expect("No inner type present when trying to encode reference")
-            + "*"*/
+        .expect("No inner type present when trying to encode reference")
+        + "*"*/
         //let t = within.lookup(self.value_t).expect("Can't encode reference, inner type does not exist");
-        let t = self.value_t.map(|id| within.lookup(id)).flatten().expect("Can't encode reference, inner type does not exist");
+        let t = self
+            .value_t
+            .map(|id| within.lookup(id))
+            .flatten()
+            .expect("Can't encode reference, inner type does not exist");
         t.encode_reference(within) + "*"
         //self.value_t.as_ref().expect("Tried to encode a reference to a non-existant type").encode_reference(within) + "*"
     }
