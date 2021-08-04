@@ -259,7 +259,12 @@ impl Type for struct_t_static {
     }
 
     fn encode_definition(&self) -> String {
-        todo!()
+        let sb = String::new();
+
+        for field in self.fields.iter() {
+        }
+
+        sb
     }
 
     fn add_method(&self, method: FunctionDeclaration) -> bool {

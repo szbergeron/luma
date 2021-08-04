@@ -20,7 +20,7 @@ use std::sync::atomic::{fence, Ordering};
 
 use std::sync::Arc;
 
-use crate::ast::{AstNode, FunctionDefinition, NodeInfo, StructDeclaration, indent};
+use crate::ast::{AstNode, FunctionDefinition, NodeInfo, StructDefinition, indent};
 //use once_cell::sync::OnceCell;
 use static_assertions::assert_impl_all;
 use std::pin::Pin;
@@ -105,6 +105,10 @@ impl std::fmt::Display for CtxID {
 /// and does not actually contain any type resolutions
 pub struct FunctionDeclaration {
     //   
+}
+
+pub enum TypeDefinition {
+    Struct(StructDefinition),
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -553,6 +557,7 @@ pub struct GlobalCtx {
     contexts: DashMap<CtxID, Pin<Box<GlobalCtxNode>>>,
     
     funcs: GlobalFuncCtx,
+    types: GlobalTypeCtx,
 
     //functions: DashMap<GlobalFunctionID, Arc<FunctionImplementation>>,
     //types: DashMap<GlobalTypeID, TypeHandle>,
@@ -580,6 +585,7 @@ impl GlobalCtx {
                 ),
                 contexts: DashMap::new(),
                 funcs: GlobalFuncCtx::new(),
+                types: GlobalTypeCtx::new(),
                 //functions: DashMap::new(),
                 //types: DashMap::new(),
             }
@@ -612,6 +618,10 @@ impl GlobalCtx {
 
     pub fn func_ctx(&self) -> &GlobalFuncCtx {
         &self.funcs
+    }
+
+    pub fn type_ctx(&self) -> &GlobalTypeCtx {
+        &self.types
     }
 }
 
@@ -740,7 +750,39 @@ impl GlobalFuncCtx {
         unsafe {
             std::mem::transmute(self.functions.get(&id).unwrap().value())
         }
+
+        self.functions.get(&id).unwrap().value()
     }
+}
+
+pub struct GlobalTypeCtx {
+    types: DashMap<GlobalTypeID, TypeDefinition>,
+}
+
+impl GlobalTypeCtx {
+    pub fn new() -> GlobalTypeCtx {
+        GlobalTypeCtx { types: DashMap::new() }
+    }
+    /*pub fn define(&self, within: CtxID, func: FunctionDefinition) -> GlobalFunctionID {
+        static FCTX_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        let id = FCTX_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let id = GlobalFunctionID { cid: within, fid: FunctionID(id) };
+
+        self.functions.insert(id, func);
+
+        id
+    }
+
+    pub fn lookup(&self, id: GlobalFunctionID) -> &FunctionDefinition {
+        // NOTE: this is only sound if we do not remove from self.functions, since
+        // these references should live as long as 'self
+        //
+        // This means that we can hand out refs of &'self freely since
+        // the borrow checker will verify that they do not last any longer than we do
+        unsafe {
+            std::mem::transmute(self.functions.get(&id).unwrap().value())
+        }
+    }*/
 }
 
 /// Interior mutable container representing a type context
@@ -768,6 +810,9 @@ impl TypeCtx {
         }
     }
 
+    pub fn add(&self, t: TypeDefinition) {
+    }
+
     pub fn define<T: 'static>(&self, newtype: T) -> TypeID
     where
         T: Type,
@@ -780,7 +825,7 @@ impl TypeCtx {
         tid
     }
 
-    pub fn define_struct(&self, sd: StructDeclaration) -> () {
+    pub fn define_struct(&self, sd: StructDefinition) -> () {
        // do nothing, just drop for now 
        // TODO
     }

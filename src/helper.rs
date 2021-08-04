@@ -3,10 +3,15 @@ use crate::ast::*;
 
 //use atomic_option::AtomicOption;
 
+use std::alloc::Layout;
 //use lock_api::RawRwLockRecursive;
-use std::fs;
+use std::{alloc, fs};
+use std::intrinsics::transmute;
+use std::mem::{MaybeUninit, transmute_copy};
 use std::path::PathBuf;
-use std::sync::atomic::AtomicUsize;
+use std::pin::Pin;
+use std::ptr::{null, null_mut};
+use std::sync::atomic::{AtomicPtr, AtomicUsize};
 use std::sync::{Arc, RwLock};
 
 pub mod interner {
@@ -1024,25 +1029,132 @@ pub mod locks {
 /// architecture notes document eventually.
 ///
 /// Interface is designed to be compatible with that as a drop-in
-pub struct AtomicVec<T> {
-    self_key: usize,
-    content_vec: RwLock<Vec<RwLock<T>>>,
+
+const CHUNK_COUNT: usize = 32;
+const FIRST_CHUNK_SIZE: usize = 32;
+
+struct Chunk<T> {
+    size: usize,
+    cur: AtomicUsize,
+    content: [MaybeUninit<T>],
 }
 
-/*impl<T> AtomicVec<T> {
-    pub fn new() {
+struct SizedChunk<T> {
+    size: usize,
+    cur: AtomicUsize,
+    content: [MaybeUninit<T>; 1],
+}
+
+pub struct AtomicVec<T> {
+    self_key: usize,
+    chunks: [AtomicPtr<Pin<Box<Chunk<T>>>>; CHUNK_COUNT],
+    cur: AtomicUsize,
+    //
+    //content_vec: RwLock<Vec<RwLock<T>>>,
+}
+
+impl<T> AtomicVec<T> {
+    pub fn new() -> AtomicVec<T>{
         static init_key: AtomicUsize = AtomicUsize::new(0);
+        //const nptr: AtomicPtr<()> = AtomicPtr::new(null_mut());
+
+        /*let mut chunks = Vec::new();
+        for i in 0..32 {
+            chunks.push(AtomicPtr::new(null_mut()));
+        }
+
+        //let (slice, _, _) = chunks.into_raw_parts();*/
 
         AtomicVec {
             self_key: init_key.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
-            content_vec: RwLock::new(Vec::new()),
+            chunks: Default::default(), // null ptrs
+            cur: AtomicUsize::new(0),
+        }
+    }
+
+    fn get_chunk(&self, idx: usize) -> &Chunk<T> {
+        // check first if it was already non-null
+        let ptr = self.chunks[idx].load(std::sync::atomic::Ordering::Acquire);
+
+        let r = if ptr.is_null() {
+            // do alloc speculatively since it was null at first load
+            let size = (2 as usize).pow(idx as u32) * FIRST_CHUNK_SIZE;
+
+            unsafe {
+                let struct_size = std::mem::size_of_val(&SizedChunk { size, cur: AtomicUsize::new(0), content: [MaybeUninit::uninit()]}) as isize;
+                let ar_size = std::mem::size_of::<T>() as isize;
+                let mem_size = struct_size + (ar_size * size as isize) - 1;
+                //let layout = Layout::new::<Chunk<T>>();
+                let layout = Layout::from_size_align(mem_size as usize, 1).unwrap();
+                let backing = alloc::alloc(layout);
+
+                let b = Box::pin(Chunk { size, cur: AtomicUsize::new(0), content: [Default::default(); size]});
+
+                todo!()
+            }
+        } else {
+            unsafe { ptr.as_ref().expect("Pointer was already known non-null") }
+        };
+
+        r
+    }
+
+    fn try_insert_chunk<'c>(&self, chunk_idx: i32, chunk: &'c Chunk<T>, val: &mut Option<T>) -> Option<(AtomicVecIndex, &'c T)> {
+        let idx = chunk.cur.fetch_add(1, std::sync::atomic::Ordering::AcqRel); // bump idx speculatively
+
+        if idx >= chunk.size {
+            None // couldn't insert into this chunk, size already wouldn't allow it
+        } else {
+            unsafe {
+                let t = val.take().unwrap();
+
+                // this is sound since because of the idx bump we can never
+                // have an overlap in cells (no aliasing of actual cells) so long
+                // as other guarantees are upheld for how we index into content
+                let mchunk: &'c mut Chunk<T> = std::mem::transmute(chunk);
+
+                mchunk.content[idx] = MaybeUninit::new(t);
+
+                let aidx = AtomicVecIndex { idx: idx as i32, chunk: chunk_idx, self_key: self.self_key };
+                let r = chunk.content[idx].assume_init_ref();
+
+                Some((aidx, r))
+            }
+        }
+    }
+
+    unsafe fn try_insert_chunk_idx(&self, idx: usize, val: &mut Option<T>) -> Option<(AtomicVecIndex, &T)> {
+        let chunk = self.get_chunk(idx);
+
+        self.try_insert_chunk(idx as i32, chunk, val)
+    }
+
+    pub fn insert(&self, e: T) -> (AtomicVecIndex, &T) {
+        // don't need to check every chunk, can just start with current
+        // chunk
+        let mut chunk = self.cur.load(std::sync::atomic::Ordering::Acquire);
+
+        let mut val = Some(e);
+
+        while chunk < CHUNK_COUNT {
+            unsafe {
+                match self.try_insert_chunk_idx(chunk, &mut val) {
+                    Some(avi) => return avi,
+                    None => chunk += 1,
+                }
+            }
+        }
+
+        panic!("Exceeded AVec size constraint");
     }
 }
 
 pub struct AtomicVecIndex {
-    idx: i64, // intentionally not public, should not be possible to construct this type externally
+    // intentionally not public, should not be possible to construct this type externally
+    chunk: i32,
+    idx: i32,
     self_key: usize, // used to verify that this index came from the vec it is trying to index into
-}*/
+}
 
 pub trait VecOps {
     type Item;

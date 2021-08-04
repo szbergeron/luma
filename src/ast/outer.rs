@@ -444,7 +444,7 @@ impl AstNode for FunctionDefinition {
 }
 
 #[derive(Debug)]
-pub struct StructDeclaration {
+pub struct StructDefinition {
     pub node_info: NodeInfo,
 
     pub public: bool,
@@ -457,7 +457,7 @@ pub struct StructDeclaration {
     )>,
 }
 
-impl AstNode for StructDeclaration {
+impl AstNode for StructDefinition {
     fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
         let _ = writeln!(f, "struct {} {{", self.name);
         for (field, ftype, _) in self.fields.iter() {
@@ -636,7 +636,7 @@ impl AstNode for StaticVariableDeclaration {
 pub enum SymbolDeclaration {
     FunctionDeclaration(FunctionDefinition),
     NamespaceDeclaration(Namespace),
-    StructDeclaration(StructDeclaration),
+    StructDeclaration(StructDefinition),
     ExpressionDeclaration(StaticVariableDeclaration),
     UseDeclaration(UseDeclaration),
     //VariableDeclaration(VariableDeclaration),

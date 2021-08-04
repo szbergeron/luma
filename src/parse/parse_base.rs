@@ -112,7 +112,7 @@ impl<'lexer> Parser<'lexer> {
     }
 
     //const first_struct: [Token; 1] = [Token::Struct];
-    pub fn parse_struct_declaration(&mut self) -> Result<ast::StructDeclaration, ParseResultError> {
+    pub fn parse_struct_declaration(&mut self) -> Result<ast::StructDefinition, ParseResultError> {
         let start = self.hard_expect(Token::Struct)?.start;
         let id = self.hard_expect(Token::Identifier)?.slice;
 
@@ -144,7 +144,7 @@ impl<'lexer> Parser<'lexer> {
 
         let node_info = ast::NodeInfo::from_indices(start, end);
 
-        Ok(ast::StructDeclaration {
+        Ok(ast::StructDefinition {
             node_info,
             typeparams,
             fields,
