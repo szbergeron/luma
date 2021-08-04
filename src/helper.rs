@@ -1090,8 +1090,7 @@ pub struct AtomicVec<T> {
     chunks: [AtomicPtr<()>; CHUNK_COUNT],
     lengths: [usize; CHUNK_COUNT],
     cur: AtomicUsize,
-    phantom: PhantomData<T>, //
-                             //content_vec: RwLock<Vec<RwLock<T>>>
+    phantom: PhantomData<T>,
 }
 
 impl<T> AtomicVec<T> {
