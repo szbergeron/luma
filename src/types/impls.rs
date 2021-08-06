@@ -50,7 +50,16 @@ pub struct FunctionSignature {
     params: SmallVec<[GlobalTypeID; FUNCTION_PARAM_DEFAULT_COUNT]>,
 }
 
-pub trait Type: DynHash + DynEq + AsAny + Send + Sync {
+/*pub struct TraitQuery<'ctype> {
+    refs: &'ctype Type
+}*/
+
+
+/*pub trait TraitQuery {
+    pub fn implements_trait(&self, traitname: 
+}*/
+
+pub trait StaticType: DynHash + DynEq + AsAny + Send + Sync {
     fn set_tid(&self, tid: TypeID);
     fn canonicalized_name(&self, within: &TypeCtx) -> &str;
     /*// owned for simpler lifetimes,
@@ -71,27 +80,16 @@ pub trait Type: DynHash + DynEq + AsAny + Send + Sync {
 
     fn definition_blocks(&self) -> &[Span];
 
-    fn is_reference_type(&self) -> bool;
-
-    fn is_value_type(&self) -> bool {
-        return !self.is_reference_type();
-    }
-
-    /// Some(TypeID) if this type allows deref to a type,
-    /// with the contents of the Some(_) being the type it derefs to.
-    ///
-    /// If the type does not deref, returns None
-    fn derefs_to(&self) -> Option<TypeID> {
-        None
-    }
-
     fn uid(&self) -> TypeID;
 
     fn encode_reference(&self, within: &TypeCtx) -> String;
 
     fn encode_definition(&self) -> String;
 
-    fn add_method(&self, method: FunctionDeclaration) -> bool;
+    //fn traitquery(&self, tr: TraitReference) -> Box<dyn TraitQuery>;
+    //fn traitquery(&self, tr: TraitReference) -> Option<&dyn TraitImplementation>;
+
+    //fn add_method(&self, method: FunctionDeclaration) -> bool;
 
     //fn dyn_hash<H: std::hash::Hasher>(&self, state: &mut H);
     //fn dyn_hash(&self);
@@ -126,13 +124,13 @@ impl<T: Eq + Any> DynEq for T {
     }
 }
 
-impl PartialEq for dyn Type {
-    fn eq(&self, other: &dyn Type) -> bool {
+impl PartialEq for dyn StaticType {
+    fn eq(&self, other: &dyn StaticType) -> bool {
         DynEq::dyn_eq(self, other.as_any())
     }
 }
 
-impl Eq for dyn Type {}
+impl Eq for dyn StaticType {}
 
 //impl DynHash for Type
 
@@ -147,7 +145,7 @@ pub struct i32_t_static {
     pub tid: std::sync::atomic::AtomicU64,
 }
 
-impl Type for i32_t_static {
+impl StaticType for i32_t_static {
     fn canonicalized_name(&self, _: &TypeCtx) -> &str {
         "i32"
     }
@@ -155,10 +153,6 @@ impl Type for i32_t_static {
     /*fn supers(&self) -> &[TypeHandle] {
         &[]
     }*/
-
-    fn is_reference_type(&self) -> bool {
-        false
-    }
 
     fn definition_blocks(&self) -> &[Span] {
         &[]
@@ -178,10 +172,6 @@ impl Type for i32_t_static {
 
     fn uid(&self) -> super::ctx::TypeID {
         TypeID(self.tid.load(std::sync::atomic::Ordering::SeqCst))
-    }
-
-    fn add_method(&self, _method: super::FunctionDeclaration) -> bool {
-        todo!()
     }
 
     fn set_tid(&self, tid: TypeID) {
@@ -233,7 +223,7 @@ impl std::cmp::PartialEq for struct_t_static {
 
 impl Eq for struct_t_static {}
 
-impl Type for struct_t_static {
+impl StaticType for struct_t_static {
     fn set_tid(&self, _: TypeID) {
         todo!()
     }
@@ -243,10 +233,6 @@ impl Type for struct_t_static {
     }
 
     fn definition_blocks(&self) -> &[Span] {
-        todo!()
-    }
-
-    fn is_reference_type(&self) -> bool {
         todo!()
     }
 
@@ -265,10 +251,6 @@ impl Type for struct_t_static {
         }
 
         sb
-    }
-
-    fn add_method(&self, method: FunctionDeclaration) -> bool {
-        todo!()
     }
 }
 
@@ -368,7 +350,7 @@ impl ref_t_static {
     }
 }
 
-impl Type for ref_t_static {
+impl StaticType for ref_t_static {
     fn canonicalized_name(&self, within: &TypeCtx) -> &str {
         self.build_canon_name(within);
 
@@ -389,10 +371,6 @@ impl Type for ref_t_static {
 
     fn definition_blocks(&self) -> &[Span] {
         todo!()
-    }
-
-    fn is_reference_type(&self) -> bool {
-        true
     }
 
     fn uid(&self) -> super::ctx::TypeID {
@@ -418,14 +396,6 @@ impl Type for ref_t_static {
     /// as references can act simply as
     fn encode_definition(&self) -> String {
         "\n".to_owned()
-    }
-
-    fn add_method(&self, _method: super::FunctionDeclaration) -> bool {
-        todo!()
-    }
-
-    fn derefs_to(&self) -> Option<TypeID> {
-        self.value_t
     }
 
     fn set_tid(&self, tid: TypeID) {

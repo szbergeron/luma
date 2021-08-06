@@ -26,7 +26,7 @@ use crate::ast::{AstNode, FunctionDefinition, NodeInfo, StructDefinition, indent
 use static_assertions::assert_impl_all;
 use std::pin::Pin;
 
-pub type TypeHandle = Arc<dyn Type>;
+pub type TypeHandle = Arc<dyn StaticType>;
 
 struct RefPtr<T> { inner: NonNull<T> }
 
@@ -820,7 +820,7 @@ impl TypeCtx {
 
     pub fn define<T: 'static>(&self, newtype: T) -> TypeID
     where
-        T: Type,
+        T: StaticType,
     {
         let tid = generate_typeid();
         newtype.set_tid(tid);

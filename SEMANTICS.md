@@ -143,3 +143,17 @@ then you can define it yourself. `open` and `impl` blocks automatically wrap any
 in `Some` for convenience, since it's incredibly rare to want to *remove* the provided
 definition for some attribute when you can just overwrite it otherwise, and this behavior
 closely matches default initialization syntax for many other languages.
+
+
+Notes later:
+
+I need to split out static types and dynamic types, but am not entirely sure how to nicely do this split.
+
+Static types still need the ability to implement traits, where the value is stored with the static type
+and the code is conceptually stored with the trait. I'm not sure if I want traits on static types
+to be treated like "types" themselves, though, with conceptually an immutable "dyn" hold when casted.
+
+I may actually split the code for an individual type (the core impl, with no external trait
+specifier) away from the type itself, keeping value separate from code for static types 
+even within the type system. I'll need to make sure that imports happen at the same time here,
+but that should be doable.

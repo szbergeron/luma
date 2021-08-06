@@ -8,7 +8,7 @@ use crate::lex::Token;
 use crate::types;
 
 pub trait Expression: AstNode {
-    fn expr_type(&self) -> Box<dyn types::Type>;
+    fn expr_type(&self) -> Box<dyn types::StaticType>;
 }
 
 #[derive(Debug, Clone)]
