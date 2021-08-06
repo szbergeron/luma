@@ -1,5 +1,6 @@
 use super::impls::*;
 
+use crate::avec::{AtomicVec, AtomicVecIndex};
 use crate::helper::interner::{intern, SpurHelper, StringSymbol};
 use crate::types::Quark;
 use dashmap::{DashMap, DashSet};
@@ -57,7 +58,7 @@ impl<T> RefPtr<T> {
 pub struct TypeID(pub u64);
 
 #[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy, Debug)]
-pub struct FunctionID(pub u64);
+pub struct FunctionID(AtomicVecIndex);
 
 #[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy, Debug)]
 pub struct CtxID(pub u64);
@@ -724,19 +725,24 @@ impl FuncCtx {
 }
 
 pub struct GlobalFuncCtx {
-    functions: DashMap<GlobalFunctionID, FunctionDefinition>,
+    //functions: DashMap<GlobalFunctionID, FunctionDefinition>,
+    functions: crate::avec::AtomicVec<FunctionDefinition>,
 }
 
 impl GlobalFuncCtx {
     pub fn new() -> GlobalFuncCtx {
-        GlobalFuncCtx { functions: DashMap::new() }
+        GlobalFuncCtx { functions: AtomicVec::new() }
     }
     pub fn define(&self, within: CtxID, func: FunctionDefinition) -> GlobalFunctionID {
-        static FCTX_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
-        let id = FCTX_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        let id = GlobalFunctionID { cid: within, fid: FunctionID(id) };
+        let (avi, _) = unsafe {
+            self.functions.push_with(func, |f, avi| {})
+        };
 
-        self.functions.insert(id, func);
+        //static FCTX_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        //let id = FCTX_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let id = GlobalFunctionID { cid: within, fid: FunctionID(avi) };
+
+        //self.functions.push(id, func);
 
         id
     }
@@ -748,10 +754,11 @@ impl GlobalFuncCtx {
         // This means that we can hand out refs of &'self freely since
         // the borrow checker will verify that they do not last any longer than we do
         unsafe {
-            std::mem::transmute(self.functions.get(&id).unwrap().value())
+            //std::mem::transmute(self.functions.get(&id).unwrap().value())
         }
 
-        self.functions.get(&id).unwrap().value()
+        //self.functions.get(&id).unwrap().value()
+        todo!()
     }
 }
 

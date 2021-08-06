@@ -1,4 +1,4 @@
-use std::{alloc, marker::PhantomData, mem::MaybeUninit, ptr::{addr_of_mut, null_mut}, sync::atomic::{AtomicPtr, AtomicUsize}};
+use std::{alloc, fmt::Display, intrinsics::transmute, marker::PhantomData, mem::MaybeUninit, ptr::{addr_of_mut, null_mut}, sync::atomic::{AtomicPtr, AtomicUsize}};
 
 //#[repr(C)]
 struct Chunk<T> {
@@ -47,7 +47,7 @@ struct SizedChunk<T> {
     content: [MaybeUninit<T>; 1],
 }
 
-pub struct AtomicVec<T, const CHUNK_COUNT: usize, const FIRST_CHUNK_SIZE: usize> {
+pub struct AtomicVec<T, const CHUNK_COUNT: usize = 32, const FIRST_CHUNK_SIZE: usize = 32> {
     self_key: usize,
     chunks: [AtomicPtr<()>; CHUNK_COUNT],
     lengths: [usize; CHUNK_COUNT],
@@ -55,11 +55,16 @@ pub struct AtomicVec<T, const CHUNK_COUNT: usize, const FIRST_CHUNK_SIZE: usize>
     phantom: PhantomData<T>,
 }
 
-impl<T, const CHUNK_COUNT: usize, const FIRST_CHUNK_SIZE: usize> AtomicVec<T, CHUNK_COUNT, FIRST_CHUNK_SIZE> {
+struct ImplDefaultConstArray<T: Default, const N: usize> {
+  arr: MaybeUninit<[T; N]>,
+  idx: usize,
+}
+
+impl<T, const CC: usize, const FCS: usize> AtomicVec<T, CC, FCS> {
     fn make_lengths<const COUNT: usize>() -> [usize; COUNT] {
         let mut c = [0; COUNT];
 
-        let mut cur_size = FIRST_CHUNK_SIZE;
+        let mut cur_size = FCS;
 
         for i in 0..c.len() {
             c[i] = cur_size;
@@ -69,7 +74,7 @@ impl<T, const CHUNK_COUNT: usize, const FIRST_CHUNK_SIZE: usize> AtomicVec<T, CH
         c
     }
 
-    pub fn new() -> AtomicVec<T, 32, 32> {
+    pub fn new() -> AtomicVec<T, CC, FCS> {
         static init_key: AtomicUsize = AtomicUsize::new(0);
         //const nptr: AtomicPtr<()> = AtomicPtr::new(null_mut());
 
@@ -82,7 +87,12 @@ impl<T, const CHUNK_COUNT: usize, const FIRST_CHUNK_SIZE: usize> AtomicVec<T, CH
 
         AtomicVec {
             self_key: init_key.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
-            chunks: Default::default(), // null ptrs
+            //chunks: Default::default(), // null ptrs
+            //chunks: [Default::default(); CC],
+            //chunks: [AtomicPtr<()>; CHUNK_COUNT].from
+            //chunks: Self::make_chunks_default(),
+            //chunks,
+            chunks: [(); CC].map(|_| Default::default()),
             cur: AtomicUsize::new(0),
             phantom: Default::default(),
             lengths: Self::make_lengths(),
@@ -95,7 +105,7 @@ impl<T, const CHUNK_COUNT: usize, const FIRST_CHUNK_SIZE: usize> AtomicVec<T, CH
 
         let r = if ptr.is_null() {
             // do alloc speculatively since it was null at first load
-            let size = (2 as usize).pow(idx as u32) * FIRST_CHUNK_SIZE;
+            let size = (2 as usize).pow(idx as u32) * FCS;
 
             let fat_ptr: *mut Chunk<T> = Chunk::with_capacity(size);
 
@@ -142,7 +152,7 @@ impl<T, const CHUNK_COUNT: usize, const FIRST_CHUNK_SIZE: usize> AtomicVec<T, CH
         chunk_idx: i32,
         chunk: &'c Chunk<T>,
         val: &mut Option<T>,
-    ) -> Option<(AtomicVecIndex, &'c T)> {
+    ) -> Option<(AtomicVecIndex, &'c mut T)> {
         let idx = chunk.cur.fetch_add(1, std::sync::atomic::Ordering::AcqRel); // bump idx speculatively
 
         if idx >= chunk.size {
@@ -154,16 +164,18 @@ impl<T, const CHUNK_COUNT: usize, const FIRST_CHUNK_SIZE: usize> AtomicVec<T, CH
                 // this is sound since because of the idx bump we can never
                 // have an overlap in cells (no aliasing of actual cells) so long
                 // as other guarantees are upheld for how we index into content
-                let mchunk: &'c mut Chunk<T> = std::mem::transmute(chunk);
+                let mchunk: *mut Chunk<T> = std::mem::transmute(chunk);
 
-                mchunk.content[idx] = MaybeUninit::new(t);
+                (*mchunk).content[idx] = MaybeUninit::new(t);
 
                 let aidx = AtomicVecIndex {
                     idx: idx as i32,
                     chunk: chunk_idx,
                     self_key: self.self_key,
                 };
-                let r = chunk.content[idx].assume_init_ref();
+
+                //let r = chunk.content[idx].assume_init_ref();
+                let r = (*mchunk).content[idx].assume_init_mut();
 
                 Some((aidx, r))
             }
@@ -174,20 +186,22 @@ impl<T, const CHUNK_COUNT: usize, const FIRST_CHUNK_SIZE: usize> AtomicVec<T, CH
         &self,
         idx: usize,
         val: &mut Option<T>,
-    ) -> Option<(AtomicVecIndex, &T)> {
+    ) -> Option<(AtomicVecIndex, &mut T)> {
         let chunk = self.get_chunk(idx);
 
         self.try_insert_chunk(idx as i32, chunk, val)
     }
 
-    pub fn push(&self, e: T) -> (AtomicVecIndex, &T) {
+    /// Marked unsafe since the &mut T aliases with the
+    /// slot that AtomicVecIndex could be used to access
+    unsafe fn push_internal(&self, e: T) -> (AtomicVecIndex, &mut T) {
         // don't need to check every chunk, can just start with current
         // chunk
         let mut chunk = self.cur.load(std::sync::atomic::Ordering::Acquire);
 
         let mut val = Some(e);
 
-        while chunk < CHUNK_COUNT {
+        while chunk < self.chunks.len() {
             unsafe {
                 match self.try_insert_chunk_idx(chunk, &mut val) {
                     Some(avi) => return avi,
@@ -197,6 +211,31 @@ impl<T, const CHUNK_COUNT: usize, const FIRST_CHUNK_SIZE: usize> AtomicVec<T, CH
         }
 
         panic!("Exceeded AVec size constraint");
+    }
+
+    /// Safety contract: f must not attempt to
+    /// index into self using any operator (such as get) using the passed AtomicVecIndex
+    ///
+    /// This function should only be used for creating self referential structures,
+    /// where some T needs to know at what index it resides.
+    ///
+    /// Indexing into self using the given AtomicVecIndex may allow creating an & alias
+    /// to the T that was already passed as &mut T, do not do this!
+    pub unsafe fn push_with(&self, e: T, f: impl FnOnce(&mut T, AtomicVecIndex)) -> (AtomicVecIndex, &T) {
+        unsafe {
+            let (avi, r) = self.push_internal(e);
+
+            f(r, avi);
+
+            (avi, r)
+        }
+    }
+
+    pub fn push(&self, e: T) -> (AtomicVecIndex, &T) {
+        unsafe {
+            let (avi, r) = self.push_internal(e);
+            (avi, r as &T)
+        }
     }
 
     pub fn get(&self, idx: AtomicVecIndex) -> &T {
@@ -227,9 +266,16 @@ impl<T, const CHUNK_COUNT: usize, const FIRST_CHUNK_SIZE: usize> AtomicVec<T, CH
     }
 }
 
+#[derive(Debug, Copy, Clone, Hash, Ord, PartialEq, PartialOrd, Eq)]
 pub struct AtomicVecIndex {
     // intentionally not public, should not be possible to construct this type externally
     chunk: i32,
     idx: i32,
     self_key: usize, // used to verify that this index came from the vec it is trying to index into
+}
+
+impl Display for AtomicVecIndex {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Index({}, {})", self.chunk, self.idx)
+    }
 }
