@@ -2,7 +2,7 @@ use std::{alloc, fmt::Display, intrinsics::transmute, marker::PhantomData, mem::
 
 //#[repr(C)]
 struct Chunk<T> {
-    size: usize,
+    //size: usize,
     cur: AtomicUsize,
     content: [MaybeUninit<T>],
 }
@@ -31,9 +31,14 @@ impl<T> Chunk<T> {
     }
 
     pub unsafe fn make_fat_ptr(r: *mut (), len: usize) -> *mut Self {
+        //println!("makes fat ptr with len {}", len);
         //according to https://doc.rust-lang.org/nightly/core/ptr/trait.Pointee.html, the
         //metadata of the last field is the metadata for the fat ptr used
-        std::ptr::from_raw_parts_mut(r, len)
+        let v: *mut Self = std::ptr::from_raw_parts_mut(r, len);
+
+        //println!("v len is {}", (*v).content.len());
+
+        v
         /*let conv: *mut T = std::mem::transmute(r);
         let r: *mut [T] = core::slice::from_raw_parts_mut(conv, len);
         r as *mut Self*/
@@ -121,15 +126,19 @@ impl<T, const CC: usize, const FCS: usize> AtomicVec<T, CC, FCS> {
                 // anything else is safe right now. Doesn't need SeqCst since threads only care
                 // about their own load/store so no "3rd" thread is involved in any interaction
                 // here
-                .compare_exchange(null_mut(), ptr, std::sync::atomic::Ordering::AcqRel, std::sync::atomic::Ordering::AcqRel);
+                .compare_exchange(null_mut(), ptr, std::sync::atomic::Ordering::AcqRel, std::sync::atomic::Ordering::Acquire);
+
+            //println!("had to do a chunk alloc");
 
             match res {
                 Ok(p) => {
+                    //println!("We could write ours");
                     // we got a chance to write our ptr, no other thread did it faster
-                    p
+                    ptr
                 },
                 Err(old) => {
                     // we need to dealloc ourself since some other thread already wrote the value
+                    //println!("Other thread got there first, need to use theirs");
                     unsafe {
                         let b = Box::from_raw(fat_ptr);
                         drop(b);
@@ -155,7 +164,8 @@ impl<T, const CC: usize, const FCS: usize> AtomicVec<T, CC, FCS> {
     ) -> Option<(AtomicVecIndex, &'c mut T)> {
         let idx = chunk.cur.fetch_add(1, std::sync::atomic::Ordering::AcqRel); // bump idx speculatively
 
-        if idx >= chunk.size {
+        if idx >= chunk.content.len() {
+            //println!("size of chunk wouldn't allow putting in obj, size was {} while idx was {}", chunk.content.len(), idx);
             None // couldn't insert into this chunk, size already wouldn't allow it
         } else {
             unsafe {
@@ -187,6 +197,7 @@ impl<T, const CC: usize, const FCS: usize> AtomicVec<T, CC, FCS> {
         idx: usize,
         val: &mut Option<T>,
     ) -> Option<(AtomicVecIndex, &mut T)> {
+        //println!("getting chunk at idx {}", idx);
         let chunk = self.get_chunk(idx);
 
         self.try_insert_chunk(idx as i32, chunk, val)
@@ -239,6 +250,7 @@ impl<T, const CC: usize, const FCS: usize> AtomicVec<T, CC, FCS> {
     }
 
     pub fn get(&self, idx: AtomicVecIndex) -> &T {
+        //println!("get was called for avec with idx {}", idx);
         if idx.self_key != self.self_key {
             panic!("Tried to use a token from another AVec on self, this could cause unsoundness!");
         } else {

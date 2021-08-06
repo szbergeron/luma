@@ -64,7 +64,7 @@ pub struct FunctionID(AtomicVecIndex);
 pub struct CtxID(pub u64);
 
 #[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy, Debug)]
-pub struct SymbolID(pub u64);
+pub struct SymbolID(AtomicVecIndex);
 //pub type SymbolID = u64;
 
 //pub type GlobalTypeID = (CtxID, TypeID);
@@ -735,14 +735,10 @@ impl GlobalFuncCtx {
     }
     pub fn define(&self, within: CtxID, func: FunctionDefinition) -> GlobalFunctionID {
         let (avi, _) = unsafe {
-            self.functions.push_with(func, |f, avi| {})
+            self.functions.push_with(func, |_f, _avi| {})
         };
 
-        //static FCTX_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
-        //let id = FCTX_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let id = GlobalFunctionID { cid: within, fid: FunctionID(avi) };
-
-        //self.functions.push(id, func);
 
         id
     }
@@ -753,22 +749,24 @@ impl GlobalFuncCtx {
         //
         // This means that we can hand out refs of &'self freely since
         // the borrow checker will verify that they do not last any longer than we do
-        unsafe {
+        /*unsafe {
             //std::mem::transmute(self.functions.get(&id).unwrap().value())
-        }
+        }*/
 
         //self.functions.get(&id).unwrap().value()
-        todo!()
+        //todo!()
+        self.functions.get(id.fid.0)
     }
 }
 
 pub struct GlobalTypeCtx {
-    types: DashMap<GlobalTypeID, TypeDefinition>,
+    //types: DashMap<GlobalTypeID, TypeDefinition>,
+    types: AtomicVec<TypeDefinition>,
 }
 
 impl GlobalTypeCtx {
     pub fn new() -> GlobalTypeCtx {
-        GlobalTypeCtx { types: DashMap::new() }
+        GlobalTypeCtx { types: AtomicVec::new() }
     }
     /*pub fn define(&self, within: CtxID, func: FunctionDefinition) -> GlobalFunctionID {
         static FCTX_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
