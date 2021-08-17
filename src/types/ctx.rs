@@ -865,4 +865,37 @@ impl TypeCtx {
 //impl Send for CtxInner {} // should this have send?
 unsafe impl Sync for TypeCtx {}
 
+/// Types have three impl contexts that we need to be aware of during usage,
+/// with two of them collapsing into the same lookup space
+///
+/// When you initially create a type (declare it), any impls that
+/// are already imported into or declared within that module and can already be applied
+/// (any generic substitutions are either an identity substitution, as in `impl A for U<V>`
+/// when we have a T<W> declared, or are less specific as in `impl A for U` when we have a T<W>)
+/// are included in the "decl context". Any impl blocks that specifically
+/// reference the type and are also declared in the same module as the type are included in the 
+/// "identity context", and are carried around with the type as it moves around the same as the
+/// decl context.
+///
+/// When you use a type, you also have a separate "usage context", where all imported impls are
+/// then also queried for the type, and if any match the type they are then available to
+/// use within that scope. Note that this way of looking at impl contexts also works for dyn
+/// objects in the sense that if that 
+///
+/// Conceptually, an impl block "guards" a type from a function set
+/// An impl block also "guarantees" the functions inside certain properties
+/// of the type they will be put against.
+///
+/// If 
+
 //pub type Ctx = Arc<CtxInner>;
+
+/// An ImplGuard ties an existing type constraint (whether a value constraint or a trait
+/// constraint) to a new impl.
+///
+/// This is basically the syntactic `impl Bar for Foo {}` construct,
+/// where the traitref is Bar and the typeref is Foo
+pub struct ImplGuard {
+    traitref: TraitDescription,
+    typeref: TypeDescription,
+}
