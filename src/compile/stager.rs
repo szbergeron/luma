@@ -21,7 +21,7 @@ use tokio::runtime::*;
 #[allow(unused_variables, dead_code)]
 pub fn parse_unit<'file>(
     handle: FileHandleRef,
-    scope: Vec<StringSymbol>,
+    scope: Vec<IStr>,
     cflags: &CFlags,
 ) -> Result<OuterScope, ParseResultError> {
     // clone because we don't want to keep lock open, and this should be rather cheap in the scheme

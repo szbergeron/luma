@@ -767,8 +767,8 @@ impl<'lexer> Parser<'lexer> {
 }
 
 pub enum DotAccess {
-    Field(StringSymbol),
-    Method(StringSymbol, Vec<Box<ast::ExpressionWrapper>>),
+    Field(IStr),
+    Method(IStr, Vec<Box<ast::ExpressionWrapper>>),
 }
 
 use ast::IntoAstNode;

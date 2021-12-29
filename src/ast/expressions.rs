@@ -1,3 +1,4 @@
+use crate::ast::TypeReference;
 use super::base::*;
 use super::outer::*;
 use crate::helper::interner::*;
@@ -9,73 +10,6 @@ use crate::types;
 
 pub trait Expression: AstNode {
     fn expr_type(&self) -> Box<dyn types::StaticType>;
-}
-
-#[derive(Debug, Clone)]
-pub struct TypeReference {
-    node_info: NodeInfo,
-
-    pub ctx: ScopedNameReference,
-    pub canonicalized_name: StringSymbol,
-
-    pub type_args: Vec<Box<TypeReference>>,
-}
-
-impl TypeReference {
-    pub fn new(ctx: ScopedNameReference, name: StringSymbol) -> TypeReference {
-        TypeReference {
-            node_info: NodeInfo::Builtin,
-            ctx,
-            type_args: Vec::new(),
-            canonicalized_name: name,
-        }
-    }
-}
-
-impl AstNode for TypeReference {
-    fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
-        let _ = write!(f, "{}", self.canonicalized_name);
-        if !self.type_args.is_empty() {
-            let _ = write!(f, "<args: !impl>");
-        }
-    }
-    fn display(&self, f: &mut std::fmt::Formatter<'_>, _depth: usize) {
-        let _ = write!(
-            f,
-            "{}",
-            self.ctx.as_node(),
-            //self.canonicalized_name.resolve() //interner().resolve(&self.canonicalized_name)
-        );
-        if !self.type_args.is_empty() {
-            write!(f, "<").unwrap();
-            for idx in 0..self.type_args.len() {
-                write!(f, "{}", self.type_args[idx].as_node()).unwrap();
-                if idx < self.type_args.len() - 1 {
-                    write!(f, ", ").unwrap();
-                }
-            }
-            write!(f, ">").unwrap();
-        }
-        /*
-        [&self.subexpr]
-            .iter()
-            .for_each(|expr| expr.as_node().display(f, depth + 1));*/
-    }
-
-    fn node_info(&self) -> NodeInfo {
-        self.node_info
-    }
-
-}
-
-impl IntoAstNode for TypeReference {
-    /*fn as_node_mut(&mut self) -> &mut dyn AstNode {
-        self
-    }*/
-
-    fn as_node(&self) -> &dyn AstNode {
-        self
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -780,7 +714,7 @@ pub struct MethodCall {
 
     pub on: Box<ExpressionWrapper>,
     //pub span: Span,
-    pub method: StringSymbol,
+    pub method: IStr,
     pub arguments: Vec<Box<ExpressionWrapper>>,
 }
 
@@ -866,16 +800,16 @@ pub struct LLVMLiteralExpression {
     ///
     /// No additional munging is done so the user should be careful to avoid
     /// any naming conflicts here
-    pub bindings: Vec<(ExpressionWrapper, StringSymbol)>,
+    pub bindings: Vec<(ExpressionWrapper, IStr)>,
 
     /// Vars that will be set aside for the llvm literal to use.
     /// They may be templated in using {{var}} notation,
     /// but will be replaced with temporary names later
     /// during encode
-    pub vars: Vec<StringSymbol>,
+    pub vars: Vec<IStr>,
 
     /// Contains the LLVM IR text that is to be emitted with this function
-    pub text: StringSymbol,
+    pub text: IStr,
 
     /// If this block is not `_ -> ()` then it has some output T
     ///
@@ -884,7 +818,7 @@ pub struct LLVMLiteralExpression {
     /// the value will reside in will be referred to output.unwrap().1
     ///
     /// Care should be taken by the user that the binding name does not cause a name collision
-    pub output: Option<(TypeReference, StringSymbol)>
+    pub output: Option<(TypeReference, IStr)>
 }
 
 impl AstNode for LLVMLiteralExpression {
@@ -1015,7 +949,7 @@ impl AstNode for IdentifierExpression {
 #[derive(Debug, Clone)]
 #[allow(non_camel_case_types)]
 pub enum Literal {
-    StringLiteral(StringSymbol),
+    StringLiteral(IStr),
 
     f32Literal(f32),
     f64Literal(f64),

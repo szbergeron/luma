@@ -33,7 +33,7 @@ impl<'a> SymbolDB<'a> {
 #[derive(Debug)]
 #[allow(dead_code)]
 pub struct ScopeContext {
-    pub scope: Vec<StringSymbol>,
+    pub scope: Vec<IStr>,
     pub public: bool,
     pub from: OnceCell<Arc<SymbolDeclaration>>,
 
@@ -41,7 +41,7 @@ pub struct ScopeContext {
 
     global_context: OnceCell<Weak<ScopeContext>>,
 
-    child_contexts: CHashMap<StringSymbol, Arc<ScopeContext>>,
+    child_contexts: CHashMap<IStr, Arc<ScopeContext>>,
 
     //
     //exported_symbols: CHashMap<StringSymbol, Weak<RwLock<SymbolDeclaration>>>,
@@ -123,7 +123,7 @@ impl std::fmt::Display for ScopeContext {
 impl ScopeContext {
     pub fn new(
         error_sink: crossbeam::Sender<Error>,
-        scope: Vec<StringSymbol>,
+        scope: Vec<IStr>,
         global: Option<Weak<ScopeContext>>,
         parent: Option<Weak<ScopeContext>>,
         from: Option<Arc<SymbolDeclaration>>,
@@ -296,7 +296,7 @@ impl ScopeContext {
         self.child_contexts.insert(last_string, child);
     }
 
-    pub fn get_scope(&self) -> &[StringSymbol] {
+    pub fn get_scope(&self) -> &[IStr] {
         self.scope.as_slice()
     }
 

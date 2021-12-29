@@ -18,38 +18,37 @@ use std::{alloc, fs};
 pub mod interner {
     use std::fmt::{Debug, Display};
 
-    //pub type StringSymbol = lasso::LargeSpur;
     #[derive(Copy, Clone, Hash, Eq, PartialEq)]
-    pub struct StringSymbol {
+    pub struct IStr {
         internal: usize,
     }
 
-    unsafe impl lasso::Key for StringSymbol {
+    unsafe impl lasso::Key for IStr {
         fn into_usize(self) -> usize {
             self.internal
         }
 
         fn try_from_usize(int: usize) -> Option<Self> {
-            Some(StringSymbol { internal: int })
+            Some(IStr { internal: int })
         }
     }
 
-    impl Display for StringSymbol {
+    impl Display for IStr {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             write!(f, "{}", self.resolve())
         }
     }
 
-    impl Debug for StringSymbol {
+    impl Debug for IStr {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             write!(f, "S('{}')", self.resolve())
         }
     }
 
     pub enum Rodeo {
-        ThreadedRodeo(lasso::ThreadedRodeo<StringSymbol>),
-        RodeoReader(lasso::RodeoReader<StringSymbol>),
-        RodeoResolver(lasso::RodeoResolver<StringSymbol>),
+        ThreadedRodeo(lasso::ThreadedRodeo<IStr>),
+        RodeoReader(lasso::RodeoReader<IStr>),
+        RodeoResolver(lasso::RodeoResolver<IStr>),
     }
     //static mut INTERNER_PRIV: Option<Rodeo> = None;
     //static mut INTERNER_UNLOCKED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
@@ -200,7 +199,7 @@ pub mod interner {
         }*/
     }
 
-    pub fn intern(v: &str) -> StringSymbol {
+    pub fn intern(v: &str) -> IStr {
         unsafe {
             match interner().as_static() {
                 Rodeo::ThreadedRodeo(tr) => tr.get_or_intern(v),
@@ -209,7 +208,7 @@ pub mod interner {
         }
     }
 
-    pub fn intern_static(v: &'static str) -> StringSymbol {
+    pub fn intern_static(v: &'static str) -> IStr {
         unsafe {
             match interner().as_static() {
                 Rodeo::ThreadedRodeo(tr) => tr.get_or_intern_static(v),
@@ -223,7 +222,7 @@ pub mod interner {
         fn try_resolve(&self) -> Option<&'static str>;
     }
 
-    impl SpurHelper for StringSymbol {
+    impl SpurHelper for IStr {
         fn resolve(&self) -> &'static str {
             unsafe {
                 match interner().as_static() {
@@ -590,7 +589,7 @@ pub mod lex_wrap {
     #[derive(Debug, Clone, Copy)]
     pub struct TokenWrapper {
         pub token: crate::lex::Token,
-        pub slice: StringSymbol,
+        pub slice: IStr,
         pub start: CodeLocation,
         pub end: CodeLocation,
     }

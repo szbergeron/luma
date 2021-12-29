@@ -25,7 +25,7 @@ type ErrorChannel = crossbeam::Sender<Error>;
 
 pub struct PathNode {
     path: PathBuf,
-    module: Vec<StringSymbol>,
+    module: Vec<IStr>,
 
     module_file: Option<PathBuf>,
     parsed: Option<OuterScope>,
@@ -53,7 +53,7 @@ impl PathNode {
     //#[async_recursion]
     fn new(
         path: PathBuf,
-        module: Vec<StringSymbol>,
+        module: Vec<IStr>,
         args: &ArgResult,
         ec: ErrorChannel,
         children: Vec<Node>,
@@ -78,7 +78,7 @@ impl PathNode {
     #[async_recursion]
     async fn from_path(
         path: PathBuf,
-        module_prefix: &Vec<StringSymbol>,
+        module_prefix: &Vec<IStr>,
         channel: ErrorChannel,
         args: &ArgResult,
     ) -> Node {
@@ -367,7 +367,7 @@ pub struct ErrorNode {}
 }*/
 async fn first_pass(
     path: PathBuf,
-    module_prefix: Vec<StringSymbol>,
+    module_prefix: Vec<IStr>,
     channel: ErrorChannel,
     reg: &FileRegistry,
     args: &ArgResult,

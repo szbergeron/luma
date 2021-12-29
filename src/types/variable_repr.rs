@@ -1,4 +1,4 @@
-use crate::helper::interner::StringSymbol;
+use crate::helper::interner::IStr;
 
 /**
  * Spitballing here, trying to figure out how
@@ -28,7 +28,7 @@ pub struct Generic {
 
 #[allow(dead_code)]
 pub struct Variable {
-    name: StringSymbol,
+    name: IStr,
     
     //instance_params: Vec<
 

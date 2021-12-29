@@ -1,7 +1,7 @@
 use super::impls::*;
 
 use crate::avec::{AtomicVec, AtomicVecIndex};
-use crate::helper::interner::{intern, SpurHelper, StringSymbol};
+use crate::helper::interner::{intern, SpurHelper, IStr};
 use crate::types::Quark;
 use dashmap::{DashMap, DashSet};
 
@@ -117,7 +117,7 @@ pub enum Resolution {
     /// An unresolved import is represented by the sequence of
     /// qualifying strings (including the final qualification)
     /// that were provided with the statement within a context
-    Unresolved(Vec<StringSymbol>),
+    Unresolved(Vec<IStr>),
 
     /// A resolved function import specifies a global
     /// function reference within this scope. This
@@ -155,13 +155,13 @@ impl std::fmt::Display for Resolution {
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Import {
     pub origin: NodeInfo,
-    pub alias: Option<StringSymbol>,
+    pub alias: Option<IStr>,
     pub resolution: Resolution,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Export {
-    pub alias: Option<StringSymbol>,
+    pub alias: Option<IStr>,
     pub resolution: Resolution,
 }
 
@@ -212,8 +212,8 @@ impl std::fmt::Display for Export {
 }*/
 
 pub struct FunctionCall {
-    pub name: StringSymbol,
-    pub arguments: Vec<StringSymbol>,
+    pub name: IStr,
+    pub arguments: Vec<IStr>,
 
     pub generic_specifications: Vec<TypeID>,
 
@@ -289,9 +289,9 @@ pub fn generate_typeid() -> TypeID {
 /// Any downward references should use either ID notation or scoped identification
 #[allow(dead_code)]
 pub struct GlobalCtxNode {
-    canonical_local_name: StringSymbol,
+    canonical_local_name: IStr,
 
-    children: DashMap<StringSymbol, Pin<Box<GlobalCtxNode>>>,
+    children: DashMap<IStr, Pin<Box<GlobalCtxNode>>>,
 
     //parent: OnceCell<&'tree GlobalCtxNode<'tree>>,
     //global: OnceCell<&'tree GlobalCtxNode<'tree>>,
@@ -448,7 +448,7 @@ impl GlobalCtxNode {
     /// the 'parent lifetime is of significant importance here
     #[allow(unused_unsafe, unused_mut)]
     pub unsafe fn new<'parent>(
-        name: StringSymbol,
+        name: IStr,
         parent: Option<&'parent GlobalCtxNode>,
         global: Option<&'parent GlobalCtxNode>,
         id: Option<CtxID>,
@@ -529,7 +529,7 @@ impl GlobalCtxNode {
         id
     }
 
-    fn nsctx_for(&self, scope: &[StringSymbol]) -> Option<&GlobalCtxNode> {
+    fn nsctx_for(&self, scope: &[IStr]) -> Option<&GlobalCtxNode> {
         //match scope {
         //[last] //
         match scope {
@@ -595,7 +595,7 @@ impl GlobalCtx {
 
     /// tries to get a namespace ctx if one exists, and None if not
     #[allow(unused)]
-    fn get_nsctx(&self, scope: &[StringSymbol]) -> Option<&GlobalCtxNode> {
+    fn get_nsctx(&self, scope: &[IStr]) -> Option<&GlobalCtxNode> {
         self.entry.nsctx_for(scope)
     }
 
@@ -633,7 +633,7 @@ pub struct FuncCtx {
     ctx_id: CtxID,
     //by_id: DashMap<FunctionID, FunctionHandle>,
     //by_signature: DashMap<FunctionSignature, FunctionHandle>,
-    by_name: DashMap<StringSymbol, Vec<GlobalFunctionID>>,
+    by_name: DashMap<IStr, Vec<GlobalFunctionID>>,
 
     all: Vec<()>,
     //id_gen: u64,

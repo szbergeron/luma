@@ -8,7 +8,7 @@
 
 //use super::types::GlobalTypeID;
 use super::{GlobalTypeID, GlobalFunctionID, GlobalCtxNode};
-use crate::helper::interner::StringSymbol;
+use crate::helper::interner::IStr;
 
 use std::{ptr::NonNull, sync::Weak};
 
@@ -19,7 +19,7 @@ pub struct Query {
 }
 
 impl Query {
-    pub fn filter_name(self, _name: StringSymbol) -> Self {
+    pub fn filter_name(self, _name: IStr) -> Self {
         let mut b: Vec<_> = Vec::new();
         b.push(5);
         unimplemented!()
@@ -33,14 +33,14 @@ pub struct Fact {}
 /// This could be something such as `i32` or `SomeStruct`,
 /// but is not the same as a dyn trait reference
 pub struct BasicConstraint {
-    pub name: StringSymbol,
+    pub name: IStr,
 }
 
 /// A TraitConstraint (TCst) represents a reference to 
 /// a dyn trait in some context, and
 /// may or may not be generic.
 pub struct TraitConstraint {
-    pub name: StringSymbol,
+    pub name: IStr,
 }
 
 /// A GenericConstraint (GCst) represents a reference
@@ -117,11 +117,11 @@ pub struct Quark {
 }
 
 impl Quark {
-    pub fn declare_trait(&mut self, _name: StringSymbol) -> QuarkDeclID {
+    pub fn declare_trait(&mut self, _name: IStr) -> QuarkDeclID {
         unimplemented!()
     }
 
-    pub fn add_to_trait(&mut self, _p_trait: QuarkDeclID, _trait_member_name: StringSymbol, _trait_member_id: GlobalTypeID) -> () {
+    pub fn add_to_trait(&mut self, _p_trait: QuarkDeclID, _trait_member_name: IStr, _trait_member_id: GlobalTypeID) -> () {
     }
 
     /// If a coercion from the argument type to the target type exists,

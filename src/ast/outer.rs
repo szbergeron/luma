@@ -24,7 +24,7 @@ pub struct Namespace {
     pub node_info: NodeInfo,
 
     pub public: bool,
-    pub name: Option<StringSymbol>,
+    pub name: Option<IStr>,
     pub contents: Result<OuterScope, ParseResultError>,
 }
 
@@ -38,7 +38,7 @@ impl Namespace {
     /// specified
     pub async unsafe fn into_ctx(
         self,
-        parent_scope: &[StringSymbol],
+        parent_scope: &[IStr],
         parent: &GlobalCtxNode,
         global: &GlobalCtxNode,
     ) -> Pin<Box<GlobalCtxNode>> {
@@ -154,7 +154,7 @@ impl OuterScope {
     #[async_recursion]
     pub async unsafe fn into_ctx(
         self,
-        module: Vec<StringSymbol>,
+        module: Vec<IStr>,
         parent: &GlobalCtxNode,
         global: &GlobalCtxNode,
     ) -> Pin<Box<GlobalCtxNode>> {
@@ -281,7 +281,7 @@ pub struct LetComponentTuple {
 pub struct LetComponentIdentifier {
     pub node_info: NodeInfo,
 
-    pub identifier_string: StringSymbol,
+    pub identifier_string: IStr,
 
     pub type_specifier: Option<Box<TypeReference>>,
 }
@@ -369,12 +369,12 @@ pub struct FunctionDefinition {
     pub node_info: NodeInfo,
 
     pub public: bool,
-    pub name: StringSymbol,
+    pub name: IStr,
 
     pub body: Box<ExpressionWrapper>,
     pub return_type: TypeReference,
     //pub params: Vec<(Box<super::ExpressionWrapper>, super::TypeReference)>,
-    pub params: Vec<(StringSymbol, super::TypeReference)>,
+    pub params: Vec<(IStr, super::TypeReference)>,
 }
 
 impl AstNode for FunctionDefinition {
@@ -443,21 +443,23 @@ impl AstNode for FunctionDefinition {
     }
 }
 
+//pub struct 
+
 #[derive(Debug)]
-pub struct StructDefinition {
+pub struct TypeDefinition {
     pub node_info: NodeInfo,
 
     pub public: bool,
-    pub name: StringSymbol,
-    pub typeparams: Vec<StringSymbol>,
+    pub name: IStr,
+    pub typeparams: Vec<IStr>,
     pub fields: Vec<(
-        StringSymbol,
+        IStr,
         TypeReference,
         Option<Box<super::ExpressionWrapper>>,
     )>,
 }
 
-impl AstNode for StructDefinition {
+impl AstNode for TypeDefinition {
     fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
         let _ = writeln!(f, "struct {} {{", self.name);
         for (field, ftype, _) in self.fields.iter() {
@@ -503,9 +505,9 @@ pub struct UseDeclaration {
 
     pub public: bool,
 
-    pub scope: Vec<StringSymbol>,
+    pub scope: Vec<IStr>,
 
-    pub alias: Option<StringSymbol>,
+    pub alias: Option<IStr>,
 }
 
 impl UseDeclaration {
@@ -563,7 +565,7 @@ impl AstNode for UseDeclaration {
 pub struct ScopedNameReference {
     pub node_info: NodeInfo,
 
-    pub scope: Vec<StringSymbol>,
+    pub scope: Vec<IStr>,
 
     pub silent: bool,
 }
@@ -605,11 +607,11 @@ impl IntoAstNode for ScopedNameReference {
 
 #[derive(Debug, PartialEq, Hash)]
 pub struct ScopedName {
-    pub scope: Vec<StringSymbol>,
+    pub scope: Vec<IStr>,
 }
 
 impl ScopedName {
-    pub fn new(s: Vec<StringSymbol>) -> ScopedName {
+    pub fn new(s: Vec<IStr>) -> ScopedName {
         ScopedName { scope: s }
     }
 }
@@ -699,7 +701,7 @@ impl SymbolDeclaration {
         }
     }
 
-    pub fn symbol_name(&self) -> Option<StringSymbol> {
+    pub fn symbol_name(&self) -> Option<IStr> {
         match self {
             Self::FunctionDeclaration(fd) => Some(fd.name),
             Self::NamespaceDeclaration(ns) => ns.name,

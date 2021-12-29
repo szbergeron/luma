@@ -91,7 +91,7 @@ impl<'lexer> Parser<'lexer> {
     /// are to be used to substitute within the struct
     ///
     /// This will also include bounds and `where` clauses later on
-    pub fn parse_type_param_list(&mut self) -> Result<Vec<StringSymbol>, ParseResultError> {
+    pub fn parse_type_param_list(&mut self) -> Result<Vec<IStr>, ParseResultError> {
         let mut typeparams = Vec::new();
         if let Some(_lt) = self.eat_match(Token::CmpLessThan) {
             //let first = self.parse_type_specifier();
@@ -151,6 +151,32 @@ impl<'lexer> Parser<'lexer> {
             name: id,
             public: false,
         })
+    }
+
+    //type TypeBlock = (Vec<FieldDeclaration>, Vec<MethodDeclaration>, Vec<MethodDefinition>);
+
+    pub fn parse_type_block(&mut self) -> Result<TypeBlock, ParseResultError> {
+    }
+
+    /**
+     * Used for:
+     *
+     * <concrete || interface> type<<generic params>> T {
+     *   <fields and method decs/defs>
+     * }
+     */
+    pub fn parse_type_declaration(&mut self) -> Result<ast::TypeDefinition, ParseResultError> {
+        //
+    }
+
+    /**
+     * Used for:
+     *
+     * <fully || partially> provide <some type> for <some other type> {
+     *   <fields and method defs/overrides>
+     * }
+     */
+    pub fn parse_type_implementation(&mut self) -> Result<ast::TypeImplementation, ParseResultError> {
     }
 
     pub fn parse_static_declaration(
@@ -329,8 +355,8 @@ impl<'lexer> Parser<'lexer> {
     #[allow(dead_code, unreachable_code)]
     pub fn parse_function_param_list(
         &mut self,
-    ) -> Result<Vec<(StringSymbol, ast::TypeReference)>, ParseResultError> {
-        let mut rvec: Vec<(StringSymbol, ast::TypeReference)> = Vec::new();
+    ) -> Result<Vec<(IStr, ast::TypeReference)>, ParseResultError> {
+        let mut rvec: Vec<(IStr, ast::TypeReference)> = Vec::new();
 
         while let Some(i) = self.eat_match(Token::Identifier) {
             self.hard_expect(Token::Colon)?;
@@ -411,7 +437,7 @@ impl<'lexer> Parser<'lexer> {
             end = tw.end;
         }
 
-        let mut alias: Option<StringSymbol> = None;
+        let mut alias: Option<IStr> = None;
 
         if let Some(_) = self.eat_match(Token::As) {
             let id = self.hard_expect(Token::Identifier)?; // don't bubble, recoverable

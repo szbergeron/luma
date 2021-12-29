@@ -1,7 +1,7 @@
 use super::{CtxID, FunctionDeclaration, GlobalTypeID, TypeCtx, TypeID};
 use crate::{
     ast::{Span, TypeReference},
-    helper::interner::StringSymbol,
+    helper::interner::IStr,
 };
 
 use smallvec::SmallVec;
@@ -199,31 +199,44 @@ impl std::cmp::Eq for i32_t_static {}
 
 pub struct ProductType {}
 
+/// A trait_t_static is the core trait definition, analogous to a class or struct
+/// It is also similar to an interface, in that some methods may be unimplemented
+///
+/// It does not represent a true concrete type, especially since it
+/// may be templated.
+///
+/// Once the type is templated out and all matching impl blocks have been applied to a
+/// specialization, we form a specialized_t_dynamic or specialized_t_static
 #[allow(non_camel_case_types)]
 #[derive(Debug)]
-pub struct struct_t_static {
-    pub name: StringSymbol,
-    pub fields: Vec<(StringSymbol, TypeID)>,
+pub struct trait_t_static {
+    pub name: IStr,
+
+    pub fields: Vec<(IStr, TypeID)>,
+    pub methods: Vec<(IStr, FunctionID)>,
 
     pub tid: std::sync::atomic::AtomicU64,
 }
 
-impl std::hash::Hash for struct_t_static {
+impl trait_t_static {
+}
+
+impl std::hash::Hash for trait_t_static {
     fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
         self.tid.load(std::sync::atomic::Ordering::Relaxed).hash(h);
     }
 }
 
-impl std::cmp::PartialEq for struct_t_static {
+impl std::cmp::PartialEq for trait_t_static {
     fn eq(&self, other: &Self) -> bool {
         self.tid.load(std::sync::atomic::Ordering::Relaxed)
             == other.tid.load(std::sync::atomic::Ordering::Relaxed)
     }
 }
 
-impl Eq for struct_t_static {}
+impl Eq for trait_t_static {}
 
-impl StaticType for struct_t_static {
+impl StaticType for trait_t_static {
     fn set_tid(&self, _: TypeID) {
         todo!()
     }
