@@ -21,7 +21,7 @@ use std::sync::atomic::{fence, Ordering};
 
 use std::sync::Arc;
 
-use crate::ast::{AstNode, FunctionDefinition, NodeInfo, StructDefinition, indent};
+use crate::ast::{AstNode, FunctionDefinition, NodeInfo, indent, TypeDefinition};
 //use once_cell::sync::OnceCell;
 use static_assertions::assert_impl_all;
 use std::pin::Pin;
@@ -106,10 +106,6 @@ impl std::fmt::Display for CtxID {
 /// and does not actually contain any type resolutions
 pub struct FunctionDeclaration {
     //   
-}
-
-pub enum TypeDefinition {
-    Struct(StructDefinition),
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -830,7 +826,7 @@ impl TypeCtx {
         tid
     }
 
-    pub fn define_struct(&self, sd: StructDefinition) -> () {
+    pub fn define_struct(&self, sd: TypeDefinition) -> () {
        // do nothing, just drop for now 
        // TODO
     }
@@ -887,10 +883,11 @@ unsafe impl Sync for TypeCtx {}
 /// of the type they will be put against.
 ///
 /// If 
+struct Doc1 {}
 
 //pub type Ctx = Arc<CtxInner>;
 
-/// An ImplGuard ties an existing type constraint (whether a value constraint or a trait
+/*/// An ImplGuard ties an existing type constraint (whether a value constraint or a trait
 /// constraint) to a new impl.
 ///
 /// This is basically the syntactic `impl Bar for Foo {}` construct,
@@ -898,4 +895,4 @@ unsafe impl Sync for TypeCtx {}
 pub struct ImplGuard {
     traitref: TraitDescription,
     typeref: TypeDescription,
-}
+}*/

@@ -1,4 +1,4 @@
-use crate::ast;
+use crate::ast::{self, TypeReference};
 use crate::lex::Token;
 
 use crate::helper::lex_wrap::{CodeLocation, ParseResultError};
@@ -195,7 +195,7 @@ impl<'lexer> Parser<'lexer> {
                         tr.ctx.scope.push(intern("&"));
 
                         let inner = self.parse_type_specifier()?;
-                        tr.type_args.push(inner);
+                        tr.type_args.push(*inner);
                     }
                     Token::LParen => {
                         tr.ctx.scope.push(intern("Tuple"));
@@ -204,7 +204,7 @@ impl<'lexer> Parser<'lexer> {
 
                         #[allow(irrefutable_let_patterns)]
                         while let tri = self.parse_type_specifier()? {
-                            tr.type_args.push(tri);
+                            tr.type_args.push(*tri);
                             match self.eat_match(Token::Comma) {
                                 None => break,
                                 Some(_comma) => continue,

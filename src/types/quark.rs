@@ -10,7 +10,7 @@
 use super::{GlobalTypeID, GlobalFunctionID, GlobalCtxNode};
 use crate::helper::interner::IStr;
 
-use std::{ptr::NonNull, sync::Weak};
+
 
 pub struct QuarkDeclID(usize);
 

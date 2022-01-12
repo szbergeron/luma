@@ -1,3 +1,5 @@
+use super::TypeDefinition;
+use super::TypeReference;
 use super::base::*;
 use super::expressions::ExpressionWrapper;
 use crate::helper::VecOps;
@@ -12,7 +14,7 @@ use std::pin::Pin;
 
 //use std::cell::RefCell;
 
-use super::expressions::TypeReference;
+//use super::expressions::TypeReference;
 
 
 use crate::helper::interner::*;
@@ -181,7 +183,7 @@ impl OuterScope {
                 SymbolDeclaration::UseDeclaration(ud) => {
                     ctx.import(ud.into_import());
                 }
-                SymbolDeclaration::StructDeclaration(sd) => {
+                SymbolDeclaration::TypeDefinition(sd) => {
                     ctx.type_ctx().define_struct(sd);
                 }
                 _ => todo!(),
@@ -445,7 +447,7 @@ impl AstNode for FunctionDefinition {
 
 //pub struct 
 
-#[derive(Debug)]
+/*#[derive(Debug)]
 pub struct TypeDefinition {
     pub node_info: NodeInfo,
 
@@ -497,7 +499,7 @@ impl AstNode for TypeDefinition {
             }
         }
     }
-}
+}*/
 
 #[derive(Debug)]
 pub struct UseDeclaration {
@@ -638,7 +640,7 @@ impl AstNode for StaticVariableDeclaration {
 pub enum SymbolDeclaration {
     FunctionDeclaration(FunctionDefinition),
     NamespaceDeclaration(Namespace),
-    StructDeclaration(StructDefinition),
+    TypeDefinition(TypeDefinition),
     ExpressionDeclaration(StaticVariableDeclaration),
     UseDeclaration(UseDeclaration),
     //VariableDeclaration(VariableDeclaration),
@@ -662,7 +664,7 @@ impl IntoAstNode for SymbolDeclaration {
         match self {
             Self::FunctionDeclaration(fd) => fd,
             Self::NamespaceDeclaration(nd) => nd,
-            Self::StructDeclaration(sd) => sd,
+            Self::TypeDefinition(sd) => sd,
             Self::ExpressionDeclaration(ed) => ed,
             Self::UseDeclaration(ud) => ud,
         }
@@ -675,7 +677,7 @@ impl SymbolDeclaration {
             //Self::FunctionDeclaration(fd) => fd.display(f, depth),
             Self::FunctionDeclaration(fd) => fd.display(f, depth),
             Self::NamespaceDeclaration(ns) => ns.display(f, depth),
-            Self::StructDeclaration(sd) => sd.display(f, depth),
+            Self::TypeDefinition(sd) => sd.display(f, depth),
             Self::ExpressionDeclaration(sd) => sd.display(f, depth),
             Self::UseDeclaration(ud) => ud.display(f, depth),
         }
@@ -695,7 +697,7 @@ impl SymbolDeclaration {
         match self {
             Self::FunctionDeclaration(fd) => fd.public,
             Self::NamespaceDeclaration(fd) => fd.public,
-            Self::StructDeclaration(fd) => fd.public,
+            Self::TypeDefinition(fd) => todo!(),
             Self::ExpressionDeclaration(fd) => fd.public,
             Self::UseDeclaration(fd) => fd.public,
         }
@@ -705,7 +707,7 @@ impl SymbolDeclaration {
         match self {
             Self::FunctionDeclaration(fd) => Some(fd.name),
             Self::NamespaceDeclaration(ns) => ns.name,
-            Self::StructDeclaration(sd) => Some(sd.name),
+            Self::TypeDefinition(sd) => todo!(),
             Self::ExpressionDeclaration(_ed) => None, // no symbol to export
             Self::UseDeclaration(_ud) => None,
         }

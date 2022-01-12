@@ -1,9 +1,11 @@
 mod parse_base;
 mod parse_expr;
 mod parse_helper;
+mod parse_type;
 
 pub use parse_base::*;
 pub use parse_expr::*;
+pub use parse_type::*;
 pub use parse_helper::*;
 
 use crate::helper::lex_wrap::LookaheadStream;

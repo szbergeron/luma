@@ -36,32 +36,10 @@ pub enum ExpressionWrapper {
 impl ExpressionWrapper {
     //pub fn int_literal(input: &'a str) -> ExpressionWrapper {
     pub fn literal_expression(input: TokenWrapper) -> Box<ExpressionWrapper> {
-        /*let span = Span {
-            start: 0,
-            end: 0,
-        };*/
-
-        //let node_info = NodeInfo::from_token(&input, true);
-
-        //let inner = LiteralExpression { contents: input.slice, node_info };
         let inner = LiteralExpression::new_expr(input);
-        //ExpressionWrapper::Literal(inner)
 
         inner
     }
-
-    /*pub fn identifier_expression(input: TokenWrapper) -> Box<ExpressionWrapper> {
-        let node_info = NodeInfo::from_token(&input, true);
-
-        let inner = IdentifierExpression {
-            node_info,
-            name: input.slice,
-            node_type: None,
-            //span
-        };
-
-        Box::new(ExpressionWrapper::Identifier(inner))
-    }*/
 
     pub fn wildcard(input: TokenWrapper) -> Box<ExpressionWrapper> {
         let node_info = NodeInfo::from_token(&input);

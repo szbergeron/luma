@@ -1,6 +1,6 @@
-use super::{CtxID, FunctionDeclaration, GlobalTypeID, TypeCtx, TypeID};
+use super::{CtxID, GlobalTypeID, TypeCtx, TypeID, FunctionID};
 use crate::{
-    ast::{Span, TypeReference},
+    ast::Span,
     helper::interner::IStr,
 };
 

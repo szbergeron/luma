@@ -4,19 +4,22 @@ use super::{AstNode, IntoAstNode, NodeInfo, ScopedNameReference};
 
 //use crate::types::FunctionDeclaration;
 
-pub struct TypeBlock {
-    fields: Vec<FieldDeclaration>,
-    methods: Vec<FunctionDeclaration>,
+#[derive(Debug, Clone)]
+pub struct ImplementationBody {
+    fields: Vec<FieldMember>,
+    //methods: Vec<FunctionDeclaration>,
     //aliases: Vec<AliasDeclaration>,
 }
 
+#[derive(Debug, Clone)]
 pub struct MemberAttributes {
     public: bool,
     mutable: bool,
     //deferred: bool,
 }
 
-pub struct FieldDeclaration {
+#[derive(Debug, Clone)]
+pub struct FieldMember {
     attributes: MemberAttributes,
 
     name: IStr,
@@ -24,8 +27,99 @@ pub struct FieldDeclaration {
     ftype: TypeReference,
 }
 
-pub struct FunctionDeclaration {
-    attributes: MemberAttributes,
+/// These act like structs or records in any other language,
+/// Member functions here (once implemented) are devirtualized by default
+///
+/// This is a product type
+#[derive(Debug, Clone)]
+pub struct RecordValueDefinition {
+}
+
+/// Not yet implemented, but will allow for typical pattern matching
+/// later.
+///
+/// This is a sum type
+#[derive(Debug, Clone)]
+pub struct EnumValueDefinition {
+}
+
+/// These are used for either record or enum types, and allow adding
+/// immutable, replaceable, vtables to types
+#[derive(Debug, Clone)]
+pub struct RecordVirtualDefinition {
+    attrs: MemberAttributes,
+    //generic_params: Vec<IStr>,
+    implements_type: Option<TypeReference>,
+    for_type: TypeReference, 
+    body: ImplementationBody,
+}
+
+/// Allows specifying a type schema for virtual record types
+#[derive(Debug, Clone)]
+pub struct RecordVirtualSpecification {
+}
+
+impl AstNode for RecordVirtualSpecification {
+    fn node_info(&self) -> NodeInfo {
+        todo!()
+    }
+
+    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+        todo!()
+    }
+}
+
+impl AstNode for RecordValueDefinition {
+    fn node_info(&self) -> NodeInfo {
+        todo!()
+    }
+
+    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+        todo!()
+    }
+}
+
+impl AstNode for EnumValueDefinition {
+    fn node_info(&self) -> NodeInfo {
+        todo!()
+    }
+
+    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+        todo!()
+    }
+}
+
+impl AstNode for RecordVirtualDefinition {
+    fn node_info(&self) -> NodeInfo {
+        todo!()
+    }
+
+    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+        todo!()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum TypeDefinition {
+    Struct(RecordValueDefinition),
+    Enum(EnumValueDefinition),
+    Specification(RecordVirtualSpecification),
+    Implementation(RecordVirtualDefinition),
+}
+
+impl AstNode for TypeDefinition {
+    fn node_info(&self) -> NodeInfo {
+        match self {
+            Self::Struct(s) => s.node_info(),
+            Self::Enum(s) => s.node_info(),
+            Self::Specification(s) => s.node_info(),
+            Self::Implementation(s) => s.node_info(),
+        }
+    }
+
+    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+        todo!()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -35,7 +129,7 @@ pub struct TypeReference {
     pub ctx: ScopedNameReference,
     pub canonicalized_name: IStr,
 
-    pub type_args: Vec<Box<TypeReference>>,
+    pub type_args: Vec<TypeReference>,
 }
 
 impl TypeReference {

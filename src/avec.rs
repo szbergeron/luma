@@ -1,4 +1,4 @@
-use std::{alloc, fmt::Display, intrinsics::transmute, marker::PhantomData, mem::MaybeUninit, ptr::{addr_of_mut, null_mut}, sync::atomic::{AtomicPtr, AtomicUsize}};
+use std::{alloc, fmt::Display, marker::PhantomData, mem::MaybeUninit, ptr::{addr_of_mut, null_mut}, sync::atomic::{AtomicPtr, AtomicUsize}};
 
 //#[repr(C)]
 struct Chunk<T> {
