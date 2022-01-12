@@ -33,6 +33,7 @@ pub struct FieldMember {
 /// This is a product type
 #[derive(Debug, Clone)]
 pub struct RecordValueDefinition {
+    fields: Vec<FieldMember>,
 }
 
 /// Not yet implemented, but will allow for typical pattern matching
@@ -40,8 +41,7 @@ pub struct RecordValueDefinition {
 ///
 /// This is a sum type
 #[derive(Debug, Clone)]
-pub struct EnumValueDefinition {
-}
+pub struct EnumValueDefinition {}
 
 /// These are used for either record or enum types, and allow adding
 /// immutable, replaceable, vtables to types
@@ -50,14 +50,13 @@ pub struct RecordVirtualDefinition {
     attrs: MemberAttributes,
     //generic_params: Vec<IStr>,
     implements_type: Option<TypeReference>,
-    for_type: TypeReference, 
+    for_type: TypeReference,
     body: ImplementationBody,
 }
 
 /// Allows specifying a type schema for virtual record types
 #[derive(Debug, Clone)]
-pub struct RecordVirtualSpecification {
-}
+pub struct RecordVirtualSpecification {}
 
 impl AstNode for RecordVirtualSpecification {
     fn node_info(&self) -> NodeInfo {
@@ -176,7 +175,6 @@ impl AstNode for TypeReference {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
-
 }
 
 impl IntoAstNode for TypeReference {

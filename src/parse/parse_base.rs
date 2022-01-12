@@ -7,7 +7,6 @@ use crate::helper::lex_wrap::{CodeLocation, ParseResultError};
 //use crate::helper::lex_wrap::TokenWrapper;
 //use std::collections::HashSet;
 use ast::IntoAstNode;
-use std::sync::{Arc, RwLock};
 
 use crate::parse::*;
 
@@ -61,23 +60,59 @@ impl<'lexer> Parser<'lexer> {
 
         while let Some(tok) = self.eat_match_in(&[Token::Public, Token::Mutable, Token::Dynamic]) {
             match tok.token {
-                Token::Dynamic | Token::Nodynamic => match dynamic.replace(if let Token::Dynamic = tok.token { true } else { false }) {
-                    Some(_val) => self.report_err(ParseResultError::SemanticIssue("tried to mark a symbol dyn/nodyn when dyn/nodyn was already specified", tok.start, tok.end)),
-                    None => {},
-                },
-                Token::Mutable | Token::Immutable => match mutable.replace(if let Token::Mutable = tok.token { true } else { false }) {
-                    Some(_val) => self.report_err(ParseResultError::SemanticIssue("tried to mark a symbol mut/nomut when mut/nomut was already specified", tok.start, tok.end)),
-                    None => {},
-                },
-                Token::Public | Token::Private => match public.replace(if let Token::Public = tok.token { true } else { false }) {
-                    Some(_val) => self.report_err(ParseResultError::SemanticIssue("tried to mark a symbol pub/nopub when pub/nopub was already specified", tok.start, tok.end)),
-                    None => {},
-                },
-                _ => { unreachable!("Guarded by eat_match_in") },
+                Token::Dynamic | Token::Nodynamic => {
+                    match dynamic.replace(if let Token::Dynamic = tok.token {
+                        true
+                    } else {
+                        false
+                    }) {
+                        Some(_val) => self.report_err(ParseResultError::SemanticIssue(
+                            "tried to mark a symbol dyn/nodyn when dyn/nodyn was already specified",
+                            tok.start,
+                            tok.end,
+                        )),
+                        None => {}
+                    }
+                }
+                Token::Mutable | Token::Immutable => {
+                    match mutable.replace(if let Token::Mutable = tok.token {
+                        true
+                    } else {
+                        false
+                    }) {
+                        Some(_val) => self.report_err(ParseResultError::SemanticIssue(
+                            "tried to mark a symbol mut/nomut when mut/nomut was already specified",
+                            tok.start,
+                            tok.end,
+                        )),
+                        None => {}
+                    }
+                }
+                Token::Public | Token::Private => {
+                    match public.replace(if let Token::Public = tok.token {
+                        true
+                    } else {
+                        false
+                    }) {
+                        Some(_val) => self.report_err(ParseResultError::SemanticIssue(
+                            "tried to mark a symbol pub/nopub when pub/nopub was already specified",
+                            tok.start,
+                            tok.end,
+                        )),
+                        None => {}
+                    }
+                }
+                _ => {
+                    unreachable!("Guarded by eat_match_in")
+                }
             }
         }
 
-        (public.unwrap_or(false), mutable.unwrap_or(false), dynamic.unwrap_or(false))
+        (
+            public.unwrap_or(false),
+            mutable.unwrap_or(false),
+            dynamic.unwrap_or(false),
+        )
     }
 
     /*pub fn parse_where_clause(
@@ -93,8 +128,13 @@ impl<'lexer> Parser<'lexer> {
 
         let (public, _mutable, _dynamic) = self.parse_symbol_specifiers();
 
-        self.expect_next_in(&[Token::Module, Token::Function, Token::Struct, Token::Let, Token::Use])?;
-
+        self.expect_next_in(&[
+            Token::Module,
+            Token::Function,
+            Token::Struct,
+            Token::Let,
+            Token::Use,
+        ])?;
 
         if let Ok(tw) = self.lex.la(0) {
             let r = match tw.token {
@@ -267,7 +307,6 @@ impl<'lexer> Parser<'lexer> {
 
         Ok(rvec)
     }
-    
 
     //const first_function: [Token; 1] = [Token::Function];
     pub fn parse_function_declaration(
@@ -300,9 +339,7 @@ impl<'lexer> Parser<'lexer> {
         })
     }
 
-    pub fn parse_use_declaration(
-        &mut self,
-    ) -> Result<ast::UseDeclaration, ParseResultError> {
+    pub fn parse_use_declaration(&mut self) -> Result<ast::UseDeclaration, ParseResultError> {
         let start = self.hard_expect(Token::Use)?.start;
 
         let mut scope = Vec::new();
@@ -312,7 +349,7 @@ impl<'lexer> Parser<'lexer> {
         let tw = self.lex.next()?;
 
         /*let first_str = match tw {
-            Token::Super | Token::Global | Token::*/
+        Token::Super | Token::Global | Token::*/
         //let first = self.hard_expect(Token::Identifier)
 
         scope.push(tw.slice);
@@ -334,7 +371,7 @@ impl<'lexer> Parser<'lexer> {
 
         if let Some(_) = self.eat_match(Token::As) {
             let id = self.hard_expect(Token::Identifier)?; // don't bubble, recoverable
-            
+
             alias = Some(id.slice);
         }
 
@@ -342,7 +379,12 @@ impl<'lexer> Parser<'lexer> {
 
         let node_info = ast::NodeInfo::from_indices(start, end);
 
-        Ok(ast::UseDeclaration { public: false, scope, node_info, alias })
+        Ok(ast::UseDeclaration {
+            public: false,
+            scope,
+            node_info,
+            alias,
+        })
     }
 
     /*pub fn builtin_declaration(
