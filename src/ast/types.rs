@@ -13,18 +13,18 @@ pub struct ImplementationBody {
 
 #[derive(Debug, Clone)]
 pub struct MemberAttributes {
-    public: bool,
-    mutable: bool,
+    pub public: bool,
+    pub mutable: bool,
     //deferred: bool,
 }
 
 #[derive(Debug, Clone)]
 pub struct FieldMember {
-    attributes: MemberAttributes,
+    pub attributes: MemberAttributes,
 
-    name: IStr,
+    pub name: IStr,
 
-    ftype: TypeReference,
+    pub ftype: TypeReference,
 }
 
 /// These act like structs or records in any other language,
@@ -33,7 +33,8 @@ pub struct FieldMember {
 /// This is a product type
 #[derive(Debug, Clone)]
 pub struct RecordValueDefinition {
-    fields: Vec<FieldMember>,
+    pub node_info: NodeInfo,
+    pub fields: Vec<FieldMember>,
 }
 
 /// Not yet implemented, but will allow for typical pattern matching
@@ -47,11 +48,12 @@ pub struct EnumValueDefinition {}
 /// immutable, replaceable, vtables to types
 #[derive(Debug, Clone)]
 pub struct RecordVirtualDefinition {
-    attrs: MemberAttributes,
+    pub node_info: NodeInfo,
+    pub attrs: MemberAttributes,
     //generic_params: Vec<IStr>,
-    implements_type: Option<TypeReference>,
-    for_type: TypeReference,
-    body: ImplementationBody,
+    pub implements_type: Option<TypeReference>,
+    pub for_type: TypeReference,
+    pub body: ImplementationBody,
 }
 
 /// Allows specifying a type schema for virtual record types

@@ -157,7 +157,7 @@ impl<'lexer> Parser<'lexer> {
                     }),
                 // TODO: maybe add global variable declaration?
                 Token::Struct => self
-                    .parse_struct_declaration()
+                    .parse_struct_definition()
                     .map(|sd| ast::SymbolDeclaration::TypeDefinition(sd))
                     .map_err(|e| {
                         failed = true;

@@ -56,6 +56,7 @@ impl<'lexer> Parser<'lexer> {
 
         Ok(ast::TypeDefinition::Struct(ast::RecordValueDefinition {
             fields,
+            node_info,
         }))
     }
 
@@ -97,4 +98,105 @@ impl<'lexer> Parser<'lexer> {
             expression: expr,
         })
     }
+
+    /// Scope spec:
+    /// | <empty string>
+    /// | <SCOPE>IDENTIFIER::
+    pub fn parse_scope(&mut self) -> Result<Vec<IStr>, ParseResultError> {
+        let mut svec = Vec::new();
+        while let Ok(s) = self.eat_match_string([Token::Identifier, Token::DoubleColon]).hint("A scope, if not null deriving, has an IDENTIFIER followed by a double colon (::)") {
+            let id = s[0]; // always exists, as we passed in a chain of length 2
+            svec.push(id.slice);
+        }
+
+        return Ok(svec)
+    }
+
+    pub fn parse_type_list(&mut self) -> Result<Vec<ast::TypeReference>, ParseResultError> {
+    }
+
+    /// Type reference specification:
+    /// | &TYPE
+    /// | (TYPELIST)
+    /// | <SCOPE>IDENTIFIER
+    /// | <SCOPE>IDENTIFIER<TYPELIST>
+    ///
+    /// Typelist:
+    /// | TYPE
+    /// | TYPELIST, TYPE
+    pub fn parse_type_specifier(
+        &mut self,
+    ) -> Result<Box<ast::TypeReference>, ParseResultError> {
+        // these can start with a ( for a typle, a & for a reference, or a str, [<] for a named and
+        // optionally parameterized type
+
+        let scope = self.parse_scope();
+
+        /*if !scope.silent {
+            self.hard_expect
+        }*/
+        // TODO: eval if should require a trailing :: during scope lookup
+
+        let final_id = scope
+            .scope
+            .last()
+            .expect("ScopedNameReference had no final id, not even implicit");
+        let final_id = *final_id;
+        let mut tr = ast::TypeReference::new(*scope, final_id);
+
+        let continuation = [Token::LParen, Token::Ampersand];
+        //self.eat_match_in(&continuation)?;
+        //println!("Trying to eat a type_spec with la {:?}", self.lex.la(0));
+        match self.eat_match_in(&continuation) {
+            Some(tw) => {
+                match tw.token {
+                    Token::Ampersand => {
+                        //println!("adding a & to a ctx that had {:?}", tr.ctx.scope);
+                        tr.ctx.scope.push(intern("&"));
+
+                        let inner = self.parse_type_specifier()?;
+                        tr.type_args.push(*inner);
+                    }
+                    Token::LParen => {
+                        tr.ctx.scope.push(intern("Tuple"));
+
+                        //println!("la is {:?}", self.lex.la(0));
+
+                        #[allow(irrefutable_let_patterns)]
+                        while let tri = self.parse_type_specifier()? {
+                            tr.type_args.push(*tri);
+                            match self.eat_match(Token::Comma) {
+                                None => break,
+                                Some(_comma) => continue,
+                            }
+                        }
+
+                        self.hard_expect(Token::RParen)?;
+                    }
+                    _ => {
+                        self.err(ParseResultError::UnexpectedToken(
+                            tw,
+                            continuation.to_vec(),
+                            Some(
+                                "Was trying to parse a type specifier, but didn't find a valid
+                            start to such an expression",
+                            ),
+                        ))?;
+                    }
+                };
+
+                //r
+
+                //Ok(Box::new(tr))
+            }
+            None => {
+                // no continuation to the type, parsing can be finished at this point
+            }
+        }
+
+        println!("Returns with tr {:?}", tr);
+
+        Ok(Box::new(tr))
+    }
+
 }

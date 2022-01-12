@@ -1,3 +1,5 @@
+use smallvec::SmallVec;
+
 use crate::lex::Token;
 
 use crate::helper::lex_wrap::ParseResultError;
@@ -190,6 +192,29 @@ impl<'lexer> Parser<'lexer> {
         } else {
             Err(ParseResultError::EndOfFile)
         }
+    }
+
+    pub fn eat_match_string<const LEN: usize>(&mut self, expected: [Token; LEN]) -> Result<SmallVec<[TokenWrapper; LEN]>, ParseResultError> {
+        let old_idx = self.lex.index();
+
+        let mut sv: SmallVec<[TokenWrapper; LEN]> = SmallVec::new();
+        for i in 0..LEN {
+            let m = self.eat_match(expected[i]);
+            match m {
+                Some(tw) => {
+                    sv.push(tw);
+                }
+                None => {
+                    self.lex.seek_to(old_idx);
+                    return match self.lex.la(0) {
+                        Err(e) => Err(e),
+                        Ok(tw) => Err(ParseResultError::UnexpectedToken(tw, expected.into(), None))
+                    }
+                }
+            }
+        }
+
+        Ok(sv)
     }
 }
 
