@@ -5,6 +5,9 @@ use crate::lex::Token;
 use crate::helper::lex_wrap::ParseResultError;
 use crate::helper::lex_wrap::TokenWrapper;
 use crate::parse::*;
+
+use super::parse_tools::LexerStreamHandle;
+use super::parse_tools::ParseValueGuard;
 //use std::collections::HashSet;
 
 pub trait ResultHint {
@@ -76,13 +79,13 @@ impl<'lexer> Parser<'lexer> {
     /// return its metadata. Otherwise, do nothing and return None
     ///
     /// fast-cased version of eat_match_in for when only one token would be possible
-    pub fn eat_match(&mut self, t: Token) -> Option<TokenWrapper> {
-        self.eat_match_in(&[t])
+    pub fn eat_match(&mut self, next: LexerStreamHandle, t: Token) -> Option<ParseValueGuard<TokenWrapper>> {
+        self.eat_match_in(next, [t])
     }
 
     /// If the current lookahead is within the [Token] slice passed, consume the token and
     /// return its metadata. Otherwise, do nothing and return None
-    pub fn eat_match_in(&mut self, t: &[Token]) -> Option<TokenWrapper> {
+    pub fn eat_match_in<const LEN: usize>(&mut self, next: LexerStreamHandle, t: [Token; LEN]) -> Option<ParseValueGuard<TokenWrapper>> {
         if let Ok(tw) = self.lex.la(0) {
             if t.contains(&tw.token) {
                 self.lex.advance();

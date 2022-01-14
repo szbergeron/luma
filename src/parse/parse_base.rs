@@ -295,7 +295,7 @@ impl<'lexer> Parser<'lexer> {
             self.hard_expect(Token::Colon)?;
             let tr = self.parse_type_specifier()?;
 
-            let r = (i.slice, *tr);
+            let r = (i.slice, tr);
 
             rvec.push(r);
 
@@ -333,7 +333,7 @@ impl<'lexer> Parser<'lexer> {
             body,
             params,
             //params: Vec::new(), // TODO
-            return_type: *return_type,
+            return_type,
             name: function_name.slice,
             public: false,
         })

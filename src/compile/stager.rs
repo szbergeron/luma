@@ -1,5 +1,5 @@
 //use crate::ast;
-use crate::helper::lex_wrap::{LookaheadStream, ParseResultError, Wrapper};
+use crate::helper::lex_wrap::{LookaheadStream, ParseResultError, LexerStream};
 use crate::helper::*;
 use crate::parse::Parser;
 use std::collections::HashSet;
@@ -31,7 +31,7 @@ pub fn parse_unit<'file>(
     let contents = handle.contents;
 
     let base_path = handle.id;
-    let mut lex = Wrapper::new(contents, base_path);
+    let mut lex = LexerStream::new(contents, base_path);
     let mut scanner = LookaheadStream::new(&mut lex);
 
     let mut parser = Parser::new(&mut scanner, scope);

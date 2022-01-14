@@ -2,6 +2,7 @@ mod parse_base;
 mod parse_expr;
 mod parse_helper;
 mod parse_type;
+mod parse_tools;
 
 pub use parse_base::*;
 pub use parse_expr::*;

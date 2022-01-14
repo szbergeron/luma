@@ -3,6 +3,8 @@ use crate::ast::{self, MemberAttributes};
 use crate::lex::Token;
 use crate::parse::*;
 
+use super::parse_tools::{LexerStreamHandle, ParseResult, ParseValueGuard};
+
 impl<'lexer> Parser<'lexer> {
     /// Currently unconditionally returns memberattrs as they are null-deriving
     pub fn parse_member_attributes(&mut self) -> Result<ast::MemberAttributes, ParseResultError> {
@@ -28,7 +30,7 @@ impl<'lexer> Parser<'lexer> {
             self.eat_match(Token::Identifier),
         ) {
             self.hard_expect(Token::Colon)?;
-            let field_type = *self.parse_type_specifier()?;
+            let field_type = self.parse_type_specifier()?;
             /*let expr = if self.eat_match(Token::Equals).is_some() {
                 Some(self.parse_expr()?)
             } else {
@@ -102,17 +104,33 @@ impl<'lexer> Parser<'lexer> {
     /// Scope spec:
     /// | <empty string>
     /// | <SCOPE>IDENTIFIER::
-    pub fn parse_scope(&mut self) -> Result<Vec<IStr>, ParseResultError> {
+    pub fn parse_scope(&mut self, next: LexerStreamHandle) -> ParseResult<Vec<IStr>, ParseResultError> {
         let mut svec = Vec::new();
         while let Ok(s) = self.eat_match_string([Token::Identifier, Token::DoubleColon]).hint("A scope, if not null deriving, has an IDENTIFIER followed by a double colon (::)") {
             let id = s[0]; // always exists, as we passed in a chain of length 2
             svec.push(id.slice);
         }
 
-        return Ok(svec)
+        ParseValueGuard::success(svec, next)
     }
 
     pub fn parse_type_list(&mut self) -> Result<Vec<ast::TypeReference>, ParseResultError> {
+        let mut tvec = Vec::new();
+        while let Ok(t) = self.parse_type_specifier() {
+            tvec.push(t);
+            match self.eat_match(Token::Comma) {
+                Some(_) => continue, // comma means there might be another type
+                None => break,
+            }
+        }
+
+        Ok(tvec)
+    }
+
+    pub fn parse_type_reference(&mut self, next: LexerStreamHandle) -> Result<ast::TypeReference, ParseResultError> {
+        let (scope, next) = self.parse_scope(next.split())?.extract(next); // fine to do unconditionally since null deriving
+
+        let typename = self.hard_expect(Token::Identifier).hint("All types start with a scope, and must be followed by ")?;
     }
 
     /// Type reference specification:
@@ -126,7 +144,7 @@ impl<'lexer> Parser<'lexer> {
     /// | TYPELIST, TYPE
     pub fn parse_type_specifier(
         &mut self,
-    ) -> Result<Box<ast::TypeReference>, ParseResultError> {
+    ) -> Result<ast::TypeReference, ParseResultError> {
         // these can start with a ( for a typle, a & for a reference, or a str, [<] for a named and
         // optionally parameterized type
 
@@ -142,12 +160,12 @@ impl<'lexer> Parser<'lexer> {
             .last()
             .expect("ScopedNameReference had no final id, not even implicit");
         let final_id = *final_id;
-        let mut tr = ast::TypeReference::new(*scope, final_id);
+        let mut tr = ast::TypeReference::new(scope, final_id);
 
         let continuation = [Token::LParen, Token::Ampersand];
         //self.eat_match_in(&continuation)?;
         //println!("Trying to eat a type_spec with la {:?}", self.lex.la(0));
-        match self.eat_match_in(&continuation) {
+        match self.eat_match_in(continuation) {
             Some(tw) => {
                 match tw.token {
                     Token::Ampersand => {
@@ -155,7 +173,7 @@ impl<'lexer> Parser<'lexer> {
                         tr.ctx.scope.push(intern("&"));
 
                         let inner = self.parse_type_specifier()?;
-                        tr.type_args.push(*inner);
+                        tr.type_args.push(inner);
                     }
                     Token::LParen => {
                         tr.ctx.scope.push(intern("Tuple"));
@@ -164,7 +182,7 @@ impl<'lexer> Parser<'lexer> {
 
                         #[allow(irrefutable_let_patterns)]
                         while let tri = self.parse_type_specifier()? {
-                            tr.type_args.push(*tri);
+                            tr.type_args.push(tri);
                             match self.eat_match(Token::Comma) {
                                 None => break,
                                 Some(_comma) => continue,

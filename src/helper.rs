@@ -39,8 +39,6 @@ pub mod interner {
         RodeoReader(lasso::RodeoReader<IStr>),
         RodeoResolver(lasso::RodeoResolver<IStr>),
     }
-    //static mut INTERNER_PRIV: Option<Rodeo> = None;
-    //static mut INTERNER_UNLOCKED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
     lazy_static! {
         static ref INTERNER_OWNING: std::sync::Mutex<Option<std::sync::Arc<std::sync::RwLock<Rodeo>>>> =
             std::sync::Mutex::new(None);
@@ -52,26 +50,6 @@ pub mod interner {
 
         static INTERNER_READ_COUNT_LOCAL: std::cell::UnsafeCell<i64> = std::cell::UnsafeCell::new(0);
     }
-
-    /********thread_local! {
-        static INTERNER_OWNING: Option<std::sync::Arc<std::sync::RwLock<Rodeo>>> = None;
-        static INTERNER_READ_GUARD: Option<Box<std:;sync::RwLockReadGuard<Rodeo>>> = None;
-    }*/
-
-    /*lazy_static! {
-        static ref INTERNER: lock_api::RawRwLock<Option<Rodeo>> = {
-            lock_api::RawRwLock::new(None)
-        };
-    }*/
-
-    //static INTERNER: lock_api::RwLock<Option<Rodeo>> =
-    /*lazy_static! {
-        static ref INTERNER: lock_api::RwLock<lock_api::RwLock<Option<Rodeo>>, Option<Rodeo>> = {
-            std::sync::RwLock::new()
-        };
-    }*/
-
-    //unsafe impl !Send for InternerReadGuard;
 
     pub struct InternerReadGuard {
         rodeo: &'static Rodeo,
@@ -86,8 +64,6 @@ pub mod interner {
                     let val = v.get();
                     *val += 1;
                 });
-
-                //let inner = INTERNER_GUARD.get_mut();
 
                 let r: &'static Rodeo = INTERNER_GUARD.with(|v| {
                     let optr = v.get();
@@ -141,16 +117,6 @@ pub mod interner {
         }
     }
 
-    /*impl std::ops::Deref for InternerReadGuard {
-        type Target = Rodeo;
-
-        fn deref(&self) -> &Self::Target {
-            self.rodeo
-        }
-    }*/
-
-    //unsafe fn open_read() -> InternerReadGuard
-
     /// Should be called before `interner()` is called, sets the static itself
     /// and issues memory barrier to try to swap the Option atomically
     ///
@@ -164,17 +130,6 @@ pub mod interner {
             .lock()
             .expect("Couldn't lock outer mutex for interner");
         *internal = op;
-
-        //let b = Box::new(it);
-
-        //let ptr = b.into_raw();
-
-        //std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
-
-        //INTERNER_PRIV.swap(ptr, std::sync::atomic::Ordering::SeqCst);
-        //INTERNER_PRIV = op;
-
-        //std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
     }
 
     /// INVARIANT: must be called after init_interner has already been called in a single-threaded ONLY
@@ -182,10 +137,6 @@ pub mod interner {
     /// then this may panic as it can not find the interner present.
     pub fn interner() -> InternerReadGuard {
         InternerReadGuard::new()
-        /*unsafe {
-            INTERNER_GUARD.with(|optref| {
-                optref.as_ref().expect("Interner didn't exist yet")
-        }*/
     }
 
     pub fn intern(v: &str) -> IStr {
@@ -288,11 +239,6 @@ pub enum Error {
     },
 }
 
-use crate::mid_repr::ScopeContext;
-
-pub type PathId = usize;
-pub type PathIdMapHandle<'context> = Arc<locks::RecursiveRWLock<PathIdMap>>;
-
 #[derive(Clone, Copy)]
 pub struct FileHandleRef<'a> {
     pub id: usize,
@@ -380,25 +326,10 @@ impl<'input> FileHandle {
         self.id
     }
 
-    /*pub fn slice(&self) -> Option<&str> {
-        /*if self.contents.is_some() {
-            //Some(&self.contents.unwrap()[..])
-            Some(&self.contents[..])
-        } else {
-            None
-        }*/
-        Some(&self.contents[..])
-        /*match self.contents.clone() {
-            Some(contents) => Some( &contents[..]),
-            None => None,
-        }*/
-    }*/
-
     pub fn as_ref<'handle, 'ltself>(&'ltself self) -> Option<FileHandleRef>
     where
         'ltself: 'handle,
     {
-        //println!("getting a ref for file with path {:?}", self.location);
         match self.contents.as_ref() {
             Some(s) => Some(FileHandleRef {
                 id: self.id.unwrap_or(0),
@@ -406,19 +337,6 @@ impl<'input> FileHandle {
             }),
             None => None,
         }
-        /*FileHandleRef {
-            id: self.id.unwrap_or(0),
-            contents: self.contents.as_ref().unwrap().get(..).unwrap(),
-            /*contents: unsafe {
-                let slice = self.contents.as_ref().unwrap().get(..).unwrap();
-                // String is pinned still, so slice is valid for all of 'self
-
-                let p = slice as *const str;
-
-                p.as_ref().unwrap()
-                // invariant: p was already nonnull because of cast from ref
-            }*/
-        }*/
     }
 
     pub fn close(&mut self) {
@@ -428,98 +346,6 @@ impl<'input> FileHandle {
     pub fn path(&self) -> &PathBuf {
         &self.location
     }
-
-    /*pub fn context<'context>(&self) -> Arc<RwLock<ScopeContext<'context>>> {
-        self.context.as_ref().unwrap().clone()
-    }*/
-}
-
-pub struct PathIdMap {
-    paths: Vec<FileHandle>,
-}
-
-pub struct ScopeIdMap {
-    global_context: Option<Arc<ScopeContext>>,
-    scopes: Vec<Arc<ScopeContext>>,
-}
-
-impl ScopeIdMap {
-    pub fn new() -> ScopeIdMap {
-        ScopeIdMap {
-            scopes: Vec::new(),
-            global_context: None,
-        }
-    }
-
-    pub fn handles(&self) -> &[Arc<ScopeContext>] {
-        &self.scopes[..]
-    }
-
-    pub fn handles_mut(&mut self) -> &mut [Arc<ScopeContext>] {
-        &mut self.scopes[..]
-    }
-
-    pub fn set_global(&mut self, global: Arc<ScopeContext>) {
-        self.global_context = Some(global);
-    }
-
-    pub fn global(&self) -> Option<Arc<ScopeContext>> {
-        self.global_context.clone()
-    }
-
-    pub fn push_scope(&mut self, scope: Arc<ScopeContext>) {
-        self.scopes.push(scope);
-    }
-    //
-}
-
-impl<'context> PathIdMap {
-    pub fn new_locked() -> Arc<locks::RecursiveRWLock<PathIdMap>> {
-        Arc::new(locks::RecursiveRWLock::new(Self::new()))
-    }
-
-    pub fn new() -> PathIdMap {
-        let v = Vec::new();
-
-        PathIdMap { paths: v }
-    }
-
-    pub fn drain(&mut self) -> std::vec::Drain<FileHandle> {
-        self.paths.drain(..)
-    }
-
-    pub fn push_path(
-        &mut self,
-        p: PathBuf,
-        //*scope: Vec<String>,*/ context: Arc<RwLock<ScopeContext<'context>>>,
-    ) -> PathId {
-        let id = self.paths.len();
-        self.paths.push(FileHandle::new(p, Some(id)));
-
-        id
-    }
-
-    pub fn get_path(&self, id: PathId) -> Option<&PathBuf> {
-        match self.paths.get(id) {
-            Some(p) => Some(p.path()),
-            None => None,
-        }
-    }
-
-    pub fn get_file(&self, id: PathId) -> Option<&FileHandle> {
-        match self.paths.get(id) {
-            Some(f) => Some(f),
-            _ => None,
-        }
-    }
-
-    pub fn handles(&self) -> &[FileHandle] {
-        &self.paths[..]
-    }
-
-    pub fn handles_mut(&mut self) -> &mut [FileHandle] {
-        &mut self.paths[..]
-    }
 }
 
 pub mod lex_wrap {
@@ -527,16 +353,7 @@ pub mod lex_wrap {
     use logos::Logos;
     use std::rc::Rc;
 
-    type ParseResult<'a> = Result<TokenWrapper, ParseResultError>;
-
-    pub struct Wrapper<'a> {
-        lexer: logos::Lexer<'a, crate::lex::Token>,
-        cur: Result<TokenWrapper, ParseResultError>,
-
-        current_line: isize,
-        last_newline_absolute: usize,
-        file_id: usize,
-    }
+    type LexResult<'a> = Result<TokenWrapper, ParseResultError>;
 
     #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
     pub enum CodeLocation {
@@ -559,7 +376,6 @@ pub mod lex_wrap {
 
     #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
     pub struct Loc {
-        //pub absolute: usize,
         pub line: isize,
         pub offset: isize,
         pub file_id: usize,
@@ -571,7 +387,6 @@ pub mod lex_wrap {
                 Self::Parsed(l) => write!(f, "({}:{})", l.line, l.offset),
                 Self::Builtin => write!(f, "(builtin)"),
             }
-            //write!(f, "({}:{})", self.line, self.offset)
         }
     }
 
@@ -597,7 +412,6 @@ pub mod lex_wrap {
         InternalParseIssue,
         EndOfFile,
         NotYetParsed,
-        //ExpectedExpressionNotPresent,
         /// The found token (and position), followed by a list of possible tokens here, followed by
         /// a message (if applicable)
         UnexpectedToken(TokenWrapper, Vec<crate::lex::Token>, Option<&'static str>),
@@ -619,11 +433,20 @@ pub mod lex_wrap {
         }
     }
 
-    impl<'a> Wrapper<'a> {
-        pub fn new(input: &'a str, file_id: usize) -> Wrapper<'a> {
+    pub struct LexerStream<'a> {
+        lexer: logos::Lexer<'a, crate::lex::Token>,
+        cur: Result<TokenWrapper, ParseResultError>,
+
+        current_line: isize,
+        last_newline_absolute: usize,
+        file_id: usize,
+    }
+
+    impl<'a> LexerStream<'a> {
+        pub fn new(input: &'a str, file_id: usize) -> LexerStream<'a> {
             let lex = crate::lex::Token::lexer(input);
 
-            Wrapper {
+            LexerStream {
                 lexer: lex,
                 cur: Err(ParseResultError::NotYetParsed),
                 last_newline_absolute: 0,
@@ -632,7 +455,7 @@ pub mod lex_wrap {
             }
         }
 
-        pub fn peek(&mut self) -> ParseResult {
+        pub fn peek(&mut self) -> LexResult {
             self.cur.clone()
         }
 
@@ -688,7 +511,7 @@ pub mod lex_wrap {
             }
         }
 
-        pub fn next(&mut self) -> ParseResult<'a> {
+        pub fn next(&mut self) -> LexResult<'a> {
             self.advance();
             self.peek()
         }
@@ -704,7 +527,7 @@ pub mod lex_wrap {
     //use crate::lex::Token;
 
     impl LookaheadStream {
-        pub fn new(w: &mut Wrapper) -> LookaheadStream {
+        pub fn new(w: &mut LexerStream) -> LookaheadStream {
             let mut v = Vec::new();
             let mut comment_level = 0;
             let mut inside_line_comment = false;
@@ -805,7 +628,7 @@ pub mod lex_wrap {
             self.seek_to(other.index());
         }
 
-        pub fn next(&mut self) -> ParseResult {
+        pub fn next(&mut self) -> LexResult {
             //self.tokens[self.index]
             let r = self.la(0);
             //self.latest = Some(r);
@@ -816,7 +639,7 @@ pub mod lex_wrap {
             r
         }
 
-        pub fn prev(&mut self) -> ParseResult {
+        pub fn prev(&mut self) -> LexResult {
             let r = self.la(0);
 
             //self.index -= 1;
@@ -833,7 +656,7 @@ pub mod lex_wrap {
             self.index += 1;
         }
 
-        pub fn la(&mut self, offset: isize) -> ParseResult {
+        pub fn la(&mut self, offset: isize) -> LexResult {
             let index = self.index as isize + offset;
             if index < 0 {
                 Err(ParseResultError::NotYetParsed)
@@ -850,13 +673,6 @@ pub mod lex_wrap {
         }
     }
 }
-
-/*pub mod locks {
-    pub mod recursive_rwlock {
-        pub struct RecursiveRWLock {
-        }
-    }
-}*/
 
 pub mod locks {
     /*enum RWLockState {
