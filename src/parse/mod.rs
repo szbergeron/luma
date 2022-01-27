@@ -8,8 +8,9 @@ pub use parse_base::*;
 pub use parse_expr::*;
 pub use parse_type::*;
 pub use parse_helper::*;
+pub use parse_tools::*;
 
-use crate::helper::lex_wrap::LookaheadStream;
+//use crate::helper::lex_wrap::LookaheadStream;
 use crate::helper::lex_wrap::{CodeLocation, ParseResultError};
 use crate::helper::*;
 use crate::helper::interner::*;
@@ -29,7 +30,7 @@ pub struct Parser<'lexer>
 }
 
 pub struct SyncSliceHandle {
-    start: usize,
+    pub start: usize,
     //end: usize,
 }
 

@@ -128,7 +128,7 @@ impl<'lexer> Parser<'lexer> {
     }
 
     pub fn parse_type_reference(&mut self, next: LexerStreamHandle) -> Result<ast::TypeReference, ParseResultError> {
-        let (scope, next) = self.parse_scope(next.split())?.extract(next); // fine to do unconditionally since null deriving
+        let (scope, next) = self.parse_scope(next)?.open(); // fine to do unconditionally since null deriving
 
         let typename = self.hard_expect(Token::Identifier).hint("All types start with a scope, and must be followed by ")?;
     }

@@ -1,33 +1,33 @@
-use crate::helper::lex_wrap::TokenWrapper;
+use crate::helper::lex_wrap::{TokenWrapper, LookaheadHandle};
 
 use super::Parser;
 
+// During any recursive "rule", if we encounter
+// a local parsing error we want to know what to synchronize to.
+//
+// A linked stack is formed at each stage, with each
+// rule pushing a list of "next" items that it can try
+// to consume. 
+pub struct RuleContext {
+}
+
+#[derive(Clone, Copy)]
 pub struct LexerStreamHandle {
     index: usize,
     id: usize,
 }
 
-impl LexerStreamHandle {
-    pub fn split(&self) -> Self {
-        Self { id: self.id + 1, index: self.index }
-    }
-}
-
-pub struct ParseValueGuard<ParseValue> {
+pub struct ParseValueGuard<'tokens, ParseValue> {
     value: ParseValue,
-    handle: LexerStreamHandle,
+    handle: LookaheadHandle<'tokens>,
 }
 
-impl<T> ParseValueGuard<T> {
-    pub fn success<E>(value: T, handle: LexerStreamHandle) -> Result<ParseValueGuard<T>, E> {
+impl<'tokens, T> ParseValueGuard<'tokens, T> {
+    pub fn success<E>(value: T, handle: LookaheadHandle<'tokens>) -> Result<ParseValueGuard<'tokens, T>, E> {
         Ok(ParseValueGuard { value, handle })
     }
 
-    pub fn extract(self, token: LexerStreamHandle) -> (LexerStreamHandle, T) {
-        if token.index > self.handle.index {
-            panic!("Extract was given a 'newer' token, this is a compiler bug");
-        }
-
+    pub fn open(self) -> (LookaheadHandle<'tokens>, T) {
         (self.handle, self.value)
     }
 }
@@ -35,4 +35,4 @@ impl<T> ParseValueGuard<T> {
 impl<'lexer> Parser<'lexer> {
 }
 
-pub type ParseResult<T, E> = Result<ParseValueGuard<T>, E>;
+pub type ParseResult<'t, T, E> = Result<ParseValueGuard<'t, T>, E>;
