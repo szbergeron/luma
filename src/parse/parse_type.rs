@@ -4,6 +4,7 @@ use crate::lex::Token;
 use crate::parse::*;
 
 use super::parse_tools::{LexerStreamHandle, ParseResult, ParseValueGuard};
+use super::schema::Nonterminal;
 
 impl<'lexer> Parser<'lexer> {
     /// Currently unconditionally returns memberattrs as they are null-deriving
@@ -62,8 +63,19 @@ impl<'lexer> Parser<'lexer> {
         }))
     }
 
-    pub fn parse_type_block(&mut self) -> Result<ast::ImplementationBody, ParseResultError> {
-        todo!()
+    pub fn parse_type_block(&mut self, t: &TokenProvider) -> Result<ast::ImplementationBody, ParseResultError> {
+        let t = t.child()
+            .rule(&[
+                  Nonterminal::Terminal(Token::Identifier),
+                  Nonterminal::Terminal(Token::LBrace),
+                  Nonterminal::Skip { index: 6 },
+                    Nonterminal::Terminal(Token::Identifier), Nonterminal::Rule("This would strictly match a type description, but here we allow only matching the basic blocks"),
+                    Nonterminal::Terminal(Token::Colon),
+                    Nonterminal::Terminal(Token::Identifier),
+                  Nonterminal::Repeat { index: 2 },
+                  Nonterminal::Terminal(Token::RBrace),
+            ])
+        t.take(Token::RBrace)?
     }
 
     /**

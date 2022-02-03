@@ -76,16 +76,28 @@ pub type ParseResult<'t, T, E> = Result<ParseValueGuard<'t, T>, E>;
  */
 pub mod schema {
 
-    use crate::lex::Token;
+    use smallvec::SmallVec;
+
+    use crate::{lex::{Token, TokenWrapper}, ast::Span};
 
     // This is intentionally very general, and doesn't give full flexibility to define
     // full regular rules. This allows for a more simple solver that doesn't have to
     // track loop counts or do breaking, and only introduces minimal error
     // in cases where things like "no trailing comma means a break" occur
     pub enum Nonterminal {
+        /// Allow jumping back to the given point in the rule if desired
         Repeat { index: usize },
+
+        /// Allow skipping forward and searching the forward path
+        Skip { index: usize },
+
+        /// Use for any actual token that should be matched imperatively
         Terminal(Token),
+
+        /// Represents a child parsed rule. Not yet implemented
         Rule(&'static str), // use to represent a child parsed rule
+
+        /// Represents the end of a block, either outer level or repeat
         End(),
     }
     // this can be composed by this syntax:
@@ -129,6 +141,9 @@ pub mod schema {
                     Nonterminal::Repeat { index } => {
                         Distance::lesser(self.rec_find(i + 1, depth + 1, terminal), self.rec_find(index, depth + 1, terminal))
                     }
+                    Nonterminal::Skip { index } => {
+                        Distance::lesser(self.rec_find(i + 1, depth + 1, terminal), self.rec_find(index, depth + 1, terminal))
+                    }
                 }
             }
 
@@ -137,6 +152,58 @@ pub mod schema {
         pub fn distance(&self, t: Token) -> Distance {
             self.rec_find(0, 0, t)
         }
+    }
+
+    pub struct RecoveryToken {
+        /// Any messages that are collected, stating what was being expected at the time
+        /// as well as additional info for the solve
+        messages: SmallVec<[String; 3]>,
+        
+        /// Gives the ID/index of the rule that was used to solve this recovery within
+        /// the RuleUnit that matches_unit references
+        matches_rule: usize,
+
+        /// Refers to the ID of the RuleUnit that gave the most minimal correction action
+        matches_unit: usize,
+
+        /// When doing a synchronization action, this reports what area of the code had to be
+        /// discarded (if any) to synchronize the stream. Most often this will be empty,
+        /// and will simply be a zero-size range at the index of the token that caused the
+        /// error cascade
+        range_discarded: Span,
+    }
+
+    pub struct RuleUnit<'parent> {
+        id: usize,
+        parent: Option<&'parent RuleUnit<'parent>>,
+        rules: SmallVec<[Rule; 10]>, // can potentially use an arena allocator or an ID reuse mechanism for this,
+                          // or just put it inline in the stack if we want to do unsized types
+                          // would depend on https://github.com/rust-lang/rust/issues/48055 for
+                          // support
+                          //
+                          // In meantime can likely use smallvec with maximum "normal" rule size
+    }
+
+    impl<'parent> RuleUnit<'parent> {
+        pub fn add_rule(&mut self, rule: Rule) {
+            self.rules.push(rule);
+        }
+
+        pub fn child(&self) -> Self {
+            RuleUnit {
+                id: self.id + 1,
+                parent: Some(self),
+                rules: SmallVec::default(),
+            }
+        }
+
+        pub fn search(token: TokenWrapper, starting_index: usize, within: &Vec<TokenWrapper>) -> RecoveryToken {
+        }
+    }
+
+    pub struct CorrectingHandle<'tokenvec> {
+        tokens: &'tokenvec Vec<TokenWrapper>,
+        index: usize,
     }
 
     pub struct SchemaUnit<'parent> {
@@ -148,6 +215,14 @@ pub mod schema {
     /// ErrorHandle is eligible to receive a token (no error correction is occurring or the handle
     /// is from a nonterminal that has been found to be a recovery point) *and* the requested token
     /// is in the stream then that token will be given out. 
+    ///
+    /// Correctors are interior-mutable
     pub struct Corrector {
+        //
+    }
+
+    impl Corrector {
+        pub fn peek(&self, handle: CorrectionHandle, index: isize) {
+        }
     }
 }
