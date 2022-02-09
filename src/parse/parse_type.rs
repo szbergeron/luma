@@ -65,7 +65,7 @@ impl<'lexer> Parser<'lexer> {
 
     pub fn parse_type_block(&mut self, t: &TokenProvider) -> Result<ast::ImplementationBody, ParseResultError> {
         let t = t.child()
-            .rule(&[
+            .rules(&[
                   Nonterminal::Terminal(Token::Identifier),
                   Nonterminal::Terminal(Token::LBrace),
                   Nonterminal::Skip { index: 6 },
@@ -74,8 +74,25 @@ impl<'lexer> Parser<'lexer> {
                     Nonterminal::Terminal(Token::Identifier),
                   Nonterminal::Repeat { index: 2 },
                   Nonterminal::Terminal(Token::RBrace),
-            ])
-        t.take(Token::RBrace)?
+            ]);
+
+        let type_name = t.take(Token::Identifier)?;
+
+        t.take(Token::LBrace)?; // if this unit isn't supposed to be "taking" tokens (even if they are virtual) then bubble error
+
+        while let Some(_) = t.peek_for(Token::Identifier) {
+            let field_name = t.take(Token::Identifier)?;
+
+            t.take(Token::Colon)?;
+
+            let type_spec = self.parse_type_specifier().catch(&t)?;
+
+            if let None = t.peek_for(Token::Comma) {
+                break;
+            }
+        }
+
+        t.take(Token::RBrace)?;
     }
 
     /**
