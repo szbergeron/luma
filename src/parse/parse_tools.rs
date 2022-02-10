@@ -131,7 +131,7 @@ pub mod schema {
     }
 
     pub struct Rule {
-        index: usize,
+        index: isize,
         tokens: &'static [Nonterminal],
     }
 
@@ -140,31 +140,82 @@ pub mod schema {
             Self { index: 0, tokens }
         }
 
-        fn rec_find(&self, i: usize, depth: usize, terminal: Token) -> Distance {
+        fn rec_find(&self, i: usize, depth: usize, terminal: &[Token]) -> Distance {
             if depth > self.tokens.len() {
                 Distance::Infinite
             } else {
-                match self.tokens[i] {
-                    Nonterminal::End() => Distance::Infinite,
-                    Nonterminal::Rule(_) => Distance::Infinite, // we're not going to currently try recursing
-                    Nonterminal::Terminal(t) => {
-                        if t == terminal {
-                            Distance::Finite(depth)
-                        } else {
+                match terminal {
+                    [] => Distance::Finite(0), // base case, we're already a match so no distance
+                    [first, rest @ ..] => match self.tokens[i] {
+                        Nonterminal::End() => Distance::Infinite,
+                        //Nonterminal::Rule(_) => Distance::Infinite, // we're not going to currently try recursing
+                        Nonterminal::Rule(_) => {
+                            // we treat a rule as cost 1 for now
                             self.rec_find(i + 1, depth + 1, terminal)
                         }
-                    }
-                    Nonterminal::Repeat { index } => Distance::lesser(
-                        self.rec_find(i + 1, depth + 1, terminal),
-                        self.rec_find(index, depth + 1, terminal),
-                    ),
-                    Nonterminal::Skip { index } => Distance::lesser(
-                        self.rec_find(i + 1, depth + 1, terminal),
-                        self.rec_find(index, depth + 1, terminal),
-                    ),
+                        Nonterminal::Terminal(t) => {
+                            if t == *first {
+                                self.rec_find(i + 1, depth, terminal)
+                                //Distance::Finite(depth)
+                            } else {
+                                self.rec_find(i + 1, depth + 1, terminal)
+                            }
+                        }
+                        Nonterminal::Repeat { index } => Distance::lesser(
+                            self.rec_find(i + 1, depth + 1, terminal),
+                            self.rec_find(index, depth + 1, terminal),
+                        ),
+                        Nonterminal::Skip { index } => Distance::lesser(
+                            self.rec_find(i + 1, depth + 1, terminal),
+                            self.rec_find(index, depth + 1, terminal),
+                        ),
+                    },
                 }
             }
         }
+
+        /*pub fn search_forward(&mut self, tw: TokenWrapper, mut index: usize) -> Option<isize> {
+            loop {
+                match self.tokens[index as usize] {
+                    Nonterminal::Terminal(t) => {
+                        if t == tw.token {
+                            break Some(index + 1) // we now point to token directly after the matching terminal
+                        } else {
+                            break None
+                        }
+                    },
+                    Nonterminal::End() => {
+                        break None
+                    },
+                    _ => index += 1,
+                }
+            }
+        }
+
+        pub fn consumes(&mut self, tw: TokenWrapper) {
+            match self.index {
+                -1 => (), // do nothing, this arm/variant has been discarded
+                other => {
+                    match self.tokens[self.index] {
+                        Nonterminal::End() => { // we don't accept further tokens, so much not be this rule
+                            self.index = -1;
+                        }
+                        Nonterminal::Repeat { index } => {
+                            // this algo is greedy, even if not entirely "correct". We try as soon
+                            // as possible to advance, and only "go back" if the forward advance
+                            // doesn't match
+                            //
+                            if let Some(idx) = self.search_forward(tw, self.index) {
+                                self.index = idx;
+                            } else if let Some(idx) = self.search_forward(tw, index)
+                                self.index = idx;
+                            } else {
+                            }
+                        }
+                    }
+                }
+            }
+        }*/
 
         pub fn distance(&self, t: Token) -> Distance {
             self.rec_find(0, 0, t)
@@ -190,11 +241,12 @@ pub mod schema {
         id: usize,
         parent: Option<&'parent RuleUnit<'parent>>,
         rules: SmallVec<[Rule; 10]>, // can potentially use an arena allocator or an ID reuse mechanism for this,
-                                     // or just put it inline in the stack if we want to do unsized types
-                                     // would depend on https://github.com/rust-lang/rust/issues/48055 for
-                                     // support
-                                     //
-                                     // In meantime can likely use smallvec with maximum "normal" rule size
+        // or just put it inline in the stack if we want to do unsized types
+        // would depend on https://github.com/rust-lang/rust/issues/48055 for
+        // support
+        //
+        // In meantime can likely use smallvec with maximum "normal" rule size
+        encountered_tokens: SmallVec<[Token; 10]>,
     }
 
     impl<'parent> RuleUnit<'parent> {
@@ -207,10 +259,20 @@ pub mod schema {
                 id: self.id + 1,
                 parent: Some(&self),
                 rules: SmallVec::default(),
+                encountered_tokens: SmallVec::default(),
             }
         }
 
-        pub fn search(&self, token: TokenWrapper, lh: &LookaheadHandle) -> Option<Solution> {
+        pub fn consumes(&mut self, t: TokenWrapper) {
+            self.encountered_tokens.push(t.token);
+        }
+
+        pub fn search(&self, tw: TokenWrapper, lh: &LookaheadHandle) -> Option<Solution> {
+            // need to find candidate rules that would allow getting to this state
+            let candidates = self
+                .rules
+                .iter()
+                .filter(|rule| rule.is_candidate(tw.token, &self.encountered_tokens));
             panic!()
         }
     }
@@ -253,7 +315,10 @@ pub mod schema {
 
         pub fn take_in(&mut self, t: &[Token]) -> TokenResult {
             match self.peek_for_in(t) {
-                Some(tw) => Ok(Ok(tw)),
+                Some(tw) => {
+                    self.unit_rules.consumes(tw);
+                    Ok(Ok(tw))
+                }
                 None => {
                     // need to do a search and potentially issue a bubbling error
                     let tr = self.lh.next();
