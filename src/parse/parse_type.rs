@@ -5,6 +5,7 @@ use crate::parse::*;
 
 use super::parse_tools::{LexerStreamHandle, ParseResult, ParseValueGuard};
 use super::schema::Nonterminal;
+use Nonterminal::*;
 
 impl<'lexer> Parser<'lexer> {
     /// Currently unconditionally returns memberattrs as they are null-deriving
@@ -64,6 +65,9 @@ impl<'lexer> Parser<'lexer> {
     }
 
     pub fn parse_type_block(&mut self, t: &TokenProvider) -> Result<ast::ImplementationBody, ParseResultError> {
+        /*let type_spec = Rule("type specifier");
+        let field = subrule(&[Terminal(Token::Identifier), Terminal(Token::Colon), type_spec, ])
+
         let t = t.child()
             .rules(&[
                   Nonterminal::Terminal(Token::Identifier),
@@ -74,7 +78,7 @@ impl<'lexer> Parser<'lexer> {
                     Nonterminal::Terminal(Token::Identifier),
                   Nonterminal::Repeat { index: 2 },
                   Nonterminal::Terminal(Token::RBrace),
-            ]);
+            ]);*/
 
         let type_name = t.take(Token::Identifier)?;
 

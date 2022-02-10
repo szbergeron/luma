@@ -81,6 +81,8 @@ pub type ParseResult<'t, T, E> = Result<ParseValueGuard<'t, T>, E>;
  */
 pub mod schema {
 
+    use std::collections::HashMap;
+
     use smallvec::SmallVec;
 
     use crate::{
@@ -92,22 +94,36 @@ pub mod schema {
     // full regular rules. This allows for a more simple solver that doesn't have to
     // track loop counts or do breaking, and only introduces minimal error
     // in cases where things like "no trailing comma means a break" occur
-    pub enum Nonterminal {
-        /// Allow jumping back to the given point in the rule if desired
-        Repeat { index: usize },
-
-        /// Allow skipping forward and searching the forward path
-        Skip { index: usize },
-
+    pub enum Nonterminal<'component> {
         /// Use for any actual token that should be matched imperatively
         Terminal(Token),
 
         /// Represents a child parsed rule. Not yet implemented
         Rule(&'static str), // use to represent a child parsed rule
 
+        SubRule {
+            range: Range,
+            components: &'component [Nonterminal<'component>],
+        },
+
+        Split {
+            variants: &'component [Nonterminal<'component>],
+        },
+
         /// Represents the end of a block, either outer level or repeat
         End(),
     }
+
+    impl<'component> Nonterminal<'component> {
+        pub fn subrule<R>(rule: &'component [Nonterminal<'component>], range: R) -> Nonterminal<'component> where R: ToRange {
+            Nonterminal::SubRule { range: range.to_range(), components: rule }
+        }
+
+        pub fn split(variants: &'static [Nonterminal<'component>]) -> Nonterminal<'component> {
+            Nonterminal::Split { variants }
+        }
+    }
+
     // this can be composed by this syntax:
     // schema::unit(
     //     rule()
@@ -130,9 +146,41 @@ pub mod schema {
         }
     }
 
+    type Range = (Option<isize>, Option<isize>);
+
+    trait ToRange: Sized + Clone + Copy {
+        fn to_range(self) -> (Option<isize>, Option<isize>);
+    }
+
+    impl ToRange for (Option<isize>, isize) {
+        fn to_range(self) -> (Option<isize>, Option<isize>) {
+            (self.0.unwrap_or(0), self.1).to_range()
+        }
+    }
+
+    impl ToRange for (isize, Option<isize>) {
+        fn to_range(self) -> (Option<isize>, Option<isize>) {
+            (Some(self.0), self.1)
+        }
+    }
+
+    impl ToRange for (isize, isize) {
+        fn to_range(self) -> (Option<isize>, Option<isize>) {
+            (Some(self.0), Some(self.1))
+        }
+    }
+
+    impl ToRange for (Option<isize>, Option<isize>) {
+        fn to_range(self) -> (Option<isize>, Option<isize>) {
+            self
+        }
+    }
+
     pub struct Rule {
         index: isize,
-        tokens: &'static [Nonterminal],
+        subrules: HashMap<&'static str, &'static [Nonterminal]>,
+        entry: &'static str,
+        //tokens: &'static [Nonterminal],
     }
 
     impl Rule {
@@ -305,6 +353,7 @@ pub mod schema {
     type TokenResult = ParseResult<TokenWrapper>;
 
     impl<'parent, 'tokens> TokenProvider<'parent, 'tokens> {
+        pub fn mood_change(&mut self, )
         pub fn provides(&self, s: Solution) -> bool {
             s.solution_unit_id == self.unit_rules.id
         }
