@@ -81,13 +81,14 @@ impl<'tokens, T> ParseValueGuard<'tokens, T> {
  */
 pub mod schema {
 
-    use std::collections::HashMap;
+    use std::{collections::HashMap, convert::Infallible, ops::ControlFlow};
 
     use smallvec::SmallVec;
 
     use crate::{
         ast::Span,
-        lex::{ErrorSet, LookaheadHandle, ParseResultError, Token, TokenWrapper}, helper::EitherNone,
+        helper::{EitherAnd, EitherNone},
+        lex::{ErrorSet, LookaheadHandle, ParseResultError, Token, TokenWrapper},
     };
 
     // This is intentionally very general, and doesn't give full flexibility to define
@@ -115,8 +116,17 @@ pub mod schema {
     }
 
     impl<'component> Nonterminal<'component> {
-        pub fn subrule<R>(rule: &'component [Nonterminal<'component>], range: R) -> Nonterminal<'component> where R: ToRange {
-            Nonterminal::SubRule { range: range.to_range(), components: rule }
+        pub fn subrule<R>(
+            rule: &'component [Nonterminal<'component>],
+            range: R,
+        ) -> Nonterminal<'component>
+        where
+            R: ToRange,
+        {
+            Nonterminal::SubRule {
+                range: range.to_range(),
+                components: rule,
+            }
         }
 
         pub fn split(variants: &'static [Nonterminal<'component>]) -> Nonterminal<'component> {
@@ -316,14 +326,24 @@ pub mod schema {
         }
 
         pub fn consumes(&mut self, t: TokenWrapper) {
-            match self.tokens.iter().enumerate().rfind(|(idx, tok)| **tok == t.token) {
+            match self
+                .tokens
+                .iter()
+                .enumerate()
+                .rfind(|(idx, tok)| **tok == t.token)
+            {
                 Some((idx, _)) => self.tokens.truncate(idx),
                 None => (),
             }
             //self.encountered_tokens.push(t.token);
         }
 
-        fn search_internal(&self, t: TokenWrapper, position: isize, lh: &LookaheadHandle) -> Option<Solution> {
+        fn search_internal(
+            &self,
+            t: TokenWrapper,
+            position: isize,
+            lh: &LookaheadHandle,
+        ) -> Option<Solution> {
             match self.tokens.iter().rposition(|&tok| tok == t.token) {
                 Some(pos) => {
                     for v in self.tokens[pos..].iter().rev() {
@@ -336,25 +356,27 @@ pub mod schema {
                         solution_unit_id: self.id,
                         solution_rule_id: 0,
                         jump_to: position,
-                        range_discarded: Span { start: lh.la(0).unwrap().start, end: t.end }
+                        range_discarded: Span {
+                            start: lh.la(0).unwrap().start,
+                            end: t.end,
+                        },
                     })
-                },
-                None => {
-                    self.parent.map(|p| p.search_internal(t, position, lh)).flatten()
                 }
+                None => self
+                    .parent
+                    .map(|p| p.search_internal(t, position, lh))
+                    .flatten(),
             }
         }
 
         pub fn search(&self, lh: &LookaheadHandle) -> Option<Solution> {
             for i in 0.. {
                 match lh.la(i) {
-                    Ok(tw) => {
-                        match self.search_internal(tw, i, lh) {
-                            Some(solution) => return Some(solution),
-                            None => continue,
-                        }
+                    Ok(tw) => match self.search_internal(tw, i, lh) {
+                        Some(solution) => return Some(solution),
+                        None => continue,
                     },
-                    Err(_) => return None
+                    Err(_) => return None,
                 }
             }
 
@@ -394,9 +416,79 @@ pub mod schema {
         lh: LookaheadHandle<'tokens>,
     }
 
-    type ParseResult<T> = Result<EitherNone<T, ErrorSet>, CorrectionBubblingError>;
+    type ParseResult<T> = Result<WithError<T>, CorrectionBubblingError>;
 
     type TokenResult = ParseResult<TokenWrapper>;
+
+    pub enum WithError<T> {
+        Error(ErrorSet),
+        Value(T, ErrorSet),
+    }
+
+    impl<T> WithError<T> {
+        pub fn if_bubbling(self, e: &ErrorSet) -> Self {
+            // we only add errors to the set if we have no value,
+            // as we will not be bubbling if we do have one
+            match self {
+                Self::Error(e) => {
+                    e.append(&mut e.clone());
+                }
+                Self::Value(_, _) => (), // do nothing, we're not bubbling
+            }
+
+            self
+        }
+
+        pub fn tuplize(self) -> (Option<T>, ErrorSet) {
+            match self {
+                Self::Error(e) => (None, e),
+                Self::Value(v, e) => (Some(v), e),
+            }
+        }
+
+        pub fn optionize(self, o: &mut ErrorSet) -> Option<T> {
+            let (v, e) = self.tuplize();
+            o.append(e);
+            v
+        }
+    }
+
+    struct WithErrorValue<T> {
+        pub value: T,
+        pub error: ErrorSet,
+    }
+
+    impl<T> From<(T, ErrorSet)> for WithErrorValue<T> {
+        fn from((value, error): (T, ErrorSet)) -> Self {
+            Self { value, error }
+        }
+    }
+
+    impl<T> std::ops::Try for WithError<T> {
+        type Output = WithErrorValue<T>;
+
+        type Residual = WithError<Infallible>;
+
+        fn from_output(output: Self::Output) -> Self {
+            todo!()
+        }
+
+        fn branch(self) -> std::ops::ControlFlow<Self::Residual, Self::Output> {
+            match self {
+                Self::Value(v1, v2) => ControlFlow::Continue((v1, v2).into()),
+                Self::Error(v) => ControlFlow::Break(WithError::Error(v)),
+            }
+        }
+    }
+
+    impl<T> std::ops::FromResidual for WithError<T> {
+        fn from_residual(r: WithError<Infallible>) -> WithError<T> {
+            match r {
+                WithError::<Infallible>::Error(b) => WithError::Error(b),
+                _ => unreachable!(),
+            }
+        }
+    }
 
     impl<'parent, 'tokens> TokenProvider<'parent, 'tokens> {
         pub fn child(&'parent self) -> TokenProvider<'parent, 'tokens> {

@@ -1,6 +1,6 @@
 use crate::ast::base::IntoAstNode;
 use crate::ast::{self, MemberAttributes};
-use crate::lex::Token;
+use crate::lex::{Token, ErrorSet};
 use crate::parse::*;
 
 use super::parse_tools::{LexerStreamHandle, ParseResult, ParseValueGuard};
@@ -68,6 +68,7 @@ impl<'lexer> Parser<'lexer> {
         &mut self,
         t: &TokenProvider,
     ) -> Result<ast::ImplementationBody, ParseResultError> {
+        let mut errors = ErrorSet::new();
         /*let type_spec = Rule("type specifier");
         let field = subrule(&[Terminal(Token::Identifier), Terminal(Token::Colon), type_spec, ])
 
@@ -85,7 +86,7 @@ impl<'lexer> Parser<'lexer> {
 
         let t = t.child().predict(&[Token::LBrace, Token::Opaque, Token::Comma, Token::RBrace]);
 
-        let type_name = t.take(Token::Identifier)?;
+        let type_name = t.take(Token::Identifier)?.optionize(&mut errors);
 
         t.take(Token::LBrace)?;
 
@@ -96,7 +97,7 @@ impl<'lexer> Parser<'lexer> {
                 //
             };
 
-            match t.take_in(&[Token::Comma, Token::RBrace])?? {
+            match t.take_in(&[Token::Comma, Token::RBrace])??.value.token {
                 Token::Comma => {
                     // we could have another field, so try looking again
                     t.predict_next(Token::Comma); // we are potentially still looking for a comma in our lookahead,
