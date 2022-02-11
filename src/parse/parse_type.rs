@@ -4,7 +4,7 @@ use crate::lex::Token;
 use crate::parse::*;
 
 use super::parse_tools::{LexerStreamHandle, ParseResult, ParseValueGuard};
-use super::schema::Nonterminal;
+use super::schema::{Nonterminal, TokenProvider};
 use Nonterminal::*;
 
 impl<'lexer> Parser<'lexer> {
@@ -64,7 +64,10 @@ impl<'lexer> Parser<'lexer> {
         }))
     }
 
-    pub fn parse_type_block(&mut self, t: &TokenProvider) -> Result<ast::ImplementationBody, ParseResultError> {
+    pub fn parse_type_block(
+        &mut self,
+        t: &TokenProvider,
+    ) -> Result<ast::ImplementationBody, ParseResultError> {
         /*let type_spec = Rule("type specifier");
         let field = subrule(&[Terminal(Token::Identifier), Terminal(Token::Colon), type_spec, ])
 
@@ -80,11 +83,91 @@ impl<'lexer> Parser<'lexer> {
                   Nonterminal::Terminal(Token::RBrace),
             ]);*/
 
+        let t = t.child().predict(&[Token::LBrace, Token::Opaque, Token::Comma, Token::RBrace]);
+
         let type_name = t.take(Token::Identifier)?;
 
-        t.take(Token::LBrace)?; // if this unit isn't supposed to be "taking" tokens (even if they are virtual) then bubble error
+        t.take(Token::LBrace)?;
+
+        loop {
+            let r = || {
+                let t = t.child().predict(&[Token::Identifier, Token::Colon, Token::Opaque, Token::Comma]);
+
+                //
+            };
+
+            match t.take_in(&[Token::Comma, Token::RBrace])?? {
+                Token::Comma => {
+                    // we could have another field, so try looking again
+                    t.predict_next(Token::Comma); // we are potentially still looking for a comma in our lookahead,
+                    // so leave it in the rule
+                    continue;
+                },
+                Token::RBrace => {
+                    // end of the block, so return
+                    break;
+                },
+                other => {
+                    println!("Offending input token: {:?}", other);
+                    panic!("Got a token that should not be there after synchronization")
+                }
+            }
+        }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        /*t.take(Token::LBrace)?; // if this unit isn't supposed to be "taking" tokens (even if they are virtual) then bubble error
+
+        let sync = loop {
+            let r = || {
+                //
+                let t = t.child().linear(&[Token::Identifier, Token::Colon, Token::Opaque]);
+
+                match t.try_take(Token::Identifier) {
+                    Some(field_name) => {
+                        t.take(Token::Colon)?
+                    },
+                }
+            };
+        }
+
+                loop {
+        let sync = || {
+            let t = t.child().linear(&[Token::Identifier, Token::Colon, Token::Opaque]);
+
+            match t.try_take(Token::Identifier) {
+                Some(field_name) => {
+                    t.take(Token::Colon)?
+                },
+            }
+
+            break t.syncer();
+
+            let field_name = t.take(Token::Identifier)?;
+        }
+        }();
 
         while let Some(_) = t.peek_for(Token::Identifier) {
+            let t =
+                t.child()
+                    .linear(&[Token::Identifier, Token::Colon, Token::Opaque, Token::Comma]);
+
             let field_name = t.take(Token::Identifier)?;
 
             t.take(Token::Colon)?;
@@ -94,9 +177,9 @@ impl<'lexer> Parser<'lexer> {
             if let None = t.peek_for(Token::Comma) {
                 break;
             }
-        }
+        }*/
 
-        t.take(Token::RBrace)?;
+        //t.take(Token::RBrace)?;
     }
 
     /**
@@ -137,9 +220,17 @@ impl<'lexer> Parser<'lexer> {
     /// Scope spec:
     /// | <empty string>
     /// | <SCOPE>IDENTIFIER::
-    pub fn parse_scope(&mut self, next: LexerStreamHandle) -> ParseResult<Vec<IStr>, ParseResultError> {
+    pub fn parse_scope(
+        &mut self,
+        next: LexerStreamHandle,
+    ) -> ParseResult<Vec<IStr>, ParseResultError> {
         let mut svec = Vec::new();
-        while let Ok(s) = self.eat_match_string([Token::Identifier, Token::DoubleColon]).hint("A scope, if not null deriving, has an IDENTIFIER followed by a double colon (::)") {
+        while let Ok(s) = self
+            .eat_match_string([Token::Identifier, Token::DoubleColon])
+            .hint(
+                "A scope, if not null deriving, has an IDENTIFIER followed by a double colon (::)",
+            )
+        {
             let id = s[0]; // always exists, as we passed in a chain of length 2
             svec.push(id.slice);
         }
@@ -160,10 +251,15 @@ impl<'lexer> Parser<'lexer> {
         Ok(tvec)
     }
 
-    pub fn parse_type_reference(&mut self, next: LexerStreamHandle) -> Result<ast::TypeReference, ParseResultError> {
+    pub fn parse_type_reference(
+        &mut self,
+        next: LexerStreamHandle,
+    ) -> Result<ast::TypeReference, ParseResultError> {
         let (scope, next) = self.parse_scope(next)?.open(); // fine to do unconditionally since null deriving
 
-        let typename = self.hard_expect(Token::Identifier).hint("All types start with a scope, and must be followed by ")?;
+        let typename = self
+            .hard_expect(Token::Identifier)
+            .hint("All types start with a scope, and must be followed by ")?;
     }
 
     /// Type reference specification:
@@ -175,9 +271,7 @@ impl<'lexer> Parser<'lexer> {
     /// Typelist:
     /// | TYPE
     /// | TYPELIST, TYPE
-    pub fn parse_type_specifier(
-        &mut self,
-    ) -> Result<ast::TypeReference, ParseResultError> {
+    pub fn parse_type_specifier(&mut self) -> Result<ast::TypeReference, ParseResultError> {
         // these can start with a ( for a typle, a & for a reference, or a str, [<] for a named and
         // optionally parameterized type
 
@@ -249,5 +343,4 @@ impl<'lexer> Parser<'lexer> {
 
         Ok(Box::new(tr))
     }
-
 }

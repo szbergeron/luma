@@ -293,6 +293,9 @@ pub enum Token {
     //#[regex(r"[\t\f]+", logos::skip)]
     #[error]
     Error,
+
+    /// Denotes a "token" that may be virtual or a subrule
+    Opaque,
 }
 
 impl Token {
@@ -614,6 +617,7 @@ impl<'a> TokenStream<'a> {
     }
 }
 
+#[derive(Clone)]
 pub struct LookaheadHandle<'tokenvec> {
     tokens: &'tokenvec Vec<TokenWrapper>,
     index: usize,

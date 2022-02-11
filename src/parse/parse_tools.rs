@@ -35,7 +35,7 @@ impl<'tokens, T> ParseValueGuard<'tokens, T> {
     }
 }
 
-pub type ParseResult<'t, T, E> = Result<ParseValueGuard<'t, T>, E>;
+//pub type ParseResult<'t, T, E> = Result<ParseValueGuard<'t, T>, E>;
 
 /**
  * A correction "match" can be represented as a point in a three dimensional cube
@@ -87,7 +87,7 @@ pub mod schema {
 
     use crate::{
         ast::Span,
-        lex::{ErrorSet, LookaheadHandle, ParseResultError, Token, TokenWrapper},
+        lex::{ErrorSet, LookaheadHandle, ParseResultError, Token, TokenWrapper}, helper::EitherNone,
     };
 
     // This is intentionally very general, and doesn't give full flexibility to define
@@ -176,7 +176,7 @@ pub mod schema {
         }
     }
 
-    pub struct Rule {
+    /*pub struct Rule<'> {
         index: isize,
         subrules: HashMap<&'static str, &'static [Nonterminal]>,
         entry: &'static str,
@@ -268,7 +268,7 @@ pub mod schema {
         pub fn distance(&self, t: Token) -> Distance {
             self.rec_find(0, 0, t)
         }
-    }
+    }*/
 
     pub struct RecoveryToken {
         /// Gives the ID/index of the rule that was used to solve this recovery within
@@ -288,7 +288,7 @@ pub mod schema {
     pub struct RuleUnit<'parent> {
         id: usize,
         parent: Option<&'parent RuleUnit<'parent>>,
-        rules: SmallVec<[Rule; 10]>, // can potentially use an arena allocator or an ID reuse mechanism for this,
+        tokens: SmallVec<[Token; 10]>, // can potentially use an arena allocator or an ID reuse mechanism for this,
         // or just put it inline in the stack if we want to do unsized types
         // would depend on https://github.com/rust-lang/rust/issues/48055 for
         // support
@@ -298,31 +298,77 @@ pub mod schema {
     }
 
     impl<'parent> RuleUnit<'parent> {
-        pub fn add_rule(&mut self, rule: Rule) {
-            self.rules.push(rule);
-        }
-
         pub fn child(&'parent self) -> Self {
             RuleUnit {
                 id: self.id + 1,
                 parent: Some(&self),
-                rules: SmallVec::default(),
+                tokens: SmallVec::default(),
                 encountered_tokens: SmallVec::default(),
             }
         }
 
-        pub fn consumes(&mut self, t: TokenWrapper) {
-            self.encountered_tokens.push(t.token);
+        pub fn predict_next(&mut self, t: Token) {
+            self.tokens.push(t);
         }
 
-        pub fn search(&self, tw: TokenWrapper, lh: &LookaheadHandle) -> Option<Solution> {
+        pub fn predict(&mut self, t: &[Token]) {
+            self.tokens.extend(t.iter().map(|&t| t));
+        }
+
+        pub fn consumes(&mut self, t: TokenWrapper) {
+            match self.tokens.iter().enumerate().rfind(|(idx, tok)| **tok == t.token) {
+                Some((idx, _)) => self.tokens.truncate(idx),
+                None => (),
+            }
+            //self.encountered_tokens.push(t.token);
+        }
+
+        fn search_internal(&self, t: TokenWrapper, position: isize, lh: &LookaheadHandle) -> Option<Solution> {
+            match self.tokens.iter().rposition(|&tok| tok == t.token) {
+                Some(pos) => {
+                    for v in self.tokens[pos..].iter().rev() {
+                        self.encountered_tokens.push(*v);
+                    }
+
+                    //use crate::ast::Span;
+
+                    Some(Solution {
+                        solution_unit_id: self.id,
+                        solution_rule_id: 0,
+                        jump_to: position,
+                        range_discarded: Span { start: lh.la(0).unwrap().start, end: t.end }
+                    })
+                },
+                None => {
+                    self.parent.map(|p| p.search_internal(t, position, lh)).flatten()
+                }
+            }
+        }
+
+        pub fn search(&self, lh: &LookaheadHandle) -> Option<Solution> {
+            for i in 0.. {
+                match lh.la(i) {
+                    Ok(tw) => {
+                        match self.search_internal(tw, i, lh) {
+                            Some(solution) => return Some(solution),
+                            None => continue,
+                        }
+                    },
+                    Err(_) => return None
+                }
+            }
+
+            panic!()
+        }
+
+        /*pub fn search(&self, tw: TokenWrapper, lh: &LookaheadHandle) -> Option<Solution> {
             // need to find candidate rules that would allow getting to this state
             let candidates = self
                 .rules
                 .iter()
                 .filter(|rule| rule.is_candidate(tw.token, &self.encountered_tokens));
             panic!()
-        }
+        }*/
     }
 
     pub struct CorrectingHandle<'tokenvec> {
@@ -344,33 +390,69 @@ pub mod schema {
 
     pub struct TokenProvider<'parent, 'tokens> {
         unit_rules: RuleUnit<'parent>,
-        parent: Option<&'parent TokenProvider<'parent, 'tokens>>,
+        //parent: Option<&'parent TokenProvider<'parent, 'tokens>>,
         lh: LookaheadHandle<'tokens>,
     }
 
-    type ParseResult<T> = Result<Result<T, ErrorSet>, CorrectionBubblingError>;
+    type ParseResult<T> = Result<EitherNone<T, ErrorSet>, CorrectionBubblingError>;
 
     type TokenResult = ParseResult<TokenWrapper>;
 
     impl<'parent, 'tokens> TokenProvider<'parent, 'tokens> {
-        pub fn mood_change(&mut self, )
+        pub fn child(&'parent self) -> TokenProvider<'parent, 'tokens> {
+            Self {
+                //parent: Some(&self),
+                unit_rules: self.unit_rules.child(),
+                lh: self.lh.clone(),
+            }
+        }
+
         pub fn provides(&self, s: Solution) -> bool {
             s.solution_unit_id == self.unit_rules.id
+        }
+
+        pub fn try_take(&mut self, t: Token) -> Option<TokenWrapper> {
+            self.try_take_in(&[t])
+        }
+
+        pub fn try_take_in(&mut self, t: &[Token]) -> Option<TokenWrapper> {
+            let nt = self.lh.la(0);
+
+            match nt {
+                Err(_) => None,
+                Ok(nt) => {
+                    if t.contains(&nt.token) {
+                        self.lh.advance();
+                        Some(nt)
+                    } else {
+                        None
+                    }
+                }
+            }
         }
 
         pub fn take(&mut self, t: Token) -> TokenResult {
             self.take_in(&[t])
         }
 
+        pub fn predict(self, t: &[Token]) -> Self {
+            self.unit_rules.predict(t);
+            self
+        }
+
+        pub fn predict_next(&mut self, t: Token) {
+            self.unit_rules.predict_next(t);
+        }
+
         pub fn take_in(&mut self, t: &[Token]) -> TokenResult {
             match self.peek_for_in(t) {
                 Some(tw) => {
                     self.unit_rules.consumes(tw);
-                    Ok(Ok(tw))
+                    Ok(EitherNone::A(tw))
                 }
                 None => {
                     // need to do a search and potentially issue a bubbling error
-                    let tr = self.lh.next();
+                    let tr = self.lh.la(0);
 
                     // if the stream is just empty then that isn't a bubbling error,
                     // that's just a plain error
@@ -378,12 +460,12 @@ pub mod schema {
                         Err(_le) => {
                             let mut ev = ErrorSet::new();
                             ev.push(ParseResultError::EndOfFile);
-                            TokenResult::Ok(Err(ev))
+                            TokenResult::Ok(EitherNone::B(ev))
                         }
                         Ok(tw) => {
                             // it didn't directly match one of the requested tokens,
                             // so we should start a bubbling cascade
-                            let solution = self.unit_rules.search(tw, &self.lh);
+                            let solution = self.unit_rules.search(&self.lh);
 
                             let mut es = ErrorSet::new();
                             es.push(ParseResultError::UnexpectedToken(tw, t.to_vec(), None));
@@ -439,7 +521,7 @@ pub mod schema {
 
         /// The position in the input stream this solution moves the
         /// consumption cursor to
-        jump_to: usize,
+        jump_to: isize,
         ///
         /// When doing a synchronization action, this reports what area of the code had to be
         /// discarded (if any) to synchronize the stream. Most often this will be empty,

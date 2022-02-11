@@ -2,7 +2,7 @@ use crate::ast::{self, TypeReference};
 use crate::lex::Token;
 
 use crate::helper::lex_wrap::{CodeLocation, ParseResultError};
-use crate::helper::EitherAnd;
+use crate::helper::EitherNone;
 
 use crate::parse::*;
 
@@ -304,7 +304,7 @@ impl<'lexer> Parser<'lexer> {
 
         // first access has no specified "self" unless it is an object itself.
 
-        let mut either: EitherAnd<Span, Span> = EitherAnd::Neither;
+        let mut either: EitherNone<Span, Span> = EitherNone::Neither;
 
         let base = self.parse_scoped_name();
 
@@ -332,10 +332,10 @@ impl<'lexer> Parser<'lexer> {
 
         // invisible invariant: either base or b_pattern has to be Some, or both
         let (start, end) = match either {
-            EitherAnd::Neither => panic!("Somehow got neither a pattern nor a base"),
-            EitherAnd::A(a) => (a.start, a.end),
-            EitherAnd::B(b) => (b.start, b.end),
-            EitherAnd::Both(a, b) => (a.start, b.end),
+            EitherNone::Neither => panic!("Somehow got neither a pattern nor a base"),
+            EitherNone::A(a) => (a.start, a.end),
+            EitherNone::B(b) => (b.start, b.end),
+            EitherNone::Both(a, b) => (a.start, b.end),
         };
 
         let node_info = NodeInfo::from_indices(start, end);

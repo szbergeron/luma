@@ -1,6 +1,8 @@
 //use crate::lex;
 use crate::ast::*;
+use std::convert::Infallible;
 use std::fs;
+use std::ops::ControlFlow;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
@@ -190,15 +192,15 @@ pub enum Either<A, B> {
     B(B),
 }
 
-pub enum EitherAnd<A, B> {
+pub enum EitherNone<A, B> {
     A(A),
     B(B),
     Both(A, B),
     Neither,
 }
 
-impl<A, B> EitherAnd<A, B> {
-    pub fn with_a(self, a: A) -> EitherAnd<A, B> {
+impl<A, B> EitherNone<A, B> {
+    pub fn with_a(self, a: A) -> EitherNone<A, B> {
         match self {
             Self::A(_) | Self::Neither => Self::A(a),
             Self::B(b) => Self::Both(a, b),
@@ -206,7 +208,7 @@ impl<A, B> EitherAnd<A, B> {
         }
     }
 
-    pub fn with_b(self, b: B) -> EitherAnd<A, B> {
+    pub fn with_b(self, b: B) -> EitherNone<A, B> {
         match self {
             Self::A(a) => Self::Both(a, b),
             Self::B(_) | Self::Neither => Self::B(b),
@@ -227,6 +229,37 @@ impl<A, B> EitherAnd<A, B> {
             Self::A(_) | Self::Neither => None,
             Self::B(b) => Some(&b),
             Self::Both(_, b) => Some(&b),
+        }
+    }
+}
+
+pub enum EitherAnd<A, B> {
+    A(A),
+    B(B),
+    Both(A, B),
+}
+
+impl<A, B> std::ops::Try for EitherAnd<A, B> {
+    type Output = (A, Option<B>);
+
+    type Residual = EitherAnd<Infallible, B>;
+
+    fn from_output(output: Self::Output) -> Self { todo!() }
+
+    fn branch(self) -> std::ops::ControlFlow<Self::Residual, Self::Output> {
+        match self {
+            Self::A(v) => ControlFlow::Continue((v, None)),
+            Self::Both(v1, v2) => ControlFlow::Continue((v1, Some(v2))),
+            Self::B(v) => ControlFlow::Break(EitherAnd::B(v)),
+        }
+    }
+}
+
+impl<A, B> std::ops::FromResidual for EitherAnd<A, B> {
+    fn from_residual(r: EitherAnd<Infallible, B>) -> EitherAnd<A, B> {
+        match r {
+            EitherAnd::<Infallible, B>::B(b) => EitherAnd::B(b),
+            _ => unreachable!(),
         }
     }
 }
