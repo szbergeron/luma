@@ -1,5 +1,7 @@
+use crate::lex::{TokenWrapper, CodeLocation};
+
 use super::expressions;
-use crate::helper::lex_wrap::{CodeLocation, TokenWrapper};
+
 
 pub fn indent(ind: usize) -> String {
     let mut s: String = "|".to_string();

@@ -11,7 +11,8 @@ pub use parse_helper::*;
 pub use parse_tools::*;
 
 //use crate::helper::lex_wrap::LookaheadStream;
-use crate::helper::lex_wrap::{CodeLocation, ParseResultError};
+//use crate::helper::lex_wrap::{CodeLocation, ParseResultError};
+use crate::lex::{TokenWrapper, CodeLocation};
 use crate::helper::*;
 use crate::helper::interner::*;
 

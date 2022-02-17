@@ -196,13 +196,13 @@ pub enum EitherNone<A, B> {
     A(A),
     B(B),
     Both(A, B),
-    Neither,
+    Neither(),
 }
 
 impl<A, B> EitherNone<A, B> {
     pub fn with_a(self, a: A) -> EitherNone<A, B> {
         match self {
-            Self::A(_) | Self::Neither => Self::A(a),
+            Self::A(_) | Self::Neither() => Self::A(a),
             Self::B(b) => Self::Both(a, b),
             Self::Both(_, b) => Self::Both(a, b),
         }
@@ -211,7 +211,7 @@ impl<A, B> EitherNone<A, B> {
     pub fn with_b(self, b: B) -> EitherNone<A, B> {
         match self {
             Self::A(a) => Self::Both(a, b),
-            Self::B(_) | Self::Neither => Self::B(b),
+            Self::B(_) | Self::Neither() => Self::B(b),
             Self::Both(a, _) => Self::Both(a, b),
         }
     }
@@ -219,17 +219,34 @@ impl<A, B> EitherNone<A, B> {
     pub fn a(&self) -> Option<&A> {
         match self {
             Self::A(a) => Some(&a),
-            Self::B(_) | Self::Neither => None,
+            Self::B(_) | Self::Neither() => None,
             Self::Both(a, _) => Some(&a),
         }
     }
 
     pub fn b(&self) -> Option<&B> {
         match self {
-            Self::A(_) | Self::Neither => None,
+            Self::A(_) | Self::Neither() => None,
             Self::B(b) => Some(&b),
             Self::Both(_, b) => Some(&b),
         }
+    }
+
+    pub fn of(a: Option<A>, b: Option<B>) -> EitherNone<A, B> {
+        match a {
+            Some(a) => match b {
+                Some(b) => EitherNone::Both(a, b),
+                None => EitherNone::A(a),
+            },
+            None => match b {
+                Some(b) => EitherNone::B(b),
+                None => EitherNone::Neither(),
+            },
+        }
+    }
+
+    pub fn of_bool(a: bool, b: bool) -> EitherNone<(), ()> {
+        EitherNone::of(a.then_some(()), b.then_some(()))
     }
 }
 
@@ -544,7 +561,7 @@ impl<T> VecOps for Vec<T> {
     }
 }
 
-pub enum EitherNone<TA, TB> {
+/*pub enum EitherNone<TA, TB> {
     A(TA),
     B(TB),
     Neither(),
@@ -570,4 +587,4 @@ impl EitherNone<(), ()> {
     pub fn of_bool(a: bool, b: bool) -> EitherNone<(), ()> {
         EitherNone::of(a.then_some(()), b.then_some(()))
     }
-}
+}*/

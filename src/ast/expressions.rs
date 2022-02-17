@@ -307,18 +307,16 @@ impl AstNode for IfThenElseExpression {
 pub struct BlockExpression {
     pub node_info: NodeInfo,
 
-    pub contents: Vec<Result<Box<ExpressionWrapper>, ParseResultError>>,
+    pub contents: Vec<Box<ExpressionWrapper>>,
 }
 
 impl AstNode for BlockExpression {
     fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
         let _ = writeln!(f, "{{");
         for c in self.contents.iter() {
-            if let Ok(c) = c {
-                let _ = write!(f, "{}", indent(depth + 1));
-                c.as_node().pretty(f, depth + 1);
-                let _ = writeln!(f, "");
-            }
+            let _ = write!(f, "{}", indent(depth + 1));
+            c.as_node().pretty(f, depth + 1);
+            let _ = writeln!(f, "");
         }
 
         let _ = write!(f, "{}}}", indent(depth));
@@ -332,9 +330,13 @@ impl AstNode for BlockExpression {
         let _ = writeln!(f, "BlockExpression {} with children:", self.node_info());
 
         self.contents.iter().for_each(|elem| {
+            elem.as_node().display(f, depth + 1);
+        })
+
+        /*self.contents.iter().for_each(|elem| {
             elem.iter()
                 .for_each(|elem| elem.as_node().display(f, depth + 1))
-        });
+        });*/
     }
 
 }

@@ -3,8 +3,8 @@ use crate::ast::{self, MemberAttributes};
 use crate::lex::{Token, ErrorSet};
 use crate::parse::*;
 
-use super::parse_tools::{LexerStreamHandle, ParseResult, ParseValueGuard};
-use super::schema::{Nonterminal, TokenProvider};
+use super::parse_tools::{ParseValueGuard};
+use super::schema::{Nonterminal, TokenProvider, CorrectionBubblingResult, ParseResult};
 use Nonterminal::*;
 
 impl<'lexer> Parser<'lexer> {
@@ -19,11 +19,13 @@ impl<'lexer> Parser<'lexer> {
         }) // TODO
     }
 
-    pub fn parse_struct_definition(&mut self) -> Result<ast::TypeDefinition, ParseResultError> {
-        let start = self.hard_expect(Token::Struct)?.start;
-        let name = self.hard_expect(Token::Identifier)?.slice;
+    pub fn parse_struct_definition(&mut self, t: &TokenProvider) -> ParseResult<ast::TypeDefinition> {
+        let t = t.child();
 
-        self.hard_expect(Token::LBrace)?;
+        let start = t.take(Token::Struct).only_value()?.start;
+        let name = t.take(Token::Identifier).only_value()?.slice;
+
+        t.take(Token::LBrace)?;
 
         let mut fields = Vec::new();
 
@@ -223,11 +225,13 @@ impl<'lexer> Parser<'lexer> {
     /// | <SCOPE>IDENTIFIER::
     pub fn parse_scope(
         &mut self,
-        next: LexerStreamHandle,
-    ) -> ParseResult<Vec<IStr>, ParseResultError> {
+        t: TokenProvider,
+    ) -> ParseResult<Vec<IStr>> {
+        let t = t.child();
+
         let mut svec = Vec::new();
-        while let Ok(s) = self
-            .eat_match_string([Token::Identifier, Token::DoubleColon])
+        while let Ok(s) = t
+            .try_take_string([Token::Identifier, Token::DoubleColon])
             .hint(
                 "A scope, if not null deriving, has an IDENTIFIER followed by a double colon (::)",
             )

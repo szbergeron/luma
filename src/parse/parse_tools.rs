@@ -2,7 +2,11 @@
 
 use crate::lex::LookaheadHandle;
 
+use self::schema::{TokenProvider, ParseResult};
+
 use super::Parser;
+
+use staged_builder::staged_builder;
 
 // During any recursive "rule", if we encounter
 // a local parsing error we want to know what to synchronize to.
@@ -11,27 +15,37 @@ use super::Parser;
 // rule pushing a list of "next" items that it can try
 // to consume.
 
-#[derive(Clone, Copy)]
+/*#[derive(Clone, Copy)]
 pub struct LexerStreamHandle {
     index: usize,
     id: usize,
+}*/
+
+/*pub struct ParseResultBuilderBase {
+    index: usize
 }
 
-pub struct ParseValueGuard<'tokens, ParseValue> {
+impl ParseResultBuilderBase {
+    pub fn success(self, v: V) -> ParseResult<V> {
+        let pvg = ParseValueGuard::guard(v, self.index)
+        Ok(WithError::Value())
+    }
+}*/
+
+#[must_use]
+pub struct ParseValueGuard<ParseValue> {
     value: ParseValue,
-    handle: LookaheadHandle<'tokens>,
+    index: usize,
 }
 
-impl<'tokens, T> ParseValueGuard<'tokens, T> {
-    pub fn success<E>(
-        value: T,
-        handle: LookaheadHandle<'tokens>,
-    ) -> Result<ParseValueGuard<'tokens, T>, E> {
-        Ok(ParseValueGuard { value, handle })
+impl<ParseValue> ParseValueGuard<ParseValue> {
+    pub fn guard(value: ParseValue, index: usize) -> Self {
+        Self {value, index}
     }
 
-    pub fn open(self) -> (LookaheadHandle<'tokens>, T) {
-        (self.handle, self.value)
+    pub fn join(self, to_sync: &mut TokenProvider) -> ParseValue {
+        to_sync.sync_with(self.index);
+        self.value
     }
 }
 
@@ -87,9 +101,10 @@ pub mod schema {
 
     use crate::{
         ast::Span,
-        helper::{EitherAnd, EitherNone},
-        lex::{ErrorSet, LookaheadHandle, ParseResultError, Token, TokenWrapper},
+        lex::{LookaheadHandle, ParseResultError, Token, TokenWrapper, ErrorSet},
     };
+
+    use super::ParseValueGuard;
 
     // This is intentionally very general, and doesn't give full flexibility to define
     // full regular rules. This allows for a more simple solver that doesn't have to
@@ -308,6 +323,10 @@ pub mod schema {
     }
 
     impl<'parent> RuleUnit<'parent> {
+        pub fn empty() -> Self {
+            Self {id: 0, parent: None, tokens: Default::default(), encountered_tokens: Default::default() }
+        }
+
         pub fn child(&'parent self) -> Self {
             RuleUnit {
                 id: self.id + 1,
@@ -414,12 +433,14 @@ pub mod schema {
         unit_rules: RuleUnit<'parent>,
         //parent: Option<&'parent TokenProvider<'parent, 'tokens>>,
         lh: LookaheadHandle<'tokens>,
+        errors_field: ErrorSet,
     }
 
-    type ParseResult<T> = Result<WithError<T>, CorrectionBubblingError>;
+    pub type ParseResult<T> = Result<WithError<ParseValueGuard<T>>, CorrectionBubblingError>;
 
-    type TokenResult = ParseResult<TokenWrapper>;
+    pub type TokenResult = ParseResult<TokenWrapper>;
 
+    #[must_use]
     pub enum WithError<T> {
         Error(ErrorSet),
         Value(T, ErrorSet),
@@ -448,8 +469,37 @@ pub mod schema {
 
         pub fn optionize(self, o: &mut ErrorSet) -> Option<T> {
             let (v, e) = self.tuplize();
-            o.append(e);
+            o.append(&mut e);
             v
+        }
+
+        pub fn as_result(self) -> Result<T, ErrorSet> {
+            match self {
+                Self::Error(e) => Err(e),
+                Self::Value(v, _e) => Ok(v),
+            }
+        }
+
+        pub fn err(e: ErrorSet) -> Self {
+            Self::Error(e)
+        }
+
+        pub fn ok(o: T) -> Self {
+            Self::Value(o, ErrorSet::new())
+        }
+
+        pub fn both(v: T, e: ErrorSet) -> Self {
+            Self::Value(v, e)
+        }
+
+        pub fn hint(self, hint: &'static str) -> Self {
+            let (v, e) = self.tuplize();
+
+            let e = ParseResultError::ErrorWithHint { original: Box::new(e), hint };
+            let mut ev = ErrorSet::new();
+            ev.push(e);
+
+            (v, ev).into()
         }
     }
 
@@ -461,6 +511,15 @@ pub mod schema {
     impl<T> From<(T, ErrorSet)> for WithErrorValue<T> {
         fn from((value, error): (T, ErrorSet)) -> Self {
             Self { value, error }
+        }
+    }
+
+    impl<T> From<(Option<T>, ErrorSet)> for WithError<T> {
+        fn from((value, error): (Option<T>, ErrorSet)) -> Self {
+            match value {
+                Some(value) => WithError::Value(value, error),
+                None => WithError::Error(error)
+            }
         }
     }
 
@@ -491,11 +550,30 @@ pub mod schema {
     }
 
     impl<'parent, 'tokens> TokenProvider<'parent, 'tokens> {
+        pub fn errors(&self) -> ErrorSet {
+            self.errors_field.clone()
+        }
+
+        pub fn success<V>(&self, v: V) -> ParseResult<V> {
+            let prg = ParseValueGuard::guard(v, self.sync().index());
+
+            Ok(WithError::Value(prg, self.errors_field))
+        }
+
+        pub fn sync(&self) -> LookaheadHandle<'tokens> {
+            self.lh
+        }
+
+        pub fn sync_with<'given>(&mut self, index: usize) {
+            self.lh.seek_to(index);
+        }
+
         pub fn child(&'parent self) -> TokenProvider<'parent, 'tokens> {
             Self {
                 //parent: Some(&self),
                 unit_rules: self.unit_rules.child(),
                 lh: self.lh.clone(),
+                errors_field: Default::default(),
             }
         }
 
@@ -515,6 +593,7 @@ pub mod schema {
                 Ok(nt) => {
                     if t.contains(&nt.token) {
                         self.lh.advance();
+
                         Some(nt)
                     } else {
                         None
@@ -523,7 +602,11 @@ pub mod schema {
             }
         }
 
-        pub fn take(&mut self, t: Token) -> TokenResult {
+        pub fn try_take_string<const LEN: usize>(&mut self, t: [Token; LEN]) -> ParseResult<SmallVec<[TokenWrapper; LEN]>> {
+            todo!()
+        }
+
+        pub fn take(&self, t: Token) -> TokenResult {
             self.take_in(&[t])
         }
 
@@ -536,11 +619,13 @@ pub mod schema {
             self.unit_rules.predict_next(t);
         }
 
-        pub fn take_in(&mut self, t: &[Token]) -> TokenResult {
+        pub fn take_in(&self, t: &[Token]) -> TokenResult {
             match self.peek_for_in(t) {
                 Some(tw) => {
                     self.unit_rules.consumes(tw);
-                    Ok(EitherNone::A(tw))
+
+                    // virtual advance for join
+                    Ok(WithError::Value(ParseValueGuard::guard(tw, self.lh.index() + 1), Default::default()))
                 }
                 None => {
                     // need to do a search and potentially issue a bubbling error
@@ -552,7 +637,7 @@ pub mod schema {
                         Err(_le) => {
                             let mut ev = ErrorSet::new();
                             ev.push(ParseResultError::EndOfFile);
-                            TokenResult::Ok(EitherNone::B(ev))
+                            TokenResult::Ok(WithError::Error(ev))
                         }
                         Ok(tw) => {
                             // it didn't directly match one of the requested tokens,
@@ -593,6 +678,10 @@ pub mod schema {
                     }
                 }
             }
+        }
+
+        pub fn from_handle(lh: LookaheadHandle<'tokens>) -> Self {
+            Self { lh, unit_rules: RuleUnit::empty(), errors_field: Default::default() }
         }
     }
 
@@ -643,7 +732,7 @@ pub mod schema {
         }
     }
 
-    impl<T> ResultHint for Result<Result<T, ErrorSet>, CorrectionBubblingError> {
+    impl<T> ResultHint for Result<WithError<T>, CorrectionBubblingError> {
         fn hint(self, hint: &'static str) -> Self {
             match self {
                 Ok(r) => Ok(r.hint(hint)),
@@ -659,6 +748,7 @@ pub mod schema {
         }
     }
 
+    #[derive(Clone, Debug)]
     pub struct CorrectionBubblingError {
         /// A CBE is always caused by an underlying
         /// parse error. That should go here
@@ -668,12 +758,81 @@ pub mod schema {
         solution: Option<Solution>,
     }
 
-    trait CorrectionBubblingResult<V> {
-        fn catch(self, t: &TokenProvider) -> Result<Result<V, ErrorSet>, CorrectionBubblingError>;
+    impl CorrectionBubblingError {
+        pub fn from_fatal_error(e: ParseResultError) -> CorrectionBubblingError {
+            let mut ev = ErrorSet::new();
+            ev.push(e);
+
+            Self { solution: None, internal_error: ev }
+        }
     }
 
-    impl<V> CorrectionBubblingResult<V> for Result<V, CorrectionBubblingError> {
-        fn catch(self, t: &TokenProvider) -> Result<Result<V, ErrorSet>, CorrectionBubblingError> {
+    pub trait CorrectionBubblingResult<V> {
+        fn catch(self, t: &TokenProvider) -> Result<WithError<V>, CorrectionBubblingError>;
+        //fn only_value(self) -> Result<V, CorrectionBubblingError>;
+
+        fn hard(self, t: &mut TokenProvider) -> Result<V, CorrectionBubblingError>;
+        fn soft(self) -> Result<V, CorrectionBubblingError>;
+        fn handled(self, t: &mut TokenProvider) -> Result<V, CorrectionBubblingError>;
+    }
+
+    impl<V> CorrectionBubblingResult<V> for Result<WithError<V>, CorrectionBubblingError> {
+        /*fn unhandle(self) -> Result<V, CorrectionBubblingError> {
+        }*/
+        fn hard(self, t: &mut TokenProvider) -> Result<V, CorrectionBubblingError> {
+            match self {
+                Err(cbe) => Err(cbe),
+                Ok(we) => {
+                    match we {
+                        WithError::Error(e) => {
+                            e.append(&mut t.errors_field); // this error will be bubbled
+                            Err(CorrectionBubblingError { internal_error: e, solution: None })
+                        },
+                        WithError::Value(v, e) => {
+                            t.errors_field.append(&mut e); // this is not an error, so any errors encountered should be saved
+                            Ok(v)
+                        }
+                    }
+                }
+            }
+        }
+
+        fn handled(self, t: &mut TokenProvider) -> Result<V, CorrectionBubblingError> {
+            match self {
+                Err(cbe) => Err(cbe),
+                Ok(we) => {
+                    match we {
+                        WithError::Error(e) => {
+                            t.errors_field.append(&mut e); // this error will be bubbled
+                            Err(CorrectionBubblingError { internal_error: e, solution: None })
+                        },
+                        WithError::Value(v, e) => {
+                            t.errors_field.append(&mut e); // this is not an error, so any errors encountered should be saved
+                            Ok(v)
+                        }
+                    }
+                }
+            }
+        }
+
+        fn soft(self) -> Result<V, CorrectionBubblingError> {
+            match self {
+                Err(cbe) => Err(cbe),
+                Ok(we) => {
+                    match we {
+                        WithError::Error(e) => {
+                            Err(CorrectionBubblingError { internal_error: e, solution: None })
+                        },
+                        WithError::Value(v, e) => {
+                            Ok(v)
+                        }
+                    }
+                }
+            }
+        }
+
+        //fn catch(self, t: &TokenProvider) -> Result<WithError<V>, CorrectionBubblingError> {
+        fn catch(self, t: &TokenProvider) -> Self {
             match self {
                 Err(cbe) => {
                     match cbe
@@ -681,14 +840,17 @@ pub mod schema {
                         .map(|solution| t.provides(solution))
                         .unwrap_or(false)
                     {
-                        true => Ok(Err(cbe.internal_error)),
+                        true => Ok(WithError::err(cbe.internal_error)),
                         false => Err(cbe),
                     }
                 }
-                Ok(any) => Ok(Ok(any)),
+                Ok(any) => Ok(any),
             }
         }
     }
+
+    /*impl<T, V> From<Result<T, ParseResultError>> for V where V: CorrectionBubblingResult<T> {
+    }*/
 
     /*impl<V> std::ops::Try for CorrectionBubblingResult<V> {
         type Output = V;

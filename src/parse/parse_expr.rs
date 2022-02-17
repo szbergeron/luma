@@ -1,11 +1,10 @@
 use crate::ast::{self, TypeReference};
-use crate::lex::Token;
+use crate::lex::{CodeLocation, ParseResultError, Token};
 
-use crate::helper::lex_wrap::{CodeLocation, ParseResultError};
+//use crate::helper::lex_wrap::{CodeLocation, ParseResultError};
 use crate::helper::EitherNone;
 
 use crate::parse::*;
-
 
 //use crate::parse_helper::*;
 
@@ -13,14 +12,19 @@ use ast::base::*;
 use ast::expressions::*;
 use ast::outer::*;
 
+use super::schema::{
+    CorrectionBubblingError, CorrectionBubblingResult, ParseResult, ResultHint, TokenProvider,
+};
+
 //type LetRes
 
-type ExpressionResult =
-    Result<Box<ast::ExpressionWrapper>, ParseResultError>;
+type ExpressionResult = ParseResult<Box<ast::ExpressionWrapper>>;
 
 impl<'lexer> Parser<'lexer> {
-    pub fn parse_expr(&mut self) -> ExpressionResult {
-        let r = self.parse_expr_inner(0, 1);
+    pub fn parse_expr(&mut self, t: &TokenProvider) -> ExpressionResult {
+        let t = t.child();
+
+        let r = self.parse_expr_inner(0, 1, t);
 
         r
     }
@@ -30,9 +34,12 @@ impl<'lexer> Parser<'lexer> {
     /// let <parse_binding()> = <expression>;
     ///
     /// includes support for parsing type specifiers within
-    pub fn parse_binding(&mut self) -> Result<Box<LetComponent>, ParseResultError> {
+    pub fn parse_binding(
+        &mut self,
+        t: &TokenProvider<'lexer, 'lexer>,
+    ) -> ParseResult<Box<LetComponent>> {
         // want to find if this is going to be a destructuring operation
-        self.expect_next_in(&[Token::LParen, Token::Identifier])?;
+        let t = t.child().predict(&[Token::LParen, Token::Identifier]);
 
         let mut end;
         let start;
@@ -42,12 +49,14 @@ impl<'lexer> Parser<'lexer> {
             Token::LParen => {
                 let mut elements: Vec<LetComponent> = Vec::new();
                 //todo!("Pattern assignment not yet implemented")
-                start = self.hard_expect(Token::LParen)?.start; // consume start lparen
+                start = t.take(Token::LParen).hard(&mut t)?.join(&mut t).start; // consume start lparen
 
-                while let Ok(expr) = self.parse_binding() {
+                while let Ok(expr) = self.parse_binding(&t).soft() {
+                    let expr = expr.join(&mut t);
+
                     elements.push(*expr);
 
-                    match self.eat_match(Token::Comma) {
+                    match t.try_take(Token::Comma) {
                         None => break,
 
                         // consequence of this is that trailing comma is discarded
@@ -65,15 +74,15 @@ impl<'lexer> Parser<'lexer> {
                     }
                 }
 
-                end = self.hard_expect(Token::RParen)?.end; // if user opened, must close
+                end = t.take(Token::RParen).hard(&mut t)?.join(&mut t).end; // if user opened, must close
 
                 // see if a type exists, user may specify type anywhere during parsing, but
-                // must be possible to resolve types directly for every binding 
+                // must be possible to resolve types directly for every binding
                 // without needing to infer
                 Either::A(elements)
-            },
+            }
             Token::Identifier => {
-                let variable = self.hard_expect(Token::Identifier)?;
+                let variable = t.take(Token::Identifier).hard(&mut t)?.join(&mut t);
                 let variable_name = variable.slice;
 
                 start = variable.start;
@@ -88,12 +97,12 @@ impl<'lexer> Parser<'lexer> {
 
         // if there's a colon, we assume that a type specifier must directly follow it
         //if let Some(_colon) = self.eat_match(Token::
-        let specified_type = match self.eat_match(Token::Colon) {
+        let specified_type = match t.try_take(Token::Colon) {
             Some(_colon) => {
                 let r = self.parse_type_specifier()?;
                 r.end().map(|loc| end = loc);
                 Some(r)
-            },
+            }
             None => None,
         };
 
@@ -101,64 +110,78 @@ impl<'lexer> Parser<'lexer> {
 
         match content {
             Either::A(tuple_elements) => {
-                Ok(Box::new(LetComponent::Tuple(LetComponentTuple { elements: tuple_elements, node_info, type_specifier: specified_type })))
-            },
+                t.success(Box::new(LetComponent::Tuple(LetComponentTuple {
+                    elements: tuple_elements,
+                    node_info,
+                    type_specifier: specified_type,
+                })))
+            }
             Either::B(name) => {
-                Ok(Box::new(LetComponent::Identifier(LetComponentIdentifier { identifier_string: name, node_info, type_specifier: specified_type })))
-            },
+                t.success(Box::new(LetComponent::Identifier(LetComponentIdentifier {
+                    identifier_string: name,
+                    node_info,
+                    type_specifier: specified_type,
+                })))
+            }
         }
     }
 
     /// syntax: let <binding>: <type> = <expr>
-    pub fn parse_let(&mut self) -> ExpressionResult {
-        let start = self.hard_expect(Token::Let)?.start;
+    pub fn parse_let(&mut self, t: &TokenProvider) -> ExpressionResult {
+        let t = t.child();
 
-        let binding = self.parse_binding()?;
+        let start = t.take(Token::Let).hard(&mut t)?.join(&mut t).start;
 
-        let _eq = self.hard_expect(Token::Equals)?;
+        let binding = self.parse_binding(&t)?;
 
-        let expr = self.parse_expr()?;
+        let _eq = t.take(Token::Equals).hard(&mut t)?.join(&mut t);
+
+        let expr = self.parse_expr(&t).hard(&mut t)?.join(&mut t);
 
         // TODO: eval if this could ever be None, potentially force expr to have a
         // CodeLocation::Parsed
         let end = expr.as_node().end().unwrap_or(CodeLocation::Builtin);
-        
+
         let lexpr = LetExpression {
             node_info: NodeInfo::from_indices(start, end),
             primary_component: binding,
-            expression: expr };
+            expression: expr,
+        };
 
         //todo!("Let expression parsing not yet complete")
-        Ok(Box::new(ExpressionWrapper::LetExpression(lexpr)))
+        t.success(Box::new(ExpressionWrapper::LetExpression(lexpr)))
     }
 
     // follows typespecifier? pattern
     // where:
     //     typespecifier: <typelist>
     //     pattern: (expressionlist)
-    pub fn parse_pattern(&mut self) -> Result<Pattern, ParseResultError> {
+    pub fn parse_pattern(&mut self, t: &TokenProvider) -> ParseResult<Pattern> {
+        let t = t.child();
         // can be a single literal or tuple, and each tuple is a set of expressions
 
-        let lp = self.soft_expect(Token::LParen);
+        let lp = t.take(Token::LParen).hard(&mut t)?.join(&mut t);
 
-        let start = lp?.start;
+        let start = lp.start;
 
         let mut expressions = Vec::new();
 
-        while let Ok(expr) = self.parse_expr() {
+        while let Ok(expr) = self.parse_expr(&t).soft() {
+            let expr = expr.join(&mut t);
+
             expressions.push(expr);
 
-            match self.eat_match(Token::Comma) {
+            match t.try_take(Token::Comma) {
                 Some(_comma) => continue,
                 None => break,
             }
         }
 
-        let end = self.hard_expect(Token::RParen)?.end;
+        let end = t.take(Token::RParen).hard(&mut t)?.join(&mut t).end;
 
         let node_info = NodeInfo::from_indices(start, end);
 
-        Ok(Pattern {
+        t.success(Pattern {
             node_info,
             expressions,
         })
@@ -173,11 +196,16 @@ impl<'lexer> Parser<'lexer> {
         r
     }*/
 
-    pub fn parse_array_literal(&mut self) -> ExpressionResult {
+    pub fn parse_array_literal(&mut self, t: &TokenProvider) -> ExpressionResult {
         todo!()
     }
 
-    pub fn parse_scoped_name(&mut self) -> Box<ScopedNameReference> {
+    pub fn parse_scoped_name(
+        &mut self,
+        t: &TokenProvider,
+    ) -> ParseResult<Box<ScopedNameReference>> {
+        let t = t.child();
+
         let mut r = Box::new(ScopedNameReference {
             scope: Vec::new(),
             silent: true,
@@ -187,7 +215,7 @@ impl<'lexer> Parser<'lexer> {
         let mut start = None;
         let mut end = None;
 
-        match self.eat_match(Token::DoubleColon) {
+        match t.try_take(Token::DoubleColon) {
             Some(dc) => {
                 r.scope.push(intern("global"));
                 r.scope.extend(self.scope.as_slice()); // TODO: revisit `global` prepending
@@ -196,19 +224,23 @@ impl<'lexer> Parser<'lexer> {
                 end = Some(dc.end);
             }
             None => {
-                eprintln!("need to address `local` vars within {}: {}", std::file!(), std::line!());
+                eprintln!(
+                    "need to address `local` vars within {}: {}",
+                    std::file!(),
+                    std::line!()
+                );
                 r.scope.push(intern("local"));
             }
         }
 
-        while let Some(id) = self.eat_match(Token::Identifier) {
+        while let Some(id) = t.try_take(Token::Identifier) {
             r.scope.push(id.slice);
             r.silent = false;
 
             start = Some(start.unwrap_or(id.start));
             end = Some(id.end);
 
-            match self.eat_match(Token::DoubleColon) {
+            match t.try_take(Token::DoubleColon) {
                 None => break,
                 Some(dc) => {
                     end = Some(dc.end);
@@ -229,12 +261,16 @@ impl<'lexer> Parser<'lexer> {
         r
     }
 
-    pub fn atomic_expression(&mut self) -> ExpressionResult {
+    pub fn atomic_expression(&mut self, t: &TokenProvider) -> ExpressionResult {
+        let t = t.child();
+
         if let Ok(tw) = self.lex.next() {
             match tw.token {
-                Token::UnknownIntegerLiteral => Ok(ast::ExpressionWrapper::literal_expression(tw)),
-                Token::StringLiteral => Ok(ast::ExpressionWrapper::literal_expression(tw)),
-                Token::Underscore => Ok(ast::ExpressionWrapper::wildcard(tw)),
+                Token::UnknownIntegerLiteral => {
+                    t.success(ast::ExpressionWrapper::literal_expression(tw))
+                }
+                Token::StringLiteral => t.success(ast::ExpressionWrapper::literal_expression(tw)),
+                Token::Underscore => t.success(ast::ExpressionWrapper::wildcard(tw)),
                 Token::LParen | Token::DoubleColon | Token::Identifier => {
                     self.lex.backtrack();
                     self.parse_access_base(None)
@@ -262,9 +298,12 @@ impl<'lexer> Parser<'lexer> {
 
     pub fn parse_access_trailing(
         &mut self,
+        t: &TokenProvider,
         on: Box<ExpressionWrapper>,
     ) -> ExpressionResult {
-        let p = self.parse_pattern()?;
+        let t = t.child();
+
+        let p = self.parse_pattern(&t).hard(&mut t)?.join(&mut t);
         let start = on.as_node().start().unwrap_or(CodeLocation::Builtin);
 
         let node_info = NodeInfo::from_indices(start, p.end().unwrap_or(start));
@@ -282,11 +321,12 @@ impl<'lexer> Parser<'lexer> {
             scope: Box::new(scope),
         };
 
-        Ok(Box::new(ExpressionWrapper::Access(ae)))
+        t.success(Box::new(ExpressionWrapper::Access(ae)))
     }
 
     pub fn parse_access_base(
         &mut self,
+        t: &TokenProvider,
         on: Option<Box<ExpressionWrapper>>,
     ) -> ExpressionResult {
         /*
@@ -303,10 +343,15 @@ impl<'lexer> Parser<'lexer> {
          */
 
         // first access has no specified "self" unless it is an object itself.
+        let t = t.child();
 
-        let mut either: EitherNone<Span, Span> = EitherNone::Neither;
+        let mut either: EitherNone<Span, Span> = EitherNone::Neither();
 
-        let base = self.parse_scoped_name();
+        let base = self
+            .parse_scoped_name(&t)
+            .hard(&mut t)
+            .unwrap()
+            .join(&mut t);
 
         match base.node_info.as_parsed() {
             Some(pni) => {
@@ -316,8 +361,8 @@ impl<'lexer> Parser<'lexer> {
         }
 
         let b_pattern = match base.silent {
-            true => Some(self.parse_pattern()?),
-            false => self.parse_pattern().ok(),
+            true => Some(self.parse_pattern(&t).hard(&mut t)?.join(&mut t)),
+            false => self.parse_pattern(&t).ok(),
         };
 
         match &b_pattern {
@@ -332,7 +377,7 @@ impl<'lexer> Parser<'lexer> {
 
         // invisible invariant: either base or b_pattern has to be Some, or both
         let (start, end) = match either {
-            EitherNone::Neither => panic!("Somehow got neither a pattern nor a base"),
+            EitherNone::Neither() => panic!("Somehow got neither a pattern nor a base"),
             EitherNone::A(a) => (a.start, a.end),
             EitherNone::B(b) => (b.start, b.end),
             EitherNone::Both(a, b) => (a.start, b.end),
@@ -347,46 +392,47 @@ impl<'lexer> Parser<'lexer> {
             pattern: b_pattern,
         };
 
-        Ok(Box::new(ExpressionWrapper::Access(ae)))
+        t.success(Box::new(ExpressionWrapper::Access(ae)))
     }
 
-    pub fn parse_llvm_builtin(&mut self) -> ExpressionResult {
-        let start = self.hard_expect(Token::InteriorBuiltin)?;
+    pub fn parse_llvm_builtin(&mut self, t: &TokenProvider) -> ExpressionResult {
+        let t = t.child();
+
+        let start = t.take(Token::InteriorBuiltin).hard(&mut t)?.join(&mut t);
         //let name = self.hard_expect(Token::Identifier)?;
 
         //while let Some(llvm_directive) = self.eat_match_in(&[Token::LL_Bind
         let mut bindings = Vec::new();
         let mut vars = Vec::new();
 
-        while let Some(tok) = self.eat_match_in(&[Token::LL_Bind, Token::LL_Var]) {
+        while let Some(tok) = t.try_take_in(&[Token::LL_Bind, Token::LL_Var]) {
             match tok.token {
                 Token::LL_Bind => {
-                    let exp = self.parse_expr()?;
-                    let _ = self.hard_expect(Token::ThickArrow);
-                    let name = self.hard_expect(Token::Identifier)?;
+                    let exp = self.parse_expr(&t).hard(&mut t)?.join(&mut t);
+                    let _ = t.take(Token::ThickArrow).hard(&mut t)?.join(&mut t);
+                    let name = t.take(Token::Identifier).hard(&mut t)?.join(&mut t);
 
                     bindings.push((*exp, name.slice));
-                },
+                }
                 Token::LL_Var => {
-                    let name = self.hard_expect(Token::Identifier)?;
+                    let name = t.take(Token::Identifier).hard(&mut t)?.join(&mut t);
 
                     vars.push(name.slice);
-                },
+                }
                 _ => panic!("fell out of match while parsing llvm_builtin"),
             }
         }
 
-        let maybe_result = if let Some(_) = self.eat_match(Token::LL_Result) {
-            let name = self.hard_expect(Token::Identifier)?;
-            self.hard_expect(Token::Colon)?;
+        let maybe_result = if let Some(_) = t.try_take(Token::LL_Result) {
+            let name = t.take(Token::Identifier).hard(&mut t)?.join(&mut t);
+            t.take(Token::Colon).hard(&mut t)?.join(&mut t);
             let tr = self.parse_type_specifier()?;
             Some((*tr, name.slice))
         } else {
             None
         };
 
-
-        let body = self.hard_expect(Token::LLVMBlock)?;
+        let body = t.take(Token::LLVMBlock).hard(&mut t)?.join(&mut t);
 
         let llvmle = LLVMLiteralExpression {
             node_info: NodeInfo::from_indices(start.start, body.end),
@@ -396,15 +442,22 @@ impl<'lexer> Parser<'lexer> {
             output: maybe_result,
         };
 
-        Ok(Box::new(ExpressionWrapper::LLVMLiteral(llvmle)))
+        t.success(Box::new(ExpressionWrapper::LLVMLiteral(llvmle)))
     }
 
-    pub fn parse_if_then_else(&mut self) -> ExpressionResult {
-        let start = self.hard_expect(Token::If)?.start;
-        let if_exp = self.parse_expr()?;
-        let then_exp = self.parse_expr()?;
-        let (else_exp, end) = if self.eat_match(Token::Else).is_some() {
-            let exp = self.parse_expr()?;
+    pub fn parse_if_then_else(&mut self, t: &TokenProvider) -> ExpressionResult {
+        let t = t.child();
+
+        let start = t
+            .take(Token::If)
+            .hard(&mut t)
+            .expect("Tried to parse if-else with no beginning if")
+            .join(&mut t)
+            .start;
+        let if_exp = self.parse_expr(&t).hint("An 'if' must be followed by a conditional expression followed by a then expression").hard(&mut t)?.join(&mut t);
+        let then_exp = self.parse_expr(&t).hard(&mut t)?.join(&mut t);
+        let (else_exp, end) = if t.try_take(Token::Else).is_some() {
+            let exp = self.parse_expr(&t).hard(&mut t)?.join(&mut t);
             let end = exp
                 .as_node()
                 .end()
@@ -420,26 +473,31 @@ impl<'lexer> Parser<'lexer> {
 
         let node_info = ast::NodeInfo::from_indices(start, end);
 
-        Ok(IfThenElseExpression::new_expr(
+        t.success(IfThenElseExpression::new_expr(
             node_info, if_exp, then_exp, else_exp,
         ))
     }
 
-    pub fn parse_while(&mut self) -> ExpressionResult {
-        let start = self.hard_expect(Token::While)?.start;
-        let while_exp = self.parse_expr()?;
-        let do_exp = self.parse_expr()?;
+    pub fn parse_while(&mut self, t: &TokenProvider) -> ExpressionResult {
+        let t = t.child();
+
+        let start = t.take(Token::While).hard(&mut t)?.join(&mut t).start;
+        let while_exp = self.parse_expr(&t).hard(&mut t)?.join(&mut t);
+        let do_exp = self.parse_expr(&t).hard(&mut t)?.join(&mut t);
 
         let node_info = ast::NodeInfo::from_indices(start, do_exp.as_node().end().unwrap_or(start));
 
-        Ok(WhileExpression::new_expr(node_info, while_exp, do_exp))
+        t.success(WhileExpression::new_expr(node_info, while_exp, do_exp))
     }
 
-    pub fn syntactic_block(&mut self) -> ExpressionResult {
-        self.hard_expect(Token::LBrace)?;
-        let mut declarations: Vec<
-            Result<Box<ast::ExpressionWrapper>, ParseResultError>,
-        > = Vec::new();
+    pub fn syntactic_block(&mut self, t: &TokenProvider) -> ExpressionResult {
+        let t = t
+            .child()
+            .predict(&[Token::LBrace, Token::Semicolon, Token::RBrace]);
+
+        t.take(Token::LBrace).hard(&mut t)?.join(&mut t);
+        let mut declarations: Vec<Box<ast::ExpressionWrapper>> =
+            Vec::new();
         let start = self.lex.la(0).map_or(CodeLocation::Builtin, |tw| tw.start);
 
         //let mut failed = false;
@@ -468,36 +526,37 @@ impl<'lexer> Parser<'lexer> {
                     declarations.push(exp);
                 }*/
                 _ => {
-                    let sync = self.sync_next(&[Token::Semicolon]);
-
-                    let e = self.parse_expr();
+                    let e = self.parse_expr(&t);
 
                     let final_exp = e
-                        .map(|exp| match self.eat_match(Token::Semicolon) {
-                            Some(semi) => {
-                                let start =
-                                    exp.as_node().start().map_or(CodeLocation::Builtin, |v| v);
-                                let end = semi.end;
-                                let node_info = ast::NodeInfo::from_indices(start, end);
-                                ast::StatementExpression::new_expr(node_info, exp)
-                            }
-                            None => exp,
+                        .handled(&mut t)
+                        .map(|exp| {
+                            let exp = exp.join(&mut t);
+                            let exp = match t.try_take(Token::Semicolon) {
+                                Some(semi) => {
+                                    let start =
+                                        exp.as_node().start().map_or(CodeLocation::Builtin, |v| v);
+                                    let end = semi.end;
+                                    let node_info = ast::NodeInfo::from_indices(start, end);
+                                    ast::StatementExpression::new_expr(node_info, exp)
+                                }
+                                None => exp,
+                            };
+
+                            declarations.push(exp);
                         })
                         .map_err(|err| {
                             self.report_err(err.clone());
 
-                            let _ = self.expect_next_in(&[Token::Semicolon, Token::RBrace]); // need to eat up to recovery point
+                            let _ = t.take_in(&[Token::Semicolon, Token::RBrace]); // need to eat up to recovery point // TODO
 
                             //failed = true;
                             //self.eat_to(vec![Token::Semicolon, Token::RBrace]);
-                            err
+                            //err.internal_error
                         });
-
-                    self.unsync(sync)?;
 
                     //self.expect(Token::Semicolon)?; // TODO: eval if this is required
 
-                    declarations.push(final_exp);
                 }
             }
         }
@@ -506,41 +565,50 @@ impl<'lexer> Parser<'lexer> {
 
         let node_info = ast::NodeInfo::from_indices(start, end);
 
-        self.hard_expect(Token::RBrace)?;
+        t.take(Token::RBrace).hard(&mut t)?.join(&mut t);
 
-        Ok(ast::BlockExpression::new_expr(node_info, declarations))
+        t.success(ast::BlockExpression::new_expr(node_info, declarations))
     }
 
-    pub fn parse_expr_inner(&mut self, min_bp: u32, level: usize) -> ExpressionResult {
-        let t1 = self.lex.la(0)?;
+    pub fn parse_expr_inner(
+        &mut self,
+        min_bp: u32,
+        level: usize,
+        t: TokenProvider,
+    ) -> ExpressionResult {
+        //let t1 = self.lex.la(0)?;
+
+        let t = t.child();
+        let t1 = t.sync().la(0).map_err(|e| CorrectionBubblingError::from_fatal_error(e))?;
+
         let mut lhs = match t1.token {
             Token::LBracket => {
-                let r = self.parse_array_literal();
+                let r = self.parse_array_literal(&t);
 
                 r?
             }
             Token::LBrace => {
-                let r = self.syntactic_block();
+                let r = self.syntactic_block(&t);
 
                 r?
             }
             Token::If => {
-                let r = self.parse_if_then_else();
+                let r = self.parse_if_then_else(&t);
 
                 r?
             }
             Token::InteriorBuiltin => {
-                let r = self.parse_llvm_builtin();
+                let r = self.parse_llvm_builtin(&t);
 
                 r?
             }
             Token::While => {
-                let r = self.parse_while();
+                let r = self.parse_while(&t);
 
                 r?
             }
             Token::Let => {
-                let r = self.parse_let();
+                let r = self.parse_let(&t);
 
                 r?
             }
@@ -553,26 +621,26 @@ impl<'lexer> Parser<'lexer> {
 
                 r?
             },*/
-            t if prefix_binding_power(t).is_some() => {
+            tok if prefix_binding_power(tok).is_some() => {
                 self.lex.advance();
 
                 let bp =
-                    prefix_binding_power(t).expect("bp should already be Some from match guard");
-                let rhs = self.parse_expr_inner(bp, level + 1)?;
+                    prefix_binding_power(tok).expect("bp should already be Some from match guard");
+                let rhs = self.parse_expr_inner(bp, level + 1, t.child()).hard(&mut t)?.join(&mut t);
                 let start = t1.start;
                 let end = rhs.as_node().end().expect("parsed rhs has no end?");
                 let node_info = ast::NodeInfo::from_indices(start, end);
 
-                self.build_unary(node_info, t, rhs)
+                self.build_unary(node_info, tok, rhs)
             }
             //
-            _other => self.atomic_expression()?,
+            _other => self.atomic_expression(&t).hard(&mut t)?,
         };
 
         loop {
-            if let Some(_colon) = self.eat_match(Token::Colon) {
+            if let Some(_colon) = t.try_take(Token::Colon) {
                 todo!("Type constraints not implemented yet")
-            } else if let Some(_as) = self.eat_match(Token::As) {
+            } else if let Some(_as) = t.try_take(Token::As) {
                 let typeref: Box<ast::TypeReference> = self.parse_type_specifier()?;
                 let start = lhs
                     .as_node()
@@ -695,6 +763,8 @@ pub enum DotAccess {
 }
 
 use ast::IntoAstNode;
+
+use super::schema::{ParseResult, TokenProvider};
 pub fn prefix_binding_power(t: Token) -> Option<u32> {
     match t {
         Token::Plus

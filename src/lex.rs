@@ -363,7 +363,7 @@ fn string_literal() {
 
 use crate::{
     helper::interner::*,
-    parse::{LexerStreamHandle, ParseValueGuard, SyncSliceHandle},
+    parse::{LexerStreamHandle, ParseValueGuard, SyncSliceHandle, schema::Synchronizer},
 };
 use smallvec::SmallVec;
 
@@ -421,6 +421,7 @@ pub struct TokenWrapper {
     FileNotFound { filename: String },
 }*/
 
+//pub type Sync = (Synchronizer, SmallVec<[ParseResultError; 3]>);
 pub type ErrorSet = SmallVec<[ParseResultError; 3]>;
 
 #[derive(Debug, Clone)]
@@ -434,7 +435,7 @@ pub enum ParseResultError {
     SemanticIssue(&'static str, CodeLocation, CodeLocation),
     ErrorWithHint {
         hint: &'static str,
-        original: Box<ErrorSet>,
+        original: Box<Sync>,
     },
 }
 
@@ -449,7 +450,7 @@ impl ParseResultError {
     }
 
     pub fn as_set(self) -> ErrorSet {
-        let mut es = ErrorSet::new();
+        let mut es = SmallVec::new();
         es.push(self);
         es
     }
