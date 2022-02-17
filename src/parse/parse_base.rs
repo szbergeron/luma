@@ -206,11 +206,11 @@ impl<'lexer> Parser<'lexer> {
                 _ => {
                     // may be expression?
 
-                    self.err(ParseResultError::UnexpectedToken(
+                    Err(CorrectionBubblingError::from_fatal_error(ParseResultError::UnexpectedToken(
                         tw,
                         vec![Token::Module, Token::Let, Token::Function],
                         None,
-                    ))
+                    )))
                 }
             };
 
@@ -317,11 +317,13 @@ impl<'lexer> Parser<'lexer> {
         &mut self,
         t: &TokenProvider,
     ) -> ParseResult<Vec<(IStr, ast::TypeReference)>> {
+        let t = t.child();
+
         let mut rvec: Vec<(IStr, ast::TypeReference)> = Vec::new();
 
         while let Some(i) = t.try_take(Token::Identifier) {
             t.take(Token::Colon)?;
-            let tr = self.parse_type_specifier()?;
+            let tr = self.parse_type_specifier(&t).hard(&mut t)?.join(&mut t);
 
             let r = (i.slice, tr);
 
@@ -351,7 +353,7 @@ impl<'lexer> Parser<'lexer> {
         t.take(Token::RParen)?;
 
         t.take(Token::ThinArrow)?;
-        let return_type = self.parse_type_specifier()?;
+        let return_type = self.parse_type_specifier(&t).hard(&mut t)?.join(&mut t);
 
         let body = self.parse_expr(&t).hard(&mut t)?.join(&mut t);
 

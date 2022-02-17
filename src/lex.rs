@@ -435,7 +435,7 @@ pub enum ParseResultError {
     SemanticIssue(&'static str, CodeLocation, CodeLocation),
     ErrorWithHint {
         hint: &'static str,
-        original: Box<Sync>,
+        original: Box<ErrorSet>,
     },
 }
 

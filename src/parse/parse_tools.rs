@@ -2,7 +2,7 @@
 
 use crate::lex::LookaheadHandle;
 
-use self::schema::{TokenProvider, ParseResult};
+use self::schema::{ParseResult, TokenProvider};
 
 use super::Parser;
 
@@ -40,7 +40,7 @@ pub struct ParseValueGuard<ParseValue> {
 
 impl<ParseValue> ParseValueGuard<ParseValue> {
     pub fn guard(value: ParseValue, index: usize) -> Self {
-        Self {value, index}
+        Self { value, index }
     }
 
     pub fn join(self, to_sync: &mut TokenProvider) -> ParseValue {
@@ -101,7 +101,7 @@ pub mod schema {
 
     use crate::{
         ast::Span,
-        lex::{LookaheadHandle, ParseResultError, Token, TokenWrapper, ErrorSet},
+        lex::{ErrorSet, LookaheadHandle, ParseResultError, Token, TokenWrapper},
     };
 
     use super::ParseValueGuard;
@@ -324,7 +324,12 @@ pub mod schema {
 
     impl<'parent> RuleUnit<'parent> {
         pub fn empty() -> Self {
-            Self {id: 0, parent: None, tokens: Default::default(), encountered_tokens: Default::default() }
+            Self {
+                id: 0,
+                parent: None,
+                tokens: Default::default(),
+                encountered_tokens: Default::default(),
+            }
         }
 
         pub fn child(&'parent self) -> Self {
@@ -495,7 +500,10 @@ pub mod schema {
         pub fn hint(self, hint: &'static str) -> Self {
             let (v, e) = self.tuplize();
 
-            let e = ParseResultError::ErrorWithHint { original: Box::new(e), hint };
+            let e = ParseResultError::ErrorWithHint {
+                original: Box::new(e),
+                hint,
+            };
             let mut ev = ErrorSet::new();
             ev.push(e);
 
@@ -518,7 +526,7 @@ pub mod schema {
         fn from((value, error): (Option<T>, ErrorSet)) -> Self {
             match value {
                 Some(value) => WithError::Value(value, error),
-                None => WithError::Error(error)
+                None => WithError::Error(error),
             }
         }
     }
@@ -558,6 +566,12 @@ pub mod schema {
             let prg = ParseValueGuard::guard(v, self.sync().index());
 
             Ok(WithError::Value(prg, self.errors_field))
+        }
+
+        pub fn failure<V>(&self, additional_error_info: Option<ParseResultError>) -> ParseResult<V> {
+            Err(CorrectionBubblingError::from_fatal_error(
+                additional_error_info.expect("Error synthesis is not yet supported on failure()"),
+            ))
         }
 
         pub fn sync(&self) -> LookaheadHandle<'tokens> {
@@ -602,8 +616,33 @@ pub mod schema {
             }
         }
 
-        pub fn try_take_string<const LEN: usize>(&mut self, t: [Token; LEN]) -> ParseResult<SmallVec<[TokenWrapper; LEN]>> {
+        pub fn try_take_string<const LEN: usize>(
+            &mut self,
+            t: [Token; LEN],
+        ) -> ParseResult<SmallVec<[TokenWrapper; LEN]>> {
             todo!()
+        }
+
+        pub fn try_take_if<F, T>(&mut self, f: F) -> Option<(T, TokenWrapper)>
+        where
+            F: FnOnce(TokenWrapper) -> Option<T>,
+        {
+            match self.lh.la(0) {
+                Ok(tw) => {
+                    let result_f = f(tw);
+                    let result = match result_f {
+                        Some(r) => Some((r, tw)),
+                        None => None,
+                    };
+
+                    if result.is_some() {
+                        self.lh.advance();
+                    }
+
+                    result
+                }
+                Err(_) => None,
+            }
         }
 
         pub fn take(&self, t: Token) -> TokenResult {
@@ -625,7 +664,10 @@ pub mod schema {
                     self.unit_rules.consumes(tw);
 
                     // virtual advance for join
-                    Ok(WithError::Value(ParseValueGuard::guard(tw, self.lh.index() + 1), Default::default()))
+                    Ok(WithError::Value(
+                        ParseValueGuard::guard(tw, self.lh.index() + 1),
+                        Default::default(),
+                    ))
                 }
                 None => {
                     // need to do a search and potentially issue a bubbling error
@@ -681,7 +723,11 @@ pub mod schema {
         }
 
         pub fn from_handle(lh: LookaheadHandle<'tokens>) -> Self {
-            Self { lh, unit_rules: RuleUnit::empty(), errors_field: Default::default() }
+            Self {
+                lh,
+                unit_rules: RuleUnit::empty(),
+                errors_field: Default::default(),
+            }
         }
     }
 
@@ -763,7 +809,10 @@ pub mod schema {
             let mut ev = ErrorSet::new();
             ev.push(e);
 
-            Self { solution: None, internal_error: ev }
+            Self {
+                solution: None,
+                internal_error: ev,
+            }
         }
     }
 
@@ -786,8 +835,11 @@ pub mod schema {
                     match we {
                         WithError::Error(e) => {
                             e.append(&mut t.errors_field); // this error will be bubbled
-                            Err(CorrectionBubblingError { internal_error: e, solution: None })
-                        },
+                            Err(CorrectionBubblingError {
+                                internal_error: e,
+                                solution: None,
+                            })
+                        }
                         WithError::Value(v, e) => {
                             t.errors_field.append(&mut e); // this is not an error, so any errors encountered should be saved
                             Ok(v)
@@ -804,8 +856,11 @@ pub mod schema {
                     match we {
                         WithError::Error(e) => {
                             t.errors_field.append(&mut e); // this error will be bubbled
-                            Err(CorrectionBubblingError { internal_error: e, solution: None })
-                        },
+                            Err(CorrectionBubblingError {
+                                internal_error: e,
+                                solution: None,
+                            })
+                        }
                         WithError::Value(v, e) => {
                             t.errors_field.append(&mut e); // this is not an error, so any errors encountered should be saved
                             Ok(v)
@@ -818,16 +873,13 @@ pub mod schema {
         fn soft(self) -> Result<V, CorrectionBubblingError> {
             match self {
                 Err(cbe) => Err(cbe),
-                Ok(we) => {
-                    match we {
-                        WithError::Error(e) => {
-                            Err(CorrectionBubblingError { internal_error: e, solution: None })
-                        },
-                        WithError::Value(v, e) => {
-                            Ok(v)
-                        }
-                    }
-                }
+                Ok(we) => match we {
+                    WithError::Error(e) => Err(CorrectionBubblingError {
+                        internal_error: e,
+                        solution: None,
+                    }),
+                    WithError::Value(v, e) => Ok(v),
+                },
             }
         }
 
