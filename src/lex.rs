@@ -361,10 +361,7 @@ fn string_literal() {
     assert!(matches!(lex.next(), None));
 }
 
-use crate::{
-    helper::interner::*,
-    parse::{LexerStreamHandle, ParseValueGuard, SyncSliceHandle, schema::Synchronizer},
-};
+use crate::helper::interner::*;
 use smallvec::SmallVec;
 
 type LexResult = Result<TokenWrapper, ParseResultError>;
@@ -539,7 +536,7 @@ impl<'a> TokenStream<'a> {
         self.peek()
     }
 
-    pub fn to_vec(self) -> Vec<TokenWrapper> {
+    pub fn to_vec(mut self) -> Vec<TokenWrapper> {
         let mut v = Vec::new();
         let mut comment_level = 0;
         let mut inside_line_comment = false;
@@ -625,6 +622,10 @@ pub struct LookaheadHandle<'tokenvec> {
 }
 
 impl<'tokenvec> LookaheadHandle<'tokenvec> {
+    pub fn new(tokens: &'tokenvec Vec<TokenWrapper>) -> Self {
+        Self { tokens, index: 0 }
+    }
+
     pub fn zeroed(tokens: &'tokenvec Vec<TokenWrapper>) -> Self {
         Self { tokens, index: 0 }
     }
@@ -670,7 +671,7 @@ impl<'tokenvec> LookaheadHandle<'tokenvec> {
         self.index += 1;
     }
 
-    pub fn la(&mut self, offset: isize) -> LexResult {
+    pub fn la(&self, offset: isize) -> LexResult {
         self.at(self.index as isize + offset)
     }
 
@@ -708,7 +709,7 @@ impl<'tokenvec> LookaheadHandle<'tokenvec> {
     }
 
 
-    pub fn eat_match_string<const LEN: usize>(
+    /*pub fn eat_match_string<const LEN: usize>(
         &mut self,
         expected: [Token; LEN],
     ) -> Result<SmallVec<[TokenWrapper; LEN]>, ParseResultError> {
@@ -732,7 +733,7 @@ impl<'tokenvec> LookaheadHandle<'tokenvec> {
         }
 
         Ok(sv)
-    }
+    }*/
 }
 
 //use crate::lex::Token;

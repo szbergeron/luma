@@ -1,6 +1,6 @@
 //use crate::ast;
-use crate::helper::lex_wrap::{LookaheadStream, ParseResultError, TokenStream};
 use crate::helper::*;
+use crate::lex::{ParseResultError, TokenStream, LookaheadHandle};
 use crate::parse::Parser;
 use std::collections::HashSet;
 
@@ -32,9 +32,10 @@ pub fn parse_unit<'file>(
 
     let base_path = handle.id;
     let mut lex = TokenStream::new(contents, base_path);
-    let mut scanner = LookaheadStream::new(&mut lex);
+    let tv = lex.to_vec();
+    let mut scanner = LookaheadHandle::new(&tv);
 
-    let mut parser = Parser::new(&mut scanner, scope);
+    let mut parser = Parser::new(scanner, scope);
 
     #[allow(irrefutable_let_patterns)]
     let p = if let iguard = interner() {

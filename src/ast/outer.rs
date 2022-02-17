@@ -4,8 +4,8 @@ use super::base::*;
 use super::expressions::ExpressionWrapper;
 use crate::helper::VecOps;
 
-use crate::helper::lex_wrap::ParseResultError;
 
+use crate::lex::ParseResultError;
 use crate::types::GlobalCtxNode;
 use crate::types::Import;
 use crate::types::Resolution;

@@ -20,7 +20,7 @@ impl<'lexer> Parser<'lexer> {
     }
 
     pub fn parse_struct_definition(&mut self, t: &TokenProvider) -> ParseResult<ast::TypeDefinition> {
-        let t = t.child();
+        let mut t = t.child();
 
         let start = t.take(Token::Struct).hard(&mut t)?.join(&mut t).start;
         let name = t.take(Token::Identifier).hard(&mut t)?.join(&mut t).slice;
@@ -86,7 +86,7 @@ impl<'lexer> Parser<'lexer> {
                   Nonterminal::Terminal(Token::RBrace),
             ]);*/
 
-        let t = t.child().predict(&[Token::LBrace, Token::Opaque, Token::Comma, Token::RBrace]);
+        let mut t = t.child().predict(&[Token::LBrace, Token::Opaque, Token::Comma, Token::RBrace]);
 
         let type_name = t.take(Token::Identifier)?.optionize(&mut errors);
 
@@ -94,7 +94,7 @@ impl<'lexer> Parser<'lexer> {
 
         loop {
             let r = || {
-                let t = t.child().predict(&[Token::Identifier, Token::Colon, Token::Opaque, Token::Comma]);
+                let mut t = t.child().predict(&[Token::Identifier, Token::Colon, Token::Opaque, Token::Comma]);
 
                 //
             };
@@ -212,7 +212,7 @@ impl<'lexer> Parser<'lexer> {
     pub fn parse_static_declaration(
         &mut self, t: &TokenProvider
     ) -> ParseResult<ast::StaticVariableDeclaration> {
-        let t = t.child();
+        let mut t = t.child();
 
         let expr = self.parse_expr(&t).hard(&mut t)?.join(&mut t);
 
@@ -232,7 +232,7 @@ impl<'lexer> Parser<'lexer> {
         &mut self,
         t: &TokenProvider,
     ) -> ParseResult<Vec<IStr>> {
-        let t = t.child();
+        let mut t = t.child();
 
         let mut svec = Vec::new();
         while let Ok(s) = t
@@ -241,6 +241,7 @@ impl<'lexer> Parser<'lexer> {
                 "A scope, if not null deriving, has an IDENTIFIER followed by a double colon (::)",
             )
         {
+            let s = s.as_result().expect("TODO").join(&mut t);
             //let s = todo!();
             let id = s[0]; // always exists, as we passed in a chain of length 2
             svec.push(id.slice);
@@ -250,7 +251,7 @@ impl<'lexer> Parser<'lexer> {
     }
 
     pub fn parse_type_list(&mut self, t: &TokenProvider) -> ParseResult<Vec<ast::TypeReference>> {
-        let t = t.child();
+        let mut t = t.child();
 
         t.take(Token::CmpLessThan).hard(&mut t)?.join(&mut t);
 
@@ -271,7 +272,7 @@ impl<'lexer> Parser<'lexer> {
         &mut self,
         t: &TokenProvider,
     ) -> ParseResult<ast::TypeReference> {
-        let t = t.child();
+        let mut t = t.child();
 
         let scope = self.parse_scope(&t).hard(&mut t)?.join(&mut t); // fine to do unconditionally since null deriving
 
@@ -293,7 +294,7 @@ impl<'lexer> Parser<'lexer> {
     /// | TYPE
     /// | TYPELIST, TYPE
     pub fn parse_type_specifier(&mut self, t: &TokenProvider) -> ParseResult<ast::TypeReference> {
-        let t = t.child();
+        let mut t = t.child();
 
         // these can start with a ( for a typle, a & for a reference, or a str, [<] for a named and
         // optionally parameterized type

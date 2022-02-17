@@ -21,7 +21,7 @@ impl<'lexer> Parser<'lexer> {
 
         let start = self.lex.la(0).map_or(CodeLocation::Builtin, |tw| tw.start);
 
-        let t: TokenProvider = TokenProvider::from_handle(self.lex);
+        let mut t: TokenProvider = TokenProvider::from_handle(self.lex.clone());
 
         //let mut failed = false;
 
@@ -57,7 +57,7 @@ impl<'lexer> Parser<'lexer> {
     }
 
     pub fn parse_symbol_specifiers(&mut self, t: &TokenProvider) -> (bool, bool, bool) {
-        let t = t.child();
+        let mut t = t.child();
 
         let mut public = Option::None;
         let mut mutable = Option::None;
@@ -131,7 +131,7 @@ impl<'lexer> Parser<'lexer> {
         &mut self,
         t: &TokenProvider,
     ) -> ParseResult<ast::SymbolDeclaration> {
-        let t = t.child();
+        let mut t = t.child();
         //let has_pub = self.eat_match(Token::Public);
         let mut failed = false;
 
@@ -151,7 +151,7 @@ impl<'lexer> Parser<'lexer> {
                     .parse_namespace(&t)
                     .hard(&mut t)
                     .map(|mut ns| {
-                        let ns = ns.join(&mut t);
+                        let mut ns = ns.join(&mut t);
                         ns.set_public(public);
                         ast::SymbolDeclaration::NamespaceDeclaration(ns)
                     })
@@ -214,7 +214,7 @@ impl<'lexer> Parser<'lexer> {
                 }
             };
 
-            r
+            r.and_then(|v| t.success(v))
         } else {
             Err(CorrectionBubblingError::from_fatal_error(
                 ParseResultError::EndOfFile,
@@ -224,7 +224,7 @@ impl<'lexer> Parser<'lexer> {
 
     //const first_namespace: [Token; 1] = [Token::Module];
     pub fn parse_namespace(&mut self, t: &TokenProvider) -> ParseResult<ast::Namespace> {
-        let t = t.child();
+        let mut t = t.child();
 
         let start = self.lex.la(0).map_or(CodeLocation::Builtin, |tw| tw.start);
 
@@ -317,7 +317,7 @@ impl<'lexer> Parser<'lexer> {
         &mut self,
         t: &TokenProvider,
     ) -> ParseResult<Vec<(IStr, ast::TypeReference)>> {
-        let t = t.child();
+        let mut t = t.child();
 
         let mut rvec: Vec<(IStr, ast::TypeReference)> = Vec::new();
 
@@ -343,7 +343,7 @@ impl<'lexer> Parser<'lexer> {
         &mut self,
         t: &TokenProvider,
     ) -> ParseResult<ast::FunctionDefinition> {
-        let t = t.child();
+        let mut t = t.child();
 
         let start = t.take(Token::Function).hard(&mut t)?.join(&mut t).start;
         let function_name = t.take(Token::Identifier).hard(&mut t)?.join(&mut t);
@@ -373,15 +373,16 @@ impl<'lexer> Parser<'lexer> {
     }
 
     pub fn parse_use_declaration(&mut self, t: &TokenProvider) -> ParseResult<ast::UseDeclaration> {
-        let t = t.child();
+        let mut t = t.child();
 
         let start = t.take(Token::Use).hard(&mut t)?.join(&mut t).start;
 
         let mut scope = Vec::new();
 
-        t.take_in(&[Token::Identifier, Token::Global, Token::Super])
-            .hint("Use statements should only start with an identifier or the 'global' or 'super' keywords")?;
-        let tw = self.lex.next()?;
+        let tw= t.take_in(&[Token::Identifier, Token::Global, Token::Super])
+            .hint("Use statements should only start with an identifier or the 'global' or 'super' keywords").hard(&mut t)?.join(&mut t);
+
+        //let tw = self.lex.next()?;
 
         /*let first_str = match tw {
         Token::Super | Token::Global | Token::*/
@@ -392,10 +393,10 @@ impl<'lexer> Parser<'lexer> {
         let mut end = tw.end;
 
         while let Some(_) = t.try_take(Token::DoubleColon) {
-            t.take_in(&[Token::Asterisk, Token::Identifier])
-            .hint("Use statements should only either specify a more specific scope (an identifier) or a glob (*) after specifying an initial starting scope")?;
+            let tw = t.take_in(&[Token::Asterisk, Token::Identifier])
+            .hint("Use statements should only either specify a more specific scope (an identifier) or a glob (*) after specifying an initial starting scope").hard(&mut t)?.join(&mut t);
 
-            let tw = self.lex.next()?;
+            //let tw = self.lex.next()?;
 
             scope.push(tw.slice);
 

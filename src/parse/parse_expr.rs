@@ -39,7 +39,7 @@ impl<'lexer> Parser<'lexer> {
         t: &TokenProvider,
     ) -> ParseResult<Box<LetComponent>> {
         // want to find if this is going to be a destructuring operation
-        let t = t.child().predict(&[Token::LParen, Token::Identifier]);
+        let mut t = t.child().predict(&[Token::LParen, Token::Identifier]);
         let next_token = t.sync().la(0).map_err(|e| CorrectionBubblingError::from_fatal_error(e))?;
 
         let mut end;
@@ -129,7 +129,7 @@ impl<'lexer> Parser<'lexer> {
 
     /// syntax: let <binding>: <type> = <expr>
     pub fn parse_let(&mut self, t: &TokenProvider) -> ExpressionResult {
-        let t = t.child();
+        let mut t = t.child();
 
         let start = t.take(Token::Let).hard(&mut t)?.join(&mut t).start;
 
@@ -158,7 +158,7 @@ impl<'lexer> Parser<'lexer> {
     //     typespecifier: <typelist>
     //     pattern: (expressionlist)
     pub fn parse_pattern(&mut self, t: &TokenProvider) -> ParseResult<Pattern> {
-        let t = t.child();
+        let mut t = t.child();
         // can be a single literal or tuple, and each tuple is a set of expressions
 
         let lp = t.take(Token::LParen).hard(&mut t)?.join(&mut t);
@@ -205,7 +205,7 @@ impl<'lexer> Parser<'lexer> {
         &mut self,
         t: &TokenProvider,
     ) -> ParseResult<Box<ScopedNameReference>> {
-        let t = t.child();
+        let mut t = t.child();
 
         let mut r = Box::new(ScopedNameReference {
             scope: Vec::new(),
@@ -302,7 +302,7 @@ impl<'lexer> Parser<'lexer> {
         t: &TokenProvider,
         on: Box<ExpressionWrapper>,
     ) -> ExpressionResult {
-        let t = t.child();
+        let mut t = t.child();
 
         let p = self.parse_pattern(&t).hard(&mut t)?.join(&mut t);
         let start = on.as_node().start().unwrap_or(CodeLocation::Builtin);
@@ -344,7 +344,7 @@ impl<'lexer> Parser<'lexer> {
          */
 
         // first access has no specified "self" unless it is an object itself.
-        let t = t.child();
+        let mut t = t.child();
 
         let mut either: EitherNone<Span, Span> = EitherNone::Neither();
 
@@ -397,7 +397,7 @@ impl<'lexer> Parser<'lexer> {
     }
 
     pub fn parse_llvm_builtin(&mut self, t: &TokenProvider) -> ExpressionResult {
-        let t = t.child();
+        let mut t = t.child();
 
         let start = t.take(Token::InteriorBuiltin).hard(&mut t)?.join(&mut t);
         //let name = self.hard_expect(Token::Identifier)?;
@@ -447,7 +447,7 @@ impl<'lexer> Parser<'lexer> {
     }
 
     pub fn parse_if_then_else(&mut self, t: &TokenProvider) -> ExpressionResult {
-        let t = t.child();
+        let mut t = t.child();
 
         let start = t
             .take(Token::If)
@@ -480,7 +480,7 @@ impl<'lexer> Parser<'lexer> {
     }
 
     pub fn parse_while(&mut self, t: &TokenProvider) -> ExpressionResult {
-        let t = t.child();
+        let mut t = t.child();
 
         let start = t.take(Token::While).hard(&mut t)?.join(&mut t).start;
         let while_exp = self.parse_expr(&t).hard(&mut t)?.join(&mut t);
@@ -492,7 +492,7 @@ impl<'lexer> Parser<'lexer> {
     }
 
     pub fn syntactic_block(&mut self, t: &TokenProvider) -> ExpressionResult {
-        let t = t
+        let mut t = t
             .child()
             .predict(&[Token::LBrace, Token::Semicolon, Token::RBrace]);
 
@@ -579,7 +579,7 @@ impl<'lexer> Parser<'lexer> {
     ) -> ExpressionResult {
         //let t1 = self.lex.la(0)?;
 
-        let t = t.child();
+        let mut t = t.child();
 
         let t1 = t.sync().la(0).map_err(|e| CorrectionBubblingError::from_fatal_error(e))?;
         let mut lhs = match t1.token {

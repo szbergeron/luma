@@ -1,10 +1,11 @@
 use crate::ast::TypeReference;
+use crate::lex::ParseResultError;
+use crate::lex::TokenWrapper;
 use super::base::*;
 use super::outer::*;
 use crate::helper::interner::*;
 //use super::types;
 
-use crate::helper::lex_wrap::{ParseResultError, TokenWrapper};
 use crate::lex::Token;
 use crate::types;
 
@@ -344,7 +345,7 @@ impl AstNode for BlockExpression {
 impl BlockExpression {
     pub fn new_expr(
         node_info: NodeInfo,
-        contents: Vec<Result<Box<ExpressionWrapper>, ParseResultError>>,
+        contents: Vec<Box<ExpressionWrapper>>,
     ) -> Box<ExpressionWrapper> {
         Box::new(ExpressionWrapper::Block(BlockExpression {
             node_info,
