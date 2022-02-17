@@ -4,7 +4,7 @@ use crate::lex::{ParseResultError, Token};
 
 //use crate::helper::lex_wrap::LookaheadStream;
 //use crate::helper::lex_wrap::{CodeLocation, ParseResultError};
-use crate::lex::{CodeLocation, TokenWrapper};
+use crate::lex::CodeLocation;
 //use crate::helper::lex_wrap::TokenWrapper;
 //use std::collections::HashSet;
 use ast::IntoAstNode;
@@ -24,8 +24,10 @@ impl<'lexer> Parser<'lexer> {
         let mut t: TokenProvider = TokenProvider::from_handle(self.lex.clone());
 
         //let mut failed = false;
+        println!("At entry");
 
-        while let Ok(tw) = self.lex.la(0) {
+        while let Ok(tw) = t.sync().la(0) {
+            println!("Entry: got a tw {:?}", tw);
             let _ = match tw.token {
                 Token::RBrace => break,
                 _ => {
@@ -33,7 +35,8 @@ impl<'lexer> Parser<'lexer> {
                     let r = self.parse_global_declaration(&t).hard(&mut t);
 
                     let _ = match r {
-                        Err(e) => {
+                        Err(_e) => {
+                            println!("Err: {_e:?}");
                             //failed = true;
                             for e in t.errors() {
                                 self.report_err(e);
@@ -41,6 +44,7 @@ impl<'lexer> Parser<'lexer> {
                             //self.eat_through(vec![Token::RBrace, Token::Semicolon]);
                         }
                         Ok(ok) => {
+                            println!("Ok");
                             declarations.push(ok.join(&mut t));
                         }
                     };
@@ -131,6 +135,8 @@ impl<'lexer> Parser<'lexer> {
         &mut self,
         t: &TokenProvider,
     ) -> ParseResult<ast::SymbolDeclaration> {
+        println!("Parsing global declaration");
+
         let mut t = t.child();
         //let has_pub = self.eat_match(Token::Public);
         let mut failed = false;
@@ -143,7 +149,7 @@ impl<'lexer> Parser<'lexer> {
             Token::Struct,
             Token::Let,
             Token::Use,
-        ])?;
+        ]).hard(&mut t)?.join(&mut t);
 
         if let Ok(tw) = self.lex.la(0) {
             let r = match tw.token {

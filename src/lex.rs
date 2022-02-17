@@ -672,11 +672,16 @@ impl<'tokenvec> LookaheadHandle<'tokenvec> {
     }
 
     pub fn la(&self, offset: isize) -> LexResult {
-        self.at(self.index as isize + offset)
+        //println!("LA at offset {offset}");
+        let v = self.at(self.index as isize + offset);
+
+        //println!("V: {:?}", v);
+
+        v
     }
 
     pub fn at(&self, index: isize) -> LexResult {
-        match index > 0 {
+        match index >= 0 {
             true => match self.tokens.get(index as usize) {
                 Some(t) => Ok(*t),
                 None => Err(ParseResultError::EndOfFile),
