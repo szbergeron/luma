@@ -12,11 +12,11 @@ use ast::IntoAstNode;
 use crate::parse::*;
 
 use super::schema::{
-    CorrectionBubblingError, CorrectionBubblingResult, ParseResult, ResultHint, TokenProvider,
+    ResultHint, TokenProvider,
 };
 
 impl<'lexer> Parser<'lexer> {
-    pub fn entry(&mut self) -> Result<ast::OuterScope, ParseResultError> {
+    pub fn entry(&mut self) -> ParseResult<ast::OuterScope> {
         let mut declarations = Vec::new();
 
         let start = self.lex.la(0).map_or(CodeLocation::Builtin, |tw| tw.start);
@@ -32,20 +32,18 @@ impl<'lexer> Parser<'lexer> {
                 Token::RBrace => break,
                 _ => {
                     //
-                    let r = self.parse_global_declaration(&t).hard(&mut t);
+                    let r = self.parse_global_declaration(&t).join_hard(&mut t).catch(&mut t).handle_here()?;
 
-                    let _ = match r {
-                        Err(_e) => {
-                            println!("Err: {_e:?}");
-                            //failed = true;
-                            for e in t.errors() {
-                                self.report_err(e);
-                            }
-                            //self.eat_through(vec![Token::RBrace, Token::Semicolon]);
-                        }
-                        Ok(ok) => {
+                    let (v, e, es, s) = r.open();
+
+                    t.add_errors(&mut es);
+                    e.map(|e| t.add_error(e));
+
+                    let _ = match v {
+                        None => (),
+                        Some(ok) => {
                             println!("Ok");
-                            declarations.push(ok.join(&mut t));
+                            declarations.push(ok);
                         }
                     };
                 }
@@ -54,7 +52,7 @@ impl<'lexer> Parser<'lexer> {
 
         let end = self.lex.la(-1).map_or(start, |tw| tw.start);
 
-        Ok(ast::OuterScope {
+        t.success(ast::OuterScope {
             declarations,
             node_info: ast::NodeInfo::from_indices(start, end),
         })
@@ -137,68 +135,40 @@ impl<'lexer> Parser<'lexer> {
     ) -> ParseResult<ast::SymbolDeclaration> {
         println!("Parsing global declaration");
 
-        let mut t = t.child();
+        let mut t = t.child().predict(&[Token::Module, Token::Function, Token::Struct, Token::Use]);
         //let has_pub = self.eat_match(Token::Public);
-        let mut failed = false;
+        //let mut failed = false;
 
         let (public, _mutable, _dynamic) = self.parse_symbol_specifiers(&t);
 
-        t.take_in(&[
+        /*t.take_in(&[
             Token::Module,
             Token::Function,
             Token::Struct,
             Token::Let,
             Token::Use,
-        ]).hard(&mut t)?.join(&mut t);
+        ]).hard(&mut t)?.join(&mut t);*/
 
         if let Ok(tw) = self.lex.la(0) {
             let r = match tw.token {
-                Token::Module => self
-                    .parse_namespace(&t)
-                    .hard(&mut t)
-                    .map(|mut ns| {
-                        let mut ns = ns.join(&mut t);
-                        ns.set_public(public);
-                        ast::SymbolDeclaration::NamespaceDeclaration(ns)
-                    })
-                    .map_err(|e| {
-                        failed = true;
-                        e
-                    }),
-                Token::Function => self
-                    .parse_function_declaration(&t)
-                    .hard(&mut t)
-                    .map(|fd| {
-                        let fd = fd.join(&mut t);
-                        ast::SymbolDeclaration::FunctionDeclaration(fd)
-                    })
-                    .map_err(|e| {
-                        failed = true;
-                        e
-                    }),
+                Token::Module => {
+                    let mut ns = self.parse_namespace(&t).join_hard(&mut t).catch(&mut t)?;
+                    ns.set_public(public);
+                    ast::SymbolDeclaration::NamespaceDeclaration(ns)
+                },
+                Token::Function => {
+                    let fd = self.parse_function_declaration(&t).join_hard(&mut t).catch(&mut t)?;
+                    ast::SymbolDeclaration::FunctionDeclaration(fd)
+                },
                 // TODO: maybe add global variable declaration?
-                Token::Struct => self
-                    .parse_struct_definition(&t)
-                    .hard(&mut t)
-                    .map(|sd| {
-                        let sd = sd.join(&mut t);
-                        ast::SymbolDeclaration::TypeDefinition(sd)
-                    })
-                    .map_err(|e| {
-                        failed = true;
-                        e
-                    }),
-                Token::Use => self
-                    .parse_use_declaration(&t)
-                    .hard(&mut t)
-                    .map(|ud| {
-                        let ud = ud.join(&mut t);
-                        ast::SymbolDeclaration::UseDeclaration(ud)
-                    })
-                    .map_err(|e| {
-                        failed = true;
-                        e
-                    }),
+                Token::Struct => {
+                    let sd = self.parse_struct_definition(&t).join_hard(&mut t).catch(&mut t)?;
+                    ast::SymbolDeclaration::TypeDefinition(sd)
+                },
+                Token::Use => {
+                    let ud = self.parse_use_declaration(&t).join_hard(&mut t).catch(&mut t)?;
+                    ast::SymbolDeclaration::UseDeclaration(ud)
+                },
 
                 // only parse let expressions for now, since other (pure) expressions would be
                 // useless
@@ -212,33 +182,29 @@ impl<'lexer> Parser<'lexer> {
                 _ => {
                     // may be expression?
 
-                    Err(CorrectionBubblingError::from_fatal_error(ParseResultError::UnexpectedToken(
-                        tw,
-                        vec![Token::Module, Token::Let, Token::Function],
-                        None,
-                    )))
+                    return t.failure(ParseResultError::UnexpectedToken(tw, vec![Token::Module, Token::Let, Token::Function], None));
                 }
             };
 
-            r.and_then(|v| t.success(v))
+            t.success(r)
+
+            //r.and_then(|v| t.success(v))
         } else {
-            Err(CorrectionBubblingError::from_fatal_error(
-                ParseResultError::EndOfFile,
-            ))
+            t.failure(ParseResultError::EndOfFile)
         }
     }
 
     //const first_namespace: [Token; 1] = [Token::Module];
     pub fn parse_namespace(&mut self, t: &TokenProvider) -> ParseResult<ast::Namespace> {
-        let mut t = t.child();
+        let mut t = t.child().predict(&[Token::Module, Token::Identifier, Token::LBrace, Token::RBrace]);
 
         let start = self.lex.la(0).map_or(CodeLocation::Builtin, |tw| tw.start);
 
-        t.take(Token::Module)?;
-        let id = t.take(Token::Identifier).hard(&mut t)?.join(&mut t).slice;
-        t.take(Token::LBrace)?;
-        let pu = self.entry();
-        t.take(Token::RBrace)?;
+        t.take(Token::Module).join_hard(&mut t).catch(&mut t)?;
+        let id = t.take(Token::Identifier).join_hard(&mut t).catch(&mut t)?.slice;
+        t.take(Token::LBrace).join_hard(&mut t).catch(&mut t)?;
+        let pu = self.entry().join_hard(&mut t).catch(&mut t)?;
+        t.take(Token::RBrace).join_hard(&mut t).catch(&mut t)?;
 
         let end = self.lex.la(-1).map_or(CodeLocation::Builtin, |tw| tw.end);
 
@@ -328,8 +294,8 @@ impl<'lexer> Parser<'lexer> {
         let mut rvec: Vec<(IStr, ast::TypeReference)> = Vec::new();
 
         while let Some(i) = t.try_take(Token::Identifier) {
-            t.take(Token::Colon)?;
-            let tr = self.parse_type_specifier(&t).hard(&mut t)?.join(&mut t);
+            t.take(Token::Colon).join_hard(&mut t).catch(&mut t)?;
+            let tr = self.parse_type_specifier(&t).join_hard(&mut t).catch(&mut t)?;
 
             let r = (i.slice, tr);
 
@@ -351,17 +317,17 @@ impl<'lexer> Parser<'lexer> {
     ) -> ParseResult<ast::FunctionDefinition> {
         let mut t = t.child();
 
-        let start = t.take(Token::Function).hard(&mut t)?.join(&mut t).start;
-        let function_name = t.take(Token::Identifier).hard(&mut t)?.join(&mut t);
+        let start = t.take(Token::Function).join_hard(&mut t).catch(&mut t)?.start;
+        let function_name = t.take(Token::Identifier).join_hard(&mut t).catch(&mut t)?;
 
-        t.take(Token::LParen)?;
-        let params = self.parse_function_param_list(&t).hard(&mut t)?.join(&mut t);
-        t.take(Token::RParen)?;
+        t.take(Token::LParen).join_hard(&mut t).catch(&mut t)?;
+        let params = self.parse_function_param_list(&t).join_hard(&mut t).catch(&mut t)?;
+        t.take(Token::RParen).join_hard(&mut t).catch(&mut t)?;
 
-        t.take(Token::ThinArrow)?;
-        let return_type = self.parse_type_specifier(&t).hard(&mut t)?.join(&mut t);
+        t.take(Token::ThinArrow).join_hard(&mut t).catch(&mut t)?;
+        let return_type = self.parse_type_specifier(&t).join_hard(&mut t).catch(&mut t)?;
 
-        let body = self.parse_expr(&t).hard(&mut t)?.join(&mut t);
+        let body = self.parse_expr(&t).join_hard(&mut t).catch(&mut t)?;
 
         let end = body.as_node().start().expect("Some(_) body has None end");
 
@@ -381,12 +347,12 @@ impl<'lexer> Parser<'lexer> {
     pub fn parse_use_declaration(&mut self, t: &TokenProvider) -> ParseResult<ast::UseDeclaration> {
         let mut t = t.child();
 
-        let start = t.take(Token::Use).hard(&mut t)?.join(&mut t).start;
+        let start = t.take(Token::Use).join_hard(&mut t).catch(&mut t)?.start;
 
         let mut scope = Vec::new();
 
         let tw= t.take_in(&[Token::Identifier, Token::Global, Token::Super])
-            .hint("Use statements should only start with an identifier or the 'global' or 'super' keywords").hard(&mut t)?.join(&mut t);
+            .hint("Use statements should only start with an identifier or the 'global' or 'super' keywords").join_hard(&mut t).catch(&mut t)?;
 
         //let tw = self.lex.next()?;
 
@@ -400,7 +366,7 @@ impl<'lexer> Parser<'lexer> {
 
         while let Some(_) = t.try_take(Token::DoubleColon) {
             let tw = t.take_in(&[Token::Asterisk, Token::Identifier])
-            .hint("Use statements should only either specify a more specific scope (an identifier) or a glob (*) after specifying an initial starting scope").hard(&mut t)?.join(&mut t);
+            .hint("Use statements should only either specify a more specific scope (an identifier) or a glob (*) after specifying an initial starting scope").join_hard(&mut t).catch(&mut t)?;
 
             //let tw = self.lex.next()?;
 
@@ -412,12 +378,12 @@ impl<'lexer> Parser<'lexer> {
         let mut alias: Option<IStr> = None;
 
         if let Some(_) = t.try_take(Token::As) {
-            let id = t.take(Token::Identifier).hard(&mut t)?.join(&mut t); // don't bubble, recoverable
+            let id = t.take(Token::Identifier).join_hard(&mut t).catch(&mut t)?; // don't bubble, recoverable
 
             alias = Some(id.slice);
         }
 
-        end = t.take(Token::Semicolon).hard(&mut t)?.join(&mut t).end; // don't need to directly bubble, since this individual statement is recoverable
+        end = t.take(Token::Semicolon).join_hard(&mut t).catch(&mut t)?.end; // don't need to directly bubble, since this individual statement is recoverable
 
         let node_info = ast::NodeInfo::from_indices(start, end);
 

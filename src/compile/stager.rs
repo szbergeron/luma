@@ -45,12 +45,21 @@ pub fn parse_unit<'file>(
         panic!("irrefutable pattern")
     };
 
+    let (v, e, es, s) = p.open_anyway();
+
+    for e in es {
+        parser.err::<()>(e);
+    }
+
+    e.map(|e| parser.err::<()>(e));
+
     if !cflags.eflags.silence_errors {
         parser.print_errors(handle);
     }
 
-    match p.as_ref() {
-        Ok(punit) => {
+
+    match v {
+        Some(punit) => {
             if cflags.dump_tree {
                 println!("Gets AST of: {}", punit);
             }
@@ -61,12 +70,13 @@ pub fn parse_unit<'file>(
                 println!("{}", s);
             }
         }
-        Err(err) => {
+        None => println!("No parse unit was created"),
+        /*Err(err) => {
             println!("Failed to parse with error: {:?}", err);
-        }
+        }*/
     }
 
-    p
+    v.ok_or(ParseResultError::InternalParseIssue)
 }
 
 #[derive(Default, Copy, Clone)]
@@ -131,7 +141,8 @@ fn parse_args(args: &[&str]) -> Result<ArgResult, &'static str> {
 
     let mut cflags = CFlags {
         thread_count: 1,
-        ..Default::default()
+        ..CFlags::default()
+        //..Default::default()
     };
 
     let mut inputs = HashSet::<PathBuf>::new();
