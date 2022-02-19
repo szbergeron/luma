@@ -46,6 +46,7 @@ impl<T> Chunk<T> {
 }
 
 #[repr(C)]
+#[allow(dead_code)]
 struct SizedChunk<T> {
     size: usize,
     cur: AtomicUsize,
@@ -60,6 +61,7 @@ pub struct AtomicVec<T, const CHUNK_COUNT: usize = 32, const FIRST_CHUNK_SIZE: u
     phantom: PhantomData<T>,
 }
 
+#[allow(dead_code)]
 struct ImplDefaultConstArray<T: Default, const N: usize> {
   arr: MaybeUninit<[T; N]>,
   idx: usize,
@@ -80,7 +82,7 @@ impl<T, const CC: usize, const FCS: usize> AtomicVec<T, CC, FCS> {
     }
 
     pub fn new() -> AtomicVec<T, CC, FCS> {
-        static init_key: AtomicUsize = AtomicUsize::new(0);
+        static INIT_KEY: AtomicUsize = AtomicUsize::new(0);
         //const nptr: AtomicPtr<()> = AtomicPtr::new(null_mut());
 
         /*let mut chunks = Vec::new();
@@ -91,7 +93,7 @@ impl<T, const CC: usize, const FCS: usize> AtomicVec<T, CC, FCS> {
         //let (slice, _, _) = chunks.into_raw_parts();*/
 
         AtomicVec {
-            self_key: init_key.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+            self_key: INIT_KEY.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             //chunks: Default::default(), // null ptrs
             //chunks: [Default::default(); CC],
             //chunks: [AtomicPtr<()>; CHUNK_COUNT].from
@@ -131,7 +133,7 @@ impl<T, const CC: usize, const FCS: usize> AtomicVec<T, CC, FCS> {
             //println!("had to do a chunk alloc");
 
             match res {
-                Ok(p) => {
+                Ok(_p) => {
                     //println!("We could write ours");
                     // we got a chance to write our ptr, no other thread did it faster
                     ptr
@@ -213,6 +215,7 @@ impl<T, const CC: usize, const FCS: usize> AtomicVec<T, CC, FCS> {
         let mut val = Some(e);
 
         while chunk < self.chunks.len() {
+            #[allow(unused_unsafe)]
             unsafe {
                 match self.try_insert_chunk_idx(chunk, &mut val) {
                     Some(avi) => return avi,
@@ -233,6 +236,7 @@ impl<T, const CC: usize, const FCS: usize> AtomicVec<T, CC, FCS> {
     /// Indexing into self using the given AtomicVecIndex may allow creating an & alias
     /// to the T that was already passed as &mut T, do not do this!
     pub unsafe fn push_with(&self, e: T, f: impl FnOnce(&mut T, AtomicVecIndex)) -> (AtomicVecIndex, &T) {
+        #[allow(unused_unsafe)]
         unsafe {
             let (avi, r) = self.push_internal(e);
 

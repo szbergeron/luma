@@ -137,7 +137,7 @@ impl AstNode for Namespace {
             self.name.map(|ss| ss.resolve()).unwrap_or("<unknown")
         );
 
-        if let os = self.contents {
+        if let os = &self.contents {
             os.pretty(f, depth + 1);
         }
         let _ = write!(f, "{}}}", indent(depth));
@@ -721,8 +721,8 @@ impl SymbolDeclaration {
     }
 
     pub fn symbols(&self) -> &[SymbolDeclaration] {
-        match self {
-            Self::NamespaceDeclaration(ns) => match ns.contents {
+        match &self {
+            Self::NamespaceDeclaration(ns) => match &ns.contents {
                 contents => &contents.declarations[..],
                 //Err(_) => &[],
             },

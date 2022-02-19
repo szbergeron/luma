@@ -16,12 +16,13 @@ use super::schema::{
 };
 
 impl<'lexer> Parser<'lexer> {
-    pub fn entry(&mut self) -> ParseResult<ast::OuterScope> {
+    pub fn entry(&mut self, t: &TokenProvider) -> ParseResult<ast::OuterScope> {
+        let mut t = t.child();
+
         let mut declarations = Vec::new();
 
         let start = self.lex.la(0).map_or(CodeLocation::Builtin, |tw| tw.start);
 
-        let mut t: TokenProvider = TokenProvider::from_handle(self.lex.clone());
 
         //let mut failed = false;
         println!("At entry");
@@ -31,13 +32,20 @@ impl<'lexer> Parser<'lexer> {
             let _ = match tw.token {
                 Token::RBrace => break,
                 _ => {
-                    //
+                    println!("Trying for a global dec");
                     let r = self.parse_global_declaration(&t).join_hard(&mut t).catch(&mut t).handle_here()?;
 
-                    let (v, e, es, s) = r.open();
+                    let (v, e, mut es, s) = r.open();
+                    println!("Opened the value");
+
+                    t.sync_with_solution(s);
 
                     t.add_errors(&mut es);
                     e.map(|e| t.add_error(e));
+
+                    for e in t.errors() {
+                        println!("{e:?}");
+                    }
 
                     let _ = match v {
                         None => (),
@@ -181,6 +189,7 @@ impl<'lexer> Parser<'lexer> {
                 }),*/
                 _ => {
                     // may be expression?
+                    println!("Token was not as expected for a global declaration");
 
                     return t.failure(ParseResultError::UnexpectedToken(tw, vec![Token::Module, Token::Let, Token::Function], None));
                 }
@@ -196,14 +205,18 @@ impl<'lexer> Parser<'lexer> {
 
     //const first_namespace: [Token; 1] = [Token::Module];
     pub fn parse_namespace(&mut self, t: &TokenProvider) -> ParseResult<ast::Namespace> {
+        println!("Parsing a namespace");
+
         let mut t = t.child().predict(&[Token::Module, Token::Identifier, Token::LBrace, Token::RBrace]);
 
-        let start = self.lex.la(0).map_or(CodeLocation::Builtin, |tw| tw.start);
+        let start = t.la(0).join_hard(&mut t).catch(&mut t).try_get().map_or(CodeLocation::Builtin, |tw| tw.start);
 
         t.take(Token::Module).join_hard(&mut t).catch(&mut t)?;
+        println!("Pulled a mod");
         let id = t.take(Token::Identifier).join_hard(&mut t).catch(&mut t)?.slice;
+        println!("Pulled an id");
         t.take(Token::LBrace).join_hard(&mut t).catch(&mut t)?;
-        let pu = self.entry().join_hard(&mut t).catch(&mut t)?;
+        let pu = self.entry(&t).join_hard(&mut t).catch(&mut t)?;
         t.take(Token::RBrace).join_hard(&mut t).catch(&mut t)?;
 
         let end = self.lex.la(-1).map_or(CodeLocation::Builtin, |tw| tw.end);

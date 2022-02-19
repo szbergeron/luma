@@ -250,6 +250,8 @@ impl<'lexer> Parser<'lexer> {
 
         t.take(Token::CmpLessThan).join_hard(&mut t).catch(&mut t)?;
 
+        GuardedResult::catch(GuardedResult::join_hard(t.take(Token::CmpLessThan), &mut t), &mut t);
+
         let mut tvec = Vec::new();
         while let None = t.try_take(Token::CmpLessThan) {
             let tspec = self

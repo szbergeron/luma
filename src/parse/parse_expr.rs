@@ -550,7 +550,7 @@ impl<'lexer> Parser<'lexer> {
                         .catch(&mut t)
                         .handle_here()?;
 
-                    let (v, e, es, s) = e.open();
+                    let (v, e, mut es, s) = e.open();
 
                     t.add_errors(&mut es);
                     e.map(|e| t.add_error(e));
