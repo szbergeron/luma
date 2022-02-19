@@ -379,6 +379,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "heck"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2540771e65fc8cb83cd6e8a237f70c319bd5c29f78ed1084ba5d50eeac86f7f9"
+
+[[package]]
 name = "hermit-abi"
 version = "0.1.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -738,6 +744,7 @@ dependencies = [
  "rangemap",
  "rayon",
  "smallvec 1.6.1",
+ "staged-builder",
  "static_assertions",
  "term_size",
  "tokio",
@@ -784,6 +791,27 @@ name = "stable_deref_trait"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
+
+[[package]]
+name = "staged-builder"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d7135d7d1fce459bcaf5957ef7626c3f5222e4fb65ef299babb2bef7807a1b0c"
+dependencies = [
+ "staged-builder-internals",
+]
+
+[[package]]
+name = "staged-builder-internals"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "209213151cf308553838a21985c16b8fed04ea14e5b3e6532918756013dbb7e1"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
 
 [[package]]
 name = "static_assertions"

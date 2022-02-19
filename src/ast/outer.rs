@@ -4,8 +4,8 @@ use super::base::*;
 use super::expressions::ExpressionWrapper;
 use crate::helper::VecOps;
 
-use crate::helper::lex_wrap::ParseResultError;
 
+use crate::lex::ParseResultError;
 use crate::types::GlobalCtxNode;
 use crate::types::Import;
 use crate::types::Resolution;
@@ -27,7 +27,7 @@ pub struct Namespace {
 
     pub public: bool,
     pub name: Option<IStr>,
-    pub contents: Result<OuterScope, ParseResultError>,
+    pub contents: OuterScope,
 }
 
 impl Namespace {
@@ -65,7 +65,7 @@ impl Namespace {
 
         //let mut ctxs = Vec::new();
 
-        if let Ok(os) = self.contents {
+        if let os = self.contents {
             return os.into_ctx(
                 parent_scope.to_vec().appended_opt(self.name),
                 parent,
@@ -125,9 +125,9 @@ impl AstNode for Namespace {
             self.node_info,
         );
 
-        self.contents
-            .iter()
-            .for_each(|contents| contents.display(f, depth + 1));
+        self.contents.display(f, depth + 1);
+            /*.iter()
+            .for_each(|contents| contents.display(f, depth + 1));*/
     }
 
     fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
@@ -137,7 +137,7 @@ impl AstNode for Namespace {
             self.name.map(|ss| ss.resolve()).unwrap_or("<unknown")
         );
 
-        if let Ok(os) = self.contents.as_ref() {
+        if let os = &self.contents {
             os.pretty(f, depth + 1);
         }
         let _ = write!(f, "{}}}", indent(depth));
@@ -721,10 +721,10 @@ impl SymbolDeclaration {
     }
 
     pub fn symbols(&self) -> &[SymbolDeclaration] {
-        match self {
-            Self::NamespaceDeclaration(ns) => match ns.contents.as_ref() {
-                Ok(contents) => &contents.declarations[..],
-                Err(_) => &[],
+        match &self {
+            Self::NamespaceDeclaration(ns) => match &ns.contents {
+                contents => &contents.declarations[..],
+                //Err(_) => &[],
             },
             _ => &[],
         }

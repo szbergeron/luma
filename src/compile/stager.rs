@@ -1,7 +1,8 @@
 //use crate::ast;
-use crate::helper::lex_wrap::{LookaheadStream, ParseResultError, Wrapper};
 use crate::helper::*;
+use crate::lex::{ParseResultError, TokenStream, LookaheadHandle};
 use crate::parse::Parser;
+use crate::parse::schema::TokenProvider;
 use std::collections::HashSet;
 
 use std::path::{Path, PathBuf};
@@ -31,25 +32,37 @@ pub fn parse_unit<'file>(
     let contents = handle.contents;
 
     let base_path = handle.id;
-    let mut lex = Wrapper::new(contents, base_path);
-    let mut scanner = LookaheadStream::new(&mut lex);
+    let lex = TokenStream::new(contents, base_path);
+    let tv = lex.to_vec();
+    let scanner = LookaheadHandle::new(&tv);
 
-    let mut parser = Parser::new(&mut scanner, scope);
+    let mut parser = Parser::new(scanner.clone(), scope);
+
+    let mut t: TokenProvider = TokenProvider::from_handle(scanner);
 
     #[allow(irrefutable_let_patterns)]
     let p = if let iguard = interner() {
-        let p = parser.entry();
+        let p = parser.entry(&t);
         p
     } else {
         panic!("irrefutable pattern")
     };
 
+    let (v, e, es, s) = p.open_anyway();
+
+    for e in es {
+        let _ = parser.err::<()>(e);
+    }
+
+    e.map(|e| parser.err::<()>(e));
+
     if !cflags.eflags.silence_errors {
         parser.print_errors(handle);
     }
 
-    match p.as_ref() {
-        Ok(punit) => {
+
+    match &v {
+        Some(punit) => {
             if cflags.dump_tree {
                 println!("Gets AST of: {}", punit);
             }
@@ -60,12 +73,13 @@ pub fn parse_unit<'file>(
                 println!("{}", s);
             }
         }
-        Err(err) => {
+        None => println!("No parse unit was created"),
+        /*Err(err) => {
             println!("Failed to parse with error: {:?}", err);
-        }
+        }*/
     }
 
-    p
+    v.ok_or(ParseResultError::InternalParseIssue)
 }
 
 #[derive(Default, Copy, Clone)]
@@ -88,7 +102,7 @@ async fn async_launch(args: ArgResult) {
     let (error_sender, _error_reciever) = crossbeam::unbounded();
 
     let root = super::tree::CompilationRoot::initial(error_sender, args).await;
-    let root_ctx = root.into_ctx().await;
+    let _root_ctx = root.into_ctx().await;
 }
 
 pub fn launch(args: &[&str]) {
@@ -130,7 +144,8 @@ fn parse_args(args: &[&str]) -> Result<ArgResult, &'static str> {
 
     let mut cflags = CFlags {
         thread_count: 1,
-        ..Default::default()
+        ..CFlags::default()
+        //..Default::default()
     };
 
     let mut inputs = HashSet::<PathBuf>::new();

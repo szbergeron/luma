@@ -1,7 +1,12 @@
 use crate::ast::base::IntoAstNode;
 use crate::ast::{self, MemberAttributes};
-use crate::lex::Token;
+use crate::lex::{ErrorSet, Token};
 use crate::parse::*;
+
+use super::schema::{
+    Nonterminal, ResultHint, TokenProvider,
+};
+use Nonterminal::*;
 
 impl<'lexer> Parser<'lexer> {
     /// Currently unconditionally returns memberattrs as they are null-deriving
@@ -15,20 +20,32 @@ impl<'lexer> Parser<'lexer> {
         }) // TODO
     }
 
-    pub fn parse_struct_definition(&mut self) -> Result<ast::TypeDefinition, ParseResultError> {
-        let start = self.hard_expect(Token::Struct)?.start;
-        let name = self.hard_expect(Token::Identifier)?.slice;
+    pub fn parse_struct_definition(
+        &mut self,
+        t: &TokenProvider,
+    ) -> ParseResult<ast::TypeDefinition> {
+        let mut t = t.child();
 
-        self.hard_expect(Token::LBrace)?;
+        let start = t.take(Token::Struct).join_hard(&mut t).catch(&mut t)?.start;
+        let name = t
+            .take(Token::Identifier)
+            .join_hard(&mut t)
+            .catch(&mut t)?
+            .slice;
+
+        t.take(Token::LBrace).join_hard(&mut t).catch(&mut t)?;
 
         let mut fields = Vec::new();
 
         while let (Ok(ma), Some(field_name)) = (
             self.parse_member_attributes(),
-            self.eat_match(Token::Identifier),
+            t.try_take(Token::Identifier),
         ) {
-            self.hard_expect(Token::Colon)?;
-            let field_type = *self.parse_type_specifier()?;
+            t.take(Token::Colon).join_hard(&mut t).catch(&mut t)?;
+            let field_type = self
+                .parse_type_specifier(&t)
+                .join_hard(&mut t)
+                .catch(&mut t)?;
             /*let expr = if self.eat_match(Token::Equals).is_some() {
                 Some(self.parse_expr()?)
             } else {
@@ -43,25 +60,133 @@ impl<'lexer> Parser<'lexer> {
 
             fields.push(field_member);
 
-            if let Some(_comma) = self.eat_match(Token::Comma) {
+            if let Some(_comma) = t.try_take(Token::Comma) {
                 continue;
             } else {
                 break;
             }
         }
 
-        let end = self.hard_expect(Token::RBrace)?.end;
+        let end = t.take(Token::RBrace).join_hard(&mut t).catch(&mut t)?.end;
 
         let node_info = ast::NodeInfo::from_indices(start, end);
 
-        Ok(ast::TypeDefinition::Struct(ast::RecordValueDefinition {
+        t.success(ast::TypeDefinition::Struct(ast::RecordValueDefinition {
             fields,
             node_info,
         }))
     }
 
-    pub fn parse_type_block(&mut self) -> Result<ast::ImplementationBody, ParseResultError> {
+    pub fn parse_type_block(&mut self, t: &TokenProvider) -> ParseResult<ast::ImplementationBody> {
+        let mut errors = ErrorSet::new();
+        /*let type_spec = Rule("type specifier");
+        let field = subrule(&[Terminal(Token::Identifier), Terminal(Token::Colon), type_spec, ])
+
+        let t = t.child()
+            .rules(&[
+                  Nonterminal::Terminal(Token::Identifier),
+                  Nonterminal::Terminal(Token::LBrace),
+                  Nonterminal::Skip { index: 6 },
+                    Nonterminal::Terminal(Token::Identifier), Nonterminal::Rule("This would strictly match a type description, but here we allow only matching the basic blocks"),
+                    Nonterminal::Terminal(Token::Colon),
+                    Nonterminal::Terminal(Token::Identifier),
+                  Nonterminal::Repeat { index: 2 },
+                  Nonterminal::Terminal(Token::RBrace),
+            ]);*/
+
+        let mut t = t
+            .child()
+            .predict(&[Token::LBrace, Token::Opaque, Token::Comma, Token::RBrace]);
+
+        let type_name = t.take(Token::Identifier).join_hard(&mut t).catch(&mut t).handle_here()?.try_get();
+
+        t.take(Token::LBrace).join_hard(&mut t).catch(&mut t)?;
+
+        loop {
+            let r = || {
+                let mut t = t.child().predict(&[
+                    Token::Identifier,
+                    Token::Colon,
+                    Token::Opaque,
+                    Token::Comma,
+                ]);
+
+                //
+            };
+
+            match t
+                .take_in(&[Token::Comma, Token::RBrace])
+                .join_hard(&mut t)
+                .catch(&mut t)?
+                .token
+            {
+                Token::Comma => {
+                    // we could have another field, so try looking again
+                    t.predict_next(Token::Comma); // we are potentially still looking for a comma in our lookahead,
+                                                  // so leave it in the rule
+                    continue;
+                }
+                Token::RBrace => {
+                    // end of the block, so return
+                    break;
+                }
+                other => {
+                    println!("Offending input token: {:?}", other);
+                    panic!("Got a token that should not be there after synchronization")
+                }
+            }
+        }
+
         todo!()
+
+        /*t.take(Token::LBrace)?; // if this unit isn't supposed to be "taking" tokens (even if they are virtual) then bubble error
+
+        let sync = loop {
+            let r = || {
+                //
+                let t = t.child().linear(&[Token::Identifier, Token::Colon, Token::Opaque]);
+
+                match t.try_take(Token::Identifier) {
+                    Some(field_name) => {
+                        t.take(Token::Colon)?
+                    },
+                }
+            };
+        }
+
+                loop {
+        let sync = || {
+            let t = t.child().linear(&[Token::Identifier, Token::Colon, Token::Opaque]);
+
+            match t.try_take(Token::Identifier) {
+                Some(field_name) => {
+                    t.take(Token::Colon)?
+                },
+            }
+
+            break t.syncer();
+
+            let field_name = t.take(Token::Identifier)?;
+        }
+        }();
+
+        while let Some(_) = t.peek_for(Token::Identifier) {
+            let t =
+                t.child()
+                    .linear(&[Token::Identifier, Token::Colon, Token::Opaque, Token::Comma]);
+
+            let field_name = t.take(Token::Identifier)?;
+
+            t.take(Token::Colon)?;
+
+            let type_spec = self.parse_type_specifier().catch(&t)?;
+
+            if let None = t.peek_for(Token::Comma) {
+                break;
+            }
+        }*/
+
+        //t.take(Token::RBrace)?;
     }
 
     /**
@@ -88,11 +213,15 @@ impl<'lexer> Parser<'lexer> {
 
     pub fn parse_static_declaration(
         &mut self,
-    ) -> Result<ast::StaticVariableDeclaration, ParseResultError> {
-        let expr = self.parse_expr()?;
-        self.hard_expect(Token::Semicolon)?;
+        t: &TokenProvider,
+    ) -> ParseResult<ast::StaticVariableDeclaration> {
+        let mut t = t.child();
 
-        Ok(ast::StaticVariableDeclaration {
+        let expr = self.parse_expr(&t).join_hard(&mut t).catch(&mut t)?;
+
+        t.take(Token::Semicolon).join_hard(&mut t).catch(&mut t)?;
+
+        t.success(ast::StaticVariableDeclaration {
             node_info: expr.as_node().node_info(),
             public: false,
             expression: expr,
@@ -102,17 +231,55 @@ impl<'lexer> Parser<'lexer> {
     /// Scope spec:
     /// | <empty string>
     /// | <SCOPE>IDENTIFIER::
-    pub fn parse_scope(&mut self) -> Result<Vec<IStr>, ParseResultError> {
+    pub fn parse_scope(&mut self, t: &TokenProvider) -> ParseResult<Vec<IStr>> {
+        let mut t = t.child();
+
         let mut svec = Vec::new();
-        while let Ok(s) = self.eat_match_string([Token::Identifier, Token::DoubleColon]).hint("A scope, if not null deriving, has an IDENTIFIER followed by a double colon (::)") {
+        while let Some(s) = t.try_take_string([Token::Identifier, Token::DoubleColon]) {
+            //let s = s.as_result().expect("TODO").join(&mut t);
+            //let s = todo!();
             let id = s[0]; // always exists, as we passed in a chain of length 2
             svec.push(id.slice);
         }
 
-        return Ok(svec)
+        t.success(svec)
     }
 
-    pub fn parse_type_list(&mut self) -> Result<Vec<ast::TypeReference>, ParseResultError> {
+    pub fn parse_type_list(&mut self, t: &TokenProvider) -> ParseResult<Vec<ast::TypeReference>> {
+        let mut t = t.child();
+
+        t.take(Token::CmpLessThan).join_hard(&mut t).catch(&mut t)?;
+
+        GuardedResult::catch(GuardedResult::join_hard(t.take(Token::CmpLessThan), &mut t), &mut t);
+
+        let mut tvec = Vec::new();
+        while let None = t.try_take(Token::CmpLessThan) {
+            let tspec = self
+                .parse_type_specifier(&t)
+                .join_hard(&mut t)
+                .catch(&mut t)?;
+            tvec.push(tspec);
+            match t.try_take(Token::Comma) {
+                Some(_) => continue, // comma means there might be another type
+                None => break,
+            }
+        }
+
+        t.success(tvec)
+    }
+
+    pub fn parse_type_reference(&mut self, t: &TokenProvider) -> ParseResult<ast::TypeReference> {
+        let mut t = t.child();
+
+        let scope = self.parse_scope(&t).join_hard(&mut t).catch(&mut t)?; // fine to do unconditionally since null deriving
+
+        let typename = t
+            .take(Token::Identifier)
+            .hint("All types start with a scope, and must be followed by a typename")
+            .join_hard(&mut t)
+            .catch(&mut t)?;
+
+        todo!()
     }
 
     /// Type reference specification:
@@ -124,13 +291,13 @@ impl<'lexer> Parser<'lexer> {
     /// Typelist:
     /// | TYPE
     /// | TYPELIST, TYPE
-    pub fn parse_type_specifier(
-        &mut self,
-    ) -> Result<Box<ast::TypeReference>, ParseResultError> {
+    pub fn parse_type_specifier(&mut self, t: &TokenProvider) -> ParseResult<ast::TypeReference> {
+        let mut t = t.child();
+
         // these can start with a ( for a typle, a & for a reference, or a str, [<] for a named and
         // optionally parameterized type
 
-        let scope = self.parse_scope();
+        let scope = self.parse_scope(&t).join_hard(&mut t).catch(&mut t)?;
 
         /*if !scope.silent {
             self.hard_expect
@@ -138,24 +305,27 @@ impl<'lexer> Parser<'lexer> {
         // TODO: eval if should require a trailing :: during scope lookup
 
         let final_id = scope
-            .scope
             .last()
             .expect("ScopedNameReference had no final id, not even implicit");
         let final_id = *final_id;
-        let mut tr = ast::TypeReference::new(*scope, final_id);
+
+        let mut tr = ast::TypeReference::new(todo!("scope"), final_id);
 
         let continuation = [Token::LParen, Token::Ampersand];
         //self.eat_match_in(&continuation)?;
         //println!("Trying to eat a type_spec with la {:?}", self.lex.la(0));
-        match self.eat_match_in(&continuation) {
+        match t.try_take_in(&continuation) {
             Some(tw) => {
                 match tw.token {
                     Token::Ampersand => {
                         //println!("adding a & to a ctx that had {:?}", tr.ctx.scope);
                         tr.ctx.scope.push(intern("&"));
 
-                        let inner = self.parse_type_specifier()?;
-                        tr.type_args.push(*inner);
+                        let inner = self
+                            .parse_type_specifier(&t)
+                            .join_hard(&mut t)
+                            .catch(&mut t)?;
+                        tr.type_args.push(inner);
                     }
                     Token::LParen => {
                         tr.ctx.scope.push(intern("Tuple"));
@@ -163,25 +333,29 @@ impl<'lexer> Parser<'lexer> {
                         //println!("la is {:?}", self.lex.la(0));
 
                         #[allow(irrefutable_let_patterns)]
-                        while let tri = self.parse_type_specifier()? {
-                            tr.type_args.push(*tri);
-                            match self.eat_match(Token::Comma) {
+                        while let tri = self
+                            .parse_type_specifier(&t)
+                            .join_hard(&mut t)
+                            .catch(&mut t)?
+                        {
+                            tr.type_args.push(tri);
+                            match t.try_take(Token::Comma) {
                                 None => break,
                                 Some(_comma) => continue,
                             }
                         }
 
-                        self.hard_expect(Token::RParen)?;
+                        t.take(Token::RParen).join_hard(&mut t).catch(&mut t)?;
                     }
                     _ => {
-                        self.err(ParseResultError::UnexpectedToken(
+                        return t.failure(ParseResultError::UnexpectedToken(
                             tw,
                             continuation.to_vec(),
                             Some(
                                 "Was trying to parse a type specifier, but didn't find a valid
                             start to such an expression",
                             ),
-                        ))?;
+                        ));
                     }
                 };
 
@@ -196,7 +370,6 @@ impl<'lexer> Parser<'lexer> {
 
         println!("Returns with tr {:?}", tr);
 
-        Ok(Box::new(tr))
+        t.success(tr)
     }
-
 }

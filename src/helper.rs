@@ -1,8 +1,10 @@
 //use crate::lex;
 use crate::ast::*;
+use std::convert::Infallible;
+use std::fs;
+use std::ops::ControlFlow;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
-use std::fs;
 
 pub mod interner {
     use std::fmt::{Debug, Display};
@@ -39,8 +41,6 @@ pub mod interner {
         RodeoReader(lasso::RodeoReader<IStr>),
         RodeoResolver(lasso::RodeoResolver<IStr>),
     }
-    //static mut INTERNER_PRIV: Option<Rodeo> = None;
-    //static mut INTERNER_UNLOCKED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
     lazy_static! {
         static ref INTERNER_OWNING: std::sync::Mutex<Option<std::sync::Arc<std::sync::RwLock<Rodeo>>>> =
             std::sync::Mutex::new(None);
@@ -52,26 +52,6 @@ pub mod interner {
 
         static INTERNER_READ_COUNT_LOCAL: std::cell::UnsafeCell<i64> = std::cell::UnsafeCell::new(0);
     }
-
-    /********thread_local! {
-        static INTERNER_OWNING: Option<std::sync::Arc<std::sync::RwLock<Rodeo>>> = None;
-        static INTERNER_READ_GUARD: Option<Box<std:;sync::RwLockReadGuard<Rodeo>>> = None;
-    }*/
-
-    /*lazy_static! {
-        static ref INTERNER: lock_api::RawRwLock<Option<Rodeo>> = {
-            lock_api::RawRwLock::new(None)
-        };
-    }*/
-
-    //static INTERNER: lock_api::RwLock<Option<Rodeo>> =
-    /*lazy_static! {
-        static ref INTERNER: lock_api::RwLock<lock_api::RwLock<Option<Rodeo>>, Option<Rodeo>> = {
-            std::sync::RwLock::new()
-        };
-    }*/
-
-    //unsafe impl !Send for InternerReadGuard;
 
     pub struct InternerReadGuard {
         rodeo: &'static Rodeo,
@@ -86,8 +66,6 @@ pub mod interner {
                     let val = v.get();
                     *val += 1;
                 });
-
-                //let inner = INTERNER_GUARD.get_mut();
 
                 let r: &'static Rodeo = INTERNER_GUARD.with(|v| {
                     let optr = v.get();
@@ -141,16 +119,6 @@ pub mod interner {
         }
     }
 
-    /*impl std::ops::Deref for InternerReadGuard {
-        type Target = Rodeo;
-
-        fn deref(&self) -> &Self::Target {
-            self.rodeo
-        }
-    }*/
-
-    //unsafe fn open_read() -> InternerReadGuard
-
     /// Should be called before `interner()` is called, sets the static itself
     /// and issues memory barrier to try to swap the Option atomically
     ///
@@ -164,17 +132,6 @@ pub mod interner {
             .lock()
             .expect("Couldn't lock outer mutex for interner");
         *internal = op;
-
-        //let b = Box::new(it);
-
-        //let ptr = b.into_raw();
-
-        //std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
-
-        //INTERNER_PRIV.swap(ptr, std::sync::atomic::Ordering::SeqCst);
-        //INTERNER_PRIV = op;
-
-        //std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
     }
 
     /// INVARIANT: must be called after init_interner has already been called in a single-threaded ONLY
@@ -182,10 +139,6 @@ pub mod interner {
     /// then this may panic as it can not find the interner present.
     pub fn interner() -> InternerReadGuard {
         InternerReadGuard::new()
-        /*unsafe {
-            INTERNER_GUARD.with(|optref| {
-                optref.as_ref().expect("Interner didn't exist yet")
-        }*/
     }
 
     pub fn intern(v: &str) -> IStr {
@@ -239,26 +192,26 @@ pub enum Either<A, B> {
     B(B),
 }
 
-pub enum EitherAnd<A, B> {
+pub enum EitherNone<A, B> {
     A(A),
     B(B),
     Both(A, B),
-    Neither,
+    Neither(),
 }
 
-impl<A, B> EitherAnd<A, B> {
-    pub fn with_a(self, a: A) -> EitherAnd<A, B> {
+impl<A, B> EitherNone<A, B> {
+    pub fn with_a(self, a: A) -> EitherNone<A, B> {
         match self {
-            Self::A(_) | Self::Neither => Self::A(a),
+            Self::A(_) | Self::Neither() => Self::A(a),
             Self::B(b) => Self::Both(a, b),
             Self::Both(_, b) => Self::Both(a, b),
         }
     }
 
-    pub fn with_b(self, b: B) -> EitherAnd<A, B> {
+    pub fn with_b(self, b: B) -> EitherNone<A, B> {
         match self {
             Self::A(a) => Self::Both(a, b),
-            Self::B(_) | Self::Neither => Self::B(b),
+            Self::B(_) | Self::Neither() => Self::B(b),
             Self::Both(a, _) => Self::Both(a, b),
         }
     }
@@ -266,16 +219,66 @@ impl<A, B> EitherAnd<A, B> {
     pub fn a(&self) -> Option<&A> {
         match self {
             Self::A(a) => Some(&a),
-            Self::B(_) | Self::Neither => None,
+            Self::B(_) | Self::Neither() => None,
             Self::Both(a, _) => Some(&a),
         }
     }
 
     pub fn b(&self) -> Option<&B> {
         match self {
-            Self::A(_) | Self::Neither => None,
+            Self::A(_) | Self::Neither() => None,
             Self::B(b) => Some(&b),
             Self::Both(_, b) => Some(&b),
+        }
+    }
+
+    pub fn of(a: Option<A>, b: Option<B>) -> EitherNone<A, B> {
+        match a {
+            Some(a) => match b {
+                Some(b) => EitherNone::Both(a, b),
+                None => EitherNone::A(a),
+            },
+            None => match b {
+                Some(b) => EitherNone::B(b),
+                None => EitherNone::Neither(),
+            },
+        }
+    }
+}
+
+impl EitherNone<bool, bool> {
+    pub fn of_bool(a: bool, b: bool) -> EitherNone<(), ()> {
+        EitherNone::of(a.then_some(()), b.then_some(()))
+    }
+}
+
+pub enum EitherAnd<A, B> {
+    A(A),
+    B(B),
+    Both(A, B),
+}
+
+impl<A, B> std::ops::Try for EitherAnd<A, B> {
+    type Output = (A, Option<B>);
+
+    type Residual = EitherAnd<Infallible, B>;
+
+    fn from_output(output: Self::Output) -> Self { todo!() }
+
+    fn branch(self) -> std::ops::ControlFlow<Self::Residual, Self::Output> {
+        match self {
+            Self::A(v) => ControlFlow::Continue((v, None)),
+            Self::Both(v1, v2) => ControlFlow::Continue((v1, Some(v2))),
+            Self::B(v) => ControlFlow::Break(EitherAnd::B(v)),
+        }
+    }
+}
+
+impl<A, B> std::ops::FromResidual for EitherAnd<A, B> {
+    fn from_residual(r: EitherAnd<Infallible, B>) -> EitherAnd<A, B> {
+        match r {
+            EitherAnd::<Infallible, B>::B(b) => EitherAnd::B(b),
+            _ => unreachable!(),
         }
     }
 }
@@ -287,11 +290,6 @@ pub enum Error {
         existing_symbol: Arc<RwLock<SymbolDeclaration>>,
     },
 }
-
-use crate::mid_repr::ScopeContext;
-
-pub type PathId = usize;
-pub type PathIdMapHandle<'context> = Arc<locks::RecursiveRWLock<PathIdMap>>;
 
 #[derive(Clone, Copy)]
 pub struct FileHandleRef<'a> {
@@ -380,25 +378,10 @@ impl<'input> FileHandle {
         self.id
     }
 
-    /*pub fn slice(&self) -> Option<&str> {
-        /*if self.contents.is_some() {
-            //Some(&self.contents.unwrap()[..])
-            Some(&self.contents[..])
-        } else {
-            None
-        }*/
-        Some(&self.contents[..])
-        /*match self.contents.clone() {
-            Some(contents) => Some( &contents[..]),
-            None => None,
-        }*/
-    }*/
-
     pub fn as_ref<'handle, 'ltself>(&'ltself self) -> Option<FileHandleRef>
     where
         'ltself: 'handle,
     {
-        //println!("getting a ref for file with path {:?}", self.location);
         match self.contents.as_ref() {
             Some(s) => Some(FileHandleRef {
                 id: self.id.unwrap_or(0),
@@ -406,19 +389,6 @@ impl<'input> FileHandle {
             }),
             None => None,
         }
-        /*FileHandleRef {
-            id: self.id.unwrap_or(0),
-            contents: self.contents.as_ref().unwrap().get(..).unwrap(),
-            /*contents: unsafe {
-                let slice = self.contents.as_ref().unwrap().get(..).unwrap();
-                // String is pinned still, so slice is valid for all of 'self
-
-                let p = slice as *const str;
-
-                p.as_ref().unwrap()
-                // invariant: p was already nonnull because of cast from ref
-            }*/
-        }*/
     }
 
     pub fn close(&mut self) {
@@ -428,465 +398,11 @@ impl<'input> FileHandle {
     pub fn path(&self) -> &PathBuf {
         &self.location
     }
-
-    /*pub fn context<'context>(&self) -> Arc<RwLock<ScopeContext<'context>>> {
-        self.context.as_ref().unwrap().clone()
-    }*/
 }
 
-pub struct PathIdMap {
-    paths: Vec<FileHandle>,
-}
-
-pub struct ScopeIdMap {
-    global_context: Option<Arc<ScopeContext>>,
-    scopes: Vec<Arc<ScopeContext>>,
-}
-
-impl ScopeIdMap {
-    pub fn new() -> ScopeIdMap {
-        ScopeIdMap {
-            scopes: Vec::new(),
-            global_context: None,
-        }
-    }
-
-    pub fn handles(&self) -> &[Arc<ScopeContext>] {
-        &self.scopes[..]
-    }
-
-    pub fn handles_mut(&mut self) -> &mut [Arc<ScopeContext>] {
-        &mut self.scopes[..]
-    }
-
-    pub fn set_global(&mut self, global: Arc<ScopeContext>) {
-        self.global_context = Some(global);
-    }
-
-    pub fn global(&self) -> Option<Arc<ScopeContext>> {
-        self.global_context.clone()
-    }
-
-    pub fn push_scope(&mut self, scope: Arc<ScopeContext>) {
-        self.scopes.push(scope);
-    }
-    //
-}
-
-impl<'context> PathIdMap {
-    pub fn new_locked() -> Arc<locks::RecursiveRWLock<PathIdMap>> {
-        Arc::new(locks::RecursiveRWLock::new(Self::new()))
-    }
-
-    pub fn new() -> PathIdMap {
-        let v = Vec::new();
-
-        PathIdMap { paths: v }
-    }
-
-    pub fn drain(&mut self) -> std::vec::Drain<FileHandle> {
-        self.paths.drain(..)
-    }
-
-    pub fn push_path(
-        &mut self,
-        p: PathBuf,
-        //*scope: Vec<String>,*/ context: Arc<RwLock<ScopeContext<'context>>>,
-    ) -> PathId {
-        let id = self.paths.len();
-        self.paths.push(FileHandle::new(p, Some(id)));
-
-        id
-    }
-
-    pub fn get_path(&self, id: PathId) -> Option<&PathBuf> {
-        match self.paths.get(id) {
-            Some(p) => Some(p.path()),
-            None => None,
-        }
-    }
-
-    pub fn get_file(&self, id: PathId) -> Option<&FileHandle> {
-        match self.paths.get(id) {
-            Some(f) => Some(f),
-            _ => None,
-        }
-    }
-
-    pub fn handles(&self) -> &[FileHandle] {
-        &self.paths[..]
-    }
-
-    pub fn handles_mut(&mut self) -> &mut [FileHandle] {
-        &mut self.paths[..]
-    }
-}
-
-pub mod lex_wrap {
-    use crate::{helper::interner::*, lex::Token};
-    use logos::Logos;
-    use std::rc::Rc;
-
-    type ParseResult<'a> = Result<TokenWrapper, ParseResultError>;
-
-    pub struct Wrapper<'a> {
-        lexer: logos::Lexer<'a, crate::lex::Token>,
-        cur: Result<TokenWrapper, ParseResultError>,
-
-        current_line: isize,
-        last_newline_absolute: usize,
-        file_id: usize,
-    }
-
-    #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-    pub enum CodeLocation {
-        Parsed(Loc),
-        Builtin,
-    }
-
-    impl CodeLocation {
-        pub fn offset_by(&self, line: isize, offset: isize) -> CodeLocation {
-            match self {
-                Self::Builtin => Self::Builtin,
-                Self::Parsed(l) => Self::Parsed(Loc {
-                    line: l.line + line,
-                    offset: l.offset + offset,
-                    file_id: l.file_id,
-                }),
-            }
-        }
-    }
-
-    #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-    pub struct Loc {
-        //pub absolute: usize,
-        pub line: isize,
-        pub offset: isize,
-        pub file_id: usize,
-    }
-
-    impl std::fmt::Display for CodeLocation {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            match self {
-                Self::Parsed(l) => write!(f, "({}:{})", l.line, l.offset),
-                Self::Builtin => write!(f, "(builtin)"),
-            }
-            //write!(f, "({}:{})", self.line, self.offset)
-        }
-    }
-
-    #[derive(Debug, Clone, Copy)]
-    pub struct TokenWrapper {
-        pub token: crate::lex::Token,
-        pub slice: IStr,
-        pub start: CodeLocation,
-        pub end: CodeLocation,
-    }
-
-    pub enum Error {
-        FileError(FileResultError),
-        ParseError(ParseResultError),
-    }
-
-    pub enum FileResultError {
-        FileNotFound { filename: String },
-    }
-
-    #[derive(Debug, Clone)]
-    pub enum ParseResultError {
-        InternalParseIssue,
-        EndOfFile,
-        NotYetParsed,
-        //ExpectedExpressionNotPresent,
-        /// The found token (and position), followed by a list of possible tokens here, followed by
-        /// a message (if applicable)
-        UnexpectedToken(TokenWrapper, Vec<crate::lex::Token>, Option<&'static str>),
-        SemanticIssue(&'static str, CodeLocation, CodeLocation),
-        ErrorWithHint {
-            hint: &'static str,
-            original: Box<ParseResultError>,
-        },
-    }
-
-    impl ParseResultError {
-        pub fn add_expect(&mut self, toks: &[crate::lex::Token]) {
-            match self {
-                Self::UnexpectedToken(_tw, v, None) => {
-                    v.extend(toks);
-                }
-                _ => {}
-            }
-        }
-    }
-
-    impl<'a> Wrapper<'a> {
-        pub fn new(input: &'a str, file_id: usize) -> Wrapper<'a> {
-            let lex = crate::lex::Token::lexer(input);
-
-            Wrapper {
-                lexer: lex,
-                cur: Err(ParseResultError::NotYetParsed),
-                last_newline_absolute: 0,
-                current_line: 1,
-                file_id,
-            }
-        }
-
-        pub fn peek(&mut self) -> ParseResult {
-            self.cur.clone()
-        }
-
-        pub fn advance(&mut self) -> () {
-            let tok = self.lexer.next();
-            match tok {
-                Some(tok) => {
-                    let (startloc, endloc) = match tok {
-                        crate::lex::Token::Newline => {
-                            let sp = self.lexer.span();
-
-                            let start = Loc {
-                                line: self.current_line,
-                                offset: (sp.start - self.last_newline_absolute) as isize,
-                                file_id: self.file_id,
-                            };
-
-                            self.current_line += 1;
-                            self.last_newline_absolute = sp.end;
-
-                            let end = Loc {
-                                line: self.current_line,
-                                offset: (sp.end - self.last_newline_absolute) as isize,
-                                file_id: self.file_id,
-                            };
-
-                            (start, end)
-                        }
-                        _ => {
-                            let sp = self.lexer.span();
-                            let start = Loc {
-                                line: self.current_line,
-                                offset: (sp.start - self.last_newline_absolute) as isize,
-                                file_id: self.file_id,
-                            };
-                            let end = Loc {
-                                line: self.current_line,
-                                offset: (sp.end - self.last_newline_absolute) as isize,
-                                file_id: self.file_id,
-                            };
-                            (start, end)
-                        }
-                    };
-                    self.cur = Ok(TokenWrapper {
-                        token: tok,
-                        //slice: interner().get_or_intern(self.lexer.slice()),
-                        slice: intern(self.lexer.slice()),
-                        start: CodeLocation::Parsed(startloc),
-                        end: CodeLocation::Parsed(endloc),
-                    })
-                }
-                None => self.cur = Err(ParseResultError::EndOfFile),
-            }
-        }
-
-        pub fn next(&mut self) -> ParseResult<'a> {
-            self.advance();
-            self.peek()
-        }
-    }
-
-    #[derive(Clone)]
-    pub struct LookaheadStream {
-        tokens: Rc<Vec<TokenWrapper>>,
-        index: usize,
-        //latest: Option<TokenWrapper<'a>>,
-    }
-
-    //use crate::lex::Token;
-
-    impl LookaheadStream {
-        pub fn new(w: &mut Wrapper) -> LookaheadStream {
-            let mut v = Vec::new();
-            let mut comment_level = 0;
-            let mut inside_line_comment = false;
-
-            // NOTE: we keep this outside the loop here so that we can simply "truncate" when done
-            // with it and keep the allocation for use with later blocks
-            //
-            // This technically grows unbounded, but it's bounded same as string interner to
-            // input size in total * 2 so we don't worry about it hanging around a bit longer
-            // during lex
-            let mut llvm_rest = String::new();
-
-            while let Ok(mut tw) = w.next() {
-                // handle comments
-                match tw.token {
-                    Token::LLVMOpen => {
-                        // do the parsing of the llvm block in its entirety here
-                        // the parser will never actually see an LLVMOpen or LLVMClose
-
-                        'llvm_collector: while let Ok(itw) = w.next() {
-                            tw.end = itw.end;
-                            match itw.token {
-                                Token::LLVMClose => {
-                                    break 'llvm_collector;
-                                }
-                                other => {
-                                    println!(
-                                        "llvm pushes token {:?} with slice {}",
-                                        other, itw.slice
-                                    );
-                                    llvm_rest.push_str(itw.slice.resolve());
-                                }
-                            }
-                        }
-
-                        tw.token = Token::LLVMBlock;
-                        tw.slice = intern(llvm_rest.as_str());
-
-                        // need to empty the string since it lives outside the loop
-                        // this preserves the allocation, though
-                        llvm_rest.truncate(0);
-                    }
-                    Token::LineCommentStart => {
-                        inside_line_comment = true;
-                        continue;
-                    }
-                    Token::Newline => {
-                        inside_line_comment = false;
-                        continue;
-                    }
-                    Token::LBlockComment | Token::LDocComment => {
-                        comment_level += 1;
-                        continue;
-                    }
-                    Token::RBlockComment | Token::RDocComment => {
-                        if comment_level > 0 {
-                            comment_level -= 1; // will cause syntax error in else during parse
-                        }
-
-                        continue;
-                    }
-                    Token::Tab | Token::Space => {
-                        // these don't have any syntactic meaning so we simply filter them
-                        // we keep them in so that they are fed through to llvm, however
-                        continue;
-                    }
-                    Token::Error => {
-                        // filter these outside of llvm blocks
-                        continue;
-                    }
-                    _ => {}
-                }
-                if !inside_line_comment && comment_level == 0 {
-                    v.push(tw);
-                }
-            }
-
-            LookaheadStream {
-                tokens: Rc::new(v),
-                index: 0,
-                //latest: None,
-            }
-        }
-
-        pub fn seek_to(&mut self, index: usize) {
-            self.index = index;
-        }
-
-        pub fn seek_by(&mut self, offset: isize) {
-            self.index = (self.index as isize + offset) as usize;
-        }
-
-        pub fn index(&self) -> usize {
-            self.index
-        }
-
-        pub fn ffwd(&mut self, other: &LookaheadStream) {
-            self.seek_to(other.index());
-        }
-
-        pub fn next(&mut self) -> ParseResult {
-            //self.tokens[self.index]
-            let r = self.la(0);
-            //self.latest = Some(r);
-
-            //self.index += 1;
-            self.advance();
-
-            r
-        }
-
-        pub fn prev(&mut self) -> ParseResult {
-            let r = self.la(0);
-
-            //self.index -= 1;
-            self.backtrack();
-
-            r
-        }
-
-        pub fn backtrack(&mut self) {
-            self.index -= 1;
-        }
-
-        pub fn advance(&mut self) {
-            self.index += 1;
-        }
-
-        pub fn la(&mut self, offset: isize) -> ParseResult {
-            let index = self.index as isize + offset;
-            if index < 0 {
-                Err(ParseResultError::NotYetParsed)
-            } else {
-                let r = self
-                    .tokens
-                    .get(index as usize)
-                    .map_or(Err(ParseResultError::EndOfFile), |&t| Ok(t));
-
-                //println!("la gives result: {:?}", r);
-
-                r
-            }
-        }
-    }
-}
-
-/*pub mod locks {
-    pub mod recursive_rwlock {
-        pub struct RecursiveRWLock {
-        }
-    }
-}*/
+pub mod lex_wrap {}
 
 pub mod locks {
-    /*enum RWLockState {
-        Released,
-        Shared,
-        SharedSingle,
-        Exclusive,
-    }
-
-    struct RWLockStateMachine {
-        state: std::sync::atomic::AtomicUsize,
-    }
-
-    impl RWLockStateMachine {
-        // if lock was already only being read
-        pub fn read_again(&self) -> bool {
-        }
-    }*/
-
-    /*struct RecursiveRWLockInnerGuard<T> {
-        guard: T,
-    }
-
-    impl
-
-    impl<T> RecursiveRWLockInnerGuard<T> {
-        pub fn new(guard: T) -> Self {
-            RecursiveRWLockInnerGuard { guard }
-        }
-    }*/
     thread_local! {
         static THREAD_LOCKS: std::cell::UnsafeCell<std::collections::HashSet<usize>> = std::cell::UnsafeCell::new(std::collections::HashSet::new());
     }
@@ -1047,7 +563,7 @@ impl<T> VecOps for Vec<T> {
     }
 }
 
-pub enum EitherNone<TA, TB> {
+/*pub enum EitherNone<TA, TB> {
     A(TA),
     B(TB),
     Neither(),
@@ -1073,4 +589,4 @@ impl EitherNone<(), ()> {
     pub fn of_bool(a: bool, b: bool) -> EitherNone<(), ()> {
         EitherNone::of(a.then_some(()), b.then_some(()))
     }
-}
+}*/

@@ -2,7 +2,7 @@
 //#[macro_use] extern crate lalrpop_util;
 //#![feature(associated_type_defaults)]
 //#![feature(option_expect_none)]
-#![feature(arc_new_cyclic, once_cell, new_uninit, bool_to_option, iter_intersperse, vec_into_raw_parts, layout_for_ptr, ptr_metadata, const_generics_defaults, inherent_associated_types)]
+#![feature(arc_new_cyclic, once_cell, new_uninit, bool_to_option, iter_intersperse, vec_into_raw_parts, layout_for_ptr, ptr_metadata, inherent_associated_types, try_trait_v2, try_trait_v2_residual, min_specialization, type_changing_struct_update)]
 
 #[allow(unused_imports)]
 #[macro_use]

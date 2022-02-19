@@ -2,14 +2,17 @@ mod parse_base;
 mod parse_expr;
 mod parse_helper;
 mod parse_type;
+mod parse_tools;
 
 pub use parse_base::*;
 pub use parse_expr::*;
 pub use parse_type::*;
 pub use parse_helper::*;
+pub use parse_tools::*;
 
-use crate::helper::lex_wrap::LookaheadStream;
-use crate::helper::lex_wrap::{CodeLocation, ParseResultError};
+//use crate::helper::lex_wrap::LookaheadStream;
+//use crate::helper::lex_wrap::{CodeLocation, ParseResultError};
+use crate::lex::{TokenWrapper, CodeLocation, LookaheadHandle, ParseResultError};
 use crate::helper::*;
 use crate::helper::interner::*;
 
@@ -21,19 +24,19 @@ use colored::*;
 
 pub struct Parser<'lexer>
 {
-    lex: &'lexer mut LookaheadStream,
+    lex: LookaheadHandle<'lexer>,
     errors: Vec<ParseResultError>,
     next: Vec<Token>,
     scope: Vec<IStr>,
 }
 
 pub struct SyncSliceHandle {
-    start: usize,
+    pub start: usize,
     //end: usize,
 }
 
 impl<'lexer> Parser<'lexer> {
-    pub fn new(lex: &'lexer mut LookaheadStream, scope: Vec<IStr>) -> Parser<'lexer> {
+    pub fn new(lex: LookaheadHandle<'lexer>, scope: Vec<IStr>) -> Parser<'lexer> {
         Parser {
             lex,
             scope,
@@ -214,7 +217,9 @@ impl<'lexer> Parser<'lexer> {
                     );
                 },
                 ParseResultError::ErrorWithHint { hint, original } => {
-                    self.print_err(&original, lines);
+                    for e in original.iter() {
+                        self.print_err(e, lines)
+                    }
                     eprintln!("Hint: {}", hint);
                 }
             }
