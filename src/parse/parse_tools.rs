@@ -1,10 +1,17 @@
 //use crate::helper::lex_wrap::{LookaheadHandle};
 
-use std::marker::PhantomData;
+use std::{convert::Infallible, marker::PhantomData};
 
-use crate::lex::{LookaheadHandle, TokenWrapper, ErrorSet, ParseResultError};
+use crate::{
+    ast::Span,
+    lex::{ErrorSet, LookaheadHandle, ParseResultError, TokenWrapper},
+};
 
-use self::schema::{ParseResult, TokenProvider, CorrectionBubblingError, Solution};
+use self::{
+    catch::Caught,
+    join::Joined,
+    schema::{CorrectionBubblingError, Solution, TokenProvider},
+};
 
 use super::Parser;
 
@@ -37,104 +44,282 @@ impl ParseResultBuilderBase {
 macro_rules! tparam_bool {
     ($yes:ident, $no: ident, $trty: ident, $m: ident) => {
         mod $m {
+            #[derive(Default)]
             pub struct $yes();
+
+            #[derive(Default)]
             pub struct $no();
 
-            pub trait $trty {}
+            pub trait $trty: Default {}
+
             impl $trty for $yes {}
             impl $trty for $no {}
         }
-    }
+    };
 }
 
 tparam_bool!(Caught, Uncaught, Catchable, catch);
 tparam_bool!(Joined, Unjoined, Joinable, join);
 
-
-struct InternallyJoinable<'provider, 'parent, 'lexer>(&'provider mut TokenProvider<'parent, 'lexer>);
+struct InternallyJoinable<'provider, 'parent, 'lexer>(
+    &'provider mut TokenProvider<'parent, 'lexer>,
+);
 
 trait CanBubble {}
 
 //impl<'a, 'b, 'c> CanBubble for InternallyJoinable<'a, 'b, 'c> {}
 
-struct GuardedError {
-    solution: Option<Solution>,
-    root_error: ParseResultError,
+pub enum SolutionClass {
+    /// This solution is to synchronize the current state.
+    /// It is not for an error,
+    Success {
+        index: isize,
+    },
+    SolvedFailure {
+        index: isize,
+
+        /// The id of the unit that this solution solves for
+        solution_unit_id: usize,
+
+        /// When doing a synchronization action, this reports what area of the code had to be
+        /// discarded (if any) to synchronize the stream. Most often this will be empty,
+        /// and will simply be a zero-size range at the index of the token that caused the
+        /// error cascade
+        range_discarded: Span,
+    },
+    UnsolvedFailure {},
 }
 
-pub struct GuardedResult<V, C: catch::Catchable, J: join::Joinable> {
-    value: Option<V>,
-    root_error: Option<GuardedError>,
-    cascading_errors: ErrorSet,
+/*struct GuardedError {
+    solution: Option<Solution>,
+    root_error: ParseResultError,
+}*/
 
-    /// If this error has been caught and is planned to be locally handled, this is true
-    caught: bool,
-
+#[derive(Default)]
+pub struct GuardFlagsImpl<C: catch::Catchable, J: join::Joinable> {
     _c: PhantomData<C>,
     _j: PhantomData<J>,
 }
 
-impl<V, C: catch::Catchable, J: join::Joinable> GuardedResult<V, C, J> {
+impl<C: catch::Catchable, J: join::Joinable> GuardFlagsImpl<C, J> {
+    fn build() -> Self {
+        Default::default()
+    }
+}
+
+trait GuardFlags: Default {
+}
+
+impl From<GuardFlagsImpl<catch::Caught, join::Joined>> for GuardFlagsImpl<catch::Uncaught, join::Unjoined> {
+    fn from(v: GuardFlagsImpl<catch::Caught, join::Joined>) -> Self { Self::build() }
+}
+
+/*trait Uncatch {
+    fn uncatch<B>(b: B) -> Self;
+}*/
+
+impl<C: catch::Catchable, J: join::Joinable> GuardFlags for GuardFlagsImpl<C, J> {}
+
+pub struct GuardedResult<V, G: GuardFlags> {
+    value: Option<V>,
+    root_error: Option<ParseResultError>,
+    cascading_errors: ErrorSet,
+
+    solution: SolutionClass,
+
+    /// If this error has been caught and is planned to be locally handled, this is true
+    caught: bool,
+
+    gf: G,
+}
+
+impl<V, C: catch::Catchable, J: join::Joinable> GuardedResult<V, GuardFlagsImpl<C, J>> {
     pub fn errors(&self) -> &ErrorSet {
         &self.cascading_errors
     }
 
-    pub fn new_fail() {
+    pub fn new_fail() {}
+}
+
+/// Indicates the approach that should be used when joining a result
+pub enum JoinMethod<'t, 'b, 'c> {
+    /// This says this error need to prepare to be bubbled, so should pass all
+    /// errors around
+    Hard(&'t mut TokenProvider<'b, 'c>),
+
+    /// Errors shouldn't be moved around, this will be handled but the token stream should
+    /// still be advanced to match this path
+    Synchronizing(&'t mut TokenProvider<'b, 'c>),
+
+    NonCommittal(),
+}
+
+impl<'t> From<&'t mut TokenProvider<'t, 't>> for JoinMethod<'t, 't, 't> {
+    fn from(v: &'t mut TokenProvider<'t, 't>) -> Self {
+        Self::Hard(v)
     }
 }
 
-impl<V, C: catch::Catchable> GuardedResult<V, C, join::Unjoined> {
-    pub fn join(self, t: &mut TokenProvider) -> GuardedResult<V, C, join::Joined> {
-        match self.value.is_some() {
-            true => {
-                t.errors_field.append(&mut self.cascading_errors);
-                self.root_error.map(|v| v.map(|v| t.errors_field.push(v.root_error)));
+impl<'t> From<()> for JoinMethod<'t, 't, 't> {
+    fn from(v: ()) -> Self {
+        Self::NonCommittal()
+    }
+}
+
+impl<V, C: catch::Catchable> GuardedResult<V, GuardFlagsImpl<C, join::Unjoined>> {
+    pub fn join_sync<'a>(
+        self,
+        t: &'a mut TokenProvider<'a, 'a>,
+    ) -> GuardedResult<V, GuardFlagsImpl<C, join::Joined>> {
+        self.join(JoinMethod::Synchronizing(t))
+    }
+
+    pub fn join_hard<'a>(
+        self,
+        t: &'a mut TokenProvider<'a, 'a>,
+    ) -> GuardedResult<V, GuardFlagsImpl<C, join::Joined>> {
+        self.join(JoinMethod::Hard(t))
+    }
+
+    /// This allows you to not join an error and sync a t, but instead explicitly
+    /// not commit to this parse path even while retrieving the value
+    pub fn join_noncommittal<'a>(self) -> GuardedResult<V, GuardFlagsImpl<C, join::Joined>> {
+        self.join(JoinMethod::NonCommittal())
+    }
+
+    pub fn join<'a, JM>(self, j: JM) -> GuardedResult<V, GuardFlagsImpl<C, join::Joined>>
+    where
+        JM: Into<JoinMethod<'a, 'a, 'a>>,
+    {
+        let j: JoinMethod = j.into();
+
+        match j {
+            JoinMethod::Hard(t) => match self.value.is_some() {
+                true => {
+                    //t.errors_field.append(&mut self.cascading_errors);
+                    t.add_errors(&mut self.cascading_errors);
+                    self.root_error.map(|e| t.add_error(e));
+                    /*self.root_error
+                    .map(|v| v.map(|v| t.add_error(v.root_error)));*/
+                }
+                false => {
+                    self.cascading_errors.append(&mut t.errors());
+                }
             },
-            false => {
-                self.cascading_errors.append(&mut t.errors_field);
-            }
+            _ => (),
         }
 
-        match self.root_error {
-            Some(e) => t.sync_with(e.solution.jump_to as usize),
-            None => (),
+        match j {
+            JoinMethod::Hard(t) | JoinMethod::Synchronizing(t) => match self.solution {
+                SolutionClass::Success { index }
+                | SolutionClass::SolvedFailure {
+                    index,
+                    solution_unit_id: _,
+                    range_discarded: _,
+                } => {
+                    t.sync_with(index as usize);
+                }
+                _ => (),
+            },
+            _ => (),
         }
 
         //t.sync_with(self.index);
 
-        GuardedResult { _j: PhantomData::default(), ..self }
-    }
-
-    /// This allows you to not join an error and sync a t, but instead explicitly 
-    /// not commit to this parse path even while retrieving the value
-    pub fn join_softly(self) -> GuardedResult<V, C, join::Joined> {
-        GuardedResult { _j: PhantomData::default(), ..self }
-    }
-}
-
-impl<V, J: join::Joinable> GuardedResult<V, catch::Uncaught, J> {
-    pub fn catch(self, t: &mut TokenProvider) -> GuardedResult<V, catch::Caught, J> {
-        match self.root_error {
-            Some(e) => {
-                let s = e.solution.map(|s| t.provides(s)).unwrap_or(false); // if no solution but an error, bubble to root
-
-                match s {
-                    true => { // we can convert into something that won't bubble
-                        t.add_error(e.root_error.clone());
-                        GuardedResult { _c: PhantomData::default(), caught: true, ..self }
-                    },
-                    false => GuardedResult { _c: PhantomData::default(), ..self },
-                }
-            },
-            None => GuardedResult { _c: PhantomData::default(), ..self }, // there is no solution to check, but this could still be an error.
+        GuardedResult {
+            gf: Default::default(),
+            ..self
         }
     }
 }
 
-impl<V, C: catch::Catchable> GuardedResult<V, C, join::Joined> {
-    pub fn open(self) -> Result<V, ParseResultError> {
+impl<V, J: join::Joinable> GuardedResult<V, GuardFlagsImpl<catch::Uncaught, J>> {
+    pub fn catch(
+        self,
+        t: &mut TokenProvider,
+    ) -> GuardedResult<V, GuardFlagsImpl<catch::Caught, J>> {
+        match self.solution {
+            // if no solution, this is uncatchable
+            SolutionClass::UnsolvedFailure {} => GuardedResult {
+                caught: true,
+                gf: Default::default(),
+                ..self
+            },
+
+            // don't need to catch since this is a success!
+            SolutionClass::Success { index } => GuardedResult {
+                caught: true,
+                gf: Default::default(),
+                ..self
+            },
+
+            // The failure is solved but if we aren't the intended recipient, may still need to
+            // bubble
+            SolutionClass::SolvedFailure {
+                index,
+                solution_unit_id,
+                range_discarded,
+            } => GuardedResult {
+                caught: t.provides(solution_unit_id),
+                gf: Default::default(),
+                ..self
+            },
+        }
     }
 }
+
+impl<V, G: GuardFlags> std::ops::Try for GuardedResult<V, G> {
+    type Output = V;
+
+    type Residual = GuardedResult<V, G>;
+
+    fn from_output(output: Self::Output) -> Self {
+        panic!("A GuardedResult can not be safely rebuilt from its output")
+    }
+
+    fn branch(self) -> std::ops::ControlFlow<Self::Residual, Self::Output> {
+        todo!()
+    }
+}
+
+impl<V, G: GuardFlags, B: From<G> + GuardFlags> std::ops::FromResidual<GuardedResult<V, G>> for GuardedResult<V, B> {
+    fn from_residual(r: GuardedResult<V, G>) -> Self {
+        GuardedResult {
+            gf: From::from(r.gf),
+            ..r
+        }
+    }
+}
+
+/*
+ * let v = self.foo(&t).join(&mut t)?
+ */
+
+/*trait Bubbling {
+    pub fn
+}*/
+
+/// A HandlableOutput is the result of catching and opening a GuardedResult that may or
+/// may not have a value instead of bubbling it directly. It contains
+/// maybe the value, maybe a partial value (and root error), or maybe just a root error
+/// and no partial value. It will also contain any errors that were encountered while
+/// constructing any value, so any child errors or non fatal errors
+type HandlableOutput<V> = (Option<V>, Option<ParseResultError>, ErrorSet);
+
+impl<V> GuardedResult<V, GuardFlagsImpl<catch::Caught, join::Joined>> {
+    /// This is an alternative to bubbling a GuardedResult (which only yields the value)
+    pub fn open(self) -> HandlableOutput<V> {
+        (self.value, self.root_error, self.cascading_errors)
+    }
+}
+
+impl<V> GuardedResult<V, GuardFlagsImpl<catch::Uncaught, join::Joined>> {
+    pub fn open_anyway(self) -> HandlableOutput<V> {
+        (self.value, self.root_error, self.cascading_errors)
+    }
+}
+
+pub type ParseResult<V> = GuardedResult<V, GuardFlagsImpl<catch::Uncaught, join::Unjoined>>;
 
 #[must_use]
 pub struct ParseValueGuard<ParseValue> {
@@ -222,7 +407,7 @@ pub mod schema {
         lex::{ErrorSet, LookaheadHandle, ParseResultError, Token, TokenWrapper},
     };
 
-    use super::ParseValueGuard;
+    use super::{ParseValueGuard, ParseResult};
 
     // This is intentionally very general, and doesn't give full flexibility to define
     // full regular rules. This allows for a more simple solver that doesn't have to
@@ -560,7 +745,7 @@ pub mod schema {
         errors_field: ErrorSet,
     }
 
-    pub type ParseResult<T> = Result<ParseValueGuard<WithError<T>>, CorrectionBubblingError>;
+    //pub type ParseResult<T> = Result<ParseValueGuard<WithError<T>>, CorrectionBubblingError>;
 
     pub type TokenResult = ParseResult<TokenWrapper>;
 
@@ -681,6 +866,10 @@ pub mod schema {
             self.errors_field.clone()
         }
 
+        pub fn add_errors(&mut self, e: &mut ErrorSet) {
+            self.errors_field.append(e);
+        }
+
         pub fn add_error(&mut self, e: ParseResultError) {
             self.errors_field.push(e);
         }
@@ -692,7 +881,10 @@ pub mod schema {
             Ok(prg)
         }
 
-        pub fn failure<V>(&self, additional_error_info: Option<ParseResultError>) -> ParseResult<V> {
+        pub fn failure<V>(
+            &self,
+            additional_error_info: Option<ParseResultError>,
+        ) -> ParseResult<V> {
             Err(CorrectionBubblingError::from_fatal_error(
                 additional_error_info.expect("Error synthesis is not yet supported on failure()"),
             ))
@@ -715,8 +907,8 @@ pub mod schema {
             }
         }
 
-        pub fn provides(&self, s: Solution) -> bool {
-            s.solution_unit_id == self.unit_rules.id
+        pub fn provides(&self, unit_id: usize) -> bool {
+            unit_id == self.unit_rules.id
         }
 
         pub fn try_take(&mut self, t: Token) -> Option<TokenWrapper> {
@@ -945,7 +1137,10 @@ pub mod schema {
     }
 
     pub trait CorrectionBubblingResult<V> {
-        fn catch(self, t: &TokenProvider) -> Result<ParseValueGuard<WithError<V>>, CorrectionBubblingError>;
+        fn catch(
+            self,
+            t: &TokenProvider,
+        ) -> Result<ParseValueGuard<WithError<V>>, CorrectionBubblingError>;
         //fn only_value(self) -> Result<V, CorrectionBubblingError>;
 
         fn hard(self, t: &mut TokenProvider) -> Result<V, CorrectionBubblingError>;
@@ -953,7 +1148,9 @@ pub mod schema {
         fn handled(self, t: &mut TokenProvider) -> Result<V, CorrectionBubblingError>;
     }
 
-    impl<V> CorrectionBubblingResult<V> for Result<ParseValueGuard<WithError<V>>, CorrectionBubblingError> {
+    impl<V> CorrectionBubblingResult<V>
+        for Result<ParseValueGuard<WithError<V>>, CorrectionBubblingError>
+    {
         /*fn unhandle(self) -> Result<V, CorrectionBubblingError> {
         }*/
         fn hard(mut self, t: &mut TokenProvider) -> Result<V, CorrectionBubblingError> {
