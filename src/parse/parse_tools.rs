@@ -238,7 +238,7 @@ impl<V, J: join::Joinable> GuardedResult<V, GuardFlagsImpl<catch::Uncaught, J>> 
         self,
         t: &mut TokenProvider,
     ) -> GuardedResult<V, GuardFlagsImpl<catch::Caught, J>> {
-        match self.solution {
+        let mut s = match self.solution {
             // if no solution, this is uncatchable
             SolutionClass::UnsolvedFailure {} => GuardedResult {
                 caught: true,
@@ -260,12 +260,17 @@ impl<V, J: join::Joinable> GuardedResult<V, GuardFlagsImpl<catch::Uncaught, J>> 
                 solution_unit_id,
                 range_discarded,
             } => GuardedResult {
-                caught: t.provides(solution_unit_id),
+                caught: t.provides(solution_unit_id).max(self.caught),
                 gf: Default::default(),
                 ..self
             },
-        }
+        };
+
+        s
     }
+}
+
+impl<V, G: GuardFlags> GuardedResult<V, G> {
 }
 
 impl<V, G: GuardFlags> std::ops::Try for GuardedResult<V, G> {
