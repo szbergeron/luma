@@ -136,14 +136,14 @@ impl<'lexer> Parser<'lexer> {
         todo!()
     }*/
     #[allow(non_upper_case_globals)]
-    const first_global: [Token; 3] = [Token::Module, Token::Function, Token::Struct];
+    //const first_global: [Token; 3] = [Token::Module, Token::Function, Token::Struct];
     pub fn parse_global_declaration(
         &mut self,
         t: &TokenProvider,
     ) -> ParseResult<ast::SymbolDeclaration> {
         println!("Parsing global declaration");
 
-        let mut t = t.child().predict(&[Token::Module, Token::Function, Token::Struct, Token::Use]);
+        let mut t = t.child().predict(&[Token::Module, Token::Function, Token::Struct, Token::Use, Token::DExpression]);
         //let has_pub = self.eat_match(Token::Public);
         //let mut failed = false;
 
@@ -157,7 +157,7 @@ impl<'lexer> Parser<'lexer> {
             Token::Use,
         ]).hard(&mut t)?.join(&mut t);*/
 
-        if let Ok(tw) = self.lex.la(0) {
+        if let Ok(tw) = t.lh.la(0) {
             let r = match tw.token {
                 Token::Module => {
                     let mut ns = self.parse_namespace(&t).join_hard(&mut t).catch(&mut t)?;
@@ -177,6 +177,18 @@ impl<'lexer> Parser<'lexer> {
                     let ud = self.parse_use_declaration(&t).join_hard(&mut t).catch(&mut t)?;
                     ast::SymbolDeclaration::UseDeclaration(ud)
                 },
+                Token::DExpression => {
+                    println!("Taking dexpr");
+                    let _ = t.take(Token::DExpression).join()?;
+
+                    println!("Parsing dbg expr, got first tok");
+                    let e = self.parse_expr(&t).join_hard(&mut t).catch(&mut t)?;
+                    println!("Got expr");
+                    let _ = t.take(Token::Semicolon).join()?;
+                    println!("Took semi");
+                    println!("{:?}", e);
+                    panic!()
+                }
 
                 // only parse let expressions for now, since other (pure) expressions would be
                 // useless
@@ -209,15 +221,16 @@ impl<'lexer> Parser<'lexer> {
 
         let mut t = t.child().predict(&[Token::Module, Token::Identifier, Token::LBrace, Token::RBrace]);
 
-        let start = t.la(0).join_hard(&mut t).catch(&mut t).try_get().map_or(CodeLocation::Builtin, |tw| tw.start);
+        //let start = t.la(0).join_hard(&mut t).catch(&mut t).try_get().map_or(CodeLocation::Builtin, |tw| tw.start);
 
-        t.take(Token::Module).join_hard(&mut t).catch(&mut t)?;
+        let start = t.take(Token::Module).join().unwrap().start;
+
         println!("Pulled a mod");
-        let id = t.take(Token::Identifier).join_hard(&mut t).catch(&mut t)?.slice;
+        let id = t.take(Token::Identifier).join()?.slice;
         println!("Pulled an id");
-        t.take(Token::LBrace).join_hard(&mut t).catch(&mut t)?;
+        t.take(Token::LBrace).join()?;
         let pu = self.entry(&t).join_hard(&mut t).catch(&mut t)?;
-        t.take(Token::RBrace).join_hard(&mut t).catch(&mut t)?;
+        t.take(Token::RBrace).join()?;
 
         let end = self.lex.la(-1).map_or(CodeLocation::Builtin, |tw| tw.end);
 
@@ -307,7 +320,7 @@ impl<'lexer> Parser<'lexer> {
         let mut rvec: Vec<(IStr, ast::TypeReference)> = Vec::new();
 
         while let Some(i) = t.try_take(Token::Identifier) {
-            t.take(Token::Colon).join_hard(&mut t).catch(&mut t)?;
+            t.take(Token::Colon).join()?;
             let tr = self.parse_type_specifier(&t).join_hard(&mut t).catch(&mut t)?;
 
             let r = (i.slice, tr);
@@ -330,14 +343,14 @@ impl<'lexer> Parser<'lexer> {
     ) -> ParseResult<ast::FunctionDefinition> {
         let mut t = t.child();
 
-        let start = t.take(Token::Function).join_hard(&mut t).catch(&mut t)?.start;
-        let function_name = t.take(Token::Identifier).join_hard(&mut t).catch(&mut t)?;
+        let start = t.take(Token::Function).join()?.start;
+        let function_name = t.take(Token::Identifier).join()?;
 
-        t.take(Token::LParen).join_hard(&mut t).catch(&mut t)?;
+        t.take(Token::LParen).join()?;
         let params = self.parse_function_param_list(&t).join_hard(&mut t).catch(&mut t)?;
-        t.take(Token::RParen).join_hard(&mut t).catch(&mut t)?;
+        t.take(Token::RParen).join()?;
 
-        t.take(Token::ThinArrow).join_hard(&mut t).catch(&mut t)?;
+        t.take(Token::ThinArrow).join()?;
         let return_type = self.parse_type_specifier(&t).join_hard(&mut t).catch(&mut t)?;
 
         let body = self.parse_expr(&t).join_hard(&mut t).catch(&mut t)?;
@@ -360,12 +373,12 @@ impl<'lexer> Parser<'lexer> {
     pub fn parse_use_declaration(&mut self, t: &TokenProvider) -> ParseResult<ast::UseDeclaration> {
         let mut t = t.child();
 
-        let start = t.take(Token::Use).join_hard(&mut t).catch(&mut t)?.start;
+        let start = t.take(Token::Use).join()?.start;
 
         let mut scope = Vec::new();
 
         let tw= t.take_in(&[Token::Identifier, Token::Global, Token::Super])
-            .hint("Use statements should only start with an identifier or the 'global' or 'super' keywords").join_hard(&mut t).catch(&mut t)?;
+            .hint("Use statements should only start with an identifier or the 'global' or 'super' keywords").join()?;
 
         //let tw = self.lex.next()?;
 
@@ -379,7 +392,7 @@ impl<'lexer> Parser<'lexer> {
 
         while let Some(_) = t.try_take(Token::DoubleColon) {
             let tw = t.take_in(&[Token::Asterisk, Token::Identifier])
-            .hint("Use statements should only either specify a more specific scope (an identifier) or a glob (*) after specifying an initial starting scope").join_hard(&mut t).catch(&mut t)?;
+            .hint("Use statements should only either specify a more specific scope (an identifier) or a glob (*) after specifying an initial starting scope").join()?;
 
             //let tw = self.lex.next()?;
 
@@ -391,12 +404,12 @@ impl<'lexer> Parser<'lexer> {
         let mut alias: Option<IStr> = None;
 
         if let Some(_) = t.try_take(Token::As) {
-            let id = t.take(Token::Identifier).join_hard(&mut t).catch(&mut t)?; // don't bubble, recoverable
+            let id = t.take(Token::Identifier).join()?; // don't bubble, recoverable
 
             alias = Some(id.slice);
         }
 
-        end = t.take(Token::Semicolon).join_hard(&mut t).catch(&mut t)?.end; // don't need to directly bubble, since this individual statement is recoverable
+        end = t.take(Token::Semicolon).join()?.end; // don't need to directly bubble, since this individual statement is recoverable
 
         let node_info = ast::NodeInfo::from_indices(start, end);
 

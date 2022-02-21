@@ -4,10 +4,10 @@ use std::{convert::Infallible, marker::PhantomData, ops::ControlFlow};
 
 use crate::{
     ast::Span,
-    lex::{ErrorSet, ParseResultError},
+    lex::{ErrorSet, ParseResultError, TokenWrapper},
 };
 
-use self::schema::{TokenProvider, ResultHint};
+use self::schema::{TokenProvider, ResultHint, TokenResult};
 
 
 
@@ -93,7 +93,8 @@ pub enum SolutionClass {
     },
 }
 
-pub struct GuardedResult<V, J: join::Joinable, C: catch::Catchable, B: bubble::Bubbling> {
+#[must_use]
+pub struct GuardedResult<V, J: join::Joinable, C: catch::Catchable, B: bubble::Bubbling, D> {
     value: Option<V>,
     root_error: Option<ParseResultError>,
     cascading_errors: ErrorSet,
@@ -103,12 +104,46 @@ pub struct GuardedResult<V, J: join::Joinable, C: catch::Catchable, B: bubble::B
     /// If this error has been caught and is planned to be locally handled, this is true
     caught: bool,
 
+    data: D,
+
     _j: PhantomData<J>,
     _c: PhantomData<C>,
     _b: PhantomData<B>,
 }
 
-impl<V, C: catch::Catchable, J: join::Joinable, B: bubble::Bubbling> GuardedResult<V, J, C, B> {
+impl<'s, 'p, 't> TokenResult<'s, 'p, 't> {
+    type Output = ParseResult<TokenWrapper>;
+
+    pub fn destructure(self) -> (ParseResult<TokenWrapper>, &'s mut TokenProvider<'p, 't>) {
+        /*(GuardedResult<TokenWrapper, join::Unjoined, catch::Uncaught, bubble::All, &mut TokenProvider> {
+            data: (),
+            ..self
+        }, self.data)*/
+        let d = self.data;
+
+        let g = GuardedResult {
+            data: (),
+            ..self
+        };
+
+        (g, d)
+
+    }
+
+    pub fn to_parse_result(self) -> ParseResult<TokenWrapper> {
+        GuardedResult {
+            data: (),
+            ..self
+        }
+    }
+
+    pub fn join(self) -> GuardedResult<TokenWrapper, join::Joined, catch::Caught, bubble::All, ()> {
+        let (a, b) = self.destructure();
+        a.join_hard(b).catch(b)
+    }
+}
+
+impl<V, C: catch::Catchable, J: join::Joinable, B: bubble::Bubbling, D> GuardedResult<V, J, C, B, D> {
     pub fn errors(&self) -> &ErrorSet {
         &self.cascading_errors
     }
@@ -146,7 +181,7 @@ impl<'t> From<()> for JoinMethod<'t, 't, 't> {
     }
 }
 
-impl<V, J: join::Joinable, C: catch::Catchable, B: bubble::Bubbling> ResultHint for GuardedResult<V, J, C, B> {
+impl<V, J: join::Joinable, C: catch::Catchable, B: bubble::Bubbling, D> ResultHint for GuardedResult<V, J, C, B, D> {
     fn hint(mut self, hint: &'static str) -> Self {
         self.root_error = self.root_error.map(|e| {
             let mut es = ErrorSet::new();
@@ -157,35 +192,35 @@ impl<V, J: join::Joinable, C: catch::Catchable, B: bubble::Bubbling> ResultHint 
     }
 }
 
-impl<V, C: catch::Catchable, B: bubble::Bubbling> GuardedResult<V, join::Unjoined, C, B> {
+impl<V, C: catch::Catchable, B: bubble::Bubbling, D> GuardedResult<V, join::Unjoined, C, B, D> {
     pub fn join_sync<'a, 'b, 'c>(
         self,
         t: &'a mut TokenProvider<'b, 'c>,
-    ) -> GuardedResult<V, join::Joined, C, B> {
-        self.join(JoinMethod::Synchronizing(t))
+    ) -> GuardedResult<V, join::Joined, C, B, D> {
+        self.join_inner(JoinMethod::Synchronizing(t))
     }
 
     pub fn join_handled<'a, 'b, 'c>(
         self,
         t: &'a mut TokenProvider<'b, 'c>,
-    ) -> GuardedResult<V, join::Joined, C, B> {
-        self.join(JoinMethod::Handled(t))
+    ) -> GuardedResult<V, join::Joined, C, B, D> {
+        self.join_inner(JoinMethod::Handled(t))
     }
 
     pub fn join_hard<'a, 'b, 'c>(
         self,
         t: &'a mut TokenProvider<'b, 'c>,
-    ) -> GuardedResult<V, join::Joined, C, B> {
-        self.join(JoinMethod::Hard(t))
+    ) -> GuardedResult<V, join::Joined, C, B, D> {
+        self.join_inner(JoinMethod::Hard(t))
     }
 
     /// This allows you to not join an error and sync a t, but instead explicitly
     /// not commit to this parse path even while retrieving the value
-    pub fn join_noncommittal<'a>(self) -> GuardedResult<V, join::Joined, C, B> {
-        self.join(JoinMethod::NonCommittal())
+    pub fn join_noncommittal<'a>(self) -> GuardedResult<V, join::Joined, C, B, D> {
+        self.join_inner(JoinMethod::NonCommittal())
     }
 
-    pub fn join<'a, 'b, 'c, JM>(mut self, j: JM) -> GuardedResult<V, join::Joined, C, B>
+    fn join_inner<'a, 'b, 'c, JM>(mut self, j: JM) -> GuardedResult<V, join::Joined, C, B, D>
     where
         JM: Into<JoinMethod<'a, 'b, 'c>>, 'b: 'a, 'c: 'a
     {
@@ -236,8 +271,15 @@ impl<V, C: catch::Catchable, B: bubble::Bubbling> GuardedResult<V, join::Unjoine
     }
 }
 
-impl<V, J: join::Joinable, B: bubble::Bubbling> GuardedResult<V, J, catch::Uncaught, B> {
-    pub fn catch<'a, 'b, 'c>(self, t: &'a mut TokenProvider<'b, 'c>) -> GuardedResult<V, J, catch::Caught, B> where 'b: 'a, 'c: 'a {
+impl<V, B: bubble::Bubbling, D> GuardedResult<V, join::Unjoined, catch::Uncaught, B, D> {
+    pub fn join_catch(self) -> GuardedResult<V, join::Joined, catch::Caught, B, D> {
+        //self.j
+        todo!()
+    }
+}
+
+impl<V, J: join::Joinable, B: bubble::Bubbling, D> GuardedResult<V, J, catch::Uncaught, B, D> {
+    pub fn catch<'a, 'b, 'c>(self, t: &'a mut TokenProvider<'b, 'c>) -> GuardedResult<V, J, catch::Caught, B, D> where 'b: 'a, 'c: 'a {
         let s = match self.solution {
             // if no solution, this is uncatchable
             SolutionClass::UnsolvedFailure { index: _ } => GuardedResult {
@@ -271,12 +313,20 @@ impl<V, J: join::Joinable, B: bubble::Bubbling> GuardedResult<V, J, catch::Uncau
 
         s
     }
+
+    pub fn catch_noncommittal(self) -> GuardedResult<V, J, catch::Caught, B, D> {
+        GuardedResult {
+            caught: false,
+            _c: Default::default(),
+            ..self
+        }
+    }
 }
 
-impl<V> std::ops::Try for GuardedResult<V, join::Joined, catch::Caught, bubble::All> {
+impl<V, D> std::ops::Try for GuardedResult<V, join::Joined, catch::Caught, bubble::All, D> {
     type Output = V;
 
-    type Residual = GuardedResult<Infallible, join::Unjoined, catch::Uncaught, bubble::All>;
+    type Residual = GuardedResult<Infallible, join::Unjoined, catch::Uncaught, bubble::All, D>;
 
     fn from_output(_output: Self::Output) -> Self {
         panic!("A GuardedResult can not be safely rebuilt from its output")
@@ -296,10 +346,25 @@ impl<V> std::ops::Try for GuardedResult<V, join::Joined, catch::Caught, bubble::
     }
 }
 
-impl<V> std::ops::Try for GuardedResult<V, join::Joined, catch::Caught, bubble::OnlyNotMine> {
-    type Output = GuardedResult<V, join::Joined, catch::Caught, bubble::All>;
+impl<V, D> GuardedResult<V, join::Joined, catch::Caught, bubble::All, D> {
+    pub fn expect(self, s: &'static str) -> V {
+        match (self.solution, self.value) {
+            (SolutionClass::Success { index: _ }, Some(v)) => v,
+            _ => {
+                println!("Error is: {:?}", self.root_error);
+                panic!("{}", s)
+            }
+        }
+    }
+    pub fn unwrap(self) -> V {
+        self.expect("Unwrap called on a GuardedResult with no wanted value")
+    }
+}
 
-    type Residual = GuardedResult<Infallible, join::Unjoined, catch::Uncaught, bubble::All>;
+impl<V, D> std::ops::Try for GuardedResult<V, join::Joined, catch::Caught, bubble::OnlyNotMine, D> {
+    type Output = GuardedResult<V, join::Joined, catch::Caught, bubble::All, D>;
+
+    type Residual = GuardedResult<Infallible, join::Unjoined, catch::Uncaught, bubble::All, D>;
 
     fn from_output(_output: Self::Output) -> Self {
         panic!("A GuardedResult can not be safely rebuilt from its output")
@@ -330,22 +395,22 @@ impl<V> std::ops::Try for GuardedResult<V, join::Joined, catch::Caught, bubble::
     }
 }
 
-impl<V, B: bubble::Bubbling>
-    std::ops::FromResidual<GuardedResult<Infallible, join::Unjoined, catch::Uncaught, bubble::All>>
-    for GuardedResult<V, join::Joined, catch::Caught, B>
+impl<V, B: bubble::Bubbling, D>
+    std::ops::FromResidual<GuardedResult<Infallible, join::Unjoined, catch::Uncaught, bubble::All, D>>
+    for GuardedResult<V, join::Joined, catch::Caught, B, D>
 {
     fn from_residual(
-        _r: GuardedResult<Infallible, join::Unjoined, catch::Uncaught, bubble::All>,
+        _r: GuardedResult<Infallible, join::Unjoined, catch::Uncaught, bubble::All, D>,
     ) -> Self {
         panic!("Should never be constructing an unjoined residual")
     }
 }
 
-impl<V, B: bubble::Bubbling>
-    std::ops::FromResidual<GuardedResult<Infallible, join::Unjoined, catch::Uncaught, B>>
-    for GuardedResult<V, join::Unjoined, catch::Uncaught, B>
+impl<V, B: bubble::Bubbling, D>
+    std::ops::FromResidual<GuardedResult<Infallible, join::Unjoined, catch::Uncaught, B, D>>
+    for GuardedResult<V, join::Unjoined, catch::Uncaught, B, D>
 {
-    fn from_residual(r: GuardedResult<Infallible, join::Unjoined, catch::Uncaught, B>) -> Self {
+    fn from_residual(r: GuardedResult<Infallible, join::Unjoined, catch::Uncaught, B, D>) -> Self {
         GuardedResult {
             _j: Default::default(),
             _c: Default::default(),
@@ -356,8 +421,8 @@ impl<V, B: bubble::Bubbling>
     }
 }
 
-impl<V, J: join::Joinable, C: catch::Catchable> GuardedResult<V, J, C, bubble::All> {
-    pub fn handle_here(self) -> GuardedResult<V, J, C, bubble::OnlyNotMine> {
+impl<V, J: join::Joinable, C: catch::Catchable, D> GuardedResult<V, J, C, bubble::All, D> {
+    pub fn handle_here(self) -> GuardedResult<V, J, C, bubble::OnlyNotMine, D> {
         GuardedResult {
             _b: Default::default(),
             caught: true,
@@ -366,14 +431,16 @@ impl<V, J: join::Joinable, C: catch::Catchable> GuardedResult<V, J, C, bubble::A
     }
 }
 
-impl<V, B: bubble::Bubbling> GuardedResult<V, join::Unjoined, catch::Uncaught, B> {
-    pub fn from_err(e: ParseResultError, s: SolutionClass) -> Self {
+impl<V, B: bubble::Bubbling, D> GuardedResult<V, join::Unjoined, catch::Uncaught, B, D> {
+    pub fn from_err(e: ParseResultError, s: SolutionClass, d: D) -> Self {
         Self {
             value: None,
             root_error: Some(e),
             cascading_errors: ErrorSet::new(),
             solution: s,
 
+            data: d,
+
             caught: false,
 
             _j: Default::default(),
@@ -382,13 +449,15 @@ impl<V, B: bubble::Bubbling> GuardedResult<V, join::Unjoined, catch::Uncaught, B
         }
     }
 
-    pub fn from_ok(v: V, s: SolutionClass) -> Self {
+    pub fn from_ok(v: V, s: SolutionClass, d: D) -> Self {
         Self {
             value: Some(v),
             root_error: None,
             cascading_errors: ErrorSet::new(),
             solution: s,
 
+            data: d,
+
             caught: false,
 
             _j: Default::default(),
@@ -397,7 +466,7 @@ impl<V, B: bubble::Bubbling> GuardedResult<V, join::Unjoined, catch::Uncaught, B
         }
     }
 
-    pub fn from_partial(v: V, e: ParseResultError, s: SolutionClass) -> Self {
+    pub fn from_partial(v: V, e: ParseResultError, s: SolutionClass, d: D) -> Self {
         Self {
             value: Some(v),
             root_error: Some(e),
@@ -405,6 +474,8 @@ impl<V, B: bubble::Bubbling> GuardedResult<V, join::Unjoined, catch::Uncaught, B
             solution: s,
 
             caught: false,
+
+            data: d,
 
             _j: Default::default(),
             _c: Default::default(),
@@ -424,7 +495,7 @@ impl<V, B: bubble::Bubbling> GuardedResult<V, join::Unjoined, catch::Uncaught, B
 /// shouldn't be handled by the current context, but this is a question of misuse
 /// rather than anything with actual undefined behavior. If this is done, then a partial value may
 /// be observed by a function that has not bubbled an error not intended for it
-impl<V> Iterator for GuardedResult<V, join::Joined, catch::Caught, bubble::All> {
+impl<V, D> Iterator for GuardedResult<V, join::Joined, catch::Caught, bubble::All, D> {
     type Item = V;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -447,7 +518,7 @@ impl<V> Iterator for GuardedResult<V, join::Joined, catch::Caught, bubble::All> 
 /// constructing any value, so any child errors or non fatal errors
 type HandlableOutput<V> = (Option<V>, Option<ParseResultError>, ErrorSet, SolutionClass);
 
-impl<V, B: bubble::Bubbling> GuardedResult<V, join::Joined, catch::Caught, B> {
+impl<V, B: bubble::Bubbling, D> GuardedResult<V, join::Joined, catch::Caught, B, D> {
     /// This is an alternative to bubbling a GuardedResult (which only yields the value)
     pub fn open(self) -> HandlableOutput<V> {
         (
@@ -466,7 +537,7 @@ impl<V, B: bubble::Bubbling> GuardedResult<V, join::Joined, catch::Caught, B> {
     }
 }
 
-impl<V, B: bubble::Bubbling> GuardedResult<V, join::Unjoined, catch::Uncaught, B> {
+impl<V, B: bubble::Bubbling, D> GuardedResult<V, join::Unjoined, catch::Uncaught, B, D> {
     pub fn open_anyway(self) -> HandlableOutput<V> {
         (
             self.value,
@@ -477,7 +548,8 @@ impl<V, B: bubble::Bubbling> GuardedResult<V, join::Unjoined, catch::Uncaught, B
     }
 }
 
-pub type ParseResult<V> = GuardedResult<V, join::Unjoined, catch::Uncaught, bubble::All>;
+pub type ParseResult<V, D = ()> = GuardedResult<V, join::Unjoined, catch::Uncaught, bubble::All, D>;
+pub type JoinedResult<V, D = ()> = GuardedResult<V, join::Joined, catch::Caught, bubble::All, D>;
 
 //pub type ParseResult<'t, T, E> = Result<ParseValueGuard<'t, T>, E>;
 
@@ -534,7 +606,7 @@ pub mod schema {
         lex::{ErrorSet, LookaheadHandle, ParseResultError, Token, TokenWrapper},
     };
 
-    use super::ParseResult;
+    use super::{ParseResult, JoinedResult};
 
     use super::{GuardedResult, SolutionClass};
 
@@ -839,13 +911,13 @@ pub mod schema {
     pub struct TokenProvider<'parent, 'tokens> {
         pub unit_rules: RuleUnit<'parent>,
         //parent: Option<&'parent TokenProvider<'parent, 'tokens>>,
-        lh: LookaheadHandle<'tokens>,
+        pub lh: LookaheadHandle<'tokens>,
         errors_field: ErrorSet,
     }
 
     //pub type ParseResult<T> = Result<ParseValueGuard<WithError<T>>, CorrectionBubblingError>;
 
-    pub type TokenResult = ParseResult<TokenWrapper>;
+    pub type TokenResult<'s, 'p, 't> = ParseResult<TokenWrapper, &'s mut TokenProvider<'p, 't>>;
 
     #[must_use]
     pub enum WithError<T> {
@@ -978,6 +1050,7 @@ pub mod schema {
                 SolutionClass::Success {
                     index: self.lh.index() as isize,
                 },
+                ()
             )
         }
 
@@ -991,7 +1064,9 @@ pub mod schema {
                 SolutionClass::UnsolvedFailure {
                     index: self.lh.index() as isize,
                 },
+                ()
             )
+            //).join_noncommittal().catch_noncommittal()
         }
 
         pub fn sync(&self) -> LookaheadHandle<'tokens> {
@@ -1023,19 +1098,27 @@ pub mod schema {
             unit_id == self.unit_rules.id
         }
 
-        pub fn la(&self, offset: isize) -> TokenResult {
+        /*pub fn la(&self, offset: isize) -> Option<TokenWrapper> {
+            self.lh.la(offset).ok()
+        }*/
+
+        pub fn la(&mut self, offset: isize) -> ParseResult<TokenWrapper> {
             match self.lh.la(offset) {
                 Ok(v) => GuardedResult::from_ok(
                     v,
                     SolutionClass::Success {
                         index: self.lh.index() as isize,
                     },
+                    ()
+                    //&mut self
                 ),
                 Err(e) => GuardedResult::from_err(
                     e,
                     SolutionClass::UnsolvedFailure {
                         index: self.lh.index() as isize,
                     },
+                    ()
+                    //&mut self
                 ),
             }
         }
@@ -1065,7 +1148,18 @@ pub mod schema {
             &mut self,
             _t: [Token; LEN],
         ) -> Option<SmallVec<[TokenWrapper; LEN]>> {
-            todo!()
+            let mut res = SmallVec::new();
+            for (i, t) in _t.iter().enumerate() {
+                if let Ok(tw) = self.lh.la(i as isize) && tw.token == *t {
+                    res.push(tw);
+                } else {
+                    return None;
+                }
+
+
+            }
+
+            Some(res)
         }
 
         pub fn try_take_if<F, T>(&mut self, f: F) -> Option<(T, TokenWrapper)>
@@ -1090,7 +1184,7 @@ pub mod schema {
             }
         }
 
-        pub fn take(&self, t: Token) -> TokenResult {
+        pub fn take<'a>(&'a mut self, t: Token) -> TokenResult<'a, 'parent, 'tokens> {
             self.take_in(&[t])
         }
 
@@ -1103,7 +1197,7 @@ pub mod schema {
             self.unit_rules.predict_next(t);
         }
 
-        pub fn take_in(&self, t: &[Token]) -> TokenResult {
+        pub fn take_in<'a>(&'a mut self, t: &[Token]) -> TokenResult<'a, 'parent, 'tokens> {
             println!("take_in called with {:?}", t);
             match self.peek_for_in(t) {
                 Some(tw) => GuardedResult::from_ok(
@@ -1111,6 +1205,7 @@ pub mod schema {
                     SolutionClass::Success {
                         index: self.lh.index() as isize + 1,
                     },
+                    self,
                 ),
                 None => {
                     // need to do a search and potentially issue a bubbling error
@@ -1124,6 +1219,7 @@ pub mod schema {
                             SolutionClass::UnsolvedFailure {
                                 index: self.lh.index() as isize,
                             },
+                            self,
                         ),
                         Ok(tw) => {
                             // it didn't directly match one of the requested tokens,
@@ -1138,7 +1234,7 @@ pub mod schema {
 
                             let e = ParseResultError::UnexpectedToken(tw, t.to_vec(), None);
 
-                            GuardedResult::from_err(e, solution)
+                            GuardedResult::from_err(e, solution, self)
                         }
                     }
                 }

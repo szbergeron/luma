@@ -1,5 +1,5 @@
 mod sdf {
-    let v = !f;
-    let h = &!r;
-    let t = *(3 + 4);
+    __d_expression v = !f;
+    __d_expression h = &!r;
+    __d_expression t = *(3 + 4);
 }

@@ -37,6 +37,7 @@ impl<'lexer> Parser<'lexer> {
         let mut t = t.child().predict(&[Token::LParen, Token::Identifier]);
         //let next_token = t.sync().la(0).map_err(|e| CorrectionBubblingError::from_fatal_error(e))?;
         let next_token = t.la(0).join_noncommittal().catch(&mut t)?;
+        //let next_token = t.lh.la(0).;
 
         let mut end;
         let start;
@@ -46,7 +47,7 @@ impl<'lexer> Parser<'lexer> {
             Token::LParen => {
                 let mut elements: Vec<LetComponent> = Vec::new();
                 //todo!("Pattern assignment not yet implemented")
-                start = t.take(Token::LParen).join(&mut t).catch(&mut t)?.start; // consume start lparen
+                start = t.take(Token::LParen).join()?.start; // consume start lparen
 
                 while let Some(expr) = self
                     .parse_binding(&t)
@@ -74,7 +75,7 @@ impl<'lexer> Parser<'lexer> {
                     }
                 }
 
-                end = t.take(Token::RParen).join_hard(&mut t).catch(&mut t)?.end; // if user opened, must close
+                end = t.take(Token::RParen).join()?.end; // if user opened, must close
 
                 // see if a type exists, user may specify type anywhere during parsing, but
                 // must be possible to resolve types directly for every binding
@@ -82,7 +83,7 @@ impl<'lexer> Parser<'lexer> {
                 Either::A(elements)
             }
             Token::Identifier => {
-                let variable = t.take(Token::Identifier).join_hard(&mut t).catch(&mut t)?;
+                let variable = t.take(Token::Identifier).to_parse_result().join_hard(&mut t).catch(&mut t)?;
                 let variable_name = variable.slice;
 
                 start = variable.start;
@@ -133,11 +134,11 @@ impl<'lexer> Parser<'lexer> {
     pub fn parse_let(&mut self, t: &TokenProvider) -> ExpressionResult {
         let mut t = t.child();
 
-        let start = t.take(Token::Let).join_hard(&mut t).catch(&mut t)?.start;
+        let start = t.take(Token::Let).to_parse_result().join_hard(&mut t).catch(&mut t)?.start;
 
         let binding = self.parse_binding(&t).join_hard(&mut t).catch(&mut t)?;
 
-        let _eq = t.take(Token::Equals).join_hard(&mut t).catch(&mut t)?;
+        let _eq = t.take(Token::Equals).to_parse_result().join_hard(&mut t).catch(&mut t)?;
 
         let expr = self.parse_expr(&t).join_hard(&mut t).catch(&mut t)?;
 
@@ -163,7 +164,7 @@ impl<'lexer> Parser<'lexer> {
         let mut t = t.child();
         // can be a single literal or tuple, and each tuple is a set of expressions
 
-        let lp = t.take(Token::LParen).join_hard(&mut t).catch(&mut t)?;
+        let lp = t.take(Token::LParen).to_parse_result().join_hard(&mut t).catch(&mut t)?;
 
         let start = lp.start;
 
@@ -183,7 +184,7 @@ impl<'lexer> Parser<'lexer> {
             }
         }
 
-        let end = t.take(Token::RParen).join_hard(&mut t).catch(&mut t)?.end;
+        let end = t.take(Token::RParen).to_parse_result().join_hard(&mut t).catch(&mut t)?.end;
 
         let node_info = NodeInfo::from_indices(start, end);
 
@@ -268,9 +269,9 @@ impl<'lexer> Parser<'lexer> {
     }
 
     pub fn atomic_expression(&mut self, t: &TokenProvider) -> ExpressionResult {
-        let t = t.child();
+        let mut t = t.child();
 
-        if let Ok(tw) = self.lex.next() {
+        if let Ok(tw) = t.lh.next() {
             match tw.token {
                 Token::UnknownIntegerLiteral => {
                     t.success(ast::ExpressionWrapper::literal_expression(tw))
@@ -278,11 +279,15 @@ impl<'lexer> Parser<'lexer> {
                 Token::StringLiteral => t.success(ast::ExpressionWrapper::literal_expression(tw)),
                 Token::Underscore => t.success(ast::ExpressionWrapper::wildcard(tw)),
                 Token::LParen | Token::DoubleColon | Token::Identifier => {
-                    self.lex.backtrack();
+                    //self.lex.backtrack();
+                    t.lh.backtrack(); // TODO: check if this works
+
                     self.parse_access_base(&t, None)
                 }
                 _ => {
-                    self.lex.backtrack();
+                    //self.lex.backtrack();
+                    t.lh.backtrack();
+
                     t.failure(ParseResultError::UnexpectedToken(
                         tw,
                         vec![
@@ -410,9 +415,7 @@ impl<'lexer> Parser<'lexer> {
         let mut t = t.child();
 
         let start = t
-            .take(Token::InteriorBuiltin)
-            .join_hard(&mut t)
-            .catch(&mut t)?;
+            .take(Token::InteriorBuiltin).join()?;
         //let name = self.hard_expect(Token::Identifier)?;
 
         //while let Some(llvm_directive) = self.eat_match_in(&[Token::LL_Bind
@@ -423,13 +426,13 @@ impl<'lexer> Parser<'lexer> {
             match tok.token {
                 Token::LL_Bind => {
                     let exp = self.parse_expr(&t).join_hard(&mut t).catch(&mut t)?;
-                    let _ = t.take(Token::ThickArrow).join_hard(&mut t).catch(&mut t)?;
-                    let name = t.take(Token::Identifier).join_hard(&mut t).catch(&mut t)?;
+                    let _ = t.take(Token::ThickArrow).join()?;
+                    let name = t.take(Token::Identifier).join()?;
 
                     bindings.push((*exp, name.slice));
                 }
                 Token::LL_Var => {
-                    let name = t.take(Token::Identifier).join_hard(&mut t).catch(&mut t)?;
+                    let name = t.take(Token::Identifier).join()?;
 
                     vars.push(name.slice);
                 }
@@ -438,8 +441,8 @@ impl<'lexer> Parser<'lexer> {
         }
 
         let maybe_result = if let Some(_) = t.try_take(Token::LL_Result) {
-            let name = t.take(Token::Identifier).join_hard(&mut t).catch(&mut t)?;
-            t.take(Token::Colon).join_hard(&mut t).catch(&mut t)?;
+            let name = t.take(Token::Identifier).join()?;
+            t.take(Token::Colon).join()?;
             let tr = self
                 .parse_type_specifier(&t)
                 .join_hard(&mut t)
@@ -449,7 +452,7 @@ impl<'lexer> Parser<'lexer> {
             None
         };
 
-        let body = t.take(Token::LLVMBlock).join_hard(&mut t).catch(&mut t)?;
+        let body = t.take(Token::LLVMBlock).join()?;
 
         let llvmle = LLVMLiteralExpression {
             node_info: NodeInfo::from_indices(start.start, body.end),
@@ -467,9 +470,7 @@ impl<'lexer> Parser<'lexer> {
 
         let start = t
             .take(Token::If)
-            .hint("Tried to parse if-else with no beginning if")
-            .join_hard(&mut t)
-            .catch(&mut t)?
+            .hint("Tried to parse if-else with no beginning if").join()?
             .start;
         let if_exp = self.parse_expr(&t).hint("An 'if' must be followed by a conditional expression followed by a then expression").join_hard(&mut t).catch(&mut t)?;
         let then_exp = self.parse_expr(&t).join_hard(&mut t).catch(&mut t)?;
@@ -498,7 +499,7 @@ impl<'lexer> Parser<'lexer> {
     pub fn parse_while(&mut self, t: &TokenProvider) -> ExpressionResult {
         let mut t = t.child();
 
-        let start = t.take(Token::While).join_hard(&mut t).catch(&mut t)?.start;
+        let start = t.take(Token::While).join()?.start;
         let while_exp = self.parse_expr(&t).join_hard(&mut t).catch(&mut t)?;
         let do_exp = self.parse_expr(&t).join_hard(&mut t).catch(&mut t)?;
 
@@ -512,9 +513,10 @@ impl<'lexer> Parser<'lexer> {
             .child()
             .predict(&[Token::LBrace, Token::Semicolon, Token::RBrace]);
 
-        t.take(Token::LBrace).join_hard(&mut t).catch(&mut t)?;
+        t.take(Token::LBrace).join()?;
         let mut declarations: Vec<Box<ast::ExpressionWrapper>> = Vec::new();
-        let start = self.lex.la(0).map_or(CodeLocation::Builtin, |tw| tw.start);
+
+        let start = t.lh.la(0).map_or(CodeLocation::Builtin, |tw| tw.start);
 
         //let mut failed = false;
 
@@ -525,7 +527,7 @@ impl<'lexer> Parser<'lexer> {
                 }
                 Token::Semicolon => {
                     //self.lex.advance();
-                    t.take(Token::Semicolon).join(&mut t).catch(&mut t)?;
+                    t.take(Token::Semicolon).join()?;
                     t.predict_next(Token::Semicolon);
                     // empty
                 }
@@ -575,11 +577,11 @@ impl<'lexer> Parser<'lexer> {
             }
         }
 
-        let end = self.lex.la(-1).map_or(start, |tw| tw.start);
+        let end = t.lh.la(-1).map_or(start, |tw| tw.start);
 
         let node_info = ast::NodeInfo::from_indices(start, end);
 
-        t.take(Token::RBrace).join_hard(&mut t).catch(&mut t)?;
+        t.take(Token::RBrace).join()?;
 
         t.success(ast::BlockExpression::new_expr(node_info, declarations))
     }
@@ -646,7 +648,7 @@ impl<'lexer> Parser<'lexer> {
                 r?
             },*/
             tok if prefix_binding_power(tok).is_some() => {
-                self.lex.advance();
+                t.lh.advance();
 
                 let bp =
                     prefix_binding_power(tok).expect("bp should already be Some from match guard");
@@ -664,7 +666,8 @@ impl<'lexer> Parser<'lexer> {
             }
             //
             _other => {
-                self.atomic_expression(&t).join_hard(&mut t).catch(&mut t)?;
+                let ae = self.atomic_expression(&t).join_hard(&mut t).catch(&mut t)?;
+                println!("ae is: {ae:?}");
                 todo!()
             }
         };
@@ -691,7 +694,9 @@ impl<'lexer> Parser<'lexer> {
             {
                 //if let Some(((l_bp, r_bp), tw)) = operator {
                 if l_bp < min_bp {
-                    self.lex.backtrack();
+                    //self.lex.backtrack();
+                    t.lh.backtrack();
+
                     break;
                 } else {
                     let rhs = self
@@ -713,8 +718,9 @@ impl<'lexer> Parser<'lexer> {
                 Token::Identifier,
                 Token::DoubleColon,
             ]) {
-                self.lex.backtrack(); // want to know it's there, but not consume it
+                //self.lex.backtrack(); // want to know it's there, but not consume it
                                       // not a binary operator per-se, could be chained access?
+                t.lh.backtrack();
 
                 lhs = self
                     .parse_access_trailing(&t, lhs)

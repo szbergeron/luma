@@ -74,6 +74,9 @@ pub enum Token {
     #[token("struct")]
     Struct,
 
+    #[token("__d_expression")]
+    DExpression,
+
     #[token(";")]
     Semicolon,
 

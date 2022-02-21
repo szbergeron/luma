@@ -26,14 +26,13 @@ impl<'lexer> Parser<'lexer> {
     ) -> ParseResult<ast::TypeDefinition> {
         let mut t = t.child();
 
-        let start = t.take(Token::Struct).join_hard(&mut t).catch(&mut t)?.start;
+        let start = t.take(Token::Struct).join()?.start;
         let name = t
             .take(Token::Identifier)
-            .join_hard(&mut t)
-            .catch(&mut t)?
+            .join()?
             .slice;
 
-        t.take(Token::LBrace).join_hard(&mut t).catch(&mut t)?;
+        t.take(Token::LBrace).join()?;
 
         let mut fields = Vec::new();
 
@@ -41,7 +40,7 @@ impl<'lexer> Parser<'lexer> {
             self.parse_member_attributes(),
             t.try_take(Token::Identifier),
         ) {
-            t.take(Token::Colon).join_hard(&mut t).catch(&mut t)?;
+            t.take(Token::Colon).join()?;
             let field_type = self
                 .parse_type_specifier(&t)
                 .join_hard(&mut t)
@@ -67,7 +66,7 @@ impl<'lexer> Parser<'lexer> {
             }
         }
 
-        let end = t.take(Token::RBrace).join_hard(&mut t).catch(&mut t)?.end;
+        let end = t.take(Token::RBrace).join()?.end;
 
         let node_info = ast::NodeInfo::from_indices(start, end);
 
@@ -98,9 +97,9 @@ impl<'lexer> Parser<'lexer> {
             .child()
             .predict(&[Token::LBrace, Token::Opaque, Token::Comma, Token::RBrace]);
 
-        let type_name = t.take(Token::Identifier).join_hard(&mut t).catch(&mut t).handle_here()?.try_get();
+        let type_name = t.take(Token::Identifier).join().handle_here()?.try_get();
 
-        t.take(Token::LBrace).join_hard(&mut t).catch(&mut t)?;
+        t.take(Token::LBrace).join()?;
 
         loop {
             let r = || {
@@ -116,8 +115,7 @@ impl<'lexer> Parser<'lexer> {
 
             match t
                 .take_in(&[Token::Comma, Token::RBrace])
-                .join_hard(&mut t)
-                .catch(&mut t)?
+                .join()?
                 .token
             {
                 Token::Comma => {
@@ -219,7 +217,7 @@ impl<'lexer> Parser<'lexer> {
 
         let expr = self.parse_expr(&t).join_hard(&mut t).catch(&mut t)?;
 
-        t.take(Token::Semicolon).join_hard(&mut t).catch(&mut t)?;
+        t.take(Token::Semicolon).join()?;
 
         t.success(ast::StaticVariableDeclaration {
             node_info: expr.as_node().node_info(),
@@ -248,9 +246,9 @@ impl<'lexer> Parser<'lexer> {
     pub fn parse_type_list(&mut self, t: &TokenProvider) -> ParseResult<Vec<ast::TypeReference>> {
         let mut t = t.child();
 
-        t.take(Token::CmpLessThan).join_hard(&mut t).catch(&mut t)?;
+        t.take(Token::CmpLessThan).join()?;
 
-        GuardedResult::catch(GuardedResult::join_hard(t.take(Token::CmpLessThan), &mut t), &mut t);
+        //GuardedResult::catch(GuardedResult::join_hard(t.take(Token::CmpLessThan), &mut t), &mut t);
 
         let mut tvec = Vec::new();
         while let None = t.try_take(Token::CmpLessThan) {
@@ -276,8 +274,7 @@ impl<'lexer> Parser<'lexer> {
         let typename = t
             .take(Token::Identifier)
             .hint("All types start with a scope, and must be followed by a typename")
-            .join_hard(&mut t)
-            .catch(&mut t)?;
+            .join()?;
 
         todo!()
     }
@@ -345,7 +342,7 @@ impl<'lexer> Parser<'lexer> {
                             }
                         }
 
-                        t.take(Token::RParen).join_hard(&mut t).catch(&mut t)?;
+                        t.take(Token::RParen).join()?;
                     }
                     _ => {
                         return t.failure(ParseResultError::UnexpectedToken(
