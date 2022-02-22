@@ -641,6 +641,10 @@ impl<'tokenvec> LookaheadHandle<'tokenvec> {
         self.index = (self.index as isize + offset) as usize;
     }
 
+    pub fn remains(&self) -> isize {
+        (self.tokens.len() - self.index()) as isize
+    }
+
     pub fn index(&self) -> usize {
         self.index
     }

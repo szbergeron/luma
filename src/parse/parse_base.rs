@@ -1,5 +1,6 @@
 #[allow(non_upper_case_globals)]
 use crate::ast;
+use crate::ast::StaticVariableDeclaration;
 use crate::lex::{ParseResultError, Token};
 
 //use crate::helper::lex_wrap::LookaheadStream;
@@ -21,11 +22,12 @@ impl<'lexer> Parser<'lexer> {
 
         let mut declarations = Vec::new();
 
-        let start = self.lex.la(0).map_or(CodeLocation::Builtin, |tw| tw.start);
+        //let start = self.lex.la(0).map_or(CodeLocation::Builtin, |tw| tw.start);
+        let start = t.lh.la(0).map_or(CodeLocation::Builtin, |tw| tw.start);
 
 
         //let mut failed = false;
-        println!("At entry");
+        println!("At entry, idx: {}", t.lh.index());
 
         while let Ok(tw) = t.sync().la(0) {
             println!("Entry: got a tw {:?}", tw);
@@ -141,9 +143,9 @@ impl<'lexer> Parser<'lexer> {
         &mut self,
         t: &TokenProvider,
     ) -> ParseResult<ast::SymbolDeclaration> {
-        println!("Parsing global declaration");
+        println!("Parsing global declaration, idx: {}", t.lh.index());
 
-        let mut t = t.child().predict(&[Token::Module, Token::Function, Token::Struct, Token::Use, Token::DExpression]);
+        let mut t = t.child().predict(&[(Token::Module, 1.0), (Token::Function, 1.0), (Token::Struct, 1.0), (Token::Use, 1.0), (Token::DExpression, 10.0)]);
         //let has_pub = self.eat_match(Token::Public);
         //let mut failed = false;
 
@@ -181,13 +183,20 @@ impl<'lexer> Parser<'lexer> {
                     println!("Taking dexpr");
                     let _ = t.take(Token::DExpression).join()?;
 
+                    t.predict_next((Token::Semicolon, 10.0));
+
                     println!("Parsing dbg expr, got first tok");
                     let e = self.parse_expr(&t).join_hard(&mut t).catch(&mut t)?;
                     println!("Got expr");
                     let _ = t.take(Token::Semicolon).join()?;
                     println!("Took semi");
                     println!("{:?}", e);
-                    panic!()
+                    println!("E: {:?}", e);
+                    ast::SymbolDeclaration::ExpressionDeclaration(StaticVariableDeclaration {
+                        node_info: e.as_node().node_info(),
+                        expression: e,
+                        public: false,
+                    })
                 }
 
                 // only parse let expressions for now, since other (pure) expressions would be
@@ -219,16 +228,22 @@ impl<'lexer> Parser<'lexer> {
     pub fn parse_namespace(&mut self, t: &TokenProvider) -> ParseResult<ast::Namespace> {
         println!("Parsing a namespace");
 
-        let mut t = t.child().predict(&[Token::Module, Token::Identifier, Token::LBrace, Token::RBrace]);
+        let mut t = t.child().predict(&[(Token::Module, 10.0), (Token::Identifier, 0.01), (Token::LBrace, 0.5), (Token::RBrace, 0.5)]);
 
         //let start = t.la(0).join_hard(&mut t).catch(&mut t).try_get().map_or(CodeLocation::Builtin, |tw| tw.start);
 
+        println!("Idx is: {}", t.lh.index());
+
         let start = t.take(Token::Module).join().unwrap().start;
+
+        println!("Idx is: {}", t.lh.index());
 
         println!("Pulled a mod");
         let id = t.take(Token::Identifier).join()?.slice;
         println!("Pulled an id");
         t.take(Token::LBrace).join()?;
+        println!("Pulling entry");
+
         let pu = self.entry(&t).join_hard(&mut t).catch(&mut t)?;
         t.take(Token::RBrace).join()?;
 

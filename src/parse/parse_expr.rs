@@ -34,7 +34,7 @@ impl<'lexer> Parser<'lexer> {
     /// includes support for parsing type specifiers within
     pub fn parse_binding(&mut self, t: &TokenProvider) -> ParseResult<Box<LetComponent>> {
         // want to find if this is going to be a destructuring operation
-        let mut t = t.child().predict(&[Token::LParen, Token::Identifier]);
+        let mut t = t.child().predict(&[(Token::LParen, 1.0), (Token::Identifier, 1.0)]);
         //let next_token = t.sync().la(0).map_err(|e| CorrectionBubblingError::from_fatal_error(e))?;
         let next_token = t.la(0).join_noncommittal().catch(&mut t)?;
         //let next_token = t.lh.la(0).;
@@ -83,7 +83,7 @@ impl<'lexer> Parser<'lexer> {
                 Either::A(elements)
             }
             Token::Identifier => {
-                let variable = t.take(Token::Identifier).to_parse_result().join_hard(&mut t).catch(&mut t)?;
+                let variable = t.take(Token::Identifier).join()?;
                 let variable_name = variable.slice;
 
                 start = variable.start;
@@ -134,11 +134,11 @@ impl<'lexer> Parser<'lexer> {
     pub fn parse_let(&mut self, t: &TokenProvider) -> ExpressionResult {
         let mut t = t.child();
 
-        let start = t.take(Token::Let).to_parse_result().join_hard(&mut t).catch(&mut t)?.start;
+        let start = t.take(Token::Let).join()?.start;
 
         let binding = self.parse_binding(&t).join_hard(&mut t).catch(&mut t)?;
 
-        let _eq = t.take(Token::Equals).to_parse_result().join_hard(&mut t).catch(&mut t)?;
+        let _eq = t.take(Token::Equals).join()?;
 
         let expr = self.parse_expr(&t).join_hard(&mut t).catch(&mut t)?;
 
@@ -164,7 +164,7 @@ impl<'lexer> Parser<'lexer> {
         let mut t = t.child();
         // can be a single literal or tuple, and each tuple is a set of expressions
 
-        let lp = t.take(Token::LParen).to_parse_result().join_hard(&mut t).catch(&mut t)?;
+        let lp = t.take(Token::LParen).join()?;
 
         let start = lp.start;
 
@@ -184,7 +184,7 @@ impl<'lexer> Parser<'lexer> {
             }
         }
 
-        let end = t.take(Token::RParen).to_parse_result().join_hard(&mut t).catch(&mut t)?.end;
+        let end = t.take(Token::RParen).join()?.end;
 
         let node_info = NodeInfo::from_indices(start, end);
 
@@ -511,7 +511,7 @@ impl<'lexer> Parser<'lexer> {
     pub fn syntactic_block(&mut self, t: &TokenProvider) -> ExpressionResult {
         let mut t = t
             .child()
-            .predict(&[Token::LBrace, Token::Semicolon, Token::RBrace]);
+            .predict(&[(Token::LBrace, 1.0), (Token::Semicolon, 10.0), (Token::RBrace, 10.0)]);
 
         t.take(Token::LBrace).join()?;
         let mut declarations: Vec<Box<ast::ExpressionWrapper>> = Vec::new();
@@ -528,7 +528,7 @@ impl<'lexer> Parser<'lexer> {
                 Token::Semicolon => {
                     //self.lex.advance();
                     t.take(Token::Semicolon).join()?;
-                    t.predict_next(Token::Semicolon);
+                    t.predict_next((Token::Semicolon, 10.0));
                     // empty
                 }
                 /*Token::Let => {
@@ -668,7 +668,8 @@ impl<'lexer> Parser<'lexer> {
             _other => {
                 let ae = self.atomic_expression(&t).join_hard(&mut t).catch(&mut t)?;
                 println!("ae is: {ae:?}");
-                todo!()
+                ae
+                //todo!()
             }
         };
 

@@ -95,7 +95,7 @@ impl<'lexer> Parser<'lexer> {
 
         let mut t = t
             .child()
-            .predict(&[Token::LBrace, Token::Opaque, Token::Comma, Token::RBrace]);
+            .predict(&[(Token::LBrace, 1.0), (Token::Opaque, 1.0), (Token::Comma, 1.0), (Token::RBrace, 1.0)]);
 
         let type_name = t.take(Token::Identifier).join().handle_here()?.try_get();
 
@@ -104,11 +104,9 @@ impl<'lexer> Parser<'lexer> {
         loop {
             let r = || {
                 let mut t = t.child().predict(&[
-                    Token::Identifier,
-                    Token::Colon,
-                    Token::Opaque,
-                    Token::Comma,
                 ]);
+
+                todo!()
 
                 //
             };
@@ -120,7 +118,7 @@ impl<'lexer> Parser<'lexer> {
             {
                 Token::Comma => {
                     // we could have another field, so try looking again
-                    t.predict_next(Token::Comma); // we are potentially still looking for a comma in our lookahead,
+                    t.predict_next((Token::Comma, 1.0)); // we are potentially still looking for a comma in our lookahead,
                                                   // so leave it in the rule
                     continue;
                 }
