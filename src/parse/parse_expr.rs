@@ -1,3 +1,5 @@
+use std::process::abort;
+
 use crate::ast::{self, TypeReference};
 use crate::lex::{CodeLocation, ParseResultError, Token};
 
@@ -20,7 +22,8 @@ type ExpressionResult = ParseResult<Box<ast::ExpressionWrapper>>;
 
 impl<'lexer> Parser<'lexer> {
     pub fn parse_expr(&mut self, t: &TokenProvider) -> ExpressionResult {
-        let t = t.child();
+        //let t = t.child();
+        let mut t = parse_header!(t);
 
         let r = self.parse_expr_inner(0, 1, &t);
 
@@ -34,7 +37,10 @@ impl<'lexer> Parser<'lexer> {
     /// includes support for parsing type specifiers within
     pub fn parse_binding(&mut self, t: &TokenProvider) -> ParseResult<Box<LetComponent>> {
         // want to find if this is going to be a destructuring operation
-        let mut t = t.child().predict(&[(Token::LParen, 1.0), (Token::Identifier, 1.0)]);
+        /*let mut t = t
+            .child()
+            .predict(&[(Token::LParen, 1.0), (Token::Identifier, 1.0)]);*/
+        let mut t = parse_header!(t, [Token::LParen => 1.0, Token::Identifier => 1.0]);
         //let next_token = t.sync().la(0).map_err(|e| CorrectionBubblingError::from_fatal_error(e))?;
         let next_token = t.la(0).join_noncommittal().catch(&mut t)?;
         //let next_token = t.lh.la(0).;
@@ -132,7 +138,8 @@ impl<'lexer> Parser<'lexer> {
 
     /// syntax: let <binding>: <type> = <expr>
     pub fn parse_let(&mut self, t: &TokenProvider) -> ExpressionResult {
-        let mut t = t.child();
+        //let mut t = t.child();
+        let mut t = parse_header!(t);
 
         let start = t.take(Token::Let).join()?.start;
 
@@ -161,7 +168,8 @@ impl<'lexer> Parser<'lexer> {
     //     typespecifier: <typelist>
     //     pattern: (expressionlist)
     pub fn parse_pattern(&mut self, t: &TokenProvider) -> ParseResult<Pattern> {
-        let mut t = t.child();
+        //let mut t = t.child();
+        let mut t = parse_header!(t);
         // can be a single literal or tuple, and each tuple is a set of expressions
 
         let lp = t.take(Token::LParen).join()?;
@@ -211,7 +219,8 @@ impl<'lexer> Parser<'lexer> {
         &mut self,
         t: &TokenProvider,
     ) -> ParseResult<Box<ScopedNameReference>> {
-        let mut t = t.child();
+        //let mut t = t.child();
+        let mut t = parse_header!(t);
 
         let mut r = Box::new(ScopedNameReference {
             scope: Vec::new(),
@@ -269,7 +278,8 @@ impl<'lexer> Parser<'lexer> {
     }
 
     pub fn atomic_expression(&mut self, t: &TokenProvider) -> ExpressionResult {
-        let mut t = t.child();
+        //let mut t = t.child();
+        let mut t = parse_header!(t);
 
         if let Ok(tw) = t.lh.next() {
             match tw.token {
@@ -312,7 +322,8 @@ impl<'lexer> Parser<'lexer> {
         t: &TokenProvider,
         on: Box<ExpressionWrapper>,
     ) -> ExpressionResult {
-        let mut t = t.child();
+        //let mut t = t.child();
+        let mut t = parse_header!(t);
 
         let p = self.parse_pattern(&t).join_hard(&mut t).catch(&mut t)?;
         let start = on.as_node().start().unwrap_or(CodeLocation::Builtin);
@@ -354,7 +365,8 @@ impl<'lexer> Parser<'lexer> {
          */
 
         // first access has no specified "self" unless it is an object itself.
-        let mut t = t.child();
+        //let mut t = t.child();
+        let mut t = parse_header!(t);
 
         let mut either: EitherNone<Span, Span> = EitherNone::Neither();
 
@@ -373,12 +385,8 @@ impl<'lexer> Parser<'lexer> {
 
         let b_pattern = match base.silent {
             true => Some(self.parse_pattern(&t).join_hard(&mut t).catch(&mut t)?),
-            false => self
-                .parse_pattern(&t)
-                .join_sync(&mut t)
-                .catch(&mut t)
-                .map(|v| todo!())
-                .next(), // TODO: fallible patterns
+            //false => abort(),
+            false => Some(self.parse_pattern(&t).join_sync(&mut t).catch(&mut t)?), // TODO: fallible patterns
         };
 
         match &b_pattern {
@@ -412,10 +420,10 @@ impl<'lexer> Parser<'lexer> {
     }
 
     pub fn parse_llvm_builtin(&mut self, t: &TokenProvider) -> ExpressionResult {
-        let mut t = t.child();
+        //let mut t = t.child();
+        let mut t = parse_header!(t);
 
-        let start = t
-            .take(Token::InteriorBuiltin).join()?;
+        let start = t.take(Token::InteriorBuiltin).join()?;
         //let name = self.hard_expect(Token::Identifier)?;
 
         //while let Some(llvm_directive) = self.eat_match_in(&[Token::LL_Bind
@@ -466,11 +474,13 @@ impl<'lexer> Parser<'lexer> {
     }
 
     pub fn parse_if_then_else(&mut self, t: &TokenProvider) -> ExpressionResult {
-        let mut t = t.child();
+        //let mut t = t.child();
+        let mut t = parse_header!(t);
 
         let start = t
             .take(Token::If)
-            .hint("Tried to parse if-else with no beginning if").join()?
+            .hint("Tried to parse if-else with no beginning if")
+            .join()?
             .start;
         let if_exp = self.parse_expr(&t).hint("An 'if' must be followed by a conditional expression followed by a then expression").join_hard(&mut t).catch(&mut t)?;
         let then_exp = self.parse_expr(&t).join_hard(&mut t).catch(&mut t)?;
@@ -497,7 +507,8 @@ impl<'lexer> Parser<'lexer> {
     }
 
     pub fn parse_while(&mut self, t: &TokenProvider) -> ExpressionResult {
-        let mut t = t.child();
+        //let mut t = t.child();
+        let mut t = parse_header!(t);
 
         let start = t.take(Token::While).join()?.start;
         let while_exp = self.parse_expr(&t).join_hard(&mut t).catch(&mut t)?;
@@ -509,9 +520,13 @@ impl<'lexer> Parser<'lexer> {
     }
 
     pub fn syntactic_block(&mut self, t: &TokenProvider) -> ExpressionResult {
-        let mut t = t
-            .child()
-            .predict(&[(Token::LBrace, 1.0), (Token::Semicolon, 10.0), (Token::RBrace, 10.0)]);
+        let mut t = parse_header!(t, [Token::LBrace => 1.0, Token::Semicolon => 10.0, Token::RBrace => 10.0]);
+
+        /*let mut t = t.child().predict(&[
+            (Token::LBrace, 1.0),
+            (Token::Semicolon, 10.0),
+            (Token::RBrace, 10.0),
+        ]);*/
 
         t.take(Token::LBrace).join()?;
         let mut declarations: Vec<Box<ast::ExpressionWrapper>> = Vec::new();
@@ -552,10 +567,7 @@ impl<'lexer> Parser<'lexer> {
                         .catch(&mut t)
                         .handle_here()?;
 
-                    let (v, e, mut es, s) = e.open();
-
-                    t.add_errors(&mut es);
-                    e.map(|e| t.add_error(e));
+                    let (v, mut es, s) = e.update_solution(&t).open();
 
                     v.map(|exp| {
                         let exp = match t.try_take(Token::Semicolon) {
@@ -594,7 +606,8 @@ impl<'lexer> Parser<'lexer> {
     ) -> ExpressionResult {
         //let t1 = self.lex.la(0)?;
 
-        let mut t = t.child();
+        //let mut t = t.child();
+        let mut t = parse_header!(t);
 
         //let t1 = t.sync().la(0).map_err(|e| CorrectionBubblingError::from_fatal_error(e))?;
         let t1 = t.la(0).join_hard(&mut t).catch(&mut t)?;
@@ -664,12 +677,17 @@ impl<'lexer> Parser<'lexer> {
                     .join_hard(&mut t)
                     .catch(&mut t)?
             }
-            //
-            _other => {
+            // for anything that isn't an operator or start of a syntactic feature, so identifiers,
+            // patterns, and literals
+            Token::Identifier | Token::UnknownIntegerLiteral => {
                 let ae = self.atomic_expression(&t).join_hard(&mut t).catch(&mut t)?;
                 println!("ae is: {ae:?}");
                 ae
                 //todo!()
+            }
+            _other => {
+                return t.failure(ParseResultError::UnexpectedToken(
+                        t1, vec![], Some("Was looking for a start of a construct in an expression, found another token instead")));
             }
         };
 
@@ -720,7 +738,7 @@ impl<'lexer> Parser<'lexer> {
                 Token::DoubleColon,
             ]) {
                 //self.lex.backtrack(); // want to know it's there, but not consume it
-                                      // not a binary operator per-se, could be chained access?
+                // not a binary operator per-se, could be chained access?
                 t.lh.backtrack();
 
                 lhs = self
@@ -765,7 +783,8 @@ impl<'lexer> Parser<'lexer> {
         lhs: Box<ast::ExpressionWrapper>,
         rhs: Box<ast::ExpressionWrapper>,
     ) -> ExpressionResult {
-        let t = t.child();
+        //let t = t.child();
+        let mut t = parse_header!(t);
 
         match token {
             Token::Plus | Token::Dash | Token::Asterisk | Token::FSlash => t.success(
@@ -809,8 +828,11 @@ impl<'lexer> Parser<'lexer> {
                 node_info, token, lhs, rhs,
             )),
             _ => {
-                println!("got unexpected token {:?}", token);
-                panic!("Programming error: no way to build binary expression from given token");
+                eprintln!("got unexpected token {:?}", token);
+                let start = lhs.as_node().node_info().as_parsed().unwrap().span.start;
+                let end = rhs.as_node().node_info().as_parsed().unwrap().span.end;
+                return t.failure(ParseResultError::SemanticIssue("Couldn't build binary expression, the given token was invalid", start, end));
+                //panic!("Programming error: no way to build binary expression from given token");
             }
         }
     }

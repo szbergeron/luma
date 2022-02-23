@@ -18,7 +18,8 @@ use super::schema::{
 
 impl<'lexer> Parser<'lexer> {
     pub fn entry(&mut self, t: &TokenProvider) -> ParseResult<ast::OuterScope> {
-        let mut t = t.child();
+        //let mut t = t.child();
+        let mut t = parse_header!(t, [Token::Module => 1.0, Token::Function => 1.0, Token::Struct => 1.0, Token::Use => 1.0, Token::DExpression => 10.0]);
 
         let mut declarations = Vec::new();
 
@@ -35,16 +36,21 @@ impl<'lexer> Parser<'lexer> {
                 Token::RBrace => break,
                 _ => {
                     println!("Trying for a global dec");
+                    //let r = self.parse_global_declaration(&t);
+
                     let r = self.parse_global_declaration(&t).join_hard(&mut t).catch(&mut t).handle_here()?;
 
-                    let (v, e, mut es, s) = r.open();
+                    println!("___");
+                    for e in r.errors().iter() {
+                        println!("{:?}", e);
+                    }
+
+                    let (v, mut es, s) = r.update_solution(&t).open();
                     println!("Opened the value");
 
-                    t.sync_with_solution(s);
+                    //t.sync_with_solution(s);
 
-                    t.add_errors(&mut es);
-                    e.map(|e| t.add_error(e));
-
+                    println!("T errors:");
                     for e in t.errors() {
                         println!("{e:?}");
                     }
@@ -69,7 +75,8 @@ impl<'lexer> Parser<'lexer> {
     }
 
     pub fn parse_symbol_specifiers(&mut self, t: &TokenProvider) -> (bool, bool, bool) {
-        let mut t = t.child();
+        //let mut t = t.child();
+        let mut t = parse_header!(t);
 
         let mut public = Option::None;
         let mut mutable = Option::None;
@@ -145,10 +152,15 @@ impl<'lexer> Parser<'lexer> {
     ) -> ParseResult<ast::SymbolDeclaration> {
         println!("Parsing global declaration, idx: {}", t.lh.index());
 
-        let mut t = t.child().predict(&[(Token::Module, 1.0), (Token::Function, 1.0), (Token::Struct, 1.0), (Token::Use, 1.0), (Token::DExpression, 10.0)]);
+        //let mut t = parse_header!(t, [Token::Module => 1.0, Token::Function => 1.0, Token::Struct => 1.0, Token::Use => 1.0, Token::DExpression => 10.0]);
+
+        let mut t = parse_header!(t);
+
+        //let mut t = t.child().predict(&[(Token::Module, 1.0), (Token::Function, 1.0), (Token::Struct, 1.0), (Token::Use, 1.0), (Token::DExpression, 10.0)]);
         //let has_pub = self.eat_match(Token::Public);
         //let mut failed = false;
 
+        // TODO
         let (public, _mutable, _dynamic) = self.parse_symbol_specifiers(&t);
 
         /*t.take_in(&[
@@ -160,22 +172,26 @@ impl<'lexer> Parser<'lexer> {
         ]).hard(&mut t)?.join(&mut t);*/
 
         if let Ok(tw) = t.lh.la(0) {
-            let r = match tw.token {
+            let r = match t.take_in(&[Token::Module, Token::Function, Token::Struct, Token::Use, Token::DExpression]).join()?.token {
                 Token::Module => {
+                    todo!();
                     let mut ns = self.parse_namespace(&t).join_hard(&mut t).catch(&mut t)?;
                     ns.set_public(public);
                     ast::SymbolDeclaration::NamespaceDeclaration(ns)
                 },
                 Token::Function => {
+                    todo!();
                     let fd = self.parse_function_declaration(&t).join_hard(&mut t).catch(&mut t)?;
                     ast::SymbolDeclaration::FunctionDeclaration(fd)
                 },
                 // TODO: maybe add global variable declaration?
                 Token::Struct => {
+                    todo!();
                     let sd = self.parse_struct_definition(&t).join_hard(&mut t).catch(&mut t)?;
                     ast::SymbolDeclaration::TypeDefinition(sd)
                 },
                 Token::Use => {
+                    todo!();
                     let ud = self.parse_use_declaration(&t).join_hard(&mut t).catch(&mut t)?;
                     ast::SymbolDeclaration::UseDeclaration(ud)
                 },
@@ -186,12 +202,17 @@ impl<'lexer> Parser<'lexer> {
                     t.predict_next((Token::Semicolon, 10.0));
 
                     println!("Parsing dbg expr, got first tok");
-                    let e = self.parse_expr(&t).join_hard(&mut t).catch(&mut t)?;
+                    let e = self.parse_expr(&t).join_hard(&mut t).catch(&mut t).handle_here()?;
                     println!("Got expr");
                     let _ = t.take(Token::Semicolon).join()?;
                     println!("Took semi");
-                    println!("{:?}", e);
-                    println!("E: {:?}", e);
+                    println!("Errors in e: {:?}", e.errors());
+                    //println!("Took semi");
+                    //println!("{:?}", e);
+                    //println!("E: {:?}", e);
+                    println!("About to update solution for e, idx is {}", t.lh.index());
+                    let e = e.update_solution(&t)?;
+                    println!("E was some");
                     ast::SymbolDeclaration::ExpressionDeclaration(StaticVariableDeclaration {
                         node_info: e.as_node().node_info(),
                         expression: e,
@@ -212,7 +233,7 @@ impl<'lexer> Parser<'lexer> {
                     // may be expression?
                     println!("Token was not as expected for a global declaration");
 
-                    return t.failure(ParseResultError::UnexpectedToken(tw, vec![Token::Module, Token::Let, Token::Function], None));
+                    return t.failure(ParseResultError::UnexpectedToken(tw, vec![Token::Module, Token::Let, Token::Function, Token::Struct, Token::DExpression], None));
                 }
             };
 
@@ -228,7 +249,8 @@ impl<'lexer> Parser<'lexer> {
     pub fn parse_namespace(&mut self, t: &TokenProvider) -> ParseResult<ast::Namespace> {
         println!("Parsing a namespace");
 
-        let mut t = t.child().predict(&[(Token::Module, 10.0), (Token::Identifier, 0.01), (Token::LBrace, 0.5), (Token::RBrace, 0.5)]);
+        //let mut t = t.child().predict(&[(Token::Module, 10.0), (Token::Identifier, 0.01), (Token::LBrace, 0.5), (Token::RBrace, 0.5)]);
+        let mut t = parse_header!(t, [Token::Module => 10.0, Token::Identifier => 0.01, Token::LBrace => 0.5, Token::RBrace => 0.5]);
 
         //let start = t.la(0).join_hard(&mut t).catch(&mut t).try_get().map_or(CodeLocation::Builtin, |tw| tw.start);
 
@@ -330,7 +352,8 @@ impl<'lexer> Parser<'lexer> {
         &mut self,
         t: &TokenProvider,
     ) -> ParseResult<Vec<(IStr, ast::TypeReference)>> {
-        let mut t = t.child();
+        //let mut t = t.child();
+        let mut t = parse_header!(t);
 
         let mut rvec: Vec<(IStr, ast::TypeReference)> = Vec::new();
 
@@ -356,7 +379,8 @@ impl<'lexer> Parser<'lexer> {
         &mut self,
         t: &TokenProvider,
     ) -> ParseResult<ast::FunctionDefinition> {
-        let mut t = t.child();
+        //let mut t = t.child();
+        let mut t = parse_header!(t);
 
         let start = t.take(Token::Function).join()?.start;
         let function_name = t.take(Token::Identifier).join()?;
@@ -386,7 +410,8 @@ impl<'lexer> Parser<'lexer> {
     }
 
     pub fn parse_use_declaration(&mut self, t: &TokenProvider) -> ParseResult<ast::UseDeclaration> {
-        let mut t = t.child();
+        //let mut t = t.child();
+        let mut t = parse_header!(t);
 
         let start = t.take(Token::Use).join()?.start;
 

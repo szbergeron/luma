@@ -210,6 +210,7 @@ impl<'lexer> Parser<'lexer> {
                 }
                 ParseResultError::SemanticIssue(issue, start, end) => {
                     //self.print_context(*start, *end, &lines);
+                    self.print_context(*start, *end, &lines);
                     eprintln!("Encountered a semantic issue: {}. This issue was realized around the character range ({}, {})",
                         issue,
                         start,

@@ -97,7 +97,7 @@ impl<'lexer> Parser<'lexer> {
             .child()
             .predict(&[(Token::LBrace, 1.0), (Token::Opaque, 1.0), (Token::Comma, 1.0), (Token::RBrace, 1.0)]);
 
-        let type_name = t.take(Token::Identifier).join().handle_here()?.try_get();
+        let type_name = t.take(Token::Identifier).join().handle_here()?.update_solution(&t).try_get();
 
         t.take(Token::LBrace).join()?;
 

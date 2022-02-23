@@ -618,7 +618,7 @@ impl<'a> TokenStream<'a> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct LookaheadHandle<'tokenvec> {
     tokens: &'tokenvec Vec<TokenWrapper>,
     index: usize,

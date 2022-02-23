@@ -6,7 +6,7 @@ use crate::parse::schema::TokenProvider;
 use std::collections::HashSet;
 
 use std::path::{Path, PathBuf};
-use std::process;
+use std::process::{self, abort};
 
 use crate::mid_repr::ScopeContext;
 use std::sync::Arc;
@@ -48,13 +48,14 @@ pub fn parse_unit<'file>(
         panic!("irrefutable pattern")
     };
 
-    let (v, e, es, s) = p.open_anyway();
+    let (v, es, s) = p.open_anyway();
 
     for e in es {
+        println!("Error: {:?}", e);
         let _ = parser.err::<()>(e);
     }
 
-    e.map(|e| parser.err::<()>(e));
+    //e.map(|e| parser.err::<()>(e));
 
     if !cflags.eflags.silence_errors {
         parser.print_errors(handle);
@@ -102,7 +103,8 @@ async fn async_launch(args: ArgResult) {
     let (error_sender, _error_reciever) = crossbeam::unbounded();
 
     let root = super::tree::CompilationRoot::initial(error_sender, args).await;
-    let _root_ctx = root.into_ctx().await;
+    abort();
+    //let _root_ctx = root.into_ctx().await;
 }
 
 pub fn launch(args: &[&str]) {

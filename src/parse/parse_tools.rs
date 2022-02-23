@@ -1,11 +1,68 @@
 //use crate::helper::lex_wrap::{LookaheadHandle};
 
-use std::{convert::Infallible, marker::PhantomData, ops::ControlFlow, fmt::Formatter};
+use std::{convert::Infallible, fmt::Formatter, marker::PhantomData, ops::ControlFlow};
+
+use smallvec::smallvec;
 
 use crate::{
     ast::Span,
-    lex::{ErrorSet, ParseResultError, TokenWrapper},
+    helper::interner::SpurHelper,
+    lex::{ErrorSet, ParseResultError, Token, TokenWrapper},
 };
+
+macro_rules! current_function {
+    () => {{
+        fn f() {}
+        fn type_name_of<T>(_: T) -> &'static str {
+            std::any::type_name::<T>()
+        }
+        let name = type_name_of(f);
+
+        // Find and cut the rest of the path
+        match &name[..name.len() - 3].rfind(':') {
+            Some(pos) => &name[pos + 1..name.len() - 3],
+            None => &name[..name.len() - 3],
+        }
+    }};
+}
+
+pub fn print_stack(t: &TokenProvider) {
+    //println!("=== idx: {}, token_at: {:?}", t.lh.index(), t.lh.la(0).map(|tw| (tw.token, tw.slice.resolve()).ok());
+    let tok =
+        t.lh.la(0)
+            .ok()
+            .map(|tw| (tw.slice.resolve(), tw.token))
+            .unwrap_or(("{none}", Token::Error));
+    println!("== idx: {}, tok: {:?}", t.lh.index(), tok);
+    println!("+ Parse stack:");
+    print_stack_inner(&t.unit_rules);
+}
+
+fn print_stack_inner(t: &schema::RuleUnit) {
+    t.parent.map(|p| print_stack_inner(p));
+    println!("| {}", t.owner.unwrap_or("{unknown}"));
+}
+
+macro_rules! parse_header {
+    ($tref:ident, [$($token:expr => $weight:expr),*]) => {{
+        let c = $tref.child().predict(&[$(($token, $weight)),*]).owner(current_function!());
+
+        print_stack(&c);
+
+        c
+    }};
+
+    ($trefi:ident) => {{
+        let c = $trefi.child().owner(current_function!());
+
+        print_stack(&c);
+
+        c
+    }}
+}
+
+pub(crate) use current_function;
+pub(crate) use parse_header;
 
 use self::schema::{ResultHint, TokenProvider, TokenResult};
 
@@ -93,7 +150,30 @@ pub enum SolutionClass {
 impl SolutionClass {
     pub fn index(self) -> isize {
         match self {
-            Self::SolvedFailure { index, solution_unit_id: _, range_discarded: _ } | Self::UnsolvedFailure { index } | Self::Success { index } => index
+            Self::SolvedFailure {
+                index,
+                solution_unit_id: _,
+                range_discarded: _,
+            }
+            | Self::UnsolvedFailure { index }
+            | Self::Success { index } => index,
+        }
+    }
+
+    pub fn update_index(&mut self, idx: isize) {
+        match self {
+            SolutionClass::Success { ref mut index } => *index = idx,
+            SolutionClass::SolvedFailure { ref mut index, .. } => *index = idx,
+            SolutionClass::UnsolvedFailure { ref mut index, .. } => *index = idx,
+        }
+    }
+
+    pub fn solution_unit_id(&self) -> Option<usize> {
+        match self {
+            SolutionClass::SolvedFailure {
+                solution_unit_id, ..
+            } => Some(*solution_unit_id),
+            _ => None,
         }
     }
 }
@@ -101,7 +181,11 @@ impl SolutionClass {
 impl std::fmt::Display for SolutionClass {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         match &self {
-            Self::SolvedFailure { index, solution_unit_id, range_discarded } => {
+            Self::SolvedFailure {
+                index,
+                solution_unit_id,
+                range_discarded,
+            } => {
                 return write!(f, "Failure solved by jump to index {index} provided by rule unit {solution_unit_id}");
             }
             Self::UnsolvedFailure { index } => {
@@ -114,13 +198,29 @@ impl std::fmt::Display for SolutionClass {
     }
 }
 
+pub struct GuardedError {
+    //pub root_error: Option<ParseResultError>,
+    pub errors: ErrorSet,
+}
+
+/*impl Drop for GuardedError {
+    fn drop(&mut self) {
+        /*self.root_error.iter().for_each(|e| {
+            eprintln!("\tError while dropping: {e:?}");
+        });*/
+
+        self.errors.iter().for_each(|e| {
+            eprintln!("\tCascading error while dropping: {e:?}");
+        });
+    }
+}*/
+
 #[must_use]
 pub struct GuardedResult<V, J: join::Joinable, C: catch::Catchable, B: bubble::Bubbling, D> {
     value: Option<V>,
-    root_error: Option<ParseResultError>,
-    cascading_errors: ErrorSet,
 
     solution: SolutionClass,
+    pub e: GuardedError,
 
     /// If this error has been caught and is planned to be locally handled, this is true
     caught: bool,
@@ -131,6 +231,18 @@ pub struct GuardedResult<V, J: join::Joinable, C: catch::Catchable, B: bubble::B
     _c: PhantomData<C>,
     _b: PhantomData<B>,
 }
+
+/*impl<V, J: join::Joinable, C: catch::Catchable, B: bubble::Bubbling, D> Drop for GuardedResult<V, J, C, B, D> {
+    fn drop(&mut self) {
+        self.root_error.iter().map(|e| {
+            eprintln!("Error while dropping: {e:?}");
+        });
+
+        self.cascading_errors.iter().map(|e| {
+            eprintln!("Cascading error while dropping: {e:?}");
+        });
+    }
+}*/
 
 impl<'s, 'p, 't> TokenResult<'s, 'p, 't> {
     type Output = ParseResult<TokenWrapper>;
@@ -161,12 +273,13 @@ impl<V, C: catch::Catchable, J: join::Joinable, B: bubble::Bubbling, D>
     GuardedResult<V, J, C, B, D>
 {
     pub fn errors(&self) -> &ErrorSet {
-        &self.cascading_errors
+        &self.e.errors
     }
 
     pub fn new_fail() {}
 }
 
+#[derive(Debug)]
 /// Indicates the approach that should be used when joining a result
 pub enum JoinMethod<'t, 'b, 'c> {
     /// This says this error need to prepare to be bubbled, so should pass all
@@ -204,14 +317,23 @@ impl<V, J: join::Joinable, C: catch::Catchable, B: bubble::Bubbling, D> ResultHi
     for GuardedResult<V, J, C, B, D>
 {
     fn hint(mut self, hint: &'static str) -> Self {
-        self.root_error = self.root_error.map(|e| {
+        //self.e.errors.push(
+        self.e
+            .errors
+            .pop()
+            .map(|e| ParseResultError::ErrorWithHint {
+                hint,
+                original: Box::new(smallvec![e]),
+            })
+            .map(|ewh| self.e.errors.push(ewh));
+        /*self.e.root_error = self.e.root_error.clone().map(|e| {
             let mut es = ErrorSet::new();
             es.push(e);
             ParseResultError::ErrorWithHint {
                 hint,
                 original: Box::new(es),
             }
-        });
+        });*/
         self
     }
 }
@@ -252,40 +374,40 @@ impl<V, C: catch::Catchable, B: bubble::Bubbling, D> GuardedResult<V, join::Unjo
     {
         let mut j: JoinMethod = j.into();
 
+        //self.e.root_error.take().map(|e| t.add_error(e));
+
+        //println!("Join_inner with method: {j:?}");
+
         match &mut j {
-            JoinMethod::Hard(t) => match self.value.is_some() {
-                true => {
-                    //t.errors_field.append(&mut self.cascading_errors);
-                    t.add_errors(&mut self.cascading_errors);
-                    self.root_error.take().map(|e| t.add_error(e));
-                    /*self.root_error
-                    .map(|v| v.map(|v| t.add_error(v.root_error)));*/
+            JoinMethod::Hard(t) | JoinMethod::Handled(t) => {
+                println!("Adds errors: {:?}", self.e.errors);
+                t.add_errors(&mut self.e.errors);
+
+                match self.value.is_some() {
+                    false => {
+                        self.e.errors = t.errors();
+                    }
+                    _ => (),
                 }
-                false => {
-                    self.cascading_errors.append(&mut t.errors());
-                }
-            },
-            JoinMethod::Handled(t) => {
-                t.add_errors(&mut self.cascading_errors);
-                self.root_error.take().map(|e| t.add_error(e));
             }
             _ => (),
         }
 
         match j {
             JoinMethod::Hard(t) | JoinMethod::Synchronizing(t) | JoinMethod::Handled(t) => {
-                match self.solution {
+                t.sync_with_solution(self.solution);
+                /*match self.solution {
                     SolutionClass::Success { index }
                     | SolutionClass::SolvedFailure {
                         index,
                         solution_unit_id: _,
                         range_discarded: _,
                     } => {
-                        println!("Sync with idx {index}");
+                        //println!("Sync with idx {index}");
                         t.sync_with(index as usize);
                     }
                     _ => (),
-                }
+                }*/
             }
             _ => (),
         }
@@ -304,6 +426,18 @@ impl<V, B: bubble::Bubbling, D> GuardedResult<V, join::Unjoined, catch::Uncaught
     pub fn join_catch(self) -> GuardedResult<V, join::Joined, catch::Caught, B, D> {
         //self.j
         todo!()
+    }
+
+    pub fn update_solution(
+        mut self,
+        t: &TokenProvider,
+    ) -> GuardedResult<V, join::Joined, catch::Caught, B, D> {
+        self.solution.update_index(t.lh.index() as isize);
+        GuardedResult {
+            _c: PhantomData::default(),
+            _j: PhantomData::default(),
+            ..self
+        }
     }
 }
 
@@ -387,7 +521,8 @@ impl<V, D> GuardedResult<V, join::Joined, catch::Caught, bubble::All, D> {
         match (self.solution, self.value) {
             (SolutionClass::Success { index: _ }, Some(v)) => v,
             _ => {
-                println!("Error is: {:?}", self.root_error);
+                println!("GuardedResult contains only errors: {:?}", self.e.errors);
+                //println!("Error is: {:?}", self.e.root_error);
                 panic!("{}", s)
             }
         }
@@ -398,7 +533,7 @@ impl<V, D> GuardedResult<V, join::Joined, catch::Caught, bubble::All, D> {
 }
 
 impl<V, D> std::ops::Try for GuardedResult<V, join::Joined, catch::Caught, bubble::OnlyNotMine, D> {
-    type Output = GuardedResult<V, join::Joined, catch::Caught, bubble::All, D>;
+    type Output = GuardedResult<V, join::Unjoined, catch::Uncaught, bubble::All, D>;
 
     type Residual = GuardedResult<Infallible, join::Unjoined, catch::Uncaught, bubble::All, D>;
 
@@ -470,11 +605,10 @@ impl<V, J: join::Joinable, C: catch::Catchable, D> GuardedResult<V, J, C, bubble
 }
 
 impl<V, B: bubble::Bubbling, D> GuardedResult<V, join::Unjoined, catch::Uncaught, B, D> {
-    pub fn from_err(e: ParseResultError, s: SolutionClass, d: D) -> Self {
+    pub fn from_err(e: ErrorSet, s: SolutionClass, d: D) -> Self {
         Self {
             value: None,
-            root_error: Some(e),
-            cascading_errors: ErrorSet::new(),
+            e: GuardedError { errors: e },
             solution: s,
 
             data: d,
@@ -487,11 +621,13 @@ impl<V, B: bubble::Bubbling, D> GuardedResult<V, join::Unjoined, catch::Uncaught
         }
     }
 
-    pub fn from_ok(v: V, s: SolutionClass, d: D) -> Self {
+    pub fn from_ok(e: ErrorSet, v: V, s: SolutionClass, d: D) -> Self {
+        println!("from_ok given errors: {:?}", e);
         Self {
             value: Some(v),
-            root_error: None,
-            cascading_errors: ErrorSet::new(),
+            e: GuardedError {
+                errors: e,
+            },
             solution: s,
 
             data: d,
@@ -504,11 +640,10 @@ impl<V, B: bubble::Bubbling, D> GuardedResult<V, join::Unjoined, catch::Uncaught
         }
     }
 
-    pub fn from_partial(v: V, e: ParseResultError, s: SolutionClass, d: D) -> Self {
+    pub fn from_partial(e: ErrorSet, v: V, s: SolutionClass, d: D) -> Self {
         Self {
             value: Some(v),
-            root_error: Some(e),
-            cascading_errors: ErrorSet::new(),
+            e: GuardedError { errors: e },
             solution: s,
 
             caught: false,
@@ -554,17 +689,12 @@ impl<V, D> Iterator for GuardedResult<V, join::Joined, catch::Caught, bubble::Al
 /// maybe the value, maybe a partial value (and root error), or maybe just a root error
 /// and no partial value. It will also contain any errors that were encountered while
 /// constructing any value, so any child errors or non fatal errors
-type HandlableOutput<V> = (Option<V>, Option<ParseResultError>, ErrorSet, SolutionClass);
+type HandlableOutput<V> = (Option<V>, ErrorSet, SolutionClass);
 
 impl<V, B: bubble::Bubbling, D> GuardedResult<V, join::Joined, catch::Caught, B, D> {
     /// This is an alternative to bubbling a GuardedResult (which only yields the value)
-    pub fn open(self) -> HandlableOutput<V> {
-        (
-            self.value,
-            self.root_error,
-            self.cascading_errors,
-            self.solution,
-        )
+    pub fn open(mut self) -> HandlableOutput<V> {
+        (self.value, self.e.errors.clone(), self.solution)
     }
 
     pub fn try_get(self) -> Option<V> {
@@ -576,13 +706,8 @@ impl<V, B: bubble::Bubbling, D> GuardedResult<V, join::Joined, catch::Caught, B,
 }
 
 impl<V, B: bubble::Bubbling, D> GuardedResult<V, join::Unjoined, catch::Uncaught, B, D> {
-    pub fn open_anyway(self) -> HandlableOutput<V> {
-        (
-            self.value,
-            self.root_error,
-            self.cascading_errors,
-            self.solution,
-        )
+    pub fn open_anyway(mut self) -> HandlableOutput<V> {
+        (self.value, self.e.errors, self.solution)
     }
 }
 
@@ -637,11 +762,12 @@ pub mod schema {
 
     use std::{convert::Infallible, ops::ControlFlow};
 
-    use smallvec::SmallVec;
+    use smallvec::{smallvec, SmallVec};
 
     use crate::{
         ast::Span,
-        lex::{ErrorSet, LookaheadHandle, ParseResultError, Token, TokenWrapper}, helper::interner::SpurHelper,
+        helper::interner::SpurHelper,
+        lex::{ErrorSet, LookaheadHandle, ParseResultError, Token, TokenWrapper},
     };
 
     use super::{JoinedResult, ParseResult};
@@ -839,9 +965,10 @@ pub mod schema {
         }
     }*/
 
+    #[derive(Debug)]
     pub struct RuleUnit<'parent> {
         id: usize,
-        parent: Option<&'parent RuleUnit<'parent>>,
+        pub parent: Option<&'parent RuleUnit<'parent>>,
         tokens: SmallVec<[(Token, f64); 10]>, // can potentially use an arena allocator or an ID reuse mechanism for this,
         // or just put it inline in the stack if we want to do unsized types
         // would depend on https://github.com/rust-lang/rust/issues/48055 for
@@ -849,6 +976,8 @@ pub mod schema {
         //
         // In meantime can likely use smallvec with maximum "normal" rule size
         encountered_tokens: SmallVec<[Token; 10]>,
+
+        pub owner: Option<&'static str>,
     }
 
     impl<'parent> RuleUnit<'parent> {
@@ -858,6 +987,7 @@ pub mod schema {
                 parent: None,
                 tokens: Default::default(),
                 encountered_tokens: Default::default(),
+                owner: None,
             }
         }
 
@@ -867,7 +997,12 @@ pub mod schema {
                 parent: Some(&self),
                 tokens: SmallVec::default(),
                 encountered_tokens: SmallVec::default(),
+                owner: None,
             }
+        }
+
+        pub fn set_owner(&mut self, o: &'static str) {
+            self.owner = Some(o);
         }
 
         pub fn predict_next(&mut self, t: (Token, f64)) {
@@ -907,7 +1042,10 @@ pub mod schema {
 
             //skips * 3.0 + depth * 8.0 + drops * 45.0 * multiplier
 
-            (1.0 + skips.powf(1.3)) * (1.0 + depth.powf(1.8)) * (1.0 + drops.powf(2.0)) * ((1.0 / multiplier).powf(3.0) + 1.0)
+            (1.0 + skips.powf(1.3))
+                * (1.0 + depth.powf(1.8))
+                * (1.0 + drops.powf(2.0))
+                * ((1.0 / multiplier).powf(3.0) + 1.0)
         }
 
         /// Returns a set of tuples of the cost of the solution with the solution itself
@@ -989,7 +1127,10 @@ pub mod schema {
 
             println!("Solutions proposed:");
             for (cost, solution) in candidates.iter() {
-                println!("Cost: {cost}, solution: {solution}, jumps to {}", lh.at(solution.index()).unwrap().slice.resolve());
+                println!(
+                    "Cost: {cost}, solution: {solution}, jumps to {}",
+                    lh.at(solution.index()).unwrap().slice.resolve()
+                );
             }
 
             candidates.iter().min_by_key(|e| e.0 as i64).map(|o| o.1)
@@ -998,7 +1139,12 @@ pub mod schema {
         pub fn print_lookahead(&self) {
             let mut t = self.tokens.clone();
             t.reverse();
-            println!("Rules with id {} has next {:?}", self.id, t);
+            println!(
+                "Rules with id {} from function '{}' has next {:?}",
+                self.id,
+                self.owner.unwrap_or("{unknown}"),
+                t
+            );
             self.parent.iter().for_each(|p| p.print_lookahead());
         }
 
@@ -1012,6 +1158,7 @@ pub mod schema {
         }*/
     }
 
+    #[derive(Debug)]
     pub struct TokenProvider<'parent, 'tokens> {
         pub unit_rules: RuleUnit<'parent>,
         //parent: Option<&'parent TokenProvider<'parent, 'tokens>>,
@@ -1149,7 +1296,8 @@ pub mod schema {
         }
 
         pub fn success<V>(&self, v: V) -> ParseResult<V> {
-            GuardedResult::from_ok(
+            GuardedResult::from_partial(
+                self.errors_field.clone(),
                 v,
                 SolutionClass::Success {
                     index: self.lh.index() as isize,
@@ -1162,9 +1310,12 @@ pub mod schema {
             /*Err(CorrectionBubblingError::from_fatal_error(
                 additional_error_info.expect("Error synthesis is not yet supported on failure()"),
             ))*/
+            //self.add_error(additional_error_info);
+            let mut e = self.errors_field.clone();
+            e.push(additional_error_info);
 
             GuardedResult::from_err(
-                additional_error_info,
+                e,
                 SolutionClass::UnsolvedFailure {
                     index: self.lh.index() as isize,
                 },
@@ -1212,6 +1363,7 @@ pub mod schema {
         pub fn la(&mut self, offset: isize) -> ParseResult<TokenWrapper> {
             match self.lh.la(offset) {
                 Ok(v) => GuardedResult::from_ok(
+                    smallvec![],
                     v,
                     SolutionClass::Success {
                         index: self.lh.index() as isize,
@@ -1219,7 +1371,7 @@ pub mod schema {
                     (), //&mut self
                 ),
                 Err(e) => GuardedResult::from_err(
-                    e,
+                    smallvec![e],
                     SolutionClass::UnsolvedFailure {
                         index: self.lh.index() as isize,
                     },
@@ -1304,6 +1456,7 @@ pub mod schema {
             println!("take_in called with {:?}", t);
             match self.peek_for_in(t) {
                 Some(tw) => GuardedResult::from_ok(
+                    smallvec![],
                     tw,
                     SolutionClass::Success {
                         index: self.lh.index() as isize + 1,
@@ -1311,6 +1464,40 @@ pub mod schema {
                     self,
                 ),
                 None => {
+                    println!("Found a bad token with take_in:");
+                    let solution = self.unit_rules.search(&self.lh).unwrap_or(
+                        SolutionClass::UnsolvedFailure {
+                            index: self.lh.index() as isize,
+                        },
+                    );
+
+                    let (error, solution_token) = match solution {
+                        SolutionClass::SolvedFailure { index, solution_unit_id, ..} if let Ok(tok) = self.lh.at(index) => {
+                            (ParseResultError::UnexpectedToken(self.lh.la(0).unwrap(), t.to_vec(), None), Some(tok))
+                        }
+                        SolutionClass::UnsolvedFailure { index } if let Ok(tok) = self.lh.la(0) => {
+                            (ParseResultError::UnexpectedToken(tok, t.to_vec(), None), None)
+                        }
+                        _ if let Err(e) = self.lh.la(0) => {
+                            (e, None)
+                        }
+                        _ => panic!("Should be unreachable!"),
+                    };
+
+                    println!("Solution token is: {solution_token:?}");
+
+                    let mut es = self.errors();
+                    println!("Pushing error from take_in: {error:?}");
+                    es.push(error);
+
+                    if let Some(tok) = solution_token && t.contains(&tok.token) {
+                        let solution = SolutionClass::Success { index: solution.index() + 1 };
+
+                        GuardedResult::from_ok(es, tok, solution, self)
+                    } else {
+                        GuardedResult::from_err(es, solution, self)
+                    }
+                    /*
                     // need to do a search and potentially issue a bubbling error
                     let tr = self.lh.la(0);
 
@@ -1318,7 +1505,7 @@ pub mod schema {
                     // that's just a plain error
                     match tr {
                         Err(_le) => GuardedResult::from_err(
-                            ParseResultError::EndOfFile,
+                            smallvec![ParseResultError::EndOfFile],
                             SolutionClass::UnsolvedFailure {
                                 index: self.lh.index() as isize,
                             },
@@ -1333,13 +1520,19 @@ pub mod schema {
                                     index: self.lh.index() as isize,
                                 },
                             );
+
+                            solution
+                                .solution_unit_id()
+                                .map(|id| self.provides(id))
+                                .unwrap_or(false);
+
                             println!("Solution: {:?}", solution);
 
                             let e = ParseResultError::UnexpectedToken(tw, t.to_vec(), None);
 
-                            GuardedResult::from_err(e, solution, self)
+                            GuardedResult::from_err(smallvec![e], solution, self)
                         }
-                    }
+                    }*/
                 }
             }
         }
@@ -1369,6 +1562,12 @@ pub mod schema {
                 unit_rules: RuleUnit::empty(),
                 errors_field: Default::default(),
             }
+        }
+
+        pub fn owner(mut self, o: &'static str) -> Self {
+            println!("\tSets owner to: {o}");
+            self.unit_rules.set_owner(o);
+            self
         }
     }
 
