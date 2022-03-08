@@ -26,6 +26,11 @@ macro_rules! current_function {
     }};
 }
 
+/*const fn a() {
+    let mut v = Vec::new();
+    v.push("hi");
+}*/
+
 pub fn print_stack(t: &TokenProvider) {
     //println!("=== idx: {}, token_at: {:?}", t.lh.index(), t.lh.la(0).map(|tw| (tw.token, tw.slice.resolve()).ok());
     let tok =
@@ -40,7 +45,12 @@ pub fn print_stack(t: &TokenProvider) {
 
 fn print_stack_inner(t: &schema::RuleUnit) {
     t.parent.map(|p| print_stack_inner(p));
-    println!("| {}", t.owner.unwrap_or("{unknown}"));
+    println!(
+        "| {}:{} => {:?}",
+        t.id,
+        t.owner.unwrap_or("{unknown}"),
+        t.tokens
+    );
 }
 
 macro_rules! parse_header {
@@ -184,7 +194,7 @@ impl std::fmt::Display for SolutionClass {
             Self::SolvedFailure {
                 index,
                 solution_unit_id,
-                range_discarded,
+                range_discarded: _,
             } => {
                 return write!(f, "Failure solved by jump to index {index} provided by rule unit {solution_unit_id}");
             }
@@ -308,7 +318,7 @@ where
 }
 
 impl<'t> From<()> for JoinMethod<'t, 't, 't> {
-    fn from(v: ()) -> Self {
+    fn from(_v: ()) -> Self {
         Self::NonCommittal()
     }
 }
@@ -470,15 +480,23 @@ impl<V, J: join::Joinable, B: bubble::Bubbling, D> GuardedResult<V, J, catch::Un
             // The failure is solved but if we aren't the intended recipient, may still need to
             // bubble
             SolutionClass::SolvedFailure {
-                index: _,
+                index,
                 solution_unit_id,
                 range_discarded: _,
-            } => GuardedResult {
-                caught: t.provides(solution_unit_id).max(self.caught),
-                _j: Default::default(),
-                _c: Default::default(),
-                ..self
-            },
+            } => {
+                let caught = t.provides(solution_unit_id).max(self.caught);
+
+                if caught {
+                    println!("Caught an exception! index is {index}");
+                }
+
+                GuardedResult {
+                    caught,
+                    _j: Default::default(),
+                    _c: Default::default(),
+                    ..self
+                }
+            }
         };
 
         s
@@ -625,9 +643,7 @@ impl<V, B: bubble::Bubbling, D> GuardedResult<V, join::Unjoined, catch::Uncaught
         println!("from_ok given errors: {:?}", e);
         Self {
             value: Some(v),
-            e: GuardedError {
-                errors: e,
-            },
+            e: GuardedError { errors: e },
             solution: s,
 
             data: d,
@@ -693,7 +709,7 @@ type HandlableOutput<V> = (Option<V>, ErrorSet, SolutionClass);
 
 impl<V, B: bubble::Bubbling, D> GuardedResult<V, join::Joined, catch::Caught, B, D> {
     /// This is an alternative to bubbling a GuardedResult (which only yields the value)
-    pub fn open(mut self) -> HandlableOutput<V> {
+    pub fn open(self) -> HandlableOutput<V> {
         (self.value, self.e.errors.clone(), self.solution)
     }
 
@@ -706,7 +722,7 @@ impl<V, B: bubble::Bubbling, D> GuardedResult<V, join::Joined, catch::Caught, B,
 }
 
 impl<V, B: bubble::Bubbling, D> GuardedResult<V, join::Unjoined, catch::Uncaught, B, D> {
-    pub fn open_anyway(mut self) -> HandlableOutput<V> {
+    pub fn open_anyway(self) -> HandlableOutput<V> {
         (self.value, self.e.errors, self.solution)
     }
 }
@@ -770,7 +786,7 @@ pub mod schema {
         lex::{ErrorSet, LookaheadHandle, ParseResultError, Token, TokenWrapper},
     };
 
-    use super::{JoinedResult, ParseResult};
+    use super::{ParseResult};
 
     use super::{GuardedResult, SolutionClass};
 
@@ -967,14 +983,15 @@ pub mod schema {
 
     #[derive(Debug)]
     pub struct RuleUnit<'parent> {
-        id: usize,
+        pub id: usize,
         pub parent: Option<&'parent RuleUnit<'parent>>,
-        tokens: SmallVec<[(Token, f64); 10]>, // can potentially use an arena allocator or an ID reuse mechanism for this,
+        pub tokens: SmallVec<[(Token, f64); 10]>, // can potentially use an arena allocator or an ID reuse mechanism for this,
         // or just put it inline in the stack if we want to do unsized types
         // would depend on https://github.com/rust-lang/rust/issues/48055 for
         // support
         //
         // In meantime can likely use smallvec with maximum "normal" rule size
+        #[allow(dead_code)]
         encountered_tokens: SmallVec<[Token; 10]>,
 
         pub owner: Option<&'static str>,
@@ -1028,6 +1045,7 @@ pub mod schema {
             //self.encountered_tokens.push(t.token);
         }
 
+        #[allow(dead_code)]
         fn max_length(&self) -> usize {
             match self.parent {
                 Some(p) => p.max_length().max(self.tokens.len()),
@@ -1072,7 +1090,7 @@ pub mod schema {
                 ));
             }
 
-            let parents = self
+            let _parents = self
                 .parent
                 .iter()
                 .for_each(|p| r.append(&mut p.search_internal(t, drop_count, lh, depth + 1)));
@@ -1314,14 +1332,27 @@ pub mod schema {
             let mut e = self.errors_field.clone();
             e.push(additional_error_info);
 
-            GuardedResult::from_err(
-                e,
+            let solution = self.unit_rules.search(&self.lh).unwrap_or(
                 SolutionClass::UnsolvedFailure {
                     index: self.lh.index() as isize,
                 },
+            );
+
+            GuardedResult::from_err(
+                e,
+                solution,
                 (),
             )
             //).join_noncommittal().catch_noncommittal()
+        }
+
+        pub fn unexpected_token<V>(&self, expected: &[Token], hint: &'static str) -> ParseResult<V> {
+            let pre = match self.lh.la(0) {
+                Ok(tw) => ParseResultError::UnexpectedToken(tw, expected.to_vec(), Some(hint)),
+                Err(e) => e,
+            };
+
+            self.failure(pre)
         }
 
         pub fn sync(&self) -> LookaheadHandle<'tokens> {
@@ -1472,10 +1503,10 @@ pub mod schema {
                     );
 
                     let (error, solution_token) = match solution {
-                        SolutionClass::SolvedFailure { index, solution_unit_id, ..} if let Ok(tok) = self.lh.at(index) => {
+                        SolutionClass::SolvedFailure { index, solution_unit_id: _, ..} if let Ok(tok) = self.lh.at(index) => {
                             (ParseResultError::UnexpectedToken(self.lh.la(0).unwrap(), t.to_vec(), None), Some(tok))
                         }
-                        SolutionClass::UnsolvedFailure { index } if let Ok(tok) = self.lh.la(0) => {
+                        SolutionClass::UnsolvedFailure { index: _ } if let Ok(tok) = self.lh.la(0) => {
                             (ParseResultError::UnexpectedToken(tok, t.to_vec(), None), None)
                         }
                         _ if let Err(e) = self.lh.la(0) => {
@@ -1491,10 +1522,12 @@ pub mod schema {
                     es.push(error);
 
                     if let Some(tok) = solution_token && t.contains(&tok.token) {
+                        println!("Take_in found a way to resync the input stream! Solution: {:?}, {:?}", solution.index(), self.lh.at(solution.index()).unwrap().token);
                         let solution = SolutionClass::Success { index: solution.index() + 1 };
 
                         GuardedResult::from_ok(es, tok, solution, self)
                     } else {
+                        println!("Take_in couldn't sync the stream, solution is: {solution:?}");
                         GuardedResult::from_err(es, solution, self)
                     }
                     /*

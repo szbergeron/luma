@@ -1,3 +1,5 @@
+use indent::indent_all_by;
+
 use crate::lex::{TokenWrapper, CodeLocation};
 
 use super::expressions;
@@ -12,6 +14,16 @@ pub fn indent(ind: usize) -> String {
     }
 
     s
+}
+
+pub fn indented(val: String) -> String {
+    indent_all_by(2, val)
+}
+
+pub fn add_line(to: &mut String, val: String) {
+    to.push('\n');
+    to.push_str(val.as_str());
+
 }
 
 pub fn findent(f: &mut std::fmt::Formatter<'_>, depth: usize) {
@@ -45,6 +57,26 @@ pub struct ParsedNodeInfo {
 }
 
 impl NodeInfo {
+    /// Takes the given TW and returns an updated NI
+    /// that extends its span to cover that token
+    ///
+    /// If the given token is from a file different
+    /// than where this NI originated,
+    /// then this function will panic
+    pub fn extended(self, t: TokenWrapper) -> Self {
+        match self {
+            Self::Builtin => Self::from_token(&t),
+            Self::Parsed(pni) => {
+                Self::Parsed(ParsedNodeInfo {
+                    span: Span {
+                        start: pni.span.start,
+                        end: t.end,
+                    }
+                })
+            }
+        }
+    }
+
     pub fn as_parsed(&self) -> Option<&ParsedNodeInfo> {
         match self {
             Self::Builtin => None,
@@ -99,7 +131,8 @@ pub trait AstNode: std::fmt::Debug + Send + Sync {
     //fn end(&self) -> CodeLocation;
 
     /// Should display detailed debug info, node type, child info
-    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize);
+    ///fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize);
+    fn format(&self) -> String;
 
     /// Should display as a "source like" form. May be parenthesized,
     /// and is allowed to include type information, but should
@@ -135,10 +168,10 @@ impl AstNode for Option<&dyn AstNode> {
         }
     }
 
-    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+    fn format(&self) -> String {
         match self {
-            Some(n) => n.display(f, depth),
-            None => write!(f, "<none>").unwrap(),
+            Some(n) => n.format(),
+            None => format!("<none>"),
         }
     }
 
@@ -159,7 +192,8 @@ impl IntoAstNode for Option<&dyn AstNode> {
 
 impl std::fmt::Display for &dyn AstNode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Ok(self.display(f, 0))
+        //Ok(self.display(f, 0))
+        writeln!(f, "{}", self.format())
     }
 }
 

@@ -14,10 +14,10 @@ edition = "2018"
 logos = "0.11.4"
 colored = "1.9"
 term_size = "0.3.2"
-rangemap = "0.1.3"
+#rangemap = "0.1.3"
 crossbeam = "0.7"
 rayon = "1.3.1"
-evmap = "10.0.2"
+#evmap = "10.0.2"
 chashmap = "2.2.2"
 static_assertions = "1.1.0"
 dashmap = "4.0.2"
@@ -33,8 +33,9 @@ async-recursion = "0.3.2"
 async-trait = "0.1.50"
 staged-builder = "0.1.0"
 #parking_lot = "0.11.1"
+indent = "0.1.1"
 
 [profile.dev]
-incremental = false
+incremental = true
 
 [build-dependencies]

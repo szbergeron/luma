@@ -3,6 +3,7 @@ use super::TypeReference;
 use super::base::*;
 use super::expressions::ExpressionWrapper;
 use crate::helper::VecOps;
+use std::io::Write;
 
 
 use crate::lex::ParseResultError;
@@ -20,6 +21,7 @@ use std::pin::Pin;
 use crate::helper::interner::*;
 use async_recursion::async_recursion;
 use futures::future::join_all;
+use indent::indent_by;
 
 #[derive(Debug)]
 pub struct Namespace {
@@ -112,11 +114,9 @@ impl AstNode for Namespace {
         self.node_info
     }
 
-    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
-        let _ = writeln!(
-            f,
-            "{}Namespace with name {} and public {} and info {} has children:",
-            indent(depth),
+    fn format(&self) -> String {
+        let s = format!(
+            "Namespace with name {} and public {} and info {} has children:",
             //self.name.unwrap_or("<unnamed>"),
             //interner().try_resolve(self.name
             //self.name.map(|e| e.try_resolve()).unwrap_or("<unnamed>"),
@@ -125,9 +125,7 @@ impl AstNode for Namespace {
             self.node_info,
         );
 
-        self.contents.display(f, depth + 1);
-            /*.iter()
-            .for_each(|contents| contents.display(f, depth + 1));*/
+        format!("{s}\n{}", indent_all_by(2, self.contents.format()))
     }
 
     fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
@@ -224,6 +222,7 @@ impl std::fmt::Display for OuterScope {
 
         self.display(f, 1);
 
+
         r
     }
 }
@@ -233,21 +232,14 @@ impl AstNode for OuterScope {
         self.node_info
     }
 
-    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
-        //
-        //
-        //let _ = write!(f, "{}", indent(depth));
+    fn format(&self) -> String {
+        let s = format!("ParseUnit {} with children:", self.node_info());
 
-        findent(f, depth);
-        let _ = writeln!(f, "ParseUnit {} with children:", self.node_info());
+        for line in self.declarations.iter() {
+            add_line(&mut s, indented(line.format()));
+        }
 
-        self.declarations.iter().for_each(|elem| {
-            elem
-                //.expect("locking error within parsunit display")
-                //.iter()
-                //.for_each(|elem| elem.display(f, depth + 1))
-                .display(f, depth + 1)
-        });
+        s
     }
 
     fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
@@ -318,7 +310,7 @@ impl AstNode for LetComponent {
         }
     }
 
-    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+    fn format(&self) -> String {
         match self {
             Self::ScopedDestructure(_lcsd) => {
                 todo!("LetComponentScopedDestructure not implemented for fmt")
@@ -633,6 +625,11 @@ impl AstNode for StaticVariableDeclaration {
 
     fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         self.expression.as_node().display(f, depth);
+    }
+
+    fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
+        write!(f, "{} ", if self.public {"pub"} else {""});
+        self.expression.as_node().pretty(f, depth);
     }
 }
 

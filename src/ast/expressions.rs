@@ -1,9 +1,9 @@
-use crate::ast::TypeReference;
-use crate::lex::ParseResultError;
-use crate::lex::TokenWrapper;
 use super::base::*;
 use super::outer::*;
+use crate::ast::TypeReference;
 use crate::helper::interner::*;
+use crate::lex::ParseResultError;
+use crate::lex::TokenWrapper;
 //use super::types;
 
 use crate::lex::Token;
@@ -21,17 +21,20 @@ pub enum ExpressionWrapper {
     Comparison(ComparisonOperationExpression),
     Cast(CastExpression),
     Literal(LiteralExpression),
-    MethodCall(MethodCall),
-    Access(AccessExpression),
+    //MethodCall(MethodCall),
+    //Access(AccessExpression),
+    MemberAccess(MemberAccessExpression),
     Statement(StatementExpression),
     Block(BlockExpression),
     IfThenElse(IfThenElseExpression),
     While(WhileExpression),
     LetExpression(LetExpression),
-    Pattern(Pattern),
+    Tuple(Tuple),
     Return(ReturnExpression),
     Wildcard(WildcardExpression),
     LLVMLiteral(LLVMLiteralExpression),
+    Identifier(IdentifierExpression),
+    FunctionCall(FunctionCall),
 }
 
 impl ExpressionWrapper {
@@ -51,6 +54,15 @@ impl ExpressionWrapper {
     }
 }
 
+impl std::fmt::Display for ExpressionWrapper {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let r = write!(f, "");
+        self.as_node().display(f, 1);
+
+        r
+    }
+}
+
 impl IntoAstNode for ExpressionWrapper {
     fn as_node(&self) -> &dyn AstNode {
         match self {
@@ -64,12 +76,14 @@ impl IntoAstNode for ExpressionWrapper {
             Self::Block(e) => e,
             Self::IfThenElse(e) => e,
             Self::LetExpression(e) => e,
-            Self::Pattern(e) => e,
-            Self::Access(e) => e,
+            Self::Tuple(e) => e,
             Self::Wildcard(e) => e,
             Self::While(e) => e,
             Self::Return(e) => e,
             Self::LLVMLiteral(e) => e,
+            Self::MemberAccess(e) => e,
+            Self::FunctionCall(e) => e,
+            Self::Identifier(e) => e,
             _ => {
                 println!("No implemented as_node handler for type {:?}", self);
                 todo!();
@@ -156,32 +170,32 @@ impl AstNode for StatementExpression {
 }
 
 #[derive(Debug, Clone)]
-pub struct Pattern {
+pub struct Tuple {
     pub node_info: NodeInfo,
 
     //on: &'a str,
     pub expressions: Vec<Box<ExpressionWrapper>>,
 }
 
-impl Pattern {
+impl Tuple {
     pub fn new_expr(
         node_info: NodeInfo,
         expressions: Vec<Box<ExpressionWrapper>>,
     ) -> Box<ExpressionWrapper> {
-        Box::new(ExpressionWrapper::Pattern(Pattern {
+        Box::new(ExpressionWrapper::Tuple(Tuple {
             node_info,
             expressions,
         }))
     }
 }
 
-impl IntoAstNode for Pattern {
+impl IntoAstNode for Tuple {
     fn as_node(&self) -> &dyn AstNode {
         self
     }
 }
 
-impl AstNode for Pattern {
+impl AstNode for Tuple {
     fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let _ = writeln!(f, "{}Pattern with child expressions:", indent(depth),);
         self.expressions
@@ -339,7 +353,6 @@ impl AstNode for BlockExpression {
                 .for_each(|elem| elem.as_node().display(f, depth + 1))
         });*/
     }
-
 }
 
 impl BlockExpression {
@@ -394,7 +407,6 @@ impl AstNode for LetExpression {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
-
 }
 
 #[derive(Debug, Clone)]
@@ -439,7 +451,6 @@ impl AstNode for AssignmentExpression {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
-
 }
 
 #[derive(Debug, Clone)]
@@ -495,7 +506,6 @@ impl AstNode for BinaryOperationExpression {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
-
 }
 
 #[derive(Debug, Clone)]
@@ -546,7 +556,6 @@ impl AstNode for ComparisonOperationExpression {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
-
 }
 
 #[derive(Debug, Clone)]
@@ -622,50 +631,52 @@ impl UnaryOperation {
 }
 
 #[derive(Debug, Clone)]
-pub struct AccessExpression {
+pub struct MemberAccessExpression {
     pub node_info: NodeInfo,
 
-    pub on: Option<Box<ExpressionWrapper>>,
+    pub on: Box<ExpressionWrapper>,
+    pub name: IStr,
     //pub span: Span,
     //pub field: &'a str,
-    pub scope: Box<ScopedNameReference>,
-    pub pattern: Option<Pattern>,
+    //pub scope: Box<ScopedNameReference>,
+    //pub pattern: Option<Tuple>,
 }
 
-impl AccessExpression {
+impl MemberAccessExpression {
     pub fn new_expr(
         node_info: NodeInfo,
-        on: Option<Box<ExpressionWrapper>>,
-        scope: Box<ScopedNameReference>,
-        pattern: Option<Pattern>,
+        on: Box<ExpressionWrapper>,
+        name: IStr,
     ) -> Box<ExpressionWrapper> {
-        Box::new(ExpressionWrapper::Access(AccessExpression {
+        Box::new(ExpressionWrapper::MemberAccess(MemberAccessExpression {
             node_info,
-            scope,
             on,
-            pattern,
+            name,
         }))
     }
 }
 
-impl AstNode for AccessExpression {
+impl AstNode for MemberAccessExpression {
     fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
-        self.scope.as_node().pretty(f, depth);
-        self.on.iter().for_each(|on| on.as_node().pretty(f, depth));
-        self.pattern.iter().for_each(|pattern| pattern.as_node().pretty(f, depth));
+        //self.scope.as_node().pretty(f, depth);
+        //self.on.iter().for_each(|on| on.as_node().pretty(f, depth));
+        self.on.as_node().pretty(f, depth);
+        write!(f, ".{}", self.name.resolve());
+        //self.pattern.iter().for_each(|pattern| pattern.as_node().pretty(f, depth));
     }
     fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let _ = writeln!(
             f,
-            "{}AccessExpression parsed {} in scope {:?} has subexpr and pattern:",
+            "{}MemberAccessExpression parsed {} with name {} in scope has subexpr:",
             indent(depth),
             self.node_info,
-            self.scope,
+            self.name.resolve(),
         );
         //self.pattern.display(f, depth+1)
         //[&self.subexpr].iter().for_each(|expr| expr.as_node().display(f, depth+1));
 
-        match &self.on {
+        self.on.as_node().display(f, depth + 1);
+        /*match &self.on {
             Some(e) => e.as_node().display(f, depth + 1),
             None => {
                 let _ = writeln!(f, "{}No subexpr", indent(depth + 1));
@@ -680,13 +691,31 @@ impl AstNode for AccessExpression {
             None => {
                 let _ = writeln!(f, "{}No pattern", indent(depth + 1));
             }
-        }
+        }*/
     }
 
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
+}
 
+#[derive(Debug, Clone)]
+pub struct FunctionCall {
+    pub node_info: NodeInfo,
+    pub function: Box<ExpressionWrapper>,
+    pub args: Box<Tuple>,
+}
+
+impl AstNode for FunctionCall {
+    fn node_info(&self) -> NodeInfo {
+        self.node_info
+    }
+
+    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+        writeln!(f, "{}Function call with function, args:", indent(depth));
+        self.function.as_node().display(f, depth + 1);
+        self.args.as_node().display(f, depth + 1);
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -742,7 +771,6 @@ impl AstNode for UnaryOperationExpression {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
-
 }
 
 #[derive(Debug, Clone)]
@@ -799,7 +827,7 @@ pub struct LLVMLiteralExpression {
     /// the value will reside in will be referred to output.unwrap().1
     ///
     /// Care should be taken by the user that the binding name does not cause a name collision
-    pub output: Option<(TypeReference, IStr)>
+    pub output: Option<(TypeReference, IStr)>,
 }
 
 impl AstNode for LLVMLiteralExpression {
@@ -860,7 +888,6 @@ impl AstNode for ReturnExpression {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
-
 }
 
 impl AstNode for CastExpression {
@@ -876,7 +903,6 @@ impl AstNode for CastExpression {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
-
 }
 
 #[derive(Debug)]
@@ -901,31 +927,40 @@ pub struct Closure {
     //pub span: Span,
 }*/
 
-/*#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct IdentifierExpression {
     pub node_info: NodeInfo,
 
     //pub name: &'a str,
-    pub context: Box<ScopedName>,
-    pub node_type: Option<types::TypeReference>,
+    //pub context: Box<ScopedName>,
+    ident: IStr,
+    //pub node_type: Option<types::TypeReference>,
     //pub span: Span,
+}
+
+impl IdentifierExpression {
+    pub fn from_token(tw: TokenWrapper) -> ExpressionWrapper {
+        ExpressionWrapper::Identifier(Self {
+            ident: tw.slice,
+            node_info: NodeInfo::from_token(&tw),
+        })
+    }
 }
 
 impl AstNode for IdentifierExpression {
     fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let _ = writeln!(
             f,
-            "{}IdentifierExpression with name {} and type {:?}:",
+            "{}IdentifierExpression with name {}",
             indent(depth),
-            self.name,
-            self.node_type,
-            );
+            self.ident.resolve(),
+        );
     }
 
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
-}*/
+}
 
 #[derive(Debug, Clone)]
 #[allow(non_camel_case_types)]
@@ -990,7 +1025,6 @@ impl AstNode for LiteralExpression {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
-
 }
 
 /*pub trait Type: std::fmt::Debug + std::clone::Clone {

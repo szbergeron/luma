@@ -1,6 +1,4 @@
-use std::process::abort;
-
-use crate::ast::{self, TypeReference};
+use crate::ast;
 use crate::lex::{CodeLocation, ParseResultError, Token};
 
 //use crate::helper::lex_wrap::{CodeLocation, ParseResultError};
@@ -23,9 +21,12 @@ type ExpressionResult = ParseResult<Box<ast::ExpressionWrapper>>;
 impl<'lexer> Parser<'lexer> {
     pub fn parse_expr(&mut self, t: &TokenProvider) -> ExpressionResult {
         //let t = t.child();
-        let mut t = parse_header!(t);
+        let t = parse_header!(t);
 
         let r = self.parse_expr_inner(0, 1, &t);
+
+        /*println!("Expression:");
+        println!("{r}");*/
 
         r
     }
@@ -38,8 +39,8 @@ impl<'lexer> Parser<'lexer> {
     pub fn parse_binding(&mut self, t: &TokenProvider) -> ParseResult<Box<LetComponent>> {
         // want to find if this is going to be a destructuring operation
         /*let mut t = t
-            .child()
-            .predict(&[(Token::LParen, 1.0), (Token::Identifier, 1.0)]);*/
+        .child()
+        .predict(&[(Token::LParen, 1.0), (Token::Identifier, 1.0)]);*/
         let mut t = parse_header!(t, [Token::LParen => 1.0, Token::Identifier => 1.0]);
         //let next_token = t.sync().la(0).map_err(|e| CorrectionBubblingError::from_fatal_error(e))?;
         let next_token = t.la(0).join_noncommittal().catch(&mut t)?;
@@ -167,7 +168,7 @@ impl<'lexer> Parser<'lexer> {
     // where:
     //     typespecifier: <typelist>
     //     pattern: (expressionlist)
-    pub fn parse_pattern(&mut self, t: &TokenProvider) -> ParseResult<Pattern> {
+    pub fn parse_pattern(&mut self, t: &TokenProvider) -> ParseResult<Tuple> {
         //let mut t = t.child();
         let mut t = parse_header!(t);
         // can be a single literal or tuple, and each tuple is a set of expressions
@@ -196,7 +197,7 @@ impl<'lexer> Parser<'lexer> {
 
         let node_info = NodeInfo::from_indices(start, end);
 
-        t.success(Pattern {
+        t.success(Tuple {
             node_info,
             expressions,
         })
@@ -211,11 +212,33 @@ impl<'lexer> Parser<'lexer> {
         r
     }*/
 
-    pub fn parse_array_literal(&mut self, t: &TokenProvider) -> ExpressionResult {
+    pub fn parse_array_literal(&mut self, _t: &TokenProvider) -> ExpressionResult {
         todo!()
     }
 
-    pub fn parse_scoped_name(
+    pub fn parse_scope(&mut self, t: &TokenProvider) -> ParseResult<ScopedNameReference> {
+        let mut t = parse_header!(t);
+
+        let mut names = Vec::new();
+
+        let mut node_info = NodeInfo::Builtin;
+
+        while let Some(s) = t.try_take_string([Token::Identifier, Token::DoubleColon]) {
+            let ident = s[0];
+            names.push(ident.slice);
+
+            node_info = node_info.extended(ident);
+            node_info = node_info.extended(s[1]);
+        }
+
+        t.success(ScopedNameReference {
+            node_info,
+            silent: names.len() > 0,
+            scope: names,
+        })
+    }
+
+    /*pub fn parse_scoped_name(
         &mut self,
         t: &TokenProvider,
     ) -> ParseResult<Box<ScopedNameReference>> {
@@ -275,148 +298,209 @@ impl<'lexer> Parser<'lexer> {
         }
 
         t.success(r)
-    }
+    }*/
+
 
     pub fn atomic_expression(&mut self, t: &TokenProvider) -> ExpressionResult {
         //let mut t = t.child();
         let mut t = parse_header!(t);
+        let tw = t
+            .take_in(&[
+                Token::UnknownIntegerLiteral,
+                Token::StringLiteral,
+                Token::Underscore,
+                Token::LParen,
+                Token::DoubleColon,
+                Token::Identifier,
+            ])
+            .join()?;
 
-        if let Ok(tw) = t.lh.next() {
-            match tw.token {
-                Token::UnknownIntegerLiteral => {
-                    t.success(ast::ExpressionWrapper::literal_expression(tw))
-                }
-                Token::StringLiteral => t.success(ast::ExpressionWrapper::literal_expression(tw)),
-                Token::Underscore => t.success(ast::ExpressionWrapper::wildcard(tw)),
-                Token::LParen | Token::DoubleColon | Token::Identifier => {
-                    //self.lex.backtrack();
-                    t.lh.backtrack(); // TODO: check if this works
-
-                    self.parse_access_base(&t, None)
-                }
-                _ => {
-                    //self.lex.backtrack();
-                    t.lh.backtrack();
-
-                    t.failure(ParseResultError::UnexpectedToken(
-                        tw,
-                        vec![
-                            Token::UnknownIntegerLiteral,
-                            Token::StringLiteral,
-                            Token::Underscore,
-                            Token::LParen,
-                            Token::DoubleColon,
-                            Token::Identifier,
-                        ],
-                        None,
-                    ))
-                }
+        match tw.token {
+            Token::UnknownIntegerLiteral | Token::StringLiteral => {
+                t.success(ast::ExpressionWrapper::literal_expression(tw))
             }
-        } else {
-            t.failure(ParseResultError::EndOfFile)
+            Token::Underscore => t.success(ast::ExpressionWrapper::wildcard(tw)),
+            Token::Identifier | Token::DoubleColon => {
+                t.lh.backtrack();
+
+                self.parse_access_base(&t)
+            }
+            _ => todo!(),
         }
     }
 
-    pub fn parse_access_trailing(
-        &mut self,
-        t: &TokenProvider,
-        on: Box<ExpressionWrapper>,
-    ) -> ExpressionResult {
-        //let mut t = t.child();
+    //pub fn parse_scope(&mut self, t: &TokenProvider) -> S
+
+    /// Use this to try to parse "continuations" of accesses.
+    /// This includes indexing with [], doing calls with .f(...), and doing member accesses with .a
+    ///
+    /// Returns a tuple of (continue, result)
+    /// where <continue> is whether parse_access_continuation should be called again on the
+    /// returned result (if any more continuation can be expected) since the current continuation
+    /// was not null deriving or a "passthrough"
+    pub fn parse_access_continuation(&mut self, t: &TokenProvider, on: Box<ExpressionWrapper>) -> ParseResult<(bool, Box<ExpressionWrapper>)> {
         let mut t = parse_header!(t);
 
-        let p = self.parse_pattern(&t).join_hard(&mut t).catch(&mut t)?;
-        let start = on.as_node().start().unwrap_or(CodeLocation::Builtin);
-
-        let node_info = NodeInfo::from_indices(start, p.end().unwrap_or(start));
-
-        let scope = ScopedNameReference {
-            silent: true,
-            scope: Vec::new(),
-            node_info: NodeInfo::Builtin,
+        let next = t.try_take_in(&[Token::LBracket, Token::Dot, Token::LParen]);
+        let next = match next {
+            Some(tw) => tw,
+            None => return t.success((false, on))
         };
 
-        let ae = AccessExpression {
-            node_info,
-            pattern: Some(p),
-            on: Some(on),
-            scope: Box::new(scope),
-        };
+        let mut ni = on.as_node().node_info();
+        let start = ni.as_parsed().map(|pni| pni.span.start).unwrap_or(CodeLocation::Builtin);
 
-        t.success(Box::new(ExpressionWrapper::Access(ae)))
-    }
+        match next.token {
+            Token::LParen => { // doing a function call on the current continuation
+                t.lh.backtrack();
+                let call_tuple = self.parse_tuple(&t).join_hard(&mut t).catch(&mut t)?;
+                let end = if let NodeInfo::Parsed(pni) = call_tuple.as_node().node_info() {
+                    pni.span.end
+                } else {
+                    CodeLocation::Builtin
+                };
 
-    pub fn parse_access_base(
-        &mut self,
-        t: &TokenProvider,
-        on: Option<Box<ExpressionWrapper>>,
-    ) -> ExpressionResult {
-        /*
-         * Follows pattern:
-         *     Namespace1::NamespaceN::Access &| (Pattern) . Repeat_Chain
-         *
-         *     which translates to
-         *
-         *     scoped_name Pattern? (.parse_chain)?
-         *
-         *     this has a special requirement that the rule as a whole is not null deriving,
-         *
-         *     so either the scoped_name.scope has a nonzero length or the pattern exists
-         */
+                let ni = NodeInfo::from_indices(start, end);
 
-        // first access has no specified "self" unless it is an object itself.
-        //let mut t = t.child();
-        let mut t = parse_header!(t);
+                if let ExpressionWrapper::Tuple(tup) = *call_tuple {
 
-        let mut either: EitherNone<Span, Span> = EitherNone::Neither();
+                    let fc = FunctionCall {
+                        function: on, args: Box::new(tup), node_info: ni, 
+                    };
 
-        let base = self
-            .parse_scoped_name(&t)
-            .join_hard(&mut t)
-            .catch(&mut t)
-            .hint("Internal Issue: parse_access_base was called with no base already given")?;
-
-        match base.node_info.as_parsed() {
-            Some(pni) => {
-                either = either.with_a(pni.span);
-            }
-            _ => {}
-        }
-
-        let b_pattern = match base.silent {
-            true => Some(self.parse_pattern(&t).join_hard(&mut t).catch(&mut t)?),
-            //false => abort(),
-            false => Some(self.parse_pattern(&t).join_sync(&mut t).catch(&mut t)?), // TODO: fallible patterns
-        };
-
-        match &b_pattern {
-            Some(p) => match p.node_info().as_parsed() {
-                Some(pni) => {
-                    either = either.with_b(pni.span);
+                    t.success((true, box ExpressionWrapper::FunctionCall(fc)))
+                } else {
+                    unreachable!()
                 }
-                _ => {}
             },
-            _ => {}
+            Token::Dot => {
+                // doing a member access
+                let ident = t.take(Token::Identifier).hint("Any dot access should be followed by a member name").join()?;
+
+                let end = ident.end;
+                
+                let ni = NodeInfo::from_indices(start, end);
+
+                let mae = MemberAccessExpression {
+                    on, name: ident.slice, node_info: ni,
+                };
+
+                t.success((true, box ExpressionWrapper::MemberAccess(mae)))
+            },
+            Token::RBracket => {
+                todo!("Array access not yet implemented")
+            },
+            _ => unreachable!()
+        }
+    }
+
+    /// Parses an "operand", where in "x = y + z" x, y, and z are all operands.
+    /// In the expression "foo.bar = baz.qux()", both foo.bar and baz.qux() are operands.
+    pub fn parse_operand(&mut self, t: &TokenProvider) -> ExpressionResult {
+        let mut t = parse_header!(t);
+
+        let scope = self.parse_scope(&t).join_hard(&mut t).catch(&mut t)?;
+
+        let mut base = self.parse_access_base(&t).join_hard(&mut t).catch(&mut t)?;
+
+        loop {
+            match self.parse_access_continuation(&t, base).join_hard(&mut t).catch(&mut t)? {
+                (true, expr) => {
+                    base = expr;
+                    continue
+                },
+                (false, expr) => {
+                    base = expr;
+                    break;
+                }
+            }
         }
 
-        // invisible invariant: either base or b_pattern has to be Some, or both
-        let (start, end) = match either {
-            EitherNone::Neither() => panic!("Somehow got neither a pattern nor a base"),
-            EitherNone::A(a) => (a.start, a.end),
-            EitherNone::B(b) => (b.start, b.end),
-            EitherNone::Both(a, b) => (a.start, b.end),
+        t.success(base)
+    }
+
+    /// Parses a literal, tuple, or identifier that forms the "base" of an access or operand.
+    /// Any scoping must have been parsed prior
+    pub fn parse_access_base(&mut self, t: &TokenProvider) -> ExpressionResult {
+        let mut t = parse_header!(t, [Token::Identifier => 1.0, Token::UnknownIntegerLiteral => 1.0, Token::StringLiteral => 1.0]);
+
+        let tw = t.try_take_if(|tw| {
+            (tw.token.is_operand_base() || tw.token.matches(Token::LParen)).then_some(())
+
+        });
+
+        let tw = match tw {
+            Some((_, v)) => v,
+            None => return t.unexpected_token(&[], "Hint"),
         };
 
-        let node_info = NodeInfo::from_indices(start, end);
+        match tw.token {
+            Token::LParen => {
+                t.lh.backtrack(); // ungrab the lparen so it can be consumed by tuple
+                self.parse_tuple(&t)
+            },
+            Token::Identifier => {
+                let e = IdentifierExpression::from_token(tw);
 
-        let ae = AccessExpression {
-            node_info,
-            on,
-            scope: base,
-            pattern: b_pattern,
-        };
+                t.success(box e)
+            }
+            other if other.is_literal() => {
+                let e = LiteralExpression::new_expr(tw);
 
-        t.success(Box::new(ExpressionWrapper::Access(ae)))
+                t.success(e)
+            }
+            other => {
+                println!("Got other token: {other:?}");
+                unreachable!()
+            }
+        }
+    }
+
+    pub fn parse_tuple(&mut self, t: &TokenProvider) -> ExpressionResult {
+        let mut t =
+            parse_header!(t, [Token::LParen => 1.0, Token::Comma => 1.0, Token::RParen => 1.0]);
+
+        let leading = t.take(Token::LParen).join()?;
+
+        let mut exprs = Vec::new();
+
+        while let None = t.peek_for(Token::RParen) {
+            let e = self
+                .parse_expr(&t)
+                .join_hard(&mut t)
+                .catch(&mut t)
+                .handle_here()?;
+            let (v, _, _) = e.open_anyway();
+            match v {
+                Some(e) => exprs.push(e),
+                None => (),
+            }
+
+            match t.take_in(&[Token::Comma, Token::RParen]).join()?.token {
+                Token::Comma => continue, // look for another expression in next loop
+                Token::RParen => {
+                    // we have a close for the tuple, allow it to be instead taken by the outer
+                    t.lh.backtrack();
+                    break;
+                }
+                _ => unreachable!(),
+            }
+        }
+
+        let trailing = t.take(Token::RParen).join()?;
+
+        //
+
+        //let self.parse_expr(&t)
+
+        let start = leading.start;
+        let end = trailing.end;
+
+        let ni = NodeInfo::from_indices(start, end);
+
+        let ex = Tuple::new_expr(ni, exprs);
+
+        t.success(ex)
     }
 
     pub fn parse_llvm_builtin(&mut self, t: &TokenProvider) -> ExpressionResult {
@@ -567,7 +651,7 @@ impl<'lexer> Parser<'lexer> {
                         .catch(&mut t)
                         .handle_here()?;
 
-                    let (v, mut es, s) = e.update_solution(&t).open();
+                    let (v, mut _es, s) = e.update_solution(&t).open();
 
                     v.map(|exp| {
                         let exp = match t.try_take(Token::Semicolon) {
@@ -678,12 +762,13 @@ impl<'lexer> Parser<'lexer> {
                     .catch(&mut t)?
             }
             // for anything that isn't an operator or start of a syntactic feature, so identifiers,
-            // patterns, and literals
-            Token::Identifier | Token::UnknownIntegerLiteral => {
-                let ae = self.atomic_expression(&t).join_hard(&mut t).catch(&mut t)?;
+            // patterns, and literals (operands)
+            tok if tok.is_operand_base() => {
+                /*let ae = self.atomic_expression(&t).join_hard(&mut t).catch(&mut t)?;
                 println!("ae is: {ae:?}");
-                ae
-                //todo!()
+                ae*/
+                let operand = self.parse_operand(&t).join_hard(&mut t).catch(&mut t)?;
+                operand
             }
             _other => {
                 return t.failure(ParseResultError::UnexpectedToken(
@@ -731,22 +816,9 @@ impl<'lexer> Parser<'lexer> {
                         .catch(&mut t)?;
                     continue;
                 }
-            } else if let Some(_tw) = t.try_take_in(&[
-                Token::LParen,
-                Token::LBracket,
-                Token::Identifier,
-                Token::DoubleColon,
-            ]) {
-                //self.lex.backtrack(); // want to know it's there, but not consume it
-                // not a binary operator per-se, could be chained access?
-                t.lh.backtrack();
-
-                lhs = self
-                    .parse_access_trailing(&t, lhs)
-                    .join_hard(&mut t)
-                    .catch(&mut t)?;
-
-                continue;
+            } else if t.lh.la(0).map(|tw| tw.token.is_operand_base()).unwrap_or(false) {
+                lhs = self.parse_operand(&t).join_hard(&mut t).catch(&mut t)?;
+                continue
             } else {
                 break;
             }
@@ -784,7 +856,7 @@ impl<'lexer> Parser<'lexer> {
         rhs: Box<ast::ExpressionWrapper>,
     ) -> ExpressionResult {
         //let t = t.child();
-        let mut t = parse_header!(t);
+        let t = parse_header!(t);
 
         match token {
             Token::Plus | Token::Dash | Token::Asterisk | Token::FSlash => t.success(
@@ -792,33 +864,6 @@ impl<'lexer> Parser<'lexer> {
             ),
             //Token::As => Ok(CastExpression::new_expr(node_info, lhs, rhs)),
             Token::Equals => t.success(AssignmentExpression::new_expr(node_info, lhs, rhs)),
-            Token::Dot => {
-                let rhs = match *rhs {
-                    ExpressionWrapper::Access(mut ae) => {
-                        ae.on = Some(lhs);
-
-                        Box::new(ExpressionWrapper::Access(ae))
-                    }
-                    _ => {
-                        let err = ParseResultError::SemanticIssue(
-                            "Can not perform a dot-access with non-access RHS.
-                        RHS must be of the form (ScopedIdentifier &| Pattern).
-                        Offending RHS occurs at span",
-                            rhs.as_node().start().unwrap_or(CodeLocation::Builtin),
-                            rhs.as_node().end().unwrap_or(CodeLocation::Builtin),
-                        );
-
-                        //self.errors.push(err);
-
-                        //return Err(err);
-
-                        //return Err(t.failure(Some(err)).hard(&mut t).err());
-                        return t.failure(err);
-                    }
-                };
-
-                t.success(rhs)
-            }
             Token::CmpEqual
             | Token::CmpLessThan
             | Token::CmpGreaterThan
@@ -827,11 +872,16 @@ impl<'lexer> Parser<'lexer> {
             | Token::CmpNotEqual => t.success(ComparisonOperationExpression::new_expr(
                 node_info, token, lhs, rhs,
             )),
-            _ => {
+            tok => {
                 eprintln!("got unexpected token {:?}", token);
                 let start = lhs.as_node().node_info().as_parsed().unwrap().span.start;
                 let end = rhs.as_node().node_info().as_parsed().unwrap().span.end;
-                return t.failure(ParseResultError::SemanticIssue("Couldn't build binary expression, the given token was invalid", start, end));
+                let msg = format!(
+                    "Couldn't build a binary expression, {:?} is not an understood operator yet",
+                    tok
+                );
+                let msg = intern(&msg).resolve();
+                return t.failure(ParseResultError::SemanticIssue(msg, start, end));
                 //panic!("Programming error: no way to build binary expression from given token");
             }
         }
@@ -870,8 +920,6 @@ pub fn postfix_binding_power(t: Token) -> Option<u32> {
 pub fn infix_binding_power(t: Token) -> Option<(u32, u32)> {
     match t {
         Token::As => Some((1, 300)),
-
-        Token::Dot => Some((250, 250)),
 
         Token::Equals => Some((200, 2)),
 

@@ -302,6 +302,40 @@ pub enum Token {
 }
 
 impl Token {
+    pub fn is_literal(self) -> bool {
+        match self {
+            Self::UnknownIntegerLiteral => true,
+            Self::f32Literal | Self::f64Literal => true,
+            Self::i8Literal | Self::i16Literal | Self::i32Literal | Self::i64Literal | Self::i128Literal => true,
+            Self::u8Literal | Self::u16Literal | Self::u32Literal | Self::u64Literal | Self::u128Literal => true,
+            Self::StringLiteral => true,
+            Self::False | Self::True => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_atomic(self) -> bool {
+        match self {
+            Self::Identifier => true,
+            Self::Underscore => true,
+            o if o.is_literal() => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_operand_base(self) -> bool {
+        match self {
+            //Self::DoubleColon => true,
+            Self::LParen | Self::LBracket => true,
+            o if o.is_atomic() => true,
+            _ => false,
+        }
+    }
+
+    pub fn matches(self, t: Token) -> bool {
+        t == self
+    }
+
     /*pub fn operator(&self) -> bool {
         self.binary_operator() || self.unary_operator()
     }
@@ -376,6 +410,13 @@ pub enum CodeLocation {
 }
 
 impl CodeLocation {
+    pub fn file_id(&self) -> Option<isize> {
+        match self {
+            Self::Builtin => None,
+            Self::Parsed(l) => Some(l.file_id as isize),
+        }
+    }
+
     pub fn offset_by(&self, line: isize, offset: isize) -> CodeLocation {
         match self {
             Self::Builtin => Self::Builtin,

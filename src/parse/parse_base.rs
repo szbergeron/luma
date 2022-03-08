@@ -12,9 +12,7 @@ use ast::IntoAstNode;
 
 use crate::parse::*;
 
-use super::schema::{
-    ResultHint, TokenProvider,
-};
+use super::schema::{ResultHint, TokenProvider};
 
 impl<'lexer> Parser<'lexer> {
     pub fn entry(&mut self, t: &TokenProvider) -> ParseResult<ast::OuterScope> {
@@ -25,7 +23,6 @@ impl<'lexer> Parser<'lexer> {
 
         //let start = self.lex.la(0).map_or(CodeLocation::Builtin, |tw| tw.start);
         let start = t.lh.la(0).map_or(CodeLocation::Builtin, |tw| tw.start);
-
 
         //let mut failed = false;
         println!("At entry, idx: {}", t.lh.index());
@@ -38,14 +35,18 @@ impl<'lexer> Parser<'lexer> {
                     println!("Trying for a global dec");
                     //let r = self.parse_global_declaration(&t);
 
-                    let r = self.parse_global_declaration(&t).join_hard(&mut t).catch(&mut t).handle_here()?;
+                    let r = self
+                        .parse_global_declaration(&t)
+                        .join_hard(&mut t)
+                        .catch(&mut t)
+                        .handle_here()?;
 
                     println!("___");
                     for e in r.errors().iter() {
                         println!("{:?}", e);
                     }
 
-                    let (v, mut es, s) = r.update_solution(&t).open();
+                    let (v, mut _es, s) = r.update_solution(&t).open();
                     println!("Opened the value");
 
                     //t.sync_with_solution(s);
@@ -172,37 +173,60 @@ impl<'lexer> Parser<'lexer> {
         ]).hard(&mut t)?.join(&mut t);*/
 
         if let Ok(tw) = t.lh.la(0) {
-            let r = match t.take_in(&[Token::Module, Token::Function, Token::Struct, Token::Use, Token::DExpression]).join()?.token {
+            let r = match t
+                .take_in(&[
+                    Token::Module,
+                    Token::Function,
+                    Token::Struct,
+                    Token::Use,
+                    Token::DExpression,
+                ])
+                .join()?
+                .token
+            {
                 Token::Module => {
                     todo!();
                     let mut ns = self.parse_namespace(&t).join_hard(&mut t).catch(&mut t)?;
                     ns.set_public(public);
                     ast::SymbolDeclaration::NamespaceDeclaration(ns)
-                },
+                }
                 Token::Function => {
                     todo!();
-                    let fd = self.parse_function_declaration(&t).join_hard(&mut t).catch(&mut t)?;
+                    let fd = self
+                        .parse_function_declaration(&t)
+                        .join_hard(&mut t)
+                        .catch(&mut t)?;
                     ast::SymbolDeclaration::FunctionDeclaration(fd)
-                },
+                }
                 // TODO: maybe add global variable declaration?
                 Token::Struct => {
-                    todo!();
-                    let sd = self.parse_struct_definition(&t).join_hard(&mut t).catch(&mut t)?;
+                    t.lh.backtrack();
+                    let sd = self
+                        .parse_struct_definition(&t)
+                        .join_hard(&mut t)
+                        .catch(&mut t)?;
                     ast::SymbolDeclaration::TypeDefinition(sd)
-                },
+                }
                 Token::Use => {
                     todo!();
-                    let ud = self.parse_use_declaration(&t).join_hard(&mut t).catch(&mut t)?;
+                    let ud = self
+                        .parse_use_declaration(&t)
+                        .join_hard(&mut t)
+                        .catch(&mut t)?;
                     ast::SymbolDeclaration::UseDeclaration(ud)
-                },
+                }
                 Token::DExpression => {
                     println!("Taking dexpr");
-                    let _ = t.take(Token::DExpression).join()?;
+                    //let _ = t.take(Token::DExpression).join()?;
 
                     t.predict_next((Token::Semicolon, 10.0));
 
                     println!("Parsing dbg expr, got first tok");
-                    let e = self.parse_expr(&t).join_hard(&mut t).catch(&mut t).handle_here()?;
+                    let e = self
+                        .parse_expr(&t)
+                        .join_hard(&mut t)
+                        .catch(&mut t)
+                        .handle_here()?;
                     println!("Got expr");
                     let _ = t.take(Token::Semicolon).join()?;
                     println!("Took semi");
@@ -212,7 +236,7 @@ impl<'lexer> Parser<'lexer> {
                     //println!("E: {:?}", e);
                     println!("About to update solution for e, idx is {}", t.lh.index());
                     let e = e.update_solution(&t)?;
-                    println!("E was some");
+                    println!("Value of e: {e}");
                     ast::SymbolDeclaration::ExpressionDeclaration(StaticVariableDeclaration {
                         node_info: e.as_node().node_info(),
                         expression: e,
@@ -233,7 +257,17 @@ impl<'lexer> Parser<'lexer> {
                     // may be expression?
                     println!("Token was not as expected for a global declaration");
 
-                    return t.failure(ParseResultError::UnexpectedToken(tw, vec![Token::Module, Token::Let, Token::Function, Token::Struct, Token::DExpression], None));
+                    return t.failure(ParseResultError::UnexpectedToken(
+                        tw,
+                        vec![
+                            Token::Module,
+                            Token::Let,
+                            Token::Function,
+                            Token::Struct,
+                            Token::DExpression,
+                        ],
+                        None,
+                    ));
                 }
             };
 
@@ -359,7 +393,10 @@ impl<'lexer> Parser<'lexer> {
 
         while let Some(i) = t.try_take(Token::Identifier) {
             t.take(Token::Colon).join()?;
-            let tr = self.parse_type_specifier(&t).join_hard(&mut t).catch(&mut t)?;
+            let tr = self
+                .parse_type_specifier(&t)
+                .join_hard(&mut t)
+                .catch(&mut t)?;
 
             let r = (i.slice, tr);
 
@@ -386,11 +423,17 @@ impl<'lexer> Parser<'lexer> {
         let function_name = t.take(Token::Identifier).join()?;
 
         t.take(Token::LParen).join()?;
-        let params = self.parse_function_param_list(&t).join_hard(&mut t).catch(&mut t)?;
+        let params = self
+            .parse_function_param_list(&t)
+            .join_hard(&mut t)
+            .catch(&mut t)?;
         t.take(Token::RParen).join()?;
 
         t.take(Token::ThinArrow).join()?;
-        let return_type = self.parse_type_specifier(&t).join_hard(&mut t).catch(&mut t)?;
+        let return_type = self
+            .parse_type_specifier(&t)
+            .join_hard(&mut t)
+            .catch(&mut t)?;
 
         let body = self.parse_expr(&t).join_hard(&mut t).catch(&mut t)?;
 
@@ -428,7 +471,7 @@ impl<'lexer> Parser<'lexer> {
 
         scope.push(tw.slice);
 
-        let mut end = tw.end;
+        //let mut end = tw.end;
 
         while let Some(_) = t.try_take(Token::DoubleColon) {
             let tw = t.take_in(&[Token::Asterisk, Token::Identifier])
@@ -438,7 +481,7 @@ impl<'lexer> Parser<'lexer> {
 
             scope.push(tw.slice);
 
-            end = tw.end;
+            //end = tw.end;
         }
 
         let mut alias: Option<IStr> = None;
@@ -449,7 +492,7 @@ impl<'lexer> Parser<'lexer> {
             alias = Some(id.slice);
         }
 
-        end = t.take(Token::Semicolon).join()?.end; // don't need to directly bubble, since this individual statement is recoverable
+        let end = t.take(Token::Semicolon).join()?.end; // don't need to directly bubble, since this individual statement is recoverable
 
         let node_info = ast::NodeInfo::from_indices(start, end);
 

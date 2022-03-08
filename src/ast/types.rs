@@ -1,4 +1,4 @@
-use crate::helper::interner::IStr;
+use crate::{helper::interner::{IStr, SpurHelper}, ast::indent};
 
 use super::{AstNode, IntoAstNode, NodeInfo, ScopedNameReference};
 
@@ -27,12 +27,22 @@ pub struct FieldMember {
     pub ftype: TypeReference,
 }
 
+impl AstNode for FieldMember {
+    fn node_info(&self) -> NodeInfo { todo!() }
+
+    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+        //writeln!("{}{}: ")
+        todo!()
+    }
+}
+
 /// These act like structs or records in any other language,
 /// Member functions here (once implemented) are devirtualized by default
 ///
 /// This is a product type
 #[derive(Debug, Clone)]
 pub struct RecordValueDefinition {
+    pub name: IStr,
     pub node_info: NodeInfo,
     pub fields: Vec<FieldMember>,
 }
@@ -72,11 +82,14 @@ impl AstNode for RecordVirtualSpecification {
 
 impl AstNode for RecordValueDefinition {
     fn node_info(&self) -> NodeInfo {
-        todo!()
+        self.node_info
     }
 
     fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
-        todo!()
+        writeln!(f, "{} struct {} {{", indent(depth), self.name.resolve());
+        for field in self.fields {
+        }
+        writeln!(f, "{}}}", indent(depth));
     }
 }
 
@@ -92,7 +105,7 @@ impl AstNode for EnumValueDefinition {
 
 impl AstNode for RecordVirtualDefinition {
     fn node_info(&self) -> NodeInfo {
-        todo!()
+        self.node_info
     }
 
     fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
@@ -119,7 +132,19 @@ impl AstNode for TypeDefinition {
     }
 
     fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
-        todo!()
+        self.as_node().display(f, depth);
+        //writeln!(f, "{}struct {} {{", indent(depth), self.)
+    }
+}
+
+impl IntoAstNode for TypeDefinition {
+    fn as_node(&self) -> &dyn AstNode {
+        match self {
+            Self::Struct(e) => e,
+            Self::Enum(e) => e,
+            Self::Specification(e) => e,
+            Self::Implementation(e) => e,
+        }
     }
 }
 

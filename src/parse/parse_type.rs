@@ -1,23 +1,20 @@
 use crate::ast::base::IntoAstNode;
 use crate::ast::{self, MemberAttributes};
-use crate::lex::{ErrorSet, Token};
+use crate::lex::{ErrorSet, Token, ParseResultError, CodeLocation};
 use crate::parse::*;
 
-use super::schema::{
-    Nonterminal, ResultHint, TokenProvider,
-};
-use Nonterminal::*;
+use super::schema::{ResultHint, TokenProvider};
+use ast::base::*;
+use ast::expressions::*;
+use ast::outer::*;
 
 impl<'lexer> Parser<'lexer> {
     /// Currently unconditionally returns memberattrs as they are null-deriving
-    pub fn parse_member_attributes(&mut self) -> Result<ast::MemberAttributes, ParseResultError> {
-        let mut mutable: Option<bool> = None;
-        let mut public: Option<bool> = None;
+    pub fn parse_member_attributes(&mut self, t: &mut TokenProvider) -> ast::MemberAttributes {
+        let public = t.try_take(Token::Public).is_some();
+        let mutable = t.try_take(Token::Mutable).is_some();
 
-        Ok(MemberAttributes {
-            public: public.unwrap_or(true),
-            mutable: mutable.unwrap_or(true),
-        }) // TODO
+        MemberAttributes { public, mutable }
     }
 
     pub fn parse_struct_definition(
@@ -27,20 +24,18 @@ impl<'lexer> Parser<'lexer> {
         let mut t = t.child();
 
         let start = t.take(Token::Struct).join()?.start;
-        let name = t
-            .take(Token::Identifier)
-            .join()?
-            .slice;
+        let _name = t.take(Token::Identifier).join()?.slice;
 
         t.take(Token::LBrace).join()?;
 
         let mut fields = Vec::new();
 
-        while let (Ok(ma), Some(field_name)) = (
-            self.parse_member_attributes(),
+        while let (ma, Some(field_name)) = (
+            self.parse_member_attributes(&mut t),
             t.try_take(Token::Identifier),
         ) {
             t.take(Token::Colon).join()?;
+
             let field_type = self
                 .parse_type_specifier(&t)
                 .join_hard(&mut t)
@@ -77,7 +72,7 @@ impl<'lexer> Parser<'lexer> {
     }
 
     pub fn parse_type_block(&mut self, t: &TokenProvider) -> ParseResult<ast::ImplementationBody> {
-        let mut errors = ErrorSet::new();
+        let mut _errors = ErrorSet::new();
         /*let type_spec = Rule("type specifier");
         let field = subrule(&[Terminal(Token::Identifier), Terminal(Token::Colon), type_spec, ])
 
@@ -93,33 +88,36 @@ impl<'lexer> Parser<'lexer> {
                   Nonterminal::Terminal(Token::RBrace),
             ]);*/
 
-        let mut t = t
-            .child()
-            .predict(&[(Token::LBrace, 1.0), (Token::Opaque, 1.0), (Token::Comma, 1.0), (Token::RBrace, 1.0)]);
+        let mut t = t.child().predict(&[
+            (Token::LBrace, 1.0),
+            (Token::Opaque, 1.0),
+            (Token::Comma, 1.0),
+            (Token::RBrace, 1.0),
+        ]);
 
-        let type_name = t.take(Token::Identifier).join().handle_here()?.update_solution(&t).try_get();
+        let _type_name = t
+            .take(Token::Identifier)
+            .join()
+            .handle_here()?
+            .update_solution(&t)
+            .try_get();
 
         t.take(Token::LBrace).join()?;
 
         loop {
-            let r = || {
-                let mut t = t.child().predict(&[
-                ]);
+            let _r = || {
+                let mut _t = t.child().predict(&[]);
 
                 todo!()
 
                 //
             };
 
-            match t
-                .take_in(&[Token::Comma, Token::RBrace])
-                .join()?
-                .token
-            {
+            match t.take_in(&[Token::Comma, Token::RBrace]).join()?.token {
                 Token::Comma => {
                     // we could have another field, so try looking again
                     t.predict_next((Token::Comma, 1.0)); // we are potentially still looking for a comma in our lookahead,
-                                                  // so leave it in the rule
+                                                         // so leave it in the rule
                     continue;
                 }
                 Token::RBrace => {
@@ -227,7 +225,7 @@ impl<'lexer> Parser<'lexer> {
     /// Scope spec:
     /// | <empty string>
     /// | <SCOPE>IDENTIFIER::
-    pub fn parse_scope(&mut self, t: &TokenProvider) -> ParseResult<Vec<IStr>> {
+    /*pub fn parse_scope(&mut self, t: &TokenProvider) -> ParseResult<Vec<IStr>> {
         let mut t = t.child();
 
         let mut svec = Vec::new();
@@ -239,7 +237,7 @@ impl<'lexer> Parser<'lexer> {
         }
 
         t.success(svec)
-    }
+    }*/
 
     pub fn parse_type_list(&mut self, t: &TokenProvider) -> ParseResult<Vec<ast::TypeReference>> {
         let mut t = t.child();
@@ -267,9 +265,9 @@ impl<'lexer> Parser<'lexer> {
     pub fn parse_type_reference(&mut self, t: &TokenProvider) -> ParseResult<ast::TypeReference> {
         let mut t = t.child();
 
-        let scope = self.parse_scope(&t).join_hard(&mut t).catch(&mut t)?; // fine to do unconditionally since null deriving
+        let _scope = self.parse_scope(&t).join_hard(&mut t).catch(&mut t)?; // fine to do unconditionally since null deriving
 
-        let typename = t
+        let _typename = t
             .take(Token::Identifier)
             .hint("All types start with a scope, and must be followed by a typename")
             .join()?;
@@ -287,84 +285,33 @@ impl<'lexer> Parser<'lexer> {
     /// | TYPE
     /// | TYPELIST, TYPE
     pub fn parse_type_specifier(&mut self, t: &TokenProvider) -> ParseResult<ast::TypeReference> {
-        let mut t = t.child();
+        //let mut t = t.child();
+        let mut t = parse_header!(t);
 
         // these can start with a ( for a typle, a & for a reference, or a str, [<] for a named and
         // optionally parameterized type
 
-        let scope = self.parse_scope(&t).join_hard(&mut t).catch(&mut t)?;
-
-        /*if !scope.silent {
-            self.hard_expect
-        }*/
-        // TODO: eval if should require a trailing :: during scope lookup
-
-        let final_id = scope
-            .last()
-            .expect("ScopedNameReference had no final id, not even implicit");
-        let final_id = *final_id;
-
-        let mut tr = ast::TypeReference::new(todo!("scope"), final_id);
-
-        let continuation = [Token::LParen, Token::Ampersand];
-        //self.eat_match_in(&continuation)?;
-        //println!("Trying to eat a type_spec with la {:?}", self.lex.la(0));
-        match t.try_take_in(&continuation) {
-            Some(tw) => {
-                match tw.token {
-                    Token::Ampersand => {
-                        //println!("adding a & to a ctx that had {:?}", tr.ctx.scope);
-                        tr.ctx.scope.push(intern("&"));
-
-                        let inner = self
-                            .parse_type_specifier(&t)
-                            .join_hard(&mut t)
-                            .catch(&mut t)?;
-                        tr.type_args.push(inner);
-                    }
-                    Token::LParen => {
-                        tr.ctx.scope.push(intern("Tuple"));
-
-                        //println!("la is {:?}", self.lex.la(0));
-
-                        #[allow(irrefutable_let_patterns)]
-                        while let tri = self
-                            .parse_type_specifier(&t)
-                            .join_hard(&mut t)
-                            .catch(&mut t)?
-                        {
-                            tr.type_args.push(tri);
-                            match t.try_take(Token::Comma) {
-                                None => break,
-                                Some(_comma) => continue,
-                            }
-                        }
-
-                        t.take(Token::RParen).join()?;
-                    }
-                    _ => {
-                        return t.failure(ParseResultError::UnexpectedToken(
-                            tw,
-                            continuation.to_vec(),
-                            Some(
-                                "Was trying to parse a type specifier, but didn't find a valid
-                            start to such an expression",
-                            ),
-                        ));
-                    }
-                };
-
-                //r
-
-                //Ok(Box::new(tr))
-            }
+        match t.try_take_in(&[Token::Ampersand, Token::Asterisk]) {
             None => {
-                // no continuation to the type, parsing can be finished at this point
+                //let scope = self.parse_scope(&t).join_hard(&mut t).catch(&mut t)?;
+                let scope = self.parse_scope(&t).join_hard(&mut t).catch(&mut t)?;
+
+                let typename = t
+                    .take(Token::Identifier)
+                    .hint("Any scoped type requires a typename to follow the scope")
+                    .join()?;
+
+                let tr = ast::TypeReference::new(scope, typename.slice);
+
+                t.success(tr)
             }
+            Some(t) if t.token.matches(Token::Ampersand) => {
+                panic!()
+            }
+            Some(t) if t.token.matches(Token::Asterisk) => {
+                panic!()
+            }
+            _ => unreachable!()
         }
-
-        println!("Returns with tr {:?}", tr);
-
-        t.success(tr)
     }
 }
