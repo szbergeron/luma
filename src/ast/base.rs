@@ -177,13 +177,6 @@ impl AstNode for Option<&dyn AstNode> {
         }
     }
 
-    fn format(&self) -> RcDoc {
-        match self {
-            Some(n) => n.format(),
-            None => RcDoc::text("<none>"),
-        }
-    }
-
     fn pretty(&self, _f: &mut dyn std::fmt::Write, _depth: usize) {
         todo!("[ast_prettyprint]")
     }
@@ -196,13 +189,6 @@ impl IntoAstNode for Option<&dyn AstNode> {
 
     fn as_node(&self) -> &dyn AstNode {
         self
-    }
-}
-
-impl std::fmt::Display for &dyn AstNode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        //Ok(self.display(f, 0))
-        writeln!(f, "{}", self.format().pretty(100))
     }
 }
 

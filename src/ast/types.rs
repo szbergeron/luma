@@ -29,10 +29,6 @@ pub struct FieldMember {
 
 impl AstNode for FieldMember {
     fn node_info(&self) -> NodeInfo { todo!() }
-
-    fn format(&self) -> pretty::RcDoc {
-        todo!()
-    }
 }
 
 /// These act like structs or records in any other language,
@@ -73,10 +69,6 @@ impl AstNode for RecordVirtualSpecification {
     fn node_info(&self) -> NodeInfo {
         todo!()
     }
-
-    fn format(&self) -> pretty::RcDoc {
-        todo!()
-    }
 }
 
 impl AstNode for RecordValueDefinition {
@@ -90,18 +82,10 @@ impl AstNode for RecordValueDefinition {
         }
         writeln!(f, "{}}}", indent(depth));
     }*/
-
-    fn format(&self) -> pretty::RcDoc {
-        todo!()
-    }
 }
 
 impl AstNode for EnumValueDefinition {
     fn node_info(&self) -> NodeInfo {
-        todo!()
-    }
-
-    fn format(&self) -> pretty::RcDoc {
         todo!()
     }
 }
@@ -109,10 +93,6 @@ impl AstNode for EnumValueDefinition {
 impl AstNode for RecordVirtualDefinition {
     fn node_info(&self) -> NodeInfo {
         self.node_info
-    }
-
-    fn format(&self) -> pretty::RcDoc {
-        todo!()
     }
 }
 
@@ -132,10 +112,6 @@ impl AstNode for TypeDefinition {
             Self::Specification(s) => s.node_info(),
             Self::Implementation(s) => s.node_info(),
         }
-    }
-
-    fn format(&self) -> pretty::RcDoc {
-        self.as_node().format()
     }
 }
 
@@ -203,10 +179,6 @@ impl AstNode for TypeReference {
 
     fn node_info(&self) -> NodeInfo {
         self.node_info
-    }
-
-    fn format(&self) -> pretty::RcDoc {
-        todo!()
     }
 }
 

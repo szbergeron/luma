@@ -65,7 +65,7 @@ pub fn parse_unit<'file>(
     match &v {
         Some(punit) => {
             if cflags.dump_tree {
-                println!("Gets AST of: {}", punit);
+                println!("Gets AST of: {:#?}", punit);
             }
             if cflags.dump_pretty {
                 let mut s = String::new();
@@ -209,7 +209,7 @@ fn parse_args(args: &[&str]) -> Result<ArgResult, &'static str> {
 }
 
 pub fn prepass<'a>(p: &Arc<ScopeContext>) {
-    println!("Prepass called on SC: {}", &*p);
+    println!("Prepass called on SC: {:#?}", &*p);
 }
 
 pub fn analyze<'a>(_p: &Arc<ScopeContext>) {}
@@ -218,7 +218,7 @@ pub fn tollvm<'a>(p: &Arc<ScopeContext>, egctx: &EncodeGlobalContext) {
     let mut lctx = EncodeLocalContext::new(egctx);
 
     lctx.writeln(format!(
-        "; start encode for ctx of {:?}",
+        "; start encode for ctx of {:#?}",
         p.scope
             .iter()
             .map(|spur| spur.resolve())

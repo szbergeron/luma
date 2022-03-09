@@ -1,10 +1,10 @@
-use pretty::RcDoc;
+use std::fmt::Debug;
 
 use super::base::*;
 use super::outer::*;
 use crate::ast::TypeReference;
 use crate::helper::interner::*;
-use crate::lex::ParseResultError;
+
 use crate::lex::TokenWrapper;
 //use super::types;
 
@@ -15,7 +15,7 @@ pub trait Expression: AstNode {
     fn expr_type(&self) -> Box<dyn types::StaticType>;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum ExpressionWrapper {
     Assignment(AssignmentExpression),
     BinaryOperation(BinaryOperationExpression),
@@ -39,6 +39,12 @@ pub enum ExpressionWrapper {
     FunctionCall(FunctionCall),
 }
 
+impl Debug for ExpressionWrapper {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.as_node().fmt(f)
+    }
+}
+
 impl ExpressionWrapper {
     //pub fn int_literal(input: &'a str) -> ExpressionWrapper {
     pub fn literal_expression(input: TokenWrapper) -> Box<ExpressionWrapper> {
@@ -56,12 +62,12 @@ impl ExpressionWrapper {
     }
 }
 
-impl std::fmt::Display for ExpressionWrapper {
+/*impl std::fmt::Display for ExpressionWrapper {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         //let r = write!(f, "");
         write!(f, "{}", self.as_node().format().pretty(100))
     }
-}
+}*/
 
 impl IntoAstNode for ExpressionWrapper {
     fn as_node(&self) -> &dyn AstNode {
@@ -84,10 +90,6 @@ impl IntoAstNode for ExpressionWrapper {
             Self::MemberAccess(e) => e,
             Self::FunctionCall(e) => e,
             Self::Identifier(e) => e,
-            _ => {
-                println!("No implemented as_node handler for type {:?}", self);
-                todo!();
-            }
         }
     }
 
@@ -110,17 +112,12 @@ impl WildcardExpression {
 }
 
 impl AstNode for WildcardExpression {
-    fn format(&self) -> RcDoc {
-        RcDoc::text("WildcardExpresion")
-        //[&self.subexpr].iter().for_each(|expr| expr.as_node().display(f, depth+1));
-    }
-
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
 
-    fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
-        let _ = writeln!(f, "*");
+    fn pretty(&self, f: &mut dyn std::fmt::Write, _depth: usize) {
+        let _ = writeln!(f, "_");
     }
 }
 
@@ -144,11 +141,6 @@ impl StatementExpression {
 }
 
 impl AstNode for StatementExpression {
-    fn format(&self) -> RcDoc {
-        RcDoc::text("StatementExpression with subexpression:")
-            .append(self.subexpr.as_node().format().nest(1))
-    }
-
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
@@ -158,12 +150,20 @@ impl AstNode for StatementExpression {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Tuple {
     pub node_info: NodeInfo,
 
     //on: &'a str,
     pub expressions: Vec<Box<ExpressionWrapper>>,
+}
+
+impl Debug for Tuple {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Tuple")
+            .field("expressions", &self.expressions)
+            .finish()
+    }
 }
 
 impl Tuple {
@@ -185,19 +185,6 @@ impl IntoAstNode for Tuple {
 }
 
 impl AstNode for Tuple {
-    fn format(&self) -> RcDoc {
-        RcDoc::text("PatternExpression ( ")
-            .append(RcDoc::line())
-            .append(
-                RcDoc::intersperse(
-                    self.expressions.iter().map(|e| e.as_node().format()),
-                    RcDoc::text(",").append(RcDoc::line()),
-                )
-                .nest(1),
-            )
-            .append(")")
-    }
-
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
@@ -214,7 +201,7 @@ impl AstNode for Tuple {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct WhileExpression {
     node_info: NodeInfo,
 
@@ -236,17 +223,16 @@ impl WhileExpression {
     }
 }
 
-impl AstNode for WhileExpression {
-    fn format(&self) -> RcDoc {
-        RcDoc::text("While:")
-            .append(RcDoc::line())
-            .append(self.if_exp.as_node().format().nest(1))
-            .append(RcDoc::line())
-            .append("Do:")
-            .append(RcDoc::line())
-            .append(self.then_exp.as_node().format().nest(1))
+impl Debug for WhileExpression {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WhileExpression")
+            .field("while", &self.if_exp)
+            .field("do", &self.then_exp)
+            .finish()
     }
+}
 
+impl AstNode for WhileExpression {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
@@ -261,7 +247,7 @@ impl AstNode for WhileExpression {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct IfThenElseExpression {
     node_info: NodeInfo,
 
@@ -286,20 +272,17 @@ impl IfThenElseExpression {
     }
 }
 
-impl AstNode for IfThenElseExpression {
-    fn format(&self) -> RcDoc {
-        RcDoc::text("If:")
-            .append(RcDoc::line())
-            .append(self.if_exp.as_node().format().nest(1))
-            .append(RcDoc::line())
-            .append("Then:")
-            .append(RcDoc::line())
-            .append(self.then_exp.as_node().format().nest(1))
-            .append("Else:")
-            .append(RcDoc::line())
-            .append(self.else_exp.as_node().format().nest(1))
+impl Debug for IfThenElseExpression {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("IfThenElseExpression")
+            .field("if", &self.if_exp)
+            .field("then", &self.then_exp)
+            .field("else", &self.else_exp)
+            .finish()
     }
+}
 
+impl AstNode for IfThenElseExpression {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
@@ -339,23 +322,6 @@ impl AstNode for BlockExpression {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
-
-    fn format(&self) -> RcDoc {
-        let s = format!("BlockExpression {} with children:", self.node_info());
-
-        RcDoc::text(s).append(
-            RcDoc::intersperse(
-                self.contents.iter().map(|e| e.as_node().format()),
-                RcDoc::line(),
-            )
-            .nest(1),
-        )
-
-        /*self.contents.iter().for_each(|elem| {
-            elem.iter()
-                .for_each(|elem| elem.as_node().display(f, depth + 1))
-        });*/
-    }
 }
 
 impl BlockExpression {
@@ -390,19 +356,12 @@ pub struct LetExpression {
 }*/
 
 impl AstNode for LetExpression {
-    fn format(&self) -> RcDoc {
-        RcDoc::text("LetExpression with let ")
-            .append(self.primary_component.as_node().format().nest(1))
-            .append(" = ")
-            .append(self.expression.as_node().format().nest(1))
-    }
-
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct AssignmentExpression {
     node_info: NodeInfo,
     //lhs: Box<dyn Expression>,
@@ -411,6 +370,16 @@ pub struct AssignmentExpression {
     pub lhs: Box<ExpressionWrapper>,
     pub rhs: Box<ExpressionWrapper>,
     //pub span: Span,
+}
+
+impl Debug for AssignmentExpression {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AssignmentExpression")
+            .field("operation", &"=")
+            .field("lhs", &self.lhs)
+            .field("rhs", &self.rhs)
+            .finish()
+    }
 }
 
 impl AssignmentExpression {
@@ -429,19 +398,12 @@ impl AssignmentExpression {
 }
 
 impl AstNode for AssignmentExpression {
-    fn format(&self) -> RcDoc {
-        RcDoc::text("AssignmentExpression with ")
-            .append(self.lhs.as_node().format().nest(1))
-            .append(" = ")
-            .append(self.rhs.as_node().format().nest(1))
-    }
-
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct BinaryOperationExpression {
     node_info: NodeInfo,
 
@@ -451,6 +413,16 @@ pub struct BinaryOperationExpression {
     //lhs: Box<dyn Expression>,
     //rhs: Box<dyn Expression>,
     //pub span: Span,
+}
+
+impl Debug for BinaryOperationExpression {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BinaryOperationExpression")
+            .field("operation", &self.operation)
+            .field("lhs", &self.lhs)
+            .field("rhs", &self.rhs)
+            .finish()
+    }
 }
 
 impl BinaryOperationExpression {
@@ -480,21 +452,12 @@ impl AstNode for BinaryOperationExpression {
         self.rhs.as_node().pretty(f, depth);
     }
 
-    fn format(&self) -> RcDoc {
-        RcDoc::text("BinaryOperationExpression with operation ")
-            .append(format!("{:?} on", self.operation))
-            .append(RcDoc::line())
-            .append(self.lhs.as_node().format().nest(1))
-            .append(RcDoc::line())
-            .append(self.rhs.as_node().format().nest(1))
-    }
-
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ComparisonOperationExpression {
     node_info: NodeInfo,
 
@@ -504,6 +467,16 @@ pub struct ComparisonOperationExpression {
     pub lhs: Box<ExpressionWrapper>,
     pub rhs: Box<ExpressionWrapper>,
     //pub span: Span,
+}
+
+impl Debug for ComparisonOperationExpression {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ComparisonOperationExpression")
+            .field("operation", &self.operation)
+            .field("lhs", &self.lhs)
+            .field("rhs", &self.rhs)
+            .finish()
+    }
 }
 
 impl ComparisonOperationExpression {
@@ -527,13 +500,6 @@ impl ComparisonOperationExpression {
 }
 
 impl AstNode for ComparisonOperationExpression {
-    fn format(&self) -> RcDoc {
-        RcDoc::text("ComparisonOperationExpression with ")
-            .append(self.lhs.as_node().format().nest(1))
-            .append(format!("{:?}", self.operation))
-            .append(self.rhs.as_node().format().nest(1))
-    }
-
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
@@ -611,7 +577,7 @@ impl UnaryOperation {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct MemberAccessExpression {
     pub node_info: NodeInfo,
 
@@ -637,6 +603,15 @@ impl MemberAccessExpression {
     }
 }
 
+impl std::fmt::Debug for MemberAccessExpression {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        f.debug_struct("MemberAccessExpression")
+            .field("on", &self.on)
+            .field("name", &self.name)
+            .finish()
+    }
+}
+
 impl AstNode for MemberAccessExpression {
     fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
         //self.scope.as_node().pretty(f, depth);
@@ -644,14 +619,6 @@ impl AstNode for MemberAccessExpression {
         self.on.as_node().pretty(f, depth);
         write!(f, ".{}", self.name.resolve());
         //self.pattern.iter().for_each(|pattern| pattern.as_node().pretty(f, depth));
-    }
-
-    fn format(&self) -> RcDoc {
-        RcDoc::text("MemberAccessExpression of field ")
-            .append(self.name.resolve())
-            .append(" on expression")
-            .append(RcDoc::line())
-            .append(self.on.as_node().format().nest(1))
     }
 
     fn node_info(&self) -> NodeInfo {
@@ -691,7 +658,7 @@ pub struct MethodCall {
     pub arguments: Vec<Box<ExpressionWrapper>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct UnaryOperationExpression {
     node_info: NodeInfo,
 
@@ -718,13 +685,16 @@ impl UnaryOperationExpression {
     }
 }
 
-impl AstNode for UnaryOperationExpression {
-    fn format(&self) -> RcDoc {
-        RcDoc::text("UnaryOperationExpression with ")
-            .append(format!("operation: {:?}", self.operation))
-            .append(self.subexpr.as_node().format().nest(1))
+impl std::fmt::Debug for UnaryOperationExpression {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        f.debug_struct("UnaryOperationExpression")
+            .field("operation", &self.operation)
+            .field("subexpr", &self.subexpr)
+            .finish()
     }
+}
 
+impl AstNode for UnaryOperationExpression {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
@@ -800,10 +770,6 @@ impl AstNode for LLVMLiteralExpression {
         self.node_info
     }
 
-    fn format(&self) -> RcDoc {
-        todo!()
-    }
-
     /*fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let _ = writeln!(f, " llvm{{");
         let s = self.text.resolve();
@@ -835,10 +801,6 @@ impl ReturnExpression {
 }
 
 impl AstNode for ReturnExpression {
-    fn format(&self) -> RcDoc {
-        RcDoc::text("ReturnExpression with value ").append(self.subexpr.as_node().format().nest(1))
-    }
-
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
@@ -856,10 +818,6 @@ impl AstNode for CastExpression {
 
     fn node_info(&self) -> NodeInfo {
         self.node_info
-    }
-
-    fn format(&self) -> RcDoc {
-        todo!()
     }
 }
 
@@ -885,7 +843,7 @@ pub struct Closure {
     //pub span: Span,
 }*/
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct IdentifierExpression {
     pub node_info: NodeInfo,
 
@@ -905,17 +863,19 @@ impl IdentifierExpression {
     }
 }
 
-impl AstNode for IdentifierExpression {
-    fn format(&self) -> RcDoc {
-        RcDoc::text("IdentifierExpression with name").append(self.ident.resolve())
+impl std::fmt::Debug for IdentifierExpression {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(f, "IdentifierExpression('{}')", self.ident.resolve())
     }
+}
 
+impl AstNode for IdentifierExpression {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 #[allow(non_camel_case_types)]
 pub enum Literal {
     StringLiteral(IStr),
@@ -938,13 +898,49 @@ pub enum Literal {
     UnknownIntegerLiteral(u128),
 }
 
-#[derive(Debug, Clone)]
+/*impl Debug for Literal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::StringLiteral(arg0) => f.debug_tuple("StringLiteral").field(arg0).finish(),
+            Self::f32Literal(arg0) => f.debug_tuple("f32Literal").field(arg0).finish(),
+            Self::f64Literal(arg0) => f.debug_tuple("f64Literal").field(arg0).finish(),
+            Self::u128Literal(arg0) => f.debug_tuple("u128Literal").field(arg0).finish(),
+            Self::u64Literal(arg0) => f.debug_tuple("u64Literal").field(arg0).finish(),
+            Self::u32Literal(arg0) => f.debug_tuple("u32Literal").field(arg0).finish(),
+            Self::u16Literal(arg0) => f.debug_tuple("u16Literal").field(arg0).finish(),
+            Self::u8Literal(arg0) => f.debug_tuple("u8Literal").field(arg0).finish(),
+            Self::i128Literal(arg0) => f.debug_tuple("i128Literal").field(arg0).finish(),
+            Self::i64Literal(arg0) => f.debug_tuple("i64Literal").field(arg0).finish(),
+            Self::i32Literal(arg0) => f.debug_tuple("i32Literal").field(arg0).finish(),
+            Self::i16Literal(arg0) => f.debug_tuple("i16Literal").field(arg0).finish(),
+            Self::i8Literal(arg0) => f.debug_tuple("i8Literal").field(arg0).finish(),
+            Self::UnknownIntegerLiteral(arg0) => f.debug_tuple("UnknownIntegerLiteral").field(arg0).finish(),
+        }
+    }
+    /*fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        
+        match self {
+            //Self::StringLiteral(arg0) => write!(f, "StringLiteral({})", arg0.resolve()),
+            other => write!(f, "{}", self
+        }
+    }*/
+}*/
+
+#[derive(Clone)]
 pub struct LiteralExpression {
     node_info: NodeInfo,
 
     //pub contents: &'a str,
     pub contents: Literal,
     //pub span: Span,
+}
+
+impl Debug for LiteralExpression {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LiteralExpression")
+            .field("contents", &self.contents)
+            .finish()
+    }
 }
 
 impl LiteralExpression {
@@ -966,14 +962,7 @@ impl LiteralExpression {
 }
 
 impl AstNode for LiteralExpression {
-    fn format(&self) -> RcDoc {
-        RcDoc::text("LiteralExpression with value ").append(format!("{:?}", self.contents))
-    }
-
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
 }
-
-/*pub trait Type: std::fmt::Debug + std::clone::Clone {
-}*/

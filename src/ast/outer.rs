@@ -3,6 +3,7 @@ use super::expressions::ExpressionWrapper;
 use super::TypeDefinition;
 use super::TypeReference;
 use crate::helper::VecOps;
+use std::fmt::Debug;
 use std::io::Write;
 
 use crate::lex::ParseResultError;
@@ -116,22 +117,6 @@ impl AstNode for Namespace {
         self.node_info
     }
 
-    fn format(&self) -> RcDoc {
-        let s = format!(
-            "Namespace with name {} and public {} and info {} has children:",
-            //self.name.unwrap_or("<unnamed>"),
-            //interner().try_resolve(self.name
-            //self.name.map(|e| e.try_resolve()).unwrap_or("<unnamed>"),
-            self.name.unwrap_or(intern("<unnamed>")).resolve(),
-            self.public,
-            self.node_info,
-        );
-
-        RcDoc::text(s).append(self.contents.format().nest(1))
-
-        //format!("{s}\n{}", indent_all_by(2, self.contents.format()))
-    }
-
     fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
         let _ = writeln!(
             f,
@@ -146,12 +131,19 @@ impl AstNode for Namespace {
     }
 }
 
-#[derive(Debug)]
 pub struct OuterScope {
     pub node_info: NodeInfo,
 
     //pub declarations: Vec<Arc<RwLock<Result<SymbolDeclaration, ParseResultError>>>>,
     pub declarations: Vec<SymbolDeclaration>,
+}
+
+impl Debug for OuterScope {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OuterScope")
+            .field("declarations", &self.declarations)
+            .finish()
+    }
 }
 
 impl OuterScope {
@@ -220,33 +212,9 @@ impl OuterScope {
     }
 }
 
-impl std::fmt::Display for OuterScope {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.format().pretty(100))
-    }
-}
-
 impl AstNode for OuterScope {
     fn node_info(&self) -> NodeInfo {
         self.node_info
-    }
-
-    fn format(&self) -> RcDoc {
-        let s = format!("ParseUnit {} with children:", self.node_info());
-
-        RcDoc::text(s).append(
-            RcDoc::intersperse(
-                self.declarations.iter().map(|e| e.as_node().format()),
-                RcDoc::line(),
-            )
-            .nest(1),
-        )
-
-        /*for line in self.declarations.iter() {
-            add_line(&mut s, indented(line.format()));
-        }
-
-        s*/
     }
 
     fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
@@ -317,7 +285,7 @@ impl AstNode for LetComponent {
         }
     }
 
-    fn format(&self) -> RcDoc {
+    /*fn format(&self) -> RcDoc {
         match self {
             Self::ScopedDestructure(_lcsd) => {
                 todo!("LetComponentScopedDestructure not implemented for fmt")
@@ -369,7 +337,7 @@ impl AstNode for LetComponent {
                 format!("({inner}): {tspec}")*/
             }
         }
-    }
+    }*/
 }
 
 #[derive(Debug, Clone)]
@@ -417,7 +385,7 @@ impl AstNode for FunctionDefinition {
         self.node_info
     }
 
-    fn format(&self) -> RcDoc {
+    /*fn format(&self) -> RcDoc {
         let r = RcDoc::text("FunctionDeclaration with name ")
             .append(self.name.resolve())
             .append(RcDoc::line());
@@ -445,7 +413,7 @@ impl AstNode for FunctionDefinition {
             .append(self.body.as_node().format().nest(1));
 
         r
-    }
+    }*/
 }
 
 //pub struct
@@ -530,11 +498,6 @@ impl AstNode for UseDeclaration {
         self.node_info
     }
 
-    fn format(&self) -> RcDoc {
-        let inner = RcDoc::intersperse(self.scope.iter().map(|e| e.resolve()), RcDoc::text("::")).nest(1);
-        RcDoc::text("UseDeclaration of ").append(inner).append("as <unaliased>")
-    }
-
     fn pretty(&self, f: &mut dyn std::fmt::Write, _depth: usize) {
         //let uses: Vec<&'static str> = self.scope.iter().map(|ss| ss.resolve()).collect();
 
@@ -588,10 +551,6 @@ impl AstNode for ScopedNameReference {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
-
-    fn format(&self) -> RcDoc {
-        RcDoc::intersperse(self.scope.iter().map(|e| e.resolve()), "::")
-    }
 }
 
 impl IntoAstNode for ScopedNameReference {
@@ -615,7 +574,6 @@ impl ScopedName {
     }
 }
 
-#[derive(Debug)]
 pub struct StaticVariableDeclaration {
     pub node_info: NodeInfo,
 
@@ -623,13 +581,18 @@ pub struct StaticVariableDeclaration {
     pub expression: Box<ExpressionWrapper>,
 }
 
+impl Debug for StaticVariableDeclaration {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StaticVariableDeclaration")
+            .field("public", &self.public)
+            .field("expression", &self.expression)
+            .finish()
+    }
+}
+
 impl AstNode for StaticVariableDeclaration {
     fn node_info(&self) -> NodeInfo {
         self.node_info
-    }
-
-    fn format(&self) -> RcDoc {
-        self.expression.as_node().format()
     }
 
     fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
@@ -674,17 +637,6 @@ impl IntoAstNode for SymbolDeclaration {
 }
 
 impl SymbolDeclaration {
-    pub fn format(&self) -> RcDoc<()> {
-        match self {
-            //Self::FunctionDeclaration(fd) => fd.display(f, depth),
-            Self::FunctionDeclaration(fd) => fd.format(),
-            Self::NamespaceDeclaration(ns) => ns.format(),
-            Self::TypeDefinition(sd) => sd.format(),
-            Self::ExpressionDeclaration(sd) => sd.format(),
-            Self::UseDeclaration(ud) => ud.format(),
-        }
-    }
-
     /*pub fn mark_public(&mut self) {
         match self {
             Self::FunctionDeclaration(v) => v.public = true,

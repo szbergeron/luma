@@ -49,10 +49,8 @@ pub struct ScopeContext {
     //imported_symbols: CHashMap<StringSymbol, Weak<RwLock<SymbolDeclaration>>>,
 
     //defined_symbols: CHashMap<StringSymbol, Arc<RwLock<SymbolDeclaration>>>,
-
     error_sink: crossbeam::Sender<Error>,
 }
-
 
 impl AstNode for ScopeContext {
     fn node_info(&self) -> NodeInfo {
@@ -110,16 +108,6 @@ impl AstNode for ScopeContext {
     fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
         todo!("[ast_prettyprint]")
     }
-
-    fn format(&self) -> pretty::RcDoc {
-        todo!()
-    }
-}
-
-impl std::fmt::Display for ScopeContext {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.format().pretty(100))
-    }
 }
 
 impl ScopeContext {
@@ -134,8 +122,12 @@ impl ScopeContext {
         let scope = ScopeContext {
             scope,
             public: true,
-            super_context: parent.map(|sc| OnceCell::from(sc)).unwrap_or(OnceCell::default()),
-            global_context: global.map(|sc| OnceCell::from(sc)).unwrap_or(OnceCell::default()),
+            super_context: parent
+                .map(|sc| OnceCell::from(sc))
+                .unwrap_or(OnceCell::default()),
+            global_context: global
+                .map(|sc| OnceCell::from(sc))
+                .unwrap_or(OnceCell::default()),
             //exported_symbols: CHashMap::new(),
             //imported_symbols: CHashMap::new(),
             //defined_symbols: CHashMap::new(),
@@ -160,7 +152,10 @@ impl ScopeContext {
             }*/
 
             //scope.from = Some(ns.clone());
-            scope.from.set(ns.clone()).expect("Couldn't set inner oncecell for SC");
+            scope
+                .from
+                .set(ns.clone())
+                .expect("Couldn't set inner oncecell for SC");
         }
 
         //std::mem::drop(scope_guard);
@@ -168,22 +163,14 @@ impl ScopeContext {
         scope
     }
 
-    pub fn on_root(
-        &self,
-        self_rc: Arc<ScopeContext>,
-        outer: &OuterScope,
-    ) {
+    pub fn on_root(&self, self_rc: Arc<ScopeContext>, outer: &OuterScope) {
         for dec in outer.declarations.iter() {
             //let mut self_guard = self_rc.write().unwrap();
             //self.add_definition(self_rc.clone(), dec.clone());
         }
     }
 
-    pub fn add_context(
-        &mut self,
-        self_rc: Arc<ScopeContext>,
-        ns: Arc<SymbolDeclaration>,
-    ) {
+    pub fn add_context(&mut self, self_rc: Arc<ScopeContext>, ns: Arc<SymbolDeclaration>) {
         //let mut self_guard = self_rc.write().unwrap();
 
         //let ns = ns.read().unwrap();

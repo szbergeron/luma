@@ -35,6 +35,10 @@ staged-builder = "0.1.0"
 #parking_lot = "0.11.1"
 indent = "0.1.1"
 pretty = "0.11.2"
+#enum-display-derive = "0.1.1"
+#derive_more = "*"
+strum = "0.24.0"
+strum_macros = "*"
 
 [profile.dev]
 incremental = true

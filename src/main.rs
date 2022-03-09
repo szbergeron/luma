@@ -11,6 +11,9 @@ extern crate static_assertions;
 #[macro_use]
 extern crate lazy_static;
 
+//#[macro_use]
+//extern crate enum_display_derive;
+
 //lalrpop_mod!(pub rsh);
 
 //#[macro_use]

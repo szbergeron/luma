@@ -1,4 +1,4 @@
-__d_expression 5;
+/*__d_expression 5;
 __d_expression 5 + 6;
 
 __d_expression 4};
@@ -19,7 +19,7 @@ __d_expression foo.bar;
 
 __d_expression foo.bar();
 
-__d_expression (f, g).h();
+__d_expression (f, g).h();*/
 
 __d_expression (f, (g, 5 + 3, foo())).bar(3)(2).baz;
 

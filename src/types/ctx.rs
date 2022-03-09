@@ -329,8 +329,8 @@ pub struct GlobalCtxNode {
 }
 
 impl Debug for GlobalCtxNode {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        write!(f, "{}", self.format().pretty(100))
+    fn fmt(&self, _: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        todo!()
     }
 }
 
@@ -339,7 +339,7 @@ impl AstNode for GlobalCtxNode {
         todo!()
     }
 
-    fn format(&self) -> pretty::RcDoc {
+    /*fn format(&self) -> pretty::RcDoc {
         let mut children = RcDoc::text("Children:");
         for child in self.children.iter() {
             let text = format!("{}", child.format().pretty(100));
@@ -386,15 +386,11 @@ impl AstNode for GlobalCtxNode {
                 .nest(1),
             )
 
-    }
+    }*/
 }
 
 impl AstNode for FuncCtx {
     fn node_info(&self) -> NodeInfo {
-        todo!()
-    }
-
-    fn format(&self) -> RcDoc {
         todo!()
     }
 

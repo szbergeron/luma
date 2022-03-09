@@ -236,7 +236,7 @@ impl<'lexer> Parser<'lexer> {
                     //println!("E: {:?}", e);
                     println!("About to update solution for e, idx is {}", t.lh.index());
                     let e = e.update_solution(&t)?;
-                    println!("Value of e: {e}");
+                    println!("Value of e: {e:#?}");
                     ast::SymbolDeclaration::ExpressionDeclaration(StaticVariableDeclaration {
                         node_info: e.as_node().node_info(),
                         expression: e,
