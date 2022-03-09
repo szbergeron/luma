@@ -1,10 +1,11 @@
 use super::impls::*;
 
 use crate::avec::{AtomicVec, AtomicVecIndex};
-use crate::helper::interner::{intern, SpurHelper, IStr};
+use crate::helper::interner::{intern, IStr, SpurHelper};
 use crate::types::Quark;
 use dashmap::{DashMap, DashSet};
 
+use pretty::RcDoc;
 #[allow(unused_imports)]
 use rayon::prelude::*;
 use smallvec::SmallVec;
@@ -21,20 +22,21 @@ use std::sync::atomic::{fence, Ordering};
 
 use std::sync::Arc;
 
-use crate::ast::{AstNode, FunctionDefinition, NodeInfo, indent, TypeDefinition};
+use crate::ast::{indent, AstNode, FunctionDefinition, NodeInfo, TypeDefinition};
 //use once_cell::sync::OnceCell;
 use static_assertions::assert_impl_all;
 use std::pin::Pin;
 
 pub type TypeHandle = Arc<dyn StaticType>;
 
-struct RefPtr<T> { inner: NonNull<T> }
+struct RefPtr<T> {
+    inner: NonNull<T>,
+}
 
 unsafe impl<T> Send for RefPtr<T> {}
 unsafe impl<T> Sync for RefPtr<T> {}
 
 impl<T> RefPtr<T> {
-
     /// only sound to call if this refptr has been created
     /// from `from` with a valid pointer, never sound if created
     /// through `dangling`
@@ -43,13 +45,17 @@ impl<T> RefPtr<T> {
     }
 
     pub unsafe fn dangling() -> RefPtr<T> {
-        Self { inner: NonNull::dangling() }
+        Self {
+            inner: NonNull::dangling(),
+        }
     }
 
     pub unsafe fn from(from: *const T) -> RefPtr<T> {
         // the cast here is only sound because this type exposes an immutable ref
         // to T only
-        Self { inner: NonNull::new(from as *mut T).expect("was given a null `from`") }
+        Self {
+            inner: NonNull::new(from as *mut T).expect("was given a null `from`"),
+        }
     }
 }
 
@@ -105,7 +111,7 @@ impl std::fmt::Display for CtxID {
 /// This repr exists before any specialization or resolution,
 /// and does not actually contain any type resolutions
 pub struct FunctionDeclaration {
-    //   
+    //
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -186,6 +192,18 @@ impl std::fmt::Display for Export {
                 .map(|ss| "as ".to_owned() + ss.resolve())
                 .unwrap_or(String::new())
         )
+    }
+}
+
+impl Import {
+    pub fn format(&self) -> RcDoc {
+        RcDoc::text(format!("{self}"))
+    }
+}
+
+impl Export {
+    pub fn format(&self) -> RcDoc {
+        RcDoc::text(format!("{self}"))
     }
 }
 
@@ -312,16 +330,7 @@ pub struct GlobalCtxNode {
 
 impl Debug for GlobalCtxNode {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        self.display(f, 0);
-        /*writeln!(f, "in GlobalCtxNode named {} [[", self.canonical_local_name.resolve());
-
-        for child in self.children.iter() {
-            writeln!(f, "{:?}, ", child.value());
-            //child.value().fmt(f);
-        }
-
-        writeln!(f, "]]")*/
-        Ok(())
+        write!(f, "{}", self.format().pretty(100))
     }
 }
 
@@ -330,33 +339,53 @@ impl AstNode for GlobalCtxNode {
         todo!()
     }
 
-    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
-        let _ = writeln!(
-            f,
-            "{}GlobalCtxNode with name {}",
-            indent(depth),
-            self.canonical_local_name.resolve(),
-            );
-
-        let _ = writeln!(f, "{}Imports: ", indent(depth + 1));
-        for dr in self.imports.iter() {
-            let _ = writeln!(f, "{}{}", indent(depth + 2), *dr);
-        }
-
-        let _ = writeln!(f, "{}Exports: ", indent(depth + 1));
-        for dr in self.exports.iter() {
-            let _ = writeln!(f, "{}{}", indent(depth + 2), *dr);
-        }
-
-        let _ = writeln!(f, "{}Children: ", indent(depth + 1));
+    fn format(&self) -> pretty::RcDoc {
+        let mut children = RcDoc::text("Children:");
         for child in self.children.iter() {
-            child.value().display(f, depth + 2);
-            //child.value().fmt(f);
+            let text = format!("{}", child.format().pretty(100));
+            for line in text.lines() {
+                let line = line.to_owned();
+                children = children.append(RcDoc::text(line).nest(1))
+            }
+            //children = children.append(RcDoc::intersperse(text.lines().to_owned().map(|l| RcDoc::text(l)), RcDoc::line()).nest(1));
         }
 
-        let _ = writeln!(f, "{}FuncCtx:", indent(depth + 1));
-        //println!("fctx is {}", self.func_ctx.is_some());
-        self.func_ctx.iter().for_each(|fctx| fctx.display(f, depth + 2));
+        let mut imports = RcDoc::text("Imports:");
+        for import in self.imports.iter() {
+            let text = format!("{}", import.format().pretty(100));
+            for line in text.lines() {
+                let line = line.to_owned();
+                imports = imports.append(RcDoc::text(line).nest(1))
+            }
+            //children = children.append(RcDoc::intersperse(text.lines().to_owned().map(|l| RcDoc::text(l)), RcDoc::line()).nest(1));
+        }
+
+        let mut exports = RcDoc::text("Exports:");
+        for export in self.exports.iter() {
+            let text = format!("{}", export.format().pretty(100));
+            for line in text.lines() {
+                let line = line.to_owned();
+                exports = exports.append(RcDoc::text(line).nest(1))
+            }
+            //children = children.append(RcDoc::intersperse(text.lines().to_owned().map(|l| RcDoc::text(l)), RcDoc::line()).nest(1));
+        }
+
+        RcDoc::text("GlobalCtxNode with name")
+            .append(self.canonical_local_name.resolve())
+            .append(RcDoc::line())
+            .append(imports)
+            .append(exports)
+            .append(children)
+            .append("FuncCtx:: ")
+            .append(RcDoc::line())
+            .append(
+                RcDoc::intersperse(
+                    self.func_ctx.iter().map(|ip| ip.format()),
+                    RcDoc::line(),
+                )
+                .nest(1),
+            )
+
     }
 }
 
@@ -365,20 +394,26 @@ impl AstNode for FuncCtx {
         todo!()
     }
 
-    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+    fn format(&self) -> RcDoc {
+        todo!()
+    }
+
+    /*fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let _ = writeln!(f, "{}FuncCtx ", indent(depth));
 
         for fidv in self.by_name.iter() {
             //println!("got an fidv");
             for fid in fidv.iter() {
                 //dbg!(fid);
-                let _ = write!(f, "{}", indent(depth+1));
-                GlobalCtx::get().func_ctx().lookup(*fid).pretty(f, depth + 1);
+                let _ = write!(f, "{}", indent(depth + 1));
+                GlobalCtx::get()
+                    .func_ctx()
+                    .lookup(*fid)
+                    .pretty(f, depth + 1);
                 let _ = writeln!(f, "");
-
             }
         }
-    }
+    }*/
 }
 
 assert_impl_all!(GlobalCtxNode: Send);
@@ -386,7 +421,7 @@ assert_impl_all!(GlobalCtxNode: Send);
 /// NOTE: lots of unsafe here, major contracts around the parent/global/selfref members,
 /// tread carefully when modifying this code!
 impl GlobalCtxNode {
-    pub fn display_internal(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+    /*pub fn display_internal(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let _ = writeln!(
             f,
             "{}Global context <canon {}> has id {}",
@@ -409,7 +444,7 @@ impl GlobalCtxNode {
         for child in self.children.iter() {
             child.value().display(f, depth + 2);
         }
-    }
+    }*/
 
     pub fn import(&self, import: Import) {
         self.imports.insert(import);
@@ -521,7 +556,10 @@ impl GlobalCtxNode {
 
     pub fn generate_tctxid(within: CtxID) -> GlobalTypeID {
         let id = TCTX_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        let id = GlobalTypeID { cid: within, tid: TypeID(id) };
+        let id = GlobalTypeID {
+            cid: within,
+            tid: TypeID(id),
+        };
         id
     }
 
@@ -534,14 +572,14 @@ impl GlobalCtxNode {
                 //self.
                 self.children
                     .get(first)
-                    .map(|nsctx|
-                         unsafe {
-                             // NOTE: this is sound because of the drop ordering guarantees
-                             // for this structure.
-                             // The ref here may only go invalid during the drop of
-                             // self, and thus must be valid until drop for self is first
-                             // called
-                             std::mem::transmute(nsctx.nsctx_for(rest)) })
+                    .map(|nsctx| unsafe {
+                        // NOTE: this is sound because of the drop ordering guarantees
+                        // for this structure.
+                        // The ref here may only go invalid during the drop of
+                        // self, and thus must be valid until drop for self is first
+                        // called
+                        std::mem::transmute(nsctx.nsctx_for(rest))
+                    })
                     .flatten()
             }
         }
@@ -552,10 +590,9 @@ pub struct GlobalCtx {
     entry: Pin<Box<GlobalCtxNode>>,
 
     contexts: DashMap<CtxID, Pin<Box<GlobalCtxNode>>>,
-    
+
     funcs: GlobalFuncCtx,
     types: GlobalTypeCtx,
-
     //functions: DashMap<GlobalFunctionID, Arc<FunctionImplementation>>,
     //types: DashMap<GlobalTypeID, TypeHandle>,
 }
@@ -574,12 +611,7 @@ impl GlobalCtx {
     pub fn new() -> GlobalCtx {
         unsafe {
             GlobalCtx {
-                entry: GlobalCtxNode::new(
-                    intern("global"),
-                    None,
-                    None,
-                    None,
-                ),
+                entry: GlobalCtxNode::new(intern("global"), None, None, None),
                 contexts: DashMap::new(),
                 funcs: GlobalFuncCtx::new(),
                 types: GlobalTypeCtx::new(),
@@ -654,13 +686,14 @@ impl FuncCtx {
         println!("got a func");
 
         let name = func.name;
-        
+
         let id = GlobalCtx::get().func_ctx().define(self.ctx_id, func);
         //println!("id was {}", id);
 
         fence(Ordering::Release);
 
-        self.by_name.entry(name)
+        self.by_name
+            .entry(name)
             .or_insert(Vec::new()) // note: vec::new is (basically) free and doesn't allocate :)
             .push(id);
     }
@@ -727,14 +760,17 @@ pub struct GlobalFuncCtx {
 
 impl GlobalFuncCtx {
     pub fn new() -> GlobalFuncCtx {
-        GlobalFuncCtx { functions: AtomicVec::new() }
+        GlobalFuncCtx {
+            functions: AtomicVec::new(),
+        }
     }
     pub fn define(&self, within: CtxID, func: FunctionDefinition) -> GlobalFunctionID {
-        let (avi, _) = unsafe {
-            self.functions.push_with(func, |_f, _avi| {})
-        };
+        let (avi, _) = unsafe { self.functions.push_with(func, |_f, _avi| {}) };
 
-        let id = GlobalFunctionID { cid: within, fid: FunctionID(avi) };
+        let id = GlobalFunctionID {
+            cid: within,
+            fid: FunctionID(avi),
+        };
 
         id
     }
@@ -762,7 +798,9 @@ pub struct GlobalTypeCtx {
 
 impl GlobalTypeCtx {
     pub fn new() -> GlobalTypeCtx {
-        GlobalTypeCtx { types: AtomicVec::new() }
+        GlobalTypeCtx {
+            types: AtomicVec::new(),
+        }
     }
     /*pub fn define(&self, within: CtxID, func: FunctionDefinition) -> GlobalFunctionID {
         static FCTX_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
@@ -811,8 +849,7 @@ impl TypeCtx {
         }
     }
 
-    pub fn add(&self, t: TypeDefinition) {
-    }
+    pub fn add(&self, t: TypeDefinition) {}
 
     pub fn define<T: 'static>(&self, newtype: T) -> TypeID
     where
@@ -827,8 +864,8 @@ impl TypeCtx {
     }
 
     pub fn define_struct(&self, sd: TypeDefinition) -> () {
-       // do nothing, just drop for now 
-       // TODO
+        // do nothing, just drop for now
+        // TODO
     }
 
     pub fn implement(&self /* handle */) {}
@@ -869,20 +906,20 @@ unsafe impl Sync for TypeCtx {}
 /// (any generic substitutions are either an identity substitution, as in `impl A for U<V>`
 /// when we have a T<W> declared, or are less specific as in `impl A for U` when we have a T<W>)
 /// are included in the "decl context". Any impl blocks that specifically
-/// reference the type and are also declared in the same module as the type are included in the 
+/// reference the type and are also declared in the same module as the type are included in the
 /// "identity context", and are carried around with the type as it moves around the same as the
 /// decl context.
 ///
 /// When you use a type, you also have a separate "usage context", where all imported impls are
 /// then also queried for the type, and if any match the type they are then available to
 /// use within that scope. Note that this way of looking at impl contexts also works for dyn
-/// objects in the sense that if that 
+/// objects in the sense that if that
 ///
 /// Conceptually, an impl block "guards" a type from a function set
 /// An impl block also "guarantees" the functions inside certain properties
 /// of the type they will be put against.
 ///
-/// If 
+/// If
 struct Doc1 {}
 
 //pub type Ctx = Arc<CtxInner>;

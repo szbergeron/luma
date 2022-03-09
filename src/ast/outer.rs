@@ -1,10 +1,9 @@
-use super::TypeDefinition;
-use super::TypeReference;
 use super::base::*;
 use super::expressions::ExpressionWrapper;
+use super::TypeDefinition;
+use super::TypeReference;
 use crate::helper::VecOps;
 use std::io::Write;
-
 
 use crate::lex::ParseResultError;
 use crate::types::GlobalCtxNode;
@@ -17,11 +16,12 @@ use std::pin::Pin;
 
 //use super::expressions::TypeReference;
 
-
 use crate::helper::interner::*;
 use async_recursion::async_recursion;
 use futures::future::join_all;
 use indent::indent_by;
+use pretty::Doc;
+use pretty::RcDoc;
 
 #[derive(Debug)]
 pub struct Namespace {
@@ -68,11 +68,13 @@ impl Namespace {
         //let mut ctxs = Vec::new();
 
         if let os = self.contents {
-            return os.into_ctx(
-                parent_scope.to_vec().appended_opt(self.name),
-                parent,
-                global,
-            ).await;
+            return os
+                .into_ctx(
+                    parent_scope.to_vec().appended_opt(self.name),
+                    parent,
+                    global,
+                )
+                .await;
         } else {
             todo!("Need to handle unhappy path for parse failure");
         }
@@ -114,7 +116,7 @@ impl AstNode for Namespace {
         self.node_info
     }
 
-    fn format(&self) -> String {
+    fn format(&self) -> RcDoc {
         let s = format!(
             "Namespace with name {} and public {} and info {} has children:",
             //self.name.unwrap_or("<unnamed>"),
@@ -125,7 +127,9 @@ impl AstNode for Namespace {
             self.node_info,
         );
 
-        format!("{s}\n{}", indent_all_by(2, self.contents.format()))
+        RcDoc::text(s).append(self.contents.format().nest(1))
+
+        //format!("{s}\n{}", indent_all_by(2, self.contents.format()))
     }
 
     fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
@@ -218,12 +222,7 @@ impl OuterScope {
 
 impl std::fmt::Display for OuterScope {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let r = write!(f, "\n");
-
-        self.display(f, 1);
-
-
-        r
+        write!(f, "{}", self.format().pretty(100))
     }
 }
 
@@ -232,14 +231,22 @@ impl AstNode for OuterScope {
         self.node_info
     }
 
-    fn format(&self) -> String {
+    fn format(&self) -> RcDoc {
         let s = format!("ParseUnit {} with children:", self.node_info());
 
-        for line in self.declarations.iter() {
+        RcDoc::text(s).append(
+            RcDoc::intersperse(
+                self.declarations.iter().map(|e| e.as_node().format()),
+                RcDoc::line(),
+            )
+            .nest(1),
+        )
+
+        /*for line in self.declarations.iter() {
             add_line(&mut s, indented(line.format()));
         }
 
-        s
+        s*/
     }
 
     fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
@@ -310,40 +317,56 @@ impl AstNode for LetComponent {
         }
     }
 
-    fn format(&self) -> String {
+    fn format(&self) -> RcDoc {
         match self {
             Self::ScopedDestructure(_lcsd) => {
                 todo!("LetComponentScopedDestructure not implemented for fmt")
             }
-            Self::Discard(_) => write!(f, "_").unwrap(),
-            Self::Identifier(lci) => {
-                write!(
-                    f,
-                    "{}: {}",
-                    lci.identifier_string.resolve(),
-                    lci.type_specifier.as_ref().map(|tr| tr.as_node()).as_node()
+            Self::Discard(_) => RcDoc::text("_"),
+            Self::Identifier(lci) => RcDoc::text(lci.identifier_string.resolve())
+                .append(": ")
+                .append(
+                    lci.type_specifier
+                        .as_ref()
+                        .map(|tr| tr.as_node().format())
+                        .unwrap_or(RcDoc::text("{unknown}")),
                 )
-                .unwrap();
-            }
+                .group(),
             Self::Tuple(lct) => {
-                write!(f, "(").unwrap();
+                let base = RcDoc::text("(")
+                    .append(
+                        RcDoc::intersperse(lct.elements.iter().map(|e| e.format()), comma_break())
+                            .nest(1),
+                    )
+                    .append(")");
+
+                let tspec = lct
+                    .type_specifier
+                    .as_ref()
+                    .map(|tr| tr.as_node().format())
+                    .unwrap_or(RcDoc::text("{unknown}"));
+
+                base.append(": ").append(tspec)
+                /*let mut inner = String::new();
                 for idx in 0..lct.elements.len() {
-                    lct.elements[idx].display(f, depth);
+                    inner.push_str(lct.elements[idx].format().as_str());
+                    //lct.elements[idx].display(f, depth);
                     if idx < lct.elements.len() - 1 {
-                        write!(f, ", ").unwrap();
+                        inner.push_str(", ");
+                        //write!(f, ", ").unwrap();
                     }
                 }
                 /*for cmp in lct.elements.iter() {
                     cmp.display(f, depth);
                     write!(f, ", ").unwrap();
-                }*/
-                write!(f, ")").unwrap();
-                write!(
-                    f,
-                    ": {}",
-                    lct.type_specifier.as_ref().map(|tr| tr.as_node()).as_node()
-                )
-                .unwrap();
+                }*/*/
+
+                /*let tspec = lct
+                    .type_specifier
+                    .as_ref()
+                    .map(|tr| tr.as_node().format())
+                    .unwrap_or("{unknown}".to_owned());
+                format!("({inner}): {tspec}")*/
             }
         }
     }
@@ -373,11 +396,7 @@ pub struct FunctionDefinition {
 
 impl AstNode for FunctionDefinition {
     fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
-        let _ = write!(
-            f,
-            "fn {} (",
-            self.name.resolve(),
-            );
+        let _ = write!(f, "fn {} (", self.name.resolve(),);
         for p in self.params.iter() {
             let _ = write!(f, "{}:", p.0.resolve());
             p.1.pretty(f, depth + 1);
@@ -386,10 +405,10 @@ impl AstNode for FunctionDefinition {
         let _ = write!(f, ") -> ");
         self.return_type.pretty(f, depth + 1);
         let _ = write!(f, " ");
-        //let _ = 
+        //let _ =
         //let _ = writeln!(f, " {{");
         //let _ = write!(f, "{}", indent(depth + 1));
-        
+
         self.body.as_node().pretty(f, depth);
         //let _ = writeln!(f, "");
         //let _ = writeln!(f, "\n{}}}", indent(depth));
@@ -398,46 +417,38 @@ impl AstNode for FunctionDefinition {
         self.node_info
     }
 
-    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
-        let _ = writeln!(
-            f,
-            "{}FunctionDeclaration that parsed {} with name {}",
-            indent(depth),
-            self.node_info(),
-            self.name.resolve(),
-            //self.return_type.display(f, 0), // TODO
-        );
+    fn format(&self) -> RcDoc {
+        let r = RcDoc::text("FunctionDeclaration with name ")
+            .append(self.name.resolve())
+            .append(RcDoc::line());
 
-        let _ = writeln!(f, "{}Parameters:", indent(depth + 1),);
+        let r = r
+            .append("Parameters: ")
+            .append(
+                RcDoc::intersperse(
+                    self.params
+                        .iter()
+                        .map(|(name, tr)| RcDoc::text(name.resolve()).append(": ").append(tr.format())),
+                    comma_break(),
+                )
+                .nest(1),
+            )
+            .append(RcDoc::line());
 
-        for (name, typeref) in self.params.iter() {
-            let _ = writeln!(
-                f,
-                "{}Parameter {}: {:?}",
-                indent(depth + 2),
-                name,
-                typeref,
-            );
+        let r = r
+            .append("Returns: ")
+            .append(self.return_type.format().nest(1))
+            .append(RcDoc::line());
 
-            //vd.0.as_node().display(f, depth + 3);
-        }
+        let r = r
+            .append("Body:")
+            .append(self.body.as_node().format().nest(1));
 
-        if self.params.is_empty() {
-            let _ = writeln!(f, "{}(None)", indent(depth + 3));
-        }
-
-        let _ = write!(f, "{}Return type:", indent(depth + 1));
-
-        self.return_type.display(f, depth + 3);
-        let _ = writeln!(f);
-
-        let _ = writeln!(f, "{}And body:", indent(depth + 1),);
-
-        self.body.as_node().display(f, depth + 2);
+        r
     }
 }
 
-//pub struct 
+//pub struct
 
 /*#[derive(Debug)]
 pub struct TypeDefinition {
@@ -519,15 +530,9 @@ impl AstNode for UseDeclaration {
         self.node_info
     }
 
-    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
-        let uses: Vec<&'static str> = self.scope.iter().map(|ss| ss.resolve()).collect();
-        let _ = writeln!(
-            f,
-            "{}UseDeclaration of {:?} as {}",
-            indent(depth),
-            uses,
-            "<unaliased>",
-        );
+    fn format(&self) -> RcDoc {
+        let inner = RcDoc::intersperse(self.scope.iter().map(|e| e.resolve()), RcDoc::text("::")).nest(1);
+        RcDoc::text("UseDeclaration of ").append(inner).append("as <unaliased>")
     }
 
     fn pretty(&self, f: &mut dyn std::fmt::Write, _depth: usize) {
@@ -572,20 +577,20 @@ impl ScopedNameReference {
 
 impl AstNode for ScopedNameReference {
     fn pretty(&self, f: &mut dyn std::fmt::Write, _depth: usize) {
-        let s: String = self.scope.iter().map(|ss| ss.resolve()).intersperse("::").collect();
+        let s: String = self
+            .scope
+            .iter()
+            .map(|ss| ss.resolve())
+            .intersperse("::")
+            .collect();
         let _ = write!(f, "{}", s);
     }
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
 
-    fn display(&self, f: &mut std::fmt::Formatter<'_>, _depth: usize) {
-        for idx in 0..self.scope.len() {
-            write!(f, "{}", self.scope[idx].resolve()).unwrap();
-            if idx < self.scope.len() - 1 {
-                write!(f, "::").unwrap();
-            }
-        }
+    fn format(&self) -> RcDoc {
+        RcDoc::intersperse(self.scope.iter().map(|e| e.resolve()), "::")
     }
 }
 
@@ -623,12 +628,12 @@ impl AstNode for StaticVariableDeclaration {
         self.node_info
     }
 
-    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
-        self.expression.as_node().display(f, depth);
+    fn format(&self) -> RcDoc {
+        self.expression.as_node().format()
     }
 
     fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
-        write!(f, "{} ", if self.public {"pub"} else {""});
+        write!(f, "{} ", if self.public { "pub" } else { "" });
         self.expression.as_node().pretty(f, depth);
     }
 }
@@ -669,14 +674,14 @@ impl IntoAstNode for SymbolDeclaration {
 }
 
 impl SymbolDeclaration {
-    pub fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+    pub fn format(&self) -> RcDoc<()> {
         match self {
             //Self::FunctionDeclaration(fd) => fd.display(f, depth),
-            Self::FunctionDeclaration(fd) => fd.display(f, depth),
-            Self::NamespaceDeclaration(ns) => ns.display(f, depth),
-            Self::TypeDefinition(sd) => sd.display(f, depth),
-            Self::ExpressionDeclaration(sd) => sd.display(f, depth),
-            Self::UseDeclaration(ud) => ud.display(f, depth),
+            Self::FunctionDeclaration(fd) => fd.format(),
+            Self::NamespaceDeclaration(ns) => ns.format(),
+            Self::TypeDefinition(sd) => sd.format(),
+            Self::ExpressionDeclaration(sd) => sd.format(),
+            Self::UseDeclaration(ud) => ud.format(),
         }
     }
 

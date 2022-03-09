@@ -24,7 +24,7 @@ impl<'lexer> Parser<'lexer> {
         let mut t = t.child();
 
         let start = t.take(Token::Struct).join()?.start;
-        let _name = t.take(Token::Identifier).join()?.slice;
+        let name = t.take(Token::Identifier).join()?.slice;
 
         t.take(Token::LBrace).join()?;
 
@@ -66,6 +66,7 @@ impl<'lexer> Parser<'lexer> {
         let node_info = ast::NodeInfo::from_indices(start, end);
 
         t.success(ast::TypeDefinition::Struct(ast::RecordValueDefinition {
+            name,
             fields,
             node_info,
         }))

@@ -1,3 +1,5 @@
+use pretty::RcDoc;
+
 use super::base::*;
 use super::outer::*;
 use crate::ast::TypeReference;
@@ -56,10 +58,8 @@ impl ExpressionWrapper {
 
 impl std::fmt::Display for ExpressionWrapper {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        let r = write!(f, "");
-        self.as_node().display(f, 1);
-
-        r
+        //let r = write!(f, "");
+        write!(f, "{}", self.as_node().format().pretty(100))
     }
 }
 
@@ -110,13 +110,8 @@ impl WildcardExpression {
 }
 
 impl AstNode for WildcardExpression {
-    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
-        let _ = writeln!(
-            f,
-            "{}WildcardExpression parsed at {}:",
-            indent(depth),
-            self.node_info,
-        );
+    fn format(&self) -> RcDoc {
+        RcDoc::text("WildcardExpresion")
         //[&self.subexpr].iter().for_each(|expr| expr.as_node().display(f, depth+1));
     }
 
@@ -149,15 +144,9 @@ impl StatementExpression {
 }
 
 impl AstNode for StatementExpression {
-    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
-        let _ = writeln!(
-            f,
-            "{}StatementExpression with child expression:",
-            indent(depth),
-        );
-        [&self.subexpr]
-            .iter()
-            .for_each(|expr| expr.as_node().display(f, depth + 1));
+    fn format(&self) -> RcDoc {
+        RcDoc::text("StatementExpression with subexpression:")
+            .append(self.subexpr.as_node().format().nest(1))
     }
 
     fn node_info(&self) -> NodeInfo {
@@ -196,11 +185,17 @@ impl IntoAstNode for Tuple {
 }
 
 impl AstNode for Tuple {
-    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
-        let _ = writeln!(f, "{}Pattern with child expressions:", indent(depth),);
-        self.expressions
-            .iter()
-            .for_each(|expr| expr.as_node().display(f, depth + 1));
+    fn format(&self) -> RcDoc {
+        RcDoc::text("PatternExpression ( ")
+            .append(RcDoc::line())
+            .append(
+                RcDoc::intersperse(
+                    self.expressions.iter().map(|e| e.as_node().format()),
+                    RcDoc::text(",").append(RcDoc::line()),
+                )
+                .nest(1),
+            )
+            .append(")")
     }
 
     fn node_info(&self) -> NodeInfo {
@@ -242,12 +237,14 @@ impl WhileExpression {
 }
 
 impl AstNode for WhileExpression {
-    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
-        let _ = writeln!(f, "{}IfThenElseExpression:", indent(depth),);
-        let _ = writeln!(f, "{}While:", indent(depth + 1));
-        self.if_exp.as_node().display(f, depth + 2);
-        let _ = writeln!(f, "{}Do:", indent(depth + 1));
-        self.then_exp.as_node().display(f, depth + 2);
+    fn format(&self) -> RcDoc {
+        RcDoc::text("While:")
+            .append(RcDoc::line())
+            .append(self.if_exp.as_node().format().nest(1))
+            .append(RcDoc::line())
+            .append("Do:")
+            .append(RcDoc::line())
+            .append(self.then_exp.as_node().format().nest(1))
     }
 
     fn node_info(&self) -> NodeInfo {
@@ -290,14 +287,17 @@ impl IfThenElseExpression {
 }
 
 impl AstNode for IfThenElseExpression {
-    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
-        let _ = writeln!(f, "{}IfThenElseExpression:", indent(depth),);
-        let _ = writeln!(f, "{}If:", indent(depth + 1));
-        self.if_exp.as_node().display(f, depth + 2);
-        let _ = writeln!(f, "{}Then:", indent(depth + 1));
-        self.then_exp.as_node().display(f, depth + 2);
-        let _ = writeln!(f, "{}Else:", indent(depth + 1));
-        self.else_exp.as_node().display(f, depth + 2);
+    fn format(&self) -> RcDoc {
+        RcDoc::text("If:")
+            .append(RcDoc::line())
+            .append(self.if_exp.as_node().format().nest(1))
+            .append(RcDoc::line())
+            .append("Then:")
+            .append(RcDoc::line())
+            .append(self.then_exp.as_node().format().nest(1))
+            .append("Else:")
+            .append(RcDoc::line())
+            .append(self.else_exp.as_node().format().nest(1))
     }
 
     fn node_info(&self) -> NodeInfo {
@@ -340,13 +340,16 @@ impl AstNode for BlockExpression {
         self.node_info
     }
 
-    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
-        findent(f, depth);
-        let _ = writeln!(f, "BlockExpression {} with children:", self.node_info());
+    fn format(&self) -> RcDoc {
+        let s = format!("BlockExpression {} with children:", self.node_info());
 
-        self.contents.iter().for_each(|elem| {
-            elem.as_node().display(f, depth + 1);
-        })
+        RcDoc::text(s).append(
+            RcDoc::intersperse(
+                self.contents.iter().map(|e| e.as_node().format()),
+                RcDoc::line(),
+            )
+            .nest(1),
+        )
 
         /*self.contents.iter().for_each(|elem| {
             elem.iter()
@@ -387,21 +390,11 @@ pub struct LetExpression {
 }*/
 
 impl AstNode for LetExpression {
-    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
-        let _ = writeln!(
-            f,
-            "{}LetExpression that assigns into {} from:",
-            indent(depth),
-            self.primary_component.as_node()
-        );
-
-        /*write!(f, "{}", indent(depth + 1)).unwrap();
-        self.primary_component.display(f, depth+1);
-        writeln!(f, "");*/
-
-        [&self.expression.as_node()]
-            .iter()
-            .for_each(|expr| expr.display(f, depth + 1));
+    fn format(&self) -> RcDoc {
+        RcDoc::text("LetExpression with let ")
+            .append(self.primary_component.as_node().format().nest(1))
+            .append(" = ")
+            .append(self.expression.as_node().format().nest(1))
     }
 
     fn node_info(&self) -> NodeInfo {
@@ -436,16 +429,11 @@ impl AssignmentExpression {
 }
 
 impl AstNode for AssignmentExpression {
-    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
-        let _ = writeln!(
-            f,
-            "{}AssignmentExpression with child expressions:",
-            indent(depth),
-            //if self.is_let_expression { "is" } else { "is not" },
-        );
-        [&self.lhs, &self.rhs]
-            .iter()
-            .for_each(|expr| expr.as_node().display(f, depth + 1));
+    fn format(&self) -> RcDoc {
+        RcDoc::text("AssignmentExpression with ")
+            .append(self.lhs.as_node().format().nest(1))
+            .append(" = ")
+            .append(self.rhs.as_node().format().nest(1))
     }
 
     fn node_info(&self) -> NodeInfo {
@@ -491,16 +479,14 @@ impl AstNode for BinaryOperationExpression {
         let _ = write!(f, " {} ", self.operation.fmt());
         self.rhs.as_node().pretty(f, depth);
     }
-    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
-        let _ = writeln!(
-            f,
-            "{}BinaryOperationExpression with operation {:?} and  child expressions:",
-            indent(depth),
-            self.operation,
-        );
-        [&self.lhs, &self.rhs]
-            .iter()
-            .for_each(|expr| expr.as_node().display(f, depth + 1));
+
+    fn format(&self) -> RcDoc {
+        RcDoc::text("BinaryOperationExpression with operation ")
+            .append(format!("{:?} on", self.operation))
+            .append(RcDoc::line())
+            .append(self.lhs.as_node().format().nest(1))
+            .append(RcDoc::line())
+            .append(self.rhs.as_node().format().nest(1))
     }
 
     fn node_info(&self) -> NodeInfo {
@@ -541,16 +527,11 @@ impl ComparisonOperationExpression {
 }
 
 impl AstNode for ComparisonOperationExpression {
-    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
-        let _ = writeln!(
-            f,
-            "{}ComparisonOperationExpression with operation {:?} and child expressions:",
-            indent(depth),
-            self.operation,
-        );
-        [&self.lhs, &self.rhs]
-            .iter()
-            .for_each(|expr| expr.as_node().display(f, depth + 1));
+    fn format(&self) -> RcDoc {
+        RcDoc::text("ComparisonOperationExpression with ")
+            .append(self.lhs.as_node().format().nest(1))
+            .append(format!("{:?}", self.operation))
+            .append(self.rhs.as_node().format().nest(1))
     }
 
     fn node_info(&self) -> NodeInfo {
@@ -664,34 +645,13 @@ impl AstNode for MemberAccessExpression {
         write!(f, ".{}", self.name.resolve());
         //self.pattern.iter().for_each(|pattern| pattern.as_node().pretty(f, depth));
     }
-    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
-        let _ = writeln!(
-            f,
-            "{}MemberAccessExpression parsed {} with name {} in scope has subexpr:",
-            indent(depth),
-            self.node_info,
-            self.name.resolve(),
-        );
-        //self.pattern.display(f, depth+1)
-        //[&self.subexpr].iter().for_each(|expr| expr.as_node().display(f, depth+1));
 
-        self.on.as_node().display(f, depth + 1);
-        /*match &self.on {
-            Some(e) => e.as_node().display(f, depth + 1),
-            None => {
-                let _ = writeln!(f, "{}No subexpr", indent(depth + 1));
-            }
-        }
-
-        match &self.pattern {
-            Some(p) => p
-                .expressions
-                .iter()
-                .for_each(|expr| expr.as_node().display(f, depth + 1)),
-            None => {
-                let _ = writeln!(f, "{}No pattern", indent(depth + 1));
-            }
-        }*/
+    fn format(&self) -> RcDoc {
+        RcDoc::text("MemberAccessExpression of field ")
+            .append(self.name.resolve())
+            .append(" on expression")
+            .append(RcDoc::line())
+            .append(self.on.as_node().format().nest(1))
     }
 
     fn node_info(&self) -> NodeInfo {
@@ -699,7 +659,7 @@ impl AstNode for MemberAccessExpression {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct FunctionCall {
     pub node_info: NodeInfo,
     pub function: Box<ExpressionWrapper>,
@@ -710,11 +670,14 @@ impl AstNode for FunctionCall {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
+}
 
-    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
-        writeln!(f, "{}Function call with function, args:", indent(depth));
-        self.function.as_node().display(f, depth + 1);
-        self.args.as_node().display(f, depth + 1);
+impl std::fmt::Debug for FunctionCall {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        f.debug_struct("FunctionCall")
+            .field("expression", &self.function)
+            .field("args", &self.args)
+            .finish()
     }
 }
 
@@ -756,16 +719,10 @@ impl UnaryOperationExpression {
 }
 
 impl AstNode for UnaryOperationExpression {
-    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
-        let _ = writeln!(
-            f,
-            "{}UnaryOperationExpression with operation {:?} and child expression:",
-            indent(depth),
-            self.operation,
-        );
-        [&self.subexpr]
-            .iter()
-            .for_each(|expr| expr.as_node().display(f, depth + 1));
+    fn format(&self) -> RcDoc {
+        RcDoc::text("UnaryOperationExpression with ")
+            .append(format!("operation: {:?}", self.operation))
+            .append(self.subexpr.as_node().format().nest(1))
     }
 
     fn node_info(&self) -> NodeInfo {
@@ -843,14 +800,18 @@ impl AstNode for LLVMLiteralExpression {
         self.node_info
     }
 
-    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+    fn format(&self) -> RcDoc {
+        todo!()
+    }
+
+    /*fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let _ = writeln!(f, " llvm{{");
         let s = self.text.resolve();
         for line in s.lines() {
             let _ = writeln!(f, "{}{}", indent(depth + 1), line);
         }
         let _ = write!(f, "{} }}llvm", indent(depth));
-    }
+    }*/
 }
 
 #[derive(Debug, Clone)]
@@ -874,15 +835,8 @@ impl ReturnExpression {
 }
 
 impl AstNode for ReturnExpression {
-    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
-        let _ = writeln!(
-            f,
-            "{}ReturnExpression with operation child expression:",
-            indent(depth),
-        );
-        [&self.subexpr]
-            .iter()
-            .for_each(|expr| expr.as_node().display(f, depth + 1));
+    fn format(&self) -> RcDoc {
+        RcDoc::text("ReturnExpression with value ").append(self.subexpr.as_node().format().nest(1))
     }
 
     fn node_info(&self) -> NodeInfo {
@@ -891,17 +845,21 @@ impl AstNode for ReturnExpression {
 }
 
 impl AstNode for CastExpression {
-    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+    /*fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let _ = writeln!(f, "{}CastExpression of expression:", indent(depth),);
         [&self.subexpr]
             .iter()
             .for_each(|expr| expr.as_node().display(f, depth + 2));
         let _ = writeln!(f, "{}To type", indent(depth + 1),);
         self.typeref.display(f, depth + 2);
-    }
+    }*/
 
     fn node_info(&self) -> NodeInfo {
         self.node_info
+    }
+
+    fn format(&self) -> RcDoc {
+        todo!()
     }
 }
 
@@ -948,13 +906,8 @@ impl IdentifierExpression {
 }
 
 impl AstNode for IdentifierExpression {
-    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
-        let _ = writeln!(
-            f,
-            "{}IdentifierExpression with name {}",
-            indent(depth),
-            self.ident.resolve(),
-        );
+    fn format(&self) -> RcDoc {
+        RcDoc::text("IdentifierExpression with name").append(self.ident.resolve())
     }
 
     fn node_info(&self) -> NodeInfo {
@@ -1013,13 +966,8 @@ impl LiteralExpression {
 }
 
 impl AstNode for LiteralExpression {
-    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
-        let _ = writeln!(
-            f,
-            "{}LiteralExpression with value {:?}",
-            indent(depth),
-            self.contents,
-        );
+    fn format(&self) -> RcDoc {
+        RcDoc::text("LiteralExpression with value ").append(format!("{:?}", self.contents))
     }
 
     fn node_info(&self) -> NodeInfo {

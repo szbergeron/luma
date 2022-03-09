@@ -30,8 +30,7 @@ pub struct FieldMember {
 impl AstNode for FieldMember {
     fn node_info(&self) -> NodeInfo { todo!() }
 
-    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
-        //writeln!("{}{}: ")
+    fn format(&self) -> pretty::RcDoc {
         todo!()
     }
 }
@@ -75,7 +74,7 @@ impl AstNode for RecordVirtualSpecification {
         todo!()
     }
 
-    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+    fn format(&self) -> pretty::RcDoc {
         todo!()
     }
 }
@@ -85,11 +84,15 @@ impl AstNode for RecordValueDefinition {
         self.node_info
     }
 
-    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+    /*fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         writeln!(f, "{} struct {} {{", indent(depth), self.name.resolve());
         for field in self.fields {
         }
         writeln!(f, "{}}}", indent(depth));
+    }*/
+
+    fn format(&self) -> pretty::RcDoc {
+        todo!()
     }
 }
 
@@ -98,7 +101,7 @@ impl AstNode for EnumValueDefinition {
         todo!()
     }
 
-    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+    fn format(&self) -> pretty::RcDoc {
         todo!()
     }
 }
@@ -108,7 +111,7 @@ impl AstNode for RecordVirtualDefinition {
         self.node_info
     }
 
-    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+    fn format(&self) -> pretty::RcDoc {
         todo!()
     }
 }
@@ -131,9 +134,8 @@ impl AstNode for TypeDefinition {
         }
     }
 
-    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
-        self.as_node().display(f, depth);
-        //writeln!(f, "{}struct {} {{", indent(depth), self.)
+    fn format(&self) -> pretty::RcDoc {
+        self.as_node().format()
     }
 }
 
@@ -176,7 +178,7 @@ impl AstNode for TypeReference {
             let _ = write!(f, "<args: !impl>");
         }
     }
-    fn display(&self, f: &mut std::fmt::Formatter<'_>, _depth: usize) {
+    /*fn display(&self, f: &mut std::fmt::Formatter<'_>, _depth: usize) {
         let _ = write!(
             f,
             "{}",
@@ -197,10 +199,14 @@ impl AstNode for TypeReference {
         [&self.subexpr]
             .iter()
             .for_each(|expr| expr.as_node().display(f, depth + 1));*/
-    }
+    }*/
 
     fn node_info(&self) -> NodeInfo {
         self.node_info
+    }
+
+    fn format(&self) -> pretty::RcDoc {
+        todo!()
     }
 }
 

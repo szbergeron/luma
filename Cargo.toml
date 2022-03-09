@@ -34,6 +34,7 @@ async-trait = "0.1.50"
 staged-builder = "0.1.0"
 #parking_lot = "0.11.1"
 indent = "0.1.1"
+pretty = "0.11.2"
 
 [profile.dev]
 incremental = true

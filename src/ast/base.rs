@@ -1,4 +1,5 @@
 use indent::indent_all_by;
+use pretty::RcDoc;
 
 use crate::lex::{TokenWrapper, CodeLocation};
 
@@ -20,10 +21,18 @@ pub fn indented(val: String) -> String {
     indent_all_by(2, val)
 }
 
+/*pub fn concat_lines(val: Vec<String>) -> String {
+    let root = 
+}*/
+
 pub fn add_line(to: &mut String, val: String) {
     to.push('\n');
     to.push_str(val.as_str());
 
+}
+
+pub fn comma_break<'a>() -> RcDoc<'a> {
+    RcDoc::text(", ").append(RcDoc::line())
 }
 
 pub fn findent(f: &mut std::fmt::Formatter<'_>, depth: usize) {
@@ -132,7 +141,7 @@ pub trait AstNode: std::fmt::Debug + Send + Sync {
 
     /// Should display detailed debug info, node type, child info
     ///fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize);
-    fn format(&self) -> String;
+    //fn format(&self) -> RcDoc;
 
     /// Should display as a "source like" form. May be parenthesized,
     /// and is allowed to include type information, but should
@@ -168,10 +177,10 @@ impl AstNode for Option<&dyn AstNode> {
         }
     }
 
-    fn format(&self) -> String {
+    fn format(&self) -> RcDoc {
         match self {
             Some(n) => n.format(),
-            None => format!("<none>"),
+            None => RcDoc::text("<none>"),
         }
     }
 
@@ -193,7 +202,7 @@ impl IntoAstNode for Option<&dyn AstNode> {
 impl std::fmt::Display for &dyn AstNode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         //Ok(self.display(f, 0))
-        writeln!(f, "{}", self.format())
+        writeln!(f, "{}", self.format().pretty(100))
     }
 }
 

@@ -65,7 +65,7 @@ impl AstNode for ScopeContext {
         }
     }
 
-    fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
+    /*fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let _ = writeln!(f, "{}ScopeContext at scope{:?}", indent(depth), self.scope);
         writeln!(f, "{}From:", indent(depth + 1)).unwrap();
         self.from
@@ -105,18 +105,20 @@ impl AstNode for ScopeContext {
             .into_iter()
             .for_each(|(_, wref)| wref.read().unwrap().display(f, depth + 2));
             */
-    }
+    }*/
 
     fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
         todo!("[ast_prettyprint]")
+    }
+
+    fn format(&self) -> pretty::RcDoc {
+        todo!()
     }
 }
 
 impl std::fmt::Display for ScopeContext {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.display(f, 0);
-
-        write!(f, "")
+        write!(f, "{}", self.format().pretty(100))
     }
 }
 
