@@ -35,8 +35,11 @@ pub enum Token {
     #[token("nodyn")]
     Nodynamic,
 
-    #[token("fn")]
+    #[token("func")]
     Function,
+
+    #[token("spec")]
+    Specification,
 
     #[token("var")]
     Var,
@@ -187,7 +190,7 @@ pub enum Token {
 
     #[token("->")]
     ThinArrow,
-    
+
     #[token("<-")]
     ThinArrowLeft,
 
@@ -312,8 +315,16 @@ impl Token {
         match self {
             Self::UnknownIntegerLiteral => true,
             Self::f32Literal | Self::f64Literal => true,
-            Self::i8Literal | Self::i16Literal | Self::i32Literal | Self::i64Literal | Self::i128Literal => true,
-            Self::u8Literal | Self::u16Literal | Self::u32Literal | Self::u64Literal | Self::u128Literal => true,
+            Self::i8Literal
+            | Self::i16Literal
+            | Self::i32Literal
+            | Self::i64Literal
+            | Self::i128Literal => true,
+            Self::u8Literal
+            | Self::u16Literal
+            | Self::u32Literal
+            | Self::u64Literal
+            | Self::u128Literal => true,
             Self::StringLiteral => true,
             Self::False | Self::True => true,
             _ => false,
@@ -740,7 +751,7 @@ impl<'tokenvec> LookaheadHandle<'tokenvec> {
                 Some(t) => Ok(*t),
                 None => Err(ParseResultError::EndOfFile),
             },
-            false => Err(ParseResultError::NotYetParsed)
+            false => Err(ParseResultError::NotYetParsed),
         }
     }
 
@@ -766,7 +777,6 @@ impl<'tokenvec> LookaheadHandle<'tokenvec> {
             Err(_) => None,
         }
     }
-
 
     /*pub fn eat_match_string<const LEN: usize>(
         &mut self,

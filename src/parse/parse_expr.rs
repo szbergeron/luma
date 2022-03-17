@@ -300,7 +300,6 @@ impl<'lexer> Parser<'lexer> {
         t.success(r)
     }*/
 
-
     pub fn atomic_expression(&mut self, t: &TokenProvider) -> ExpressionResult {
         //let mut t = t.child();
         let mut t = parse_header!(t);
@@ -338,20 +337,28 @@ impl<'lexer> Parser<'lexer> {
     /// where <continue> is whether parse_access_continuation should be called again on the
     /// returned result (if any more continuation can be expected) since the current continuation
     /// was not null deriving or a "passthrough"
-    pub fn parse_access_continuation(&mut self, t: &TokenProvider, on: Box<ExpressionWrapper>) -> ParseResult<(bool, Box<ExpressionWrapper>)> {
+    pub fn parse_access_continuation(
+        &mut self,
+        t: &TokenProvider,
+        on: Box<ExpressionWrapper>,
+    ) -> ParseResult<(bool, Box<ExpressionWrapper>)> {
         let mut t = parse_header!(t);
 
         let next = t.try_take_in(&[Token::LBracket, Token::Dot, Token::LParen]);
         let next = match next {
             Some(tw) => tw,
-            None => return t.success((false, on))
+            None => return t.success((false, on)),
         };
 
         let mut ni = on.as_node().node_info();
-        let start = ni.as_parsed().map(|pni| pni.span.start).unwrap_or(CodeLocation::Builtin);
+        let start = ni
+            .as_parsed()
+            .map(|pni| pni.span.start)
+            .unwrap_or(CodeLocation::Builtin);
 
         match next.token {
-            Token::LParen => { // doing a function call on the current continuation
+            Token::LParen => {
+                // doing a function call on the current continuation
                 t.lh.backtrack();
                 let call_tuple = self.parse_tuple(&t).join_hard(&mut t).catch(&mut t)?;
                 let end = if let NodeInfo::Parsed(pni) = call_tuple.as_node().node_info() {
@@ -363,34 +370,40 @@ impl<'lexer> Parser<'lexer> {
                 let ni = NodeInfo::from_indices(start, end);
 
                 if let ExpressionWrapper::Tuple(tup) = *call_tuple {
-
                     let fc = FunctionCall {
-                        function: on, args: Box::new(tup), node_info: ni, 
+                        function: on,
+                        args: Box::new(tup),
+                        node_info: ni,
                     };
 
                     t.success((true, box ExpressionWrapper::FunctionCall(fc)))
                 } else {
                     unreachable!()
                 }
-            },
+            }
             Token::Dot => {
                 // doing a member access
-                let ident = t.take(Token::Identifier).hint("Any dot access should be followed by a member name").join()?;
+                let ident = t
+                    .take(Token::Identifier)
+                    .hint("Any dot access should be followed by a member name")
+                    .join()?;
 
                 let end = ident.end;
-                
+
                 let ni = NodeInfo::from_indices(start, end);
 
                 let mae = MemberAccessExpression {
-                    on, name: ident.slice, node_info: ni,
+                    on,
+                    name: ident.slice,
+                    node_info: ni,
                 };
 
                 t.success((true, box ExpressionWrapper::MemberAccess(mae)))
-            },
+            }
             Token::RBracket => {
                 todo!("Array access not yet implemented")
-            },
-            _ => unreachable!()
+            }
+            _ => unreachable!(),
         }
     }
 
@@ -404,11 +417,15 @@ impl<'lexer> Parser<'lexer> {
         let mut base = self.parse_access_base(&t).join_hard(&mut t).catch(&mut t)?;
 
         loop {
-            match self.parse_access_continuation(&t, base).join_hard(&mut t).catch(&mut t)? {
+            match self
+                .parse_access_continuation(&t, base)
+                .join_hard(&mut t)
+                .catch(&mut t)?
+            {
                 (true, expr) => {
                     base = expr;
-                    continue
-                },
+                    continue;
+                }
                 (false, expr) => {
                     base = expr;
                     break;
@@ -426,7 +443,6 @@ impl<'lexer> Parser<'lexer> {
 
         let tw = t.try_take_if(|tw| {
             (tw.token.is_operand_base() || tw.token.matches(Token::LParen)).then_some(())
-
         });
 
         let tw = match tw {
@@ -438,7 +454,7 @@ impl<'lexer> Parser<'lexer> {
             Token::LParen => {
                 t.lh.backtrack(); // ungrab the lparen so it can be consumed by tuple
                 self.parse_tuple(&t)
-            },
+            }
             Token::Identifier => {
                 let e = IdentifierExpression::from_token(tw);
 
@@ -794,7 +810,10 @@ impl<'lexer> Parser<'lexer> {
                 lhs = ast::CastExpression::new_expr(node_info, lhs, typeref);
                 continue;
             } else if let Some(_arrow) = t.try_take(Token::ThinArrowLeft) {
-                let v = self.parse_implementation_expression(&t, lhs).join_hard(&mut t).catch(&mut t)?;
+                let v = self
+                    .parse_implementation_expression(&t, lhs)
+                    .join_hard(&mut t)
+                    .catch(&mut t)?;
 
                 lhs = box v;
             } else if let Some(((l_bp, r_bp), tw)) =
@@ -820,9 +839,14 @@ impl<'lexer> Parser<'lexer> {
                         .catch(&mut t)?;
                     continue;
                 }
-            } else if t.lh.la(0).map(|tw| tw.token.is_operand_base()).unwrap_or(false) {
+            } else if t
+                .lh
+                .la(0)
+                .map(|tw| tw.token.is_operand_base())
+                .unwrap_or(false)
+            {
                 lhs = self.parse_operand(&t).join_hard(&mut t).catch(&mut t)?;
-                continue
+                continue;
             } else {
                 break;
             }

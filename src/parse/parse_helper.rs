@@ -1,14 +1,10 @@
-use crate::lex::{TokenWrapper, ParseResultError};
+use crate::lex::{ParseResultError, TokenWrapper};
 
 use crate::parse::*;
 
-
-
 //use std::collections::HashSet;
 
-impl<'lexer> Parser<'lexer> {
-
-}
+impl<'lexer> Parser<'lexer> {}
 
 pub struct RunConditional {
     pub run_if: Option<TokenWrapper>,

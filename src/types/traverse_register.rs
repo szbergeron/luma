@@ -1,2 +1,1 @@
-pub struct Register {
-}
+pub struct Register {}

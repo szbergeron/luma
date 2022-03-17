@@ -2,13 +2,13 @@ use crate::helper::interner::IStr;
 
 /**
  * Spitballing here, trying to figure out how
- * I want to handle tracing variable references 
+ * I want to handle tracing variable references
  * and types through a program.
  *
  * Ultimately, being able to infer types through function calls
  * and similar boundaries would be useful, but doing this
- * requires solving an arbitrary tree based on type 
- * transformations and may get computationally unreasonable 
+ * requires solving an arbitrary tree based on type
+ * transformations and may get computationally unreasonable
  * even for a fact-based constraint solver.
  *
  * Currently I think I'll slice the data first along bindings,
@@ -23,18 +23,14 @@ use crate::helper::interner::IStr;
  * so &T becomes &<T>, and can be monomorphised from there
  */
 
-pub struct Generic {
-}
+pub struct Generic {}
 
 #[allow(dead_code)]
 pub struct Variable {
     name: IStr,
-    
+
     //instance_params: Vec<
-
     uses: Vec<VariableUsage>,
-
 }
 
-pub struct VariableUsage {
-}
+pub struct VariableUsage {}

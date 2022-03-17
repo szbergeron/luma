@@ -5,12 +5,9 @@
  * Current implementation to act as stub for type propagation
  * from fully specified usage sites instead
  **/
-
 //use super::types::GlobalTypeID;
-use super::{GlobalTypeID, GlobalFunctionID, GlobalCtxNode};
+use super::{GlobalCtxNode, GlobalFunctionID, GlobalTypeID};
 use crate::helper::interner::IStr;
-
-
 
 pub struct QuarkDeclID(usize);
 
@@ -36,7 +33,7 @@ pub struct BasicConstraint {
     pub name: IStr,
 }
 
-/// A TraitConstraint (TCst) represents a reference to 
+/// A TraitConstraint (TCst) represents a reference to
 /// a dyn trait in some context, and
 /// may or may not be generic.
 pub struct TraitConstraint {
@@ -44,7 +41,7 @@ pub struct TraitConstraint {
 }
 
 /// A GenericConstraint (GCst) represents a reference
-/// where generic parameters are expected to be 
+/// where generic parameters are expected to be
 /// present, whether they be directly provided or
 /// only provided as wildcards
 ///
@@ -66,8 +63,7 @@ pub struct GenericConstraint {
 ///
 /// It is allowed to resolve to any valid type and is discarded
 /// from consideration by the inference engine as a constraint
-pub struct UnConstraint {
-}
+pub struct UnConstraint {}
 
 /*pub enum NameConstraint {
     Basic(BasicConstraint),
@@ -113,7 +109,6 @@ pub enum Constraint {
 /// for how queries are computed
 pub struct Quark {
     within: &'static GlobalCtxNode,
-
 }
 
 impl Quark {
@@ -121,14 +116,23 @@ impl Quark {
         unimplemented!()
     }
 
-    pub fn add_to_trait(&mut self, _p_trait: QuarkDeclID, _trait_member_name: IStr, _trait_member_id: GlobalTypeID) -> () {
+    pub fn add_to_trait(
+        &mut self,
+        _p_trait: QuarkDeclID,
+        _trait_member_name: IStr,
+        _trait_member_id: GlobalTypeID,
+    ) -> () {
     }
 
     /// If a coercion from the argument type to the target type exists,
     /// a function that accomplishes the conversion is provided as a Some(_) return value
     ///
     /// If no conversion exists, or any conversion is not resolvable, then None is returned
-    pub fn coerces(&self, argument: GlobalTypeID, target: GlobalTypeID) -> Option<GlobalFunctionID> {
+    pub fn coerces(
+        &self,
+        argument: GlobalTypeID,
+        target: GlobalTypeID,
+    ) -> Option<GlobalFunctionID> {
         if argument != target {
             // TODO: don't currently handle upcasting/traitcasting of params
             None
@@ -140,9 +144,7 @@ impl Quark {
     /// Unsafe contract: requires that `direct` be valid for at least as long as self, but
     /// not necessarily for the full 'static lifetime
     pub unsafe fn new_within(direct: &'static GlobalCtxNode) -> Quark {
-        Quark {
-            within: direct
-        }
+        Quark { within: direct }
     }
 
     /*/// Mutates the `within` member to align with the provided ref.
@@ -158,7 +160,6 @@ impl Quark {
             _global: global,
         }
     }*/
-    
 
     /*fn within_ref(&self) -> &GlobalCtxNode {
         unsafe {
@@ -172,5 +173,5 @@ impl Quark {
         }
     }*/
 
-    //pub fn 
+    //pub fn
 }

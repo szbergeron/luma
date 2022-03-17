@@ -1,20 +1,20 @@
 mod parse_base;
 mod parse_expr;
 mod parse_helper;
-mod parse_type;
 mod parse_tools;
+mod parse_type;
 
 pub use parse_base::*;
 pub use parse_expr::*;
-pub use parse_type::*;
 pub use parse_helper::*;
 pub use parse_tools::*;
+pub use parse_type::*;
 
 //use crate::helper::lex_wrap::LookaheadStream;
 //use crate::helper::lex_wrap::{CodeLocation, ParseResultError};
-use crate::lex::{TokenWrapper, CodeLocation, LookaheadHandle, ParseResultError};
-use crate::helper::*;
 use crate::helper::interner::*;
+use crate::helper::*;
+use crate::lex::{CodeLocation, LookaheadHandle, ParseResultError, TokenWrapper};
 
 use crate::lex::Token;
 
@@ -22,8 +22,7 @@ use colored::*;
 
 //use std::io::{self, Write};
 
-pub struct Parser<'lexer>
-{
+pub struct Parser<'lexer> {
     lex: LookaheadHandle<'lexer>,
     errors: Vec<ParseResultError>,
     next: Vec<Token>,
@@ -56,10 +55,7 @@ impl<'lexer> Parser<'lexer> {
         self.errors.push(err);
     }
 
-    pub fn cpe<T>(
-        &mut self,
-        r: Result<T, ParseResultError>,
-    ) -> Result<T, ParseResultError> {
+    pub fn cpe<T>(&mut self, r: Result<T, ParseResultError>) -> Result<T, ParseResultError> {
         let r = match r {
             Err(e) => {
                 self.errors.push(e.clone());
@@ -133,7 +129,7 @@ impl<'lexer> Parser<'lexer> {
                             print!("{}", "―".red());
                         }
                     }*/
-                    
+
                     let hl = if line_num >= start.line && line_num <= end.line {
                         let start = if line_num > start.line {
                             0
@@ -186,44 +182,44 @@ impl<'lexer> Parser<'lexer> {
     }*/
 
     fn print_err(&self, e: &ParseResultError, lines: &Vec<&str>) {
-            match e {
-                ParseResultError::InternalParseIssue => {}
-                ParseResultError::EndOfFile => {
-                    eprintln!("Unexpected End of File");
-                }
-                ParseResultError::NotYetParsed => {
-                    panic!("Programming error, unexplored region of ast has error for us?");
-                }
-                ParseResultError::UnexpectedToken(t, expected, msg) => {
-                    self.print_context(t.start, t.end, &lines);
-                    eprintln!("Got unexpected token of type {:?}. Expected one of {:?}. Token with slice \"{}\" was encountered around ({}, {})",
+        match e {
+            ParseResultError::InternalParseIssue => {}
+            ParseResultError::EndOfFile => {
+                eprintln!("Unexpected End of File");
+            }
+            ParseResultError::NotYetParsed => {
+                panic!("Programming error, unexplored region of ast has error for us?");
+            }
+            ParseResultError::UnexpectedToken(t, expected, msg) => {
+                self.print_context(t.start, t.end, &lines);
+                eprintln!("Got unexpected token of type {:?}. Expected one of {:?}. Token with slice \"{}\" was encountered around ({}, {})",
                         t.token,
                         expected,
                         t.slice.resolve(),
                         t.start,
                         t.end,
                     );
-                    match msg {
-                        Some(msg) => eprintln!("Hint: {}", msg),
-                        None => {}
-                    };
-                }
-                ParseResultError::SemanticIssue(issue, start, end) => {
-                    //self.print_context(*start, *end, &lines);
-                    self.print_context(*start, *end, &lines);
-                    eprintln!("Encountered a semantic issue: {}. This issue was realized around the character range ({}, {})",
+                match msg {
+                    Some(msg) => eprintln!("Hint: {}", msg),
+                    None => {}
+                };
+            }
+            ParseResultError::SemanticIssue(issue, start, end) => {
+                //self.print_context(*start, *end, &lines);
+                self.print_context(*start, *end, &lines);
+                eprintln!("Encountered a semantic issue: {}. This issue was realized around the character range ({}, {})",
                         issue,
                         start,
                         end,
                     );
-                },
-                ParseResultError::ErrorWithHint { hint, original } => {
-                    for e in original.iter() {
-                        self.print_err(e, lines)
-                    }
-                    eprintln!("Hint: {}", hint);
-                }
             }
+            ParseResultError::ErrorWithHint { hint, original } => {
+                for e in original.iter() {
+                    self.print_err(e, lines)
+                }
+                eprintln!("Hint: {}", hint);
+            }
+        }
     }
 
     pub fn print_errors(&self, handle: FileHandleRef) {

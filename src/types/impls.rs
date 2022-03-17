@@ -1,8 +1,5 @@
-use super::{CtxID, GlobalTypeID, TypeCtx, TypeID, FunctionID};
-use crate::{
-    ast::Span,
-    helper::interner::IStr,
-};
+use super::{CtxID, FunctionID, GlobalTypeID, TypeCtx, TypeID};
+use crate::{ast::Span, helper::interner::IStr};
 
 use smallvec::SmallVec;
 use std::any::Any;
@@ -54,9 +51,8 @@ pub struct FunctionSignature {
     refs: &'ctype Type
 }*/
 
-
 /*pub trait TraitQuery {
-    pub fn implements_trait(&self, traitname: 
+    pub fn implements_trait(&self, traitname:
 }*/
 
 pub trait StaticType: DynHash + DynEq + AsAny + Send + Sync {
@@ -218,8 +214,7 @@ pub struct trait_t_static {
     pub tid: std::sync::atomic::AtomicU64,
 }
 
-impl trait_t_static {
-}
+impl trait_t_static {}
 
 impl std::hash::Hash for trait_t_static {
     fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
@@ -260,8 +255,7 @@ impl StaticType for trait_t_static {
     fn encode_definition(&self) -> String {
         let sb = String::new();
 
-        for field in self.fields.iter() {
-        }
+        for field in self.fields.iter() {}
 
         sb
     }

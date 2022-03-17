@@ -49,18 +49,18 @@
  *
  * These are of the form `T where T is { U, V, ... } is also { W, X, ... }`.
  * This can be rephrased as a mapping from { U + V + ... } to { W + X + ... }.
- * If the set of traits from the first set is a subset of the traits that some T 
+ * If the set of traits from the first set is a subset of the traits that some T
  * implements, then T by definition also implements all traits from the second set.
  *
  * If a rule applies to some T, then for each trait in the dependency set (W, X, ...)
  * a fact is introduced of `T is W`. Once the closure is complete, the set of
- * atomic types (structs, enums, primitives) is filtered at each level of the 
+ * atomic types (structs, enums, primitives) is filtered at each level of the
  * type. This means that for each type of the form T<U, V, ...> each of T, U, and V
  * is filtered based on the provided facts. If the set of possible types is of cardinality 1,
  * then inference succeeds and that type is used. If the set is of cardinality greater than 1,
  * an error is yielded telling the user to select from the found set and specify as
  * an annotation. If cardinality is zero, a different error is given stating that no compatible
- * type was found. If the found type is itself generic and the type parameters can 
+ * type was found. If the found type is itself generic and the type parameters can
  * not be inferred based on the given facts, another error is given saying that a T must be
  * specified.
  *
@@ -79,7 +79,7 @@
  *
  * Types are defined primarily by their contained symbols. Symbols do not
  * help for initial type inference (otherwise misspelling a method or function
- * would cause a type error, which would be a strange user experience) but are 
+ * would cause a type error, which would be a strange user experience) but are
  * used for when the results of methods or functions are being inferred.
  *
  * Once a type has been inferred and fully constrained for some variable,
@@ -87,7 +87,7 @@
  */
 
 /*
- * For now, no type inference is going to be done. A constraint must match 
+ * For now, no type inference is going to be done. A constraint must match
  * the expected type and must be directly substitutable when templating
  * with no casting or trait inference
  */

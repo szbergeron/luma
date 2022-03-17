@@ -1,6 +1,9 @@
-use crate::{helper::interner::{IStr, SpurHelper}, ast::indent};
+use crate::{
+    ast::indent,
+    helper::interner::{IStr, SpurHelper},
+};
 
-use super::{AstNode, IntoAstNode, NodeInfo, ScopedNameReference, ExpressionWrapper};
+use super::{AstNode, ExpressionWrapper, IntoAstNode, NodeInfo, ScopedNameReference};
 
 //use crate::types::FunctionDeclaration;
 
@@ -19,7 +22,6 @@ pub enum ImplementationItem {
 
 #[derive(Debug, Clone)]
 pub struct ImplementationBody {
-    
     pub node_info: NodeInfo,
     pub items: Vec<ImplementationItem>,
 }
@@ -123,9 +125,10 @@ impl AstNode for FunctionDefinition {
     }*/
 }
 
-
 impl AstNode for FieldMember {
-    fn node_info(&self) -> NodeInfo { todo!() }
+    fn node_info(&self) -> NodeInfo {
+        todo!()
+    }
 }
 
 /// These act like structs or records in any other language,

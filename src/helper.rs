@@ -263,7 +263,9 @@ impl<A, B> std::ops::Try for EitherAnd<A, B> {
 
     type Residual = EitherAnd<Infallible, B>;
 
-    fn from_output(output: Self::Output) -> Self { todo!() }
+    fn from_output(output: Self::Output) -> Self {
+        todo!()
+    }
 
     fn branch(self) -> std::ops::ControlFlow<Self::Residual, Self::Output> {
         match self {

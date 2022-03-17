@@ -1,10 +1,10 @@
+use super::base::*;
+use super::expressions::ExpressionWrapper;
 use super::EnumDefinition;
 use super::FunctionDefinition;
 use super::Implementation;
 use super::StructDefinition;
 use super::TraitDefinition;
-use super::base::*;
-use super::expressions::ExpressionWrapper;
 use super::TypeDefinition;
 use super::TypeReference;
 use crate::helper::VecOps;

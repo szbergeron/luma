@@ -1,8 +1,8 @@
 use std::fmt::Debug;
 
-use super::ImplementationBody;
 use super::base::*;
 use super::outer::*;
+use super::ImplementationBody;
 use crate::ast::TypeReference;
 use crate::helper::interner::*;
 
@@ -921,7 +921,7 @@ pub enum Literal {
         }
     }
     /*fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        
+
         match self {
             //Self::StringLiteral(arg0) => write!(f, "StringLiteral({})", arg0.resolve()),
             other => write!(f, "{}", self
@@ -977,7 +977,7 @@ pub struct ImplementationModificationExpression {
     pub modifying: Box<ExpressionWrapper>,
     pub traits: Vec<TypeReference>,
 
-    pub impl_block: Box<ImplementationBody>
+    pub impl_block: Box<ImplementationBody>,
 }
 
 impl AstNode for ImplementationModificationExpression {

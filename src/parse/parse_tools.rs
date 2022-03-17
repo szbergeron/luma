@@ -786,7 +786,7 @@ pub mod schema {
         lex::{ErrorSet, LookaheadHandle, ParseResultError, Token, TokenWrapper},
     };
 
-    use super::{ParseResult};
+    use super::ParseResult;
 
     use super::{GuardedResult, SolutionClass};
 
@@ -1332,21 +1332,22 @@ pub mod schema {
             let mut e = self.errors_field.clone();
             e.push(additional_error_info);
 
-            let solution = self.unit_rules.search(&self.lh).unwrap_or(
-                SolutionClass::UnsolvedFailure {
-                    index: self.lh.index() as isize,
-                },
-            );
+            let solution =
+                self.unit_rules
+                    .search(&self.lh)
+                    .unwrap_or(SolutionClass::UnsolvedFailure {
+                        index: self.lh.index() as isize,
+                    });
 
-            GuardedResult::from_err(
-                e,
-                solution,
-                (),
-            )
+            GuardedResult::from_err(e, solution, ())
             //).join_noncommittal().catch_noncommittal()
         }
 
-        pub fn unexpected_token<V>(&self, expected: &[Token], hint: &'static str) -> ParseResult<V> {
+        pub fn unexpected_token<V>(
+            &self,
+            expected: &[Token],
+            hint: &'static str,
+        ) -> ParseResult<V> {
             let pre = match self.lh.la(0) {
                 Ok(tw) => ParseResultError::UnexpectedToken(tw, expected.to_vec(), Some(hint)),
                 Err(e) => e,

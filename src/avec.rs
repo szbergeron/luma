@@ -1,4 +1,11 @@
-use std::{alloc, fmt::Display, marker::PhantomData, mem::MaybeUninit, ptr::{addr_of_mut, null_mut}, sync::atomic::{AtomicPtr, AtomicUsize}};
+use std::{
+    alloc,
+    fmt::Display,
+    marker::PhantomData,
+    mem::MaybeUninit,
+    ptr::{addr_of_mut, null_mut},
+    sync::atomic::{AtomicPtr, AtomicUsize},
+};
 
 //#[repr(C)]
 struct Chunk<T> {
@@ -12,9 +19,10 @@ impl<T> Chunk<T> {
     /// compatible)
     pub fn with_capacity(num: usize) -> *mut Self {
         let layout = unsafe {
-            std::alloc::Layout::for_value_raw(
-                std::ptr::slice_from_raw_parts(std::ptr::null::<()>(), num) as *const Self,
-            )
+            std::alloc::Layout::for_value_raw(std::ptr::slice_from_raw_parts(
+                std::ptr::null::<()>(),
+                num,
+            ) as *const Self)
         };
 
         let ptr = unsafe { alloc::alloc(layout) };
@@ -63,8 +71,8 @@ pub struct AtomicVec<T, const CHUNK_COUNT: usize = 32, const FIRST_CHUNK_SIZE: u
 
 #[allow(dead_code)]
 struct ImplDefaultConstArray<T: Default, const N: usize> {
-  arr: MaybeUninit<[T; N]>,
-  idx: usize,
+    arr: MaybeUninit<[T; N]>,
+    idx: usize,
 }
 
 impl<T, const CC: usize, const FCS: usize> AtomicVec<T, CC, FCS> {
@@ -122,13 +130,17 @@ impl<T, const CC: usize, const FCS: usize> AtomicVec<T, CC, FCS> {
             //let pinned = Pin::new(Chunk::with_capacity(size));
             //
 
-            let res = self
-                .chunks[idx]
+            let res = self.chunks[idx]
                 // both are AcqRel because I don't have the mental capacity to figure out if
                 // anything else is safe right now. Doesn't need SeqCst since threads only care
                 // about their own load/store so no "3rd" thread is involved in any interaction
                 // here
-                .compare_exchange(null_mut(), ptr, std::sync::atomic::Ordering::AcqRel, std::sync::atomic::Ordering::Acquire);
+                .compare_exchange(
+                    null_mut(),
+                    ptr,
+                    std::sync::atomic::Ordering::AcqRel,
+                    std::sync::atomic::Ordering::Acquire,
+                );
 
             //println!("had to do a chunk alloc");
 
@@ -137,7 +149,7 @@ impl<T, const CC: usize, const FCS: usize> AtomicVec<T, CC, FCS> {
                     //println!("We could write ours");
                     // we got a chance to write our ptr, no other thread did it faster
                     ptr
-                },
+                }
                 Err(old) => {
                     // we need to dealloc ourself since some other thread already wrote the value
                     //println!("Other thread got there first, need to use theirs");
@@ -153,9 +165,7 @@ impl<T, const CC: usize, const FCS: usize> AtomicVec<T, CC, FCS> {
             ptr
         };
 
-        unsafe {
-            Chunk::make_fat_ptr(r, self.lengths[idx]).as_ref().unwrap()
-        }
+        unsafe { Chunk::make_fat_ptr(r, self.lengths[idx]).as_ref().unwrap() }
     }
 
     fn try_insert_chunk<'c>(
@@ -235,7 +245,11 @@ impl<T, const CC: usize, const FCS: usize> AtomicVec<T, CC, FCS> {
     ///
     /// Indexing into self using the given AtomicVecIndex may allow creating an & alias
     /// to the T that was already passed as &mut T, do not do this!
-    pub unsafe fn push_with(&self, e: T, f: impl FnOnce(&mut T, AtomicVecIndex)) -> (AtomicVecIndex, &T) {
+    pub unsafe fn push_with(
+        &self,
+        e: T,
+        f: impl FnOnce(&mut T, AtomicVecIndex),
+    ) -> (AtomicVecIndex, &T) {
         #[allow(unused_unsafe)]
         unsafe {
             let (avi, r) = self.push_internal(e);

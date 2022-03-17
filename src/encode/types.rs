@@ -8,11 +8,14 @@ impl Variable {
     pub fn phi_local(&self, other: &Variable, within: &mut EncodeLocalContext) -> Variable {
         assert!(self.vtype == other.vtype);
 
-        within.writeln(format!("; phi node with variables {} and {}", self.vname, other.vname));
+        within.writeln(format!(
+            "; phi node with variables {} and {}",
+            self.vname, other.vname
+        ));
 
         let _new_var = within.next_local("phi_local_", &self.vtype);
 
-        //within.writeln(format!("phi 
+        //within.writeln(format!("phi
         todo!("Phi nodes not yet complete")
     }
 }
@@ -46,7 +49,7 @@ impl<'gbl_ctx> EncodeLocalContext<'gbl_ctx> {
         EncodeLocalContext {
             local_counter: 0,
             global_context: egctx,
-            contents: Vec::new()
+            contents: Vec::new(),
         }
     }
 
@@ -68,9 +71,12 @@ impl<'gbl_ctx> EncodeLocalContext<'gbl_ctx> {
         match self.contents.len() {
             0 => {
                 self.contents.push(line.into());
-            },
+            }
             _more => {
-                self.contents.last_mut().expect("self.contents was size > 0 but last_mut returned None").push_str(&line.into()[..]);
+                self.contents
+                    .last_mut()
+                    .expect("self.contents was size > 0 but last_mut returned None")
+                    .push_str(&line.into()[..]);
             }
         }
     }
@@ -83,7 +89,11 @@ impl<'gbl_ctx> EncodeLocalContext<'gbl_ctx> {
         let vname = format!("{}global_{}", prefix, self.local_counter);
         let vtype = vtype.to_string();
 
-        Variable { vname, vtype, vtid: None }
+        Variable {
+            vname,
+            vtype,
+            vtid: None,
+        }
     }
 
     pub fn next_global(&self, prefix: &str, vtype: &str) -> Variable {
@@ -118,19 +128,28 @@ impl EncodeGlobalContext {
         // change to Ordering::SeqCst for monotonically increasing atomic ops per-thread? Not sure
         // if necessary for that to occur, Relaxed may be sufficient (and will definitely provide
         // at least *unique* IDs
-        let next_id = self.global_counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let next_id = self
+            .global_counter
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let vname = format!("{}global_{}", prefix, next_id);
         let vtype = vtype.to_string();
 
-        Variable { vname, vtype, vtid: None }
+        Variable {
+            vname,
+            vtype,
+            vtid: None,
+        }
     }
 }
 
 impl std::fmt::Display for EncodeGlobalContext {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "; encode output start")?;
-        let l = self.buffer.lock().expect("EncodeGlobalContext couldn't lock internal buffer during output");
+        let l = self
+            .buffer
+            .lock()
+            .expect("EncodeGlobalContext couldn't lock internal buffer during output");
 
         for line in l.iter() {
             writeln!(f, "{}", line)?;

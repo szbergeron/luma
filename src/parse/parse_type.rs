@@ -1,5 +1,5 @@
 use crate::ast::base::IntoAstNode;
-use crate::ast::{self, ImplementationBody, ImplementationItem, MemberAttributes, FieldMember};
+use crate::ast::{self, FieldMember, ImplementationBody, ImplementationItem, MemberAttributes};
 use crate::lex::{CodeLocation, ErrorSet, ParseResultError, Token};
 use crate::parse::*;
 
@@ -101,9 +101,15 @@ impl<'lexer> Parser<'lexer> {
                 Token::Var => {
                     let ident = t.take(Token::Identifier).join()?;
                     let _ = t.take(Token::Colon).join()?;
-                    let tr = self.parse_type_specifier(&t).join_hard(&mut t).catch(&mut t)?;
+                    let tr = self
+                        .parse_type_specifier(&t)
+                        .join_hard(&mut t)
+                        .catch(&mut t)?;
 
-                    items.push(ImplementationItem::Field(FieldMember { name: ident.slice, ftype: tr }));
+                    items.push(ImplementationItem::Field(FieldMember {
+                        name: ident.slice,
+                        ftype: tr,
+                    }));
                 }
                 Token::RBrace => {
                     end = next.end;

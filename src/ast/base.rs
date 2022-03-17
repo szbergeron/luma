@@ -63,7 +63,7 @@ impl Debug for NodeInfo {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         match self {
             Self::Builtin => write!(f, "<builtin>"),
-            Self::Parsed(p) => p.fmt(f)
+            Self::Parsed(p) => p.fmt(f),
         }
     }
 }

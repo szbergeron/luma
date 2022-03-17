@@ -104,7 +104,7 @@ impl PathNode {
                 dbg!(&module_prefix);
                 dbg!(&path);
                 (Some(path.clone()), Vec::new())
-            },
+            }
             EitherNone::B(_) => {
                 //let mut child_set = Vec::new();
                 let mut mod_file = None;

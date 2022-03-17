@@ -1,8 +1,8 @@
 //use crate::ast;
 use crate::helper::*;
-use crate::lex::{ParseResultError, TokenStream, LookaheadHandle};
-use crate::parse::Parser;
+use crate::lex::{LookaheadHandle, ParseResultError, TokenStream};
 use crate::parse::schema::TokenProvider;
+use crate::parse::Parser;
 use std::collections::HashSet;
 
 use std::path::{Path, PathBuf};
@@ -17,7 +17,6 @@ use crate::encode::*;
 
 use crate::helper::interner::*;
 use tokio::runtime::*;
-
 
 #[allow(unused_variables, dead_code)]
 pub fn parse_unit<'file>(
@@ -60,7 +59,6 @@ pub fn parse_unit<'file>(
     if !cflags.eflags.silence_errors {
         parser.print_errors(handle);
     }
-
 
     match &v {
         Some(punit) => {
@@ -129,7 +127,6 @@ pub fn launch(args: &[&str]) {
         .expect("Couldn't initialize an async worker pool, bad args?");
 
     tokio_rt.block_on(async { async_launch(args).await });
-
 }
 
 #[allow(dead_code)]
@@ -152,8 +149,7 @@ fn parse_args(args: &[&str]) -> Result<ArgResult, &'static str> {
 
     let mut cflags = CFlags {
         thread_count: 1,
-        ..CFlags::default()
-        //..Default::default()
+        ..CFlags::default() //..Default::default()
     };
 
     let mut inputs = HashSet::<PathBuf>::new();

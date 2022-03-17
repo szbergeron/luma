@@ -22,7 +22,7 @@ use std::sync::atomic::{fence, Ordering};
 
 use std::sync::Arc;
 
-use crate::ast::{indent, AstNode, FunctionDefinition, NodeInfo, TypeDefinition, StructDefinition};
+use crate::ast::{indent, AstNode, FunctionDefinition, NodeInfo, StructDefinition, TypeDefinition};
 //use once_cell::sync::OnceCell;
 use static_assertions::assert_impl_all;
 use std::pin::Pin;
