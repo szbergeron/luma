@@ -1,10 +1,11 @@
+use std::fmt::{Debug, Formatter};
+
 use indent::indent_all_by;
 use pretty::RcDoc;
 
-use crate::lex::{TokenWrapper, CodeLocation};
+use crate::lex::{CodeLocation, TokenWrapper};
 
 use super::expressions;
-
 
 pub fn indent(ind: usize) -> String {
     let mut s: String = "|".to_string();
@@ -22,13 +23,12 @@ pub fn indented(val: String) -> String {
 }
 
 /*pub fn concat_lines(val: Vec<String>) -> String {
-    let root = 
+    let root =
 }*/
 
 pub fn add_line(to: &mut String, val: String) {
     to.push('\n');
     to.push_str(val.as_str());
-
 }
 
 pub fn comma_break<'a>() -> RcDoc<'a> {
@@ -53,16 +53,31 @@ impl std::fmt::Display for Span {
     }
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+#[derive(Clone, Copy, Eq, PartialEq, Hash)]
 pub enum NodeInfo {
     Builtin,
     Parsed(ParsedNodeInfo),
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+impl Debug for NodeInfo {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        match self {
+            Self::Builtin => write!(f, "<builtin>"),
+            Self::Parsed(p) => p.fmt(f)
+        }
+    }
+}
+
+#[derive(Clone, Copy, Eq, PartialEq, Hash)]
 pub struct ParsedNodeInfo {
     pub span: Span,
     //pub parsed: bool,
+}
+
+impl Debug for ParsedNodeInfo {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(f, "<parsed from {} to {}>", self.span.start, self.span.end)
+    }
 }
 
 impl NodeInfo {
@@ -75,14 +90,12 @@ impl NodeInfo {
     pub fn extended(self, t: TokenWrapper) -> Self {
         match self {
             Self::Builtin => Self::from_token(&t),
-            Self::Parsed(pni) => {
-                Self::Parsed(ParsedNodeInfo {
-                    span: Span {
-                        start: pni.span.start,
-                        end: t.end,
-                    }
-                })
-            }
+            Self::Parsed(pni) => Self::Parsed(ParsedNodeInfo {
+                span: Span {
+                    start: pni.span.start,
+                    end: t.end,
+                },
+            }),
         }
     }
 
@@ -151,7 +164,10 @@ pub trait AstNode: std::fmt::Debug + Send + Sync {
     /// should be indented by the child according to the `depth` parameter
     #[allow(unused_variables)]
     fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
-        panic!("[ast_prettyprint] not yet implemented for {}", std::any::type_name::<Self>());
+        panic!(
+            "[ast_prettyprint] not yet implemented for {}",
+            std::any::type_name::<Self>()
+        );
     }
 
     fn start(&self) -> Option<CodeLocation> {

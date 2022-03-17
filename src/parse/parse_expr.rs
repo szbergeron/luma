@@ -793,6 +793,10 @@ impl<'lexer> Parser<'lexer> {
                 let node_info = NodeInfo::from_indices(start, end);
                 lhs = ast::CastExpression::new_expr(node_info, lhs, typeref);
                 continue;
+            } else if let Some(_arrow) = t.try_take(Token::ThinArrowLeft) {
+                let v = self.parse_implementation_expression(&t, lhs).join_hard(&mut t).catch(&mut t)?;
+
+                lhs = box v;
             } else if let Some(((l_bp, r_bp), tw)) =
                 t.try_take_if(|tw| infix_binding_power(tw.token))
             {

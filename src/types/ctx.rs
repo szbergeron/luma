@@ -22,7 +22,7 @@ use std::sync::atomic::{fence, Ordering};
 
 use std::sync::Arc;
 
-use crate::ast::{indent, AstNode, FunctionDefinition, NodeInfo, TypeDefinition};
+use crate::ast::{indent, AstNode, FunctionDefinition, NodeInfo, TypeDefinition, StructDefinition};
 //use once_cell::sync::OnceCell;
 use static_assertions::assert_impl_all;
 use std::pin::Pin;
@@ -859,7 +859,7 @@ impl TypeCtx {
         tid
     }
 
-    pub fn define_struct(&self, sd: TypeDefinition) -> () {
+    pub fn define_struct(&self, sd: StructDefinition) -> () {
         // do nothing, just drop for now
         // TODO
     }

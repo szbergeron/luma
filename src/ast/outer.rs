@@ -1,8 +1,14 @@
+use super::EnumDefinition;
+use super::FunctionDefinition;
+use super::Implementation;
+use super::StructDefinition;
+use super::TraitDefinition;
 use super::base::*;
 use super::expressions::ExpressionWrapper;
 use super::TypeDefinition;
 use super::TypeReference;
 use crate::helper::VecOps;
+use crate::types::FunctionDeclaration;
 use std::fmt::Debug;
 use std::io::Write;
 
@@ -135,7 +141,7 @@ pub struct OuterScope {
     pub node_info: NodeInfo,
 
     //pub declarations: Vec<Arc<RwLock<Result<SymbolDeclaration, ParseResultError>>>>,
-    pub declarations: Vec<SymbolDeclaration>,
+    pub declarations: Vec<TopLevel>,
 }
 
 impl Debug for OuterScope {
@@ -167,18 +173,24 @@ impl OuterScope {
 
         for dec in items.into_iter() {
             match dec {
-                SymbolDeclaration::FunctionDeclaration(fd) => {
+                TopLevel::FunctionDeclaration(fd) => {
                     //ctx.func_ctx().define(
                     ctx.func_ctx().add(fd);
                 }
-                SymbolDeclaration::NamespaceDeclaration(nd) => {
+                TopLevel::NamespaceDeclaration(nd) => {
                     ctxs.push(nd.into_ctx(&module, parent, global));
                 }
-                SymbolDeclaration::UseDeclaration(ud) => {
+                TopLevel::UseDeclaration(ud) => {
                     ctx.import(ud.into_import());
                 }
-                SymbolDeclaration::TypeDefinition(sd) => {
+                TopLevel::Struct(sd) => {
                     ctx.type_ctx().define_struct(sd);
+                }
+                TopLevel::Enum(e) => {
+                    todo!()
+                }
+                TopLevel::Implementation(i) => {
+                    todo!()
                 }
                 _ => todo!(),
             }
@@ -204,7 +216,7 @@ impl OuterScope {
         std::mem::drop(context);
     }*/
 
-    pub fn new(node_info: NodeInfo, declarations: Vec<SymbolDeclaration>) -> OuterScope {
+    pub fn new(node_info: NodeInfo, declarations: Vec<TopLevel>) -> OuterScope {
         OuterScope {
             node_info,
             declarations,
@@ -348,74 +360,6 @@ pub struct LetExpression {
 
     pub expression: Box<ExpressionWrapper>,
 }
-
-#[derive(Debug, Clone)]
-pub struct FunctionDefinition {
-    pub node_info: NodeInfo,
-
-    pub public: bool,
-    pub name: IStr,
-
-    pub body: Box<ExpressionWrapper>,
-    pub return_type: TypeReference,
-    //pub params: Vec<(Box<super::ExpressionWrapper>, super::TypeReference)>,
-    pub params: Vec<(IStr, super::TypeReference)>,
-}
-
-impl AstNode for FunctionDefinition {
-    fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
-        let _ = write!(f, "fn {} (", self.name.resolve(),);
-        for p in self.params.iter() {
-            let _ = write!(f, "{}:", p.0.resolve());
-            p.1.pretty(f, depth + 1);
-            let _ = write!(f, ", ");
-        }
-        let _ = write!(f, ") -> ");
-        self.return_type.pretty(f, depth + 1);
-        let _ = write!(f, " ");
-        //let _ =
-        //let _ = writeln!(f, " {{");
-        //let _ = write!(f, "{}", indent(depth + 1));
-
-        self.body.as_node().pretty(f, depth);
-        //let _ = writeln!(f, "");
-        //let _ = writeln!(f, "\n{}}}", indent(depth));
-    }
-    fn node_info(&self) -> NodeInfo {
-        self.node_info
-    }
-
-    /*fn format(&self) -> RcDoc {
-        let r = RcDoc::text("FunctionDeclaration with name ")
-            .append(self.name.resolve())
-            .append(RcDoc::line());
-
-        let r = r
-            .append("Parameters: ")
-            .append(
-                RcDoc::intersperse(
-                    self.params
-                        .iter()
-                        .map(|(name, tr)| RcDoc::text(name.resolve()).append(": ").append(tr.format())),
-                    comma_break(),
-                )
-                .nest(1),
-            )
-            .append(RcDoc::line());
-
-        let r = r
-            .append("Returns: ")
-            .append(self.return_type.format().nest(1))
-            .append(RcDoc::line());
-
-        let r = r
-            .append("Body:")
-            .append(self.body.as_node().format().nest(1));
-
-        r
-    }*/
-}
-
 //pub struct
 
 /*#[derive(Debug)]
@@ -602,16 +546,19 @@ impl AstNode for StaticVariableDeclaration {
 }
 
 #[derive(Debug)]
-pub enum SymbolDeclaration {
+pub enum TopLevel {
     FunctionDeclaration(FunctionDefinition),
     NamespaceDeclaration(Namespace),
-    TypeDefinition(TypeDefinition),
-    ExpressionDeclaration(StaticVariableDeclaration),
+    Implementation(Implementation),
+    Specification(TraitDefinition),
+    Struct(StructDefinition),
+    Enum(EnumDefinition),
     UseDeclaration(UseDeclaration),
+    ExpressionDeclaration(Box<ExpressionWrapper>),
     //VariableDeclaration(VariableDeclaration),
 }
 
-impl IntoAstNode for SymbolDeclaration {
+impl IntoAstNode for TopLevel {
     /*fn as_node_mut(&mut self) -> Option<&mut dyn AstNode> {
         None
     }*/
@@ -629,14 +576,17 @@ impl IntoAstNode for SymbolDeclaration {
         match self {
             Self::FunctionDeclaration(fd) => fd,
             Self::NamespaceDeclaration(nd) => nd,
-            Self::TypeDefinition(sd) => sd,
-            Self::ExpressionDeclaration(ed) => ed,
+            Self::Implementation(sd) => sd,
             Self::UseDeclaration(ud) => ud,
+            Self::Enum(e) => e,
+            Self::Struct(e) => e,
+            Self::Specification(e) => e,
+            Self::ExpressionDeclaration(e) => e.as_node(),
         }
     }
 }
 
-impl SymbolDeclaration {
+impl TopLevel {
     /*pub fn mark_public(&mut self) {
         match self {
             Self::FunctionDeclaration(v) => v.public = true,
@@ -647,26 +597,6 @@ impl SymbolDeclaration {
         }
     }*/
 
-    pub fn is_public(&self) -> bool {
-        match self {
-            Self::FunctionDeclaration(fd) => fd.public,
-            Self::NamespaceDeclaration(fd) => fd.public,
-            Self::TypeDefinition(fd) => todo!(),
-            Self::ExpressionDeclaration(fd) => fd.public,
-            Self::UseDeclaration(fd) => fd.public,
-        }
-    }
-
-    pub fn symbol_name(&self) -> Option<IStr> {
-        match self {
-            Self::FunctionDeclaration(fd) => Some(fd.name),
-            Self::NamespaceDeclaration(ns) => ns.name,
-            Self::TypeDefinition(sd) => todo!(),
-            Self::ExpressionDeclaration(_ed) => None, // no symbol to export
-            Self::UseDeclaration(_ud) => None,
-        }
-    }
-
     pub fn is_context(&self) -> bool {
         match self {
             Self::NamespaceDeclaration(_) => true,
@@ -674,7 +604,7 @@ impl SymbolDeclaration {
         }
     }
 
-    pub fn symbols(&self) -> &[SymbolDeclaration] {
+    pub fn symbols(&self) -> &[TopLevel] {
         match &self {
             Self::NamespaceDeclaration(ns) => match &ns.contents {
                 contents => &contents.declarations[..],

@@ -1,5 +1,6 @@
 use std::fmt::Debug;
 
+use super::ImplementationBody;
 use super::base::*;
 use super::outer::*;
 use crate::ast::TypeReference;
@@ -37,6 +38,7 @@ pub enum ExpressionWrapper {
     LLVMLiteral(LLVMLiteralExpression),
     Identifier(IdentifierExpression),
     FunctionCall(FunctionCall),
+    ImplementationModification(ImplementationModificationExpression),
 }
 
 impl Debug for ExpressionWrapper {
@@ -90,6 +92,7 @@ impl IntoAstNode for ExpressionWrapper {
             Self::MemberAccess(e) => e,
             Self::FunctionCall(e) => e,
             Self::Identifier(e) => e,
+            Self::ImplementationModification(e) => e,
         }
     }
 
@@ -962,6 +965,22 @@ impl LiteralExpression {
 }
 
 impl AstNode for LiteralExpression {
+    fn node_info(&self) -> NodeInfo {
+        self.node_info
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ImplementationModificationExpression {
+    pub node_info: NodeInfo,
+
+    pub modifying: Box<ExpressionWrapper>,
+    pub traits: Vec<TypeReference>,
+
+    pub impl_block: Box<ImplementationBody>
+}
+
+impl AstNode for ImplementationModificationExpression {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }

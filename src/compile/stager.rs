@@ -65,6 +65,12 @@ pub fn parse_unit<'file>(
     match &v {
         Some(punit) => {
             if cflags.dump_tree {
+                println!("Input file:");
+                for (line_num, line) in contents.lines().enumerate() {
+                    println!("{line_num:3}｜ {line}");
+                }
+                println!();
+
                 println!("Gets AST of: {:#?}", punit);
             }
             if cflags.dump_pretty {

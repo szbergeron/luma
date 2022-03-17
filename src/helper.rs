@@ -286,8 +286,8 @@ impl<A, B> std::ops::FromResidual for EitherAnd<A, B> {
 #[derive(Debug, Clone)]
 pub enum Error {
     DuplicateDefinition {
-        duplicate_symbol: Arc<RwLock<SymbolDeclaration>>,
-        existing_symbol: Arc<RwLock<SymbolDeclaration>>,
+        duplicate_symbol: Arc<RwLock<TopLevel>>,
+        existing_symbol: Arc<RwLock<TopLevel>>,
     },
 }
 

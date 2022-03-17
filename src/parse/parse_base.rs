@@ -147,10 +147,7 @@ impl<'lexer> Parser<'lexer> {
     }*/
     #[allow(non_upper_case_globals)]
     //const first_global: [Token; 3] = [Token::Module, Token::Function, Token::Struct];
-    pub fn parse_global_declaration(
-        &mut self,
-        t: &TokenProvider,
-    ) -> ParseResult<ast::SymbolDeclaration> {
+    pub fn parse_global_declaration(&mut self, t: &TokenProvider) -> ParseResult<ast::TopLevel> {
         println!("Parsing global declaration, idx: {}", t.lh.index());
 
         //let mut t = parse_header!(t, [Token::Module => 1.0, Token::Function => 1.0, Token::Struct => 1.0, Token::Use => 1.0, Token::DExpression => 10.0]);
@@ -188,7 +185,7 @@ impl<'lexer> Parser<'lexer> {
                     todo!();
                     let mut ns = self.parse_namespace(&t).join_hard(&mut t).catch(&mut t)?;
                     ns.set_public(public);
-                    ast::SymbolDeclaration::NamespaceDeclaration(ns)
+                    ast::TopLevel::NamespaceDeclaration(ns)
                 }
                 Token::Function => {
                     todo!();
@@ -196,7 +193,7 @@ impl<'lexer> Parser<'lexer> {
                         .parse_function_declaration(&t)
                         .join_hard(&mut t)
                         .catch(&mut t)?;
-                    ast::SymbolDeclaration::FunctionDeclaration(fd)
+                    ast::TopLevel::FunctionDeclaration(fd)
                 }
                 // TODO: maybe add global variable declaration?
                 Token::Struct => {
@@ -205,7 +202,7 @@ impl<'lexer> Parser<'lexer> {
                         .parse_struct_definition(&t)
                         .join_hard(&mut t)
                         .catch(&mut t)?;
-                    ast::SymbolDeclaration::TypeDefinition(sd)
+                    ast::TopLevel::Struct(sd)
                 }
                 Token::Use => {
                     todo!();
@@ -213,7 +210,7 @@ impl<'lexer> Parser<'lexer> {
                         .parse_use_declaration(&t)
                         .join_hard(&mut t)
                         .catch(&mut t)?;
-                    ast::SymbolDeclaration::UseDeclaration(ud)
+                    ast::TopLevel::UseDeclaration(ud)
                 }
                 Token::DExpression => {
                     println!("Taking dexpr");
@@ -237,11 +234,7 @@ impl<'lexer> Parser<'lexer> {
                     println!("About to update solution for e, idx is {}", t.lh.index());
                     let e = e.update_solution(&t)?;
                     println!("Value of e: {e:#?}");
-                    ast::SymbolDeclaration::ExpressionDeclaration(StaticVariableDeclaration {
-                        node_info: e.as_node().node_info(),
-                        expression: e,
-                        public: false,
-                    })
+                    ast::TopLevel::ExpressionDeclaration(e)
                 }
 
                 // only parse let expressions for now, since other (pure) expressions would be

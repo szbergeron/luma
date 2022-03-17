@@ -1,6 +1,6 @@
 use crate::ast::base::IntoAstNode;
-use crate::ast::{self, MemberAttributes};
-use crate::lex::{ErrorSet, Token, ParseResultError, CodeLocation};
+use crate::ast::{self, ImplementationBody, ImplementationItem, MemberAttributes, FieldMember};
+use crate::lex::{CodeLocation, ErrorSet, ParseResultError, Token};
 use crate::parse::*;
 
 use super::schema::{ResultHint, TokenProvider};
@@ -17,10 +17,118 @@ impl<'lexer> Parser<'lexer> {
         MemberAttributes { public, mutable }
     }
 
+    pub fn parse_implementation_expression(
+        &mut self,
+        t: &TokenProvider,
+        lhs: Box<ExpressionWrapper>,
+    ) -> ParseResult<ExpressionWrapper> {
+        let mut t = parse_header!(t);
+
+        let start = lhs.as_node().node_info().as_parsed().unwrap().span.start;
+
+        // parse trait list
+
+        let mut trait_list = Vec::new();
+
+        loop {
+            let ts = self
+                .parse_type_specifier(&t)
+                .join_hard(&mut t)
+                .catch(&mut t)?;
+            trait_list.push(ts);
+            match t.try_take(Token::Plus) {
+                None => break,
+                Some(_) => continue,
+            }
+        }
+
+        let body = self
+            .parse_implementation_body(&t)
+            .join_hard(&mut t)
+            .catch(&mut t)?;
+
+        let end = body.node_info.as_parsed().unwrap().span.end;
+
+        let node_info = NodeInfo::from_indices(start, end);
+
+        t.success(ExpressionWrapper::ImplementationModification(
+            ImplementationModificationExpression {
+                modifying: lhs,
+                traits: trait_list,
+                node_info,
+                impl_block: box body,
+            },
+        ))
+
+        //
+    }
+
+    pub fn parse_implementation_body(
+        &mut self,
+        t: &TokenProvider,
+    ) -> ParseResult<ImplementationBody> {
+        let mut t =
+            parse_header!(t, [Token::RBrace => 1.0, Token::Function => 10.0, Token::Var => 10.0]);
+
+        let start = t.take(Token::LBrace).join()?.start;
+        let end;
+
+        let mut items = Vec::new();
+
+        loop {
+            let expected = [Token::RBrace, Token::Function, Token::Var];
+            let next = t.take_in(&expected).join()?;
+            match next.token {
+                Token::Function => {
+                    t.lh.backtrack();
+                    let f = self
+                        .parse_function_declaration(&t)
+                        .join_hard(&mut t)
+                        .catch(&mut t)
+                        .handle_here()?;
+
+                    let (v, e, s) = f.update_solution(&t).open();
+
+                    match v {
+                        Some(v) => {
+                            items.push(ImplementationItem::Function(v));
+                        }
+                        None => (),
+                    }
+
+                    //t.sync_with_solution(s);
+                }
+                Token::Var => {
+                    let ident = t.take(Token::Identifier).join()?;
+                    let _ = t.take(Token::Colon).join()?;
+                    let tr = self.parse_type_specifier(&t).join_hard(&mut t).catch(&mut t)?;
+
+                    items.push(ImplementationItem::Field(FieldMember { name: ident.slice, ftype: tr }));
+                }
+                Token::RBrace => {
+                    end = next.end;
+                    break;
+                }
+                _ => unreachable!(), //_ => return t.unexpected_token(&expected, "Was attempting to parse an implementation body")
+            }
+        }
+
+        let info = NodeInfo::from_indices(start, end);
+
+        t.success(ImplementationBody {
+            node_info: info,
+            items,
+        })
+    }
+
+    /*pub fn parse_implementation_item(&mut self, t: &TokenProvider) -> ParseResult<ImplementationItem> {
+        let
+    }*/
+
     pub fn parse_struct_definition(
         &mut self,
         t: &TokenProvider,
-    ) -> ParseResult<ast::TypeDefinition> {
+    ) -> ParseResult<ast::StructDefinition> {
         let mut t = t.child();
 
         let start = t.take(Token::Struct).join()?.start;
@@ -30,10 +138,7 @@ impl<'lexer> Parser<'lexer> {
 
         let mut fields = Vec::new();
 
-        while let (ma, Some(field_name)) = (
-            self.parse_member_attributes(&mut t),
-            t.try_take(Token::Identifier),
-        ) {
+        while let Some(field_name) = t.try_take(Token::Identifier) {
             t.take(Token::Colon).join()?;
 
             let field_type = self
@@ -47,7 +152,7 @@ impl<'lexer> Parser<'lexer> {
             };*/
 
             let field_member = ast::FieldMember {
-                attributes: ma,
+                //attributes: ma,
                 name: field_name.slice,
                 ftype: field_type,
             };
@@ -65,11 +170,11 @@ impl<'lexer> Parser<'lexer> {
 
         let node_info = ast::NodeInfo::from_indices(start, end);
 
-        t.success(ast::TypeDefinition::Struct(ast::RecordValueDefinition {
+        t.success(ast::StructDefinition {
             name,
             fields,
             node_info,
-        }))
+        })
     }
 
     pub fn parse_type_block(&mut self, t: &TokenProvider) -> ParseResult<ast::ImplementationBody> {
@@ -292,7 +397,7 @@ impl<'lexer> Parser<'lexer> {
         // these can start with a ( for a typle, a & for a reference, or a str, [<] for a named and
         // optionally parameterized type
 
-        match t.try_take_in(&[Token::Ampersand, Token::Asterisk]) {
+        match t.try_take_in(&[Token::Ampersand, Token::Asterisk, Token::RParen]) {
             None => {
                 //let scope = self.parse_scope(&t).join_hard(&mut t).catch(&mut t)?;
                 let scope = self.parse_scope(&t).join_hard(&mut t).catch(&mut t)?;
@@ -306,13 +411,16 @@ impl<'lexer> Parser<'lexer> {
 
                 t.success(tr)
             }
+            Some(t) if t.token.matches(Token::RParen) => {
+                todo!("Need to implement tuple types/type references")
+            }
             Some(t) if t.token.matches(Token::Ampersand) => {
                 panic!()
             }
             Some(t) if t.token.matches(Token::Asterisk) => {
                 panic!()
             }
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 }

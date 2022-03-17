@@ -38,6 +38,9 @@ pub enum Token {
     #[token("fn")]
     Function,
 
+    #[token("var")]
+    Var,
+
     #[token("let")]
     Let,
 
@@ -184,6 +187,9 @@ pub enum Token {
 
     #[token("->")]
     ThinArrow,
+    
+    #[token("<-")]
+    ThinArrowLeft,
 
     #[token("=>")]
     ThickArrow,

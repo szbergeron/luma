@@ -35,7 +35,7 @@ impl<'a> SymbolDB<'a> {
 pub struct ScopeContext {
     pub scope: Vec<IStr>,
     pub public: bool,
-    pub from: OnceCell<Arc<SymbolDeclaration>>,
+    pub from: OnceCell<Arc<TopLevel>>,
 
     super_context: OnceCell<Weak<ScopeContext>>,
 
@@ -116,7 +116,7 @@ impl ScopeContext {
         scope: Vec<IStr>,
         global: Option<Weak<ScopeContext>>,
         parent: Option<Weak<ScopeContext>>,
-        from: Option<Arc<SymbolDeclaration>>,
+        from: Option<Arc<TopLevel>>,
     ) -> Arc<ScopeContext> {
         println!("Created a scopecontext for scope {:?}", scope);
         let scope = ScopeContext {
@@ -170,7 +170,7 @@ impl ScopeContext {
         }
     }
 
-    pub fn add_context(&mut self, self_rc: Arc<ScopeContext>, ns: Arc<SymbolDeclaration>) {
+    /*pub fn add_context(&mut self, self_rc: Arc<ScopeContext>, ns: Arc<Namespace>) {
         //let mut self_guard = self_rc.write().unwrap();
 
         //let ns = ns.read().unwrap();
@@ -179,7 +179,7 @@ impl ScopeContext {
         //scope.push(String::from(ctx_guard.symbol_name().unwrap_or("")));
         //scope.push(interner().resolve(interner().get(ctx_guard.symbol_name().unwrap_or(&interner().get_or_intern_static("")))).to_owned());
         //scope.push(interner().get_or_intern(ctx_guard.symbol_name().unwrap_or()));
-        scope.push(ns.symbol_name().unwrap_or(intern_static("")));
+        scope.push(ns.name.unwrap_or(intern_static("")));
 
         let error = self.error_sink.clone();
 
@@ -197,12 +197,12 @@ impl ScopeContext {
         //let scope = Arc::new(RwLock::new(scope));
 
         self.add_child_context(scope);
-    }
+    }*/
 
-    pub fn add_definition(
+    /*pub fn add_definition(
         &self,
         _self_rc: Arc<ScopeContext>,
-        decl: Arc<std::sync::RwLock<SymbolDeclaration>>,
+        decl: Arc<std::sync::RwLock<TopLevel>>,
     ) -> bool {
         let decl_guard = decl.read().unwrap();
         let _is_exported = decl_guard.is_public();
@@ -255,7 +255,7 @@ impl ScopeContext {
         }*/
 
         result
-    }
+    }*/
 
     /*pub fn set_once_super(&mut self, super_context: Weak<RwLock<ScopeContext<'a>>>) {
         if self.super_context.is_some() {
