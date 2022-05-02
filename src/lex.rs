@@ -41,6 +41,9 @@ pub enum Token {
     #[token("spec")]
     Specification,
 
+    #[token("impl")]
+    Implementation,
+
     #[token("var")]
     Var,
 

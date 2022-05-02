@@ -6,6 +6,168 @@ use crate::{
 use super::{AstNode, ExpressionWrapper, IntoAstNode, NodeInfo, ScopedNameReference};
 
 //use crate::types::FunctionDeclaration;
+//
+
+mod new {
+    #[derive(Debug)]
+    pub struct TypeReference {
+        resolution: std::sync::RwLock<TypeResolution>,
+        syntax: super::syntax::TypeReference,
+    }
+
+    impl Clone for TypeReference {
+        fn clone(&self) -> Self {
+            Self {
+                syntax: self.syntax.clone(),
+                resolution: std::sync::RwLock::new(self.resolution.read().unwrap().clone()),
+            }
+        }
+    }
+
+    #[derive(Debug, Clone)]
+    pub enum TypeResolution {
+        Unresolved(),
+        Resolved(std::sync::Arc<TypeConstraint>),
+    }
+
+    /// Every type reference is effectively a constraint on what that variable can be.
+    #[derive(Debug, Clone)]
+    pub enum TypeConstraint {
+        /// A "narrowing" constraint is one where a partial reference is given.
+        /// This could be in the case where a variable is being assigned from a function and we
+        /// want to hold it as some type, or where we are taking a literal type and
+        /// provide a "u128" constraint to the variable it's going in to which backpropagates
+        /// and changes what type the literal appears as
+        ///
+        /// It also means that if we have a variable of type T, but it comes from a source of T+U,
+        /// that variable itself is only T rather than being T+U from the type system perspective.
+        ///
+        /// Accessing U again requires a narrowing conversion with some (T) -> Maybe<T+U>
+        Widening(),
+
+        /// A composite constraint is one that inherits the constraints of its uses. This
+        /// corresponds to "wildcard" or other non-constraints, such as implicit constraints within
+        /// an expression. If we have a function that returns T+U, save it into a _ variable, and
+        /// then only pass that variable into a (U) -> ?, then _ is resolved to U. If we try to
+        /// pass a _ variable from a T+U function into a (V) -> ?, then the composite is
+        /// unresolvable and the compiler throws an error
+        Composite(),
+
+        /// A source constraint is an absolute constraint. This appears in cases like the
+        /// post-generic-resolution signature of a function. This is also used for global
+        /// constants.
+        Source(),
+    }
+
+    use crate::{helper::interner::IStr, ast::ExpressionWrapper};
+
+    #[derive(Debug, Clone)]
+    /// A fieldmember can be either a method or a sized field.
+    /// For value types within the inherent impl context, fields exist within
+    /// the structural record and methods are fully devirtualized.
+    ///
+    /// For virtual types, fieldmembers exist as entries within the virttype vtable whether
+    /// they are methods or variables.
+    pub struct FieldMember {
+        /// Every attribute of a type is named (even if not uniquely).
+        pub name: IStr,
+
+        /// Every field is uniquely described by the pair of name and type
+        pub ftype: TypeReference,
+
+        /// Any field may have a provided default value for a member.
+        ///
+        /// Struct inherent implementations of functions demand default falues,
+        /// but virtual types do not. Every other (known) instance of FieldMember does not require
+        /// any default literal value
+        ///
+        /// A default value is not really a "value", but is instead implicitly a callable with the
+        /// contents wrapped in a parameterless closure. These closures have static constants all
+        /// visible to them, as well as typical literals and all imported constants.
+        pub default: AnonymousClosure,
+    }
+
+    /// A VirtualType is an interface or other non-structured type. It can be inherently
+    /// implemented or runtime composed (and used through a CompositeType).
+    #[derive(Debug, Clone)]
+    pub struct VirtualType {
+        members: Vec<FieldMember>,
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct StructType {
+        members: Vec<FieldMember>,
+    }
+
+    /*pub trait PrimitiveType: std::fmt::Debug + Clone {
+    }*/
+
+    #[derive(Debug, Clone)]
+    pub enum PrimitiveType {
+    }
+
+    /// If a type is an enum, struct, or primitive, then it is a ValueType.
+    #[derive(Debug, Clone)]
+    pub enum ValueType {
+        Callable(CallableType),
+        Struct(StructType),
+        Enum(!),
+        Primitive(PrimitiveType),
+    }
+
+    /// A composed type is one that only exists at usage sites, and
+    /// embodies types of the form "T + U". This is not used for types that inherit
+    /// or have inherent implementations of traits, as those are natively part of the ValueType or
+    /// VirtualType. This class of type only exists because of the runtime type composition
+    /// features of LumaLang.
+    #[derive(Debug, Clone)]
+    pub struct ComposedType {
+        member_types: Vec<TypeReference>,
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct AnonymousClosure {
+        signature: ValueType, // always a CallableType
+        
+        code: Box<ExpressionWrapper>,
+    }
+}
+
+mod intermediate {
+    use crate::helper::interner::IStr;
+
+    #[derive(Debug, Clone)]
+    pub struct VirtualType {
+        members: Vec<FieldMember>,
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct ValueType {
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct ComposedType {
+    }
+
+    #[derive(Debug, Clone)]
+    pub enum Type {
+        Value(ValueType),
+        Virtual(VirtualType),
+        Composed(ComposedType),
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct TypeReference {
+        resolution: std::sync::RwLock<TypeResolution>,
+        syntax: super::syntax::TypeReference,
+    }
+
+    #[derive(Debug, Clone)]
+    pub enum TypeResolution {
+        Unresolved(),
+        Resolved(std::sync::Arc<VirtualType>),
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct DefinitionBody {
@@ -28,13 +190,13 @@ pub struct ImplementationBody {
 
 #[derive(Debug, Clone)]
 pub struct Implementation {
-    node_info: NodeInfo,
+    pub node_info: NodeInfo,
 
-    body: ImplementationBody,
+    pub body: ImplementationBody,
 
-    impl_of: TypeReference,
+    pub impl_of: Option<TypeReference>,
 
-    impl_for: TypeReference,
+    pub impl_for: TypeReference,
 }
 
 impl AstNode for Implementation {
@@ -228,68 +390,76 @@ impl IntoAstNode for TypeDefinition {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct TypeReference {
-    node_info: NodeInfo,
+pub mod syntax {
+    use crate::ast::{ScopedNameReference, NodeInfo, AstNode, IntoAstNode};
+    use crate::{
+        ast::indent,
+        helper::interner::{IStr, SpurHelper},
+    };
 
-    pub ctx: ScopedNameReference,
-    pub canonicalized_name: IStr,
+    #[derive(Debug, Clone)]
+    pub struct TypeReference {
+        node_info: NodeInfo,
 
-    pub type_args: Vec<TypeReference>,
-}
+        pub ctx: ScopedNameReference,
+        pub canonicalized_name: IStr,
 
-impl TypeReference {
-    pub fn new(ctx: ScopedNameReference, name: IStr) -> TypeReference {
-        TypeReference {
-            node_info: NodeInfo::Builtin,
-            ctx,
-            type_args: Vec::new(),
-            canonicalized_name: name,
-        }
+        pub type_args: Vec<TypeReference>,
     }
-}
 
-impl AstNode for TypeReference {
-    fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
-        let _ = write!(f, "{}", self.canonicalized_name);
-        if !self.type_args.is_empty() {
-            let _ = write!(f, "<args: !impl>");
-        }
-    }
-    /*fn display(&self, f: &mut std::fmt::Formatter<'_>, _depth: usize) {
-        let _ = write!(
-            f,
-            "{}",
-            self.ctx.as_node(),
-            //self.canonicalized_name.resolve() //interner().resolve(&self.canonicalized_name)
-        );
-        if !self.type_args.is_empty() {
-            write!(f, "<").unwrap();
-            for idx in 0..self.type_args.len() {
-                write!(f, "{}", self.type_args[idx].as_node()).unwrap();
-                if idx < self.type_args.len() - 1 {
-                    write!(f, ", ").unwrap();
-                }
+    impl TypeReference {
+        pub fn new(ctx: ScopedNameReference, name: IStr, node_info: NodeInfo) -> TypeReference {
+            TypeReference {
+                node_info,
+                ctx,
+                type_args: Vec::new(),
+                canonicalized_name: name,
             }
-            write!(f, ">").unwrap();
         }
-        /*
-        [&self.subexpr]
-            .iter()
-            .for_each(|expr| expr.as_node().display(f, depth + 1));*/
-    }*/
-
-    fn node_info(&self) -> NodeInfo {
-        self.node_info
     }
-}
 
-impl IntoAstNode for TypeReference {
-    /*fn as_node_mut(&mut self) -> &mut dyn AstNode {
-        self
-    }*/
+    impl AstNode for TypeReference {
+        fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
+            let _ = write!(f, "{}", self.canonicalized_name);
+            if !self.type_args.is_empty() {
+                let _ = write!(f, "<args: !impl>");
+            }
+        }
+        /*fn display(&self, f: &mut std::fmt::Formatter<'_>, _depth: usize) {
+            let _ = write!(
+                f,
+                "{}",
+                self.ctx.as_node(),
+                //self.canonicalized_name.resolve() //interner().resolve(&self.canonicalized_name)
+            );
+            if !self.type_args.is_empty() {
+                write!(f, "<").unwrap();
+                for idx in 0..self.type_args.len() {
+                    write!(f, "{}", self.type_args[idx].as_node()).unwrap();
+                    if idx < self.type_args.len() - 1 {
+                        write!(f, ", ").unwrap();
+                    }
+                }
+                write!(f, ">").unwrap();
+            }
+            /*
+            [&self.subexpr]
+                .iter()
+                .for_each(|expr| expr.as_node().display(f, depth + 1));*/
+        }*/
 
-    fn as_node(&self) -> &dyn AstNode {
-        self
+        fn node_info(&self) -> NodeInfo {
+            self.node_info
+        }
+    }
+
+    impl IntoAstNode for TypeReference {
+        /*fn as_node_mut(&mut self) -> &mut dyn AstNode {
+            self
+        }*/
+
+        fn as_node(&self) -> &dyn AstNode {
+            self
+        }
     }
 }

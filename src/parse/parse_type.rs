@@ -1,5 +1,7 @@
 use crate::ast::base::IntoAstNode;
-use crate::ast::{self, FieldMember, ImplementationBody, ImplementationItem, MemberAttributes};
+use crate::ast::{
+    self, FieldMember, Implementation, ImplementationBody, ImplementationItem, MemberAttributes,
+};
 use crate::lex::{CodeLocation, ErrorSet, ParseResultError, Token};
 use crate::parse::*;
 
@@ -59,8 +61,6 @@ impl<'lexer> Parser<'lexer> {
                 impl_block: box body,
             },
         ))
-
-        //
     }
 
     pub fn parse_implementation_body(
@@ -180,6 +180,50 @@ impl<'lexer> Parser<'lexer> {
             name,
             fields,
             node_info,
+        })
+    }
+
+    pub fn parse_implementation_block(
+        &mut self,
+        t: &TokenProvider,
+    ) -> ParseResult<ast::Implementation> {
+        let mut t = parse_header!(t);
+
+        t.take(Token::Implementation).join()?;
+
+        let t1 = self
+            .parse_type_specifier(&t)
+            .join_hard(&mut t)
+            .catch(&mut t)?;
+
+        let start = t1.node_info().as_parsed().unwrap().span.start;
+
+        let t2 = if let Some(v) = t.try_take(Token::For) {
+            Some(
+                self.parse_type_specifier(&t)
+                    .join_hard(&mut t)
+                    .catch(&mut t)?,
+            )
+        } else {
+            None
+        };
+
+        let (impl_of, impl_for) = match (t1, t2) {
+            (t1, Some(t2)) => (Some(t1), t2),
+            (t1, None) => (None, t1),
+        };
+
+        let body = self
+            .parse_implementation_body(&t)
+            .join_hard(&mut t)
+            .catch(&mut t)
+            .hint("Any implementation requires a body")?;
+
+        let end = body.node_info.as_parsed().unwrap().span.end;
+
+        t.success(ast::Implementation {
+            node_info: NodeInfo::from_indices(start, end),
+            impl_for, impl_of, body
         })
     }
 
@@ -402,6 +446,7 @@ impl<'lexer> Parser<'lexer> {
 
         // these can start with a ( for a typle, a & for a reference, or a str, [<] for a named and
         // optionally parameterized type
+        let start = t.lh.la(0).unwrap().start;
 
         match t.try_take_in(&[Token::Ampersand, Token::Asterisk, Token::RParen]) {
             None => {
@@ -413,7 +458,9 @@ impl<'lexer> Parser<'lexer> {
                     .hint("Any scoped type requires a typename to follow the scope")
                     .join()?;
 
-                let tr = ast::TypeReference::new(scope, typename.slice);
+                let end = typename.end;
+
+                let tr = ast::TypeReference::new(scope, typename.slice, NodeInfo::from_indices(start, end));
 
                 t.success(tr)
             }

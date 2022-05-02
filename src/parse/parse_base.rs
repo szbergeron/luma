@@ -1,6 +1,6 @@
 #[allow(non_upper_case_globals)]
 use crate::ast;
-use crate::ast::StaticVariableDeclaration;
+use crate::ast::{StaticVariableDeclaration, TopLevel};
 use crate::lex::{ParseResultError, Token};
 
 //use crate::helper::lex_wrap::LookaheadStream;
@@ -177,6 +177,8 @@ impl<'lexer> Parser<'lexer> {
                     Token::Struct,
                     Token::Use,
                     Token::DExpression,
+                    Token::Implementation,
+                    Token::Specification,
                 ])
                 .join()?
                 .token
@@ -203,6 +205,13 @@ impl<'lexer> Parser<'lexer> {
                         .join_hard(&mut t)
                         .catch(&mut t)?;
                     ast::TopLevel::Struct(sd)
+                }
+                Token::Implementation => {
+                    t.lh.backtrack();
+                    let v = self.parse_implementation_block(&t)
+                        .join_hard(&mut t)
+                        .catch(&mut t)?;
+                    ast::TopLevel::Implementation(v)
                 }
                 Token::Use => {
                     todo!();
