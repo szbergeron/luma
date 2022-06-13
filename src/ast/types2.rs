@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::{sync::atomic::{AtomicUsize, Ordering}, collections::HashMap};
 
 use smallvec::SmallVec;
 
@@ -14,24 +14,43 @@ use crate::{helper::interner::IStr, types::CtxID};
 /// implementation exists within the current module
 
 /// A TypeRoot describes ...
-enum TypeRoot {
+enum TypeRootInner {
     Value(ValueType),
     Virtual(VirtualType),
+
+    /// Modules are still types, but they have no methods or "fields",
+    /// They only have related types and functions--no vtables
+    ///
+    /// This can also be used for "non instantiable" types on their own,
+    /// such as the never type. They can exist as return types,
+    /// but have no valid instance value and can not be represented
+    /// as any sequence of bits or be cast to from any other type
+    Uninstantiable(),
     //Specialized(SpecializedType),
     //Generic(GenericHandle),
 }
 
-struct VirtualType {
+struct TypeRoot {
     generic_params: Vec<GenericHandle>,
 
+    inner: TypeRootInner,
+
+    space: TypeSpace,
+}
+
+/// A TypeSpace basically holds the "module like" properties
+/// of a type, such as associated types and associated functions
+struct TypeSpace {
+    members: Vec<Symbol>
+}
+
+struct VirtualType {
     fields: Vec<FieldMember>,
 
     methods: Vec<!>,
 }
 
 struct ValueType {
-    generic_params: Vec<GenericHandle>,
-
     name: IStr,
     
     core: ValueTypeCore,
@@ -46,7 +65,34 @@ struct StructType {
     fields: Vec<FieldMember>,
 }
 
-trait TypeLike {
+/// A Module describes the set of "related objects" within 
+struct Module {
+}
+
+enum Symbol {
+    Type(TypeRoot),
+    Function(Function),
+}
+
+trait AsModLike {
+    fn as_mod_like(&self) -> &dyn ModLike;
+}
+
+impl<T> ModLike for T where T: AsModLike {
+    fn name(&self) -> IStr {
+        self.as_mod_like().name()
+    }
+
+    fn generics(&self) -> Vec<(IStr, TypeConstraint)> {
+        self.as_mod_like().generics()
+    }
+
+    fn children(&self) -> Vec<(IStr, &Symbol)> {
+        self.as_mod_like().children()
+    }
+}
+
+trait ModLike {
     /// Returns the "symbol name" of a given TypeLike
     ///
     /// For example, `struct Foo {}` in source should yield
@@ -58,7 +104,7 @@ trait TypeLike {
     /// For a struct, children is all fields and methods and related functions
     ///
     /// For a module, children is all types and functions including re-exports
-    fn children(&self) -> Vec<(IStr, Child)>;
+    fn children(&self) -> Vec<(IStr, &Symbol)>;
 }
 
 /// The "T" in Something<T>
@@ -66,6 +112,9 @@ trait TypeLike {
 /// A GenericHandle aims to be a key type
 /// that can map down to an actual type during
 /// usage and implementation solving
+///
+/// If a handle is reused, then simply clone the existing one
+/// that you wish to refer to (don't use new!)
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct GenericHandle {
     name: IStr,
@@ -81,10 +130,11 @@ impl GenericHandle {
 }
 
 /// Represents a fully resolved type, with all generics filled in
-///
-struct TypeInstance {
+/// (or at least a required subset of them)
+struct TypeInstiation {
     base_type: TypeRoot,
-    generic_arguments: Vec<(TypeInstance, GenericHandle)>,
+    generic_args: HashMap<GenericHandle, TypeInstiation>,
+    //generic_arguments: Vec<(TypeInstance, GenericHandle)>,
 }
 
 /// An Instance represents not an actual object but more a "type of thing",
@@ -102,7 +152,7 @@ impl Instance {
     /// TODO: figure out if this should return an error
     /// if no solution type exists, or if further narrowing is
     /// a better way of dealing with that
-    fn describe(&self) -> Option<TypeInstance> {
+    fn describe(&self) -> Option<TypeInstiation> {
         match self.narrowings {
             TypeConstraint::Complete(ti) => Some(ti),
             _other => None,
@@ -145,7 +195,7 @@ pub enum TypeConstraint {
     /// on a known type struct of a known type member), then
     /// a "complete" TypeConstraint can be constructed that
     /// need not specify any more complicated relationships
-    Complete(TypeInstance),
+    Complete(TypeInstiation),
 
     /// If multiple constraints are put on a single object
     /// then Multiple can encompass them.

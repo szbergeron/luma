@@ -2,6 +2,7 @@
 use crate::ast::*;
 use std::convert::Infallible;
 use std::fs;
+use std::marker::PhantomData;
 use std::ops::ControlFlow;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
@@ -592,3 +593,21 @@ impl EitherNone<(), ()> {
         EitherNone::of(a.then_some(()), b.then_some(()))
     }
 }*/
+
+struct BoxcarInterner<T> {
+    inner: boxcar::Vec<T>,
+    id: usize,
+}
+
+struct InternedRefInner<T> {
+    for_boxcar: usize,
+    index: usize,
+    ty: PhantomData<T>,
+}
+
+pub struct InternedRef<T> {
+    inner: once_cell::sync::OnceCell<InternedRefInner<T>>,
+}
+
+impl<T> InternedRef<T> {
+}

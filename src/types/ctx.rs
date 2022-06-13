@@ -27,7 +27,8 @@ use crate::ast::{indent, AstNode, FunctionDefinition, NodeInfo, StructDefinition
 use static_assertions::assert_impl_all;
 use std::pin::Pin;
 
-pub type TypeHandle = Arc<dyn StaticType>;
+//pub type TypeHandle = Arc<dyn StaticType>;
+pub type TypeHandle = Arc<RealType>;
 
 struct RefPtr<T> {
     inner: NonNull<T>,
@@ -314,8 +315,8 @@ pub struct GlobalCtxNode {
 
     selfref: RefPtr<GlobalCtxNode>,
 
-    type_ctx: Option<TypeCtx>,
-    func_ctx: Option<FuncCtx>,
+    //type_ctx: Option<TypeCtx>,
+    //func_ctx: Option<FuncCtx>,
 
     quark: Option<super::Quark>,
 

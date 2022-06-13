@@ -1,11 +1,136 @@
 use std::{
-    alloc,
+    alloc::{self, Layout},
+    cell::UnsafeCell,
     fmt::Display,
     marker::PhantomData,
-    mem::MaybeUninit,
-    ptr::{addr_of_mut, null_mut},
-    sync::atomic::{AtomicPtr, AtomicUsize},
+    mem::{ManuallyDrop, MaybeUninit},
+    pin::Pin,
+    ptr::{addr_of_mut, null_mut, NonNull},
+    sync::atomic::{AtomicPtr, AtomicUsize, fence},
 };
+
+struct ChunkEntry<T> {
+    //unatomic: UnsafeCell<*mut T>,
+    lockfree: AtomicPtr<MaybeUninit<T>>,
+
+    blocking: std::sync::Mutex<Option<*mut MaybeUninit<T>>>,
+
+    len: AtomicUsize,
+
+    capacity: usize,
+}
+
+impl<T> ChunkEntry<T> {
+    /// Used to get a value at a specific index that
+    /// is known to have already been initialized.
+    ///
+    /// Behavior is undefined/invalid if index has not already
+    /// been initialized
+    pub unsafe fn get(&self, index: usize) -> &T {
+        if index >= self.len.load(std::sync::atomic::Ordering::Acquire) {
+            panic!("Improper usage of ChunkEntry::get()");
+        }
+
+        let r = self.touch();
+
+        let optr = r.offset(index as isize);
+
+        fence(std::sync::atomic::Ordering::Acquire);
+        (*optr).assume_init_ref()
+        //if self.unatomic.get()
+    }
+
+    /// This is the only way to put an element into
+    /// a Chunk, and must not panic. It will increase the size,
+    /// and assumes that we are never inserting over
+    /// top of an already inserted element
+    pub unsafe fn place(&self, index: usize, t: T) {
+        if index >= self.capacity {
+            panic!("Improper usage of ChunkEntry::place()");
+        }
+
+        (*self.touch().offset(index as isize)) = MaybeUninit::new(t);
+
+        self.len.fetch_add(1, std::sync::atomic::Ordering::Release);
+    }
+
+    /// "touches" a chunk, so if it has
+    /// no backing store then one will be allocated.
+    /// This also tries to ensure that
+    unsafe fn touch(&self) -> *mut MaybeUninit<T> {
+        unsafe {
+            let lockfree = self.lockfree.load(std::sync::atomic::Ordering::Acquire);
+
+            if lockfree.is_null() {
+                self.try_alloc()
+            } else {
+                lockfree
+            }
+        }
+    }
+
+    unsafe fn try_alloc(&self) -> *mut MaybeUninit<T> {
+        /*let guard = self.blocking.lock() {
+        };*/
+
+        let guard = self.blocking.lock().unwrap();
+
+        match *guard {
+            Some(inner) => unsafe { std::mem::transmute::<_, *mut MaybeUninit<T>>(inner) },
+            None => {
+                let allocation =
+                    std::alloc::alloc(Layout::array::<MaybeUninit<T>>(self.capacity).unwrap());
+
+                let allocation = std::mem::transmute::<_, *mut MaybeUninit<T>>(allocation);
+
+                //let pinned_allocation = Pin::new_unchecked(allocation);
+
+                *guard = Some(allocation);
+
+                allocation
+            }
+        }
+    }
+
+    //fn get_inner<'s>(&'s self, backing: &'s )
+}
+
+impl<T> Drop for ChunkEntry<T> {
+    fn drop(&mut self) {
+        // we can assume by the contracts of ChunkEntry that
+        // if len has been spanned across an index (and no panic has occurred on insert, which
+        // is a guarantee that must be fulfilled by users of the type), then that index is
+        // initialized and should be deallocated
+        let guard = self.blocking.lock().unwrap();
+
+        let alloc = guard.replace(null_mut());
+
+        match alloc {
+            None => (), // nothing to drop, chunk was never touched
+            Some(alloc) => {
+                // drop consumes self, so since all writes will
+                // have been with AcqRel and we know that insert
+                // cannot panic between modifying len and
+                // swapping init value, then all cells within len
+                // must be init
+                let len = self.len.load(std::sync::atomic::Ordering::Acquire);
+
+                for i in 0..len {
+                    unsafe {
+                        std::mem::drop((*alloc.offset(i as isize)).assume_init());
+                    }
+                }
+
+                unsafe {
+                    std::alloc::dealloc(
+                        std::mem::transmute(alloc),
+                        Layout::array::<MaybeUninit<T>>(self.capacity).unwrap(),
+                    );
+                }
+            }
+        }
+    }
+}
 
 //#[repr(C)]
 struct Chunk<T> {

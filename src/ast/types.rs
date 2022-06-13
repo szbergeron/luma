@@ -8,7 +8,13 @@ use super::{AstNode, ExpressionWrapper, IntoAstNode, NodeInfo, ScopedNameReferen
 //use crate::types::FunctionDeclaration;
 //
 
-mod new {
+pub mod types {
+    /// A TypeReference represents the sort of thing that goes directly after declaring a variable,
+    /// or for a function parameter. At parse time and AST construction, it is unresolved and
+    /// the only information it has is the canonicalized type string and the scope that it attempts
+    /// to reference. It is resolved (and modified using interior mutability) to the type that it
+    /// resolves to during a compiler pass, which holds a reference to a constraint, and possibly
+    /// an actual TypeID or TypeHandle
     #[derive(Debug)]
     pub struct TypeReference {
         resolution: std::sync::RwLock<TypeResolution>,
@@ -84,7 +90,7 @@ mod new {
         /// A default value is not really a "value", but is instead implicitly a callable with the
         /// contents wrapped in a parameterless closure. These closures have static constants all
         /// visible to them, as well as typical literals and all imported constants.
-        pub default: AnonymousClosure,
+        pub default: BasicClosure,
     }
 
     /// A VirtualType is an interface or other non-structured type. It can be inherently
@@ -104,6 +110,7 @@ mod new {
 
     #[derive(Debug, Clone)]
     pub enum PrimitiveType {
+        //
     }
 
     /// If a type is an enum, struct, or primitive, then it is a ValueType.
@@ -126,46 +133,34 @@ mod new {
     }
 
     #[derive(Debug, Clone)]
-    pub struct AnonymousClosure {
+    pub struct BasicClosure {
         signature: ValueType, // always a CallableType
         
+        arguments: Vec<IStr>,
+
         code: Box<ExpressionWrapper>,
     }
-}
 
-mod intermediate {
-    use crate::helper::interner::IStr;
+    /*pub trait Type {
+        fn fields(&self) -> Vec<&FieldMember>;
 
-    #[derive(Debug, Clone)]
-    pub struct VirtualType {
-        members: Vec<FieldMember>,
-    }
+        fn methods(&self) -> Vec<&FieldMember>;
+    }*/
 
-    #[derive(Debug, Clone)]
-    pub struct ValueType {
-    }
-
-    #[derive(Debug, Clone)]
-    pub struct ComposedType {
-    }
-
-    #[derive(Debug, Clone)]
-    pub enum Type {
+    /// A RealType is a fully resolved type with all generics resolved.
+    pub enum RealType {
         Value(ValueType),
         Virtual(VirtualType),
+    }
+
+    pub struct TypeAlias {
+        unimplemented: !,
+    }
+
+    pub enum Type {
         Composed(ComposedType),
-    }
-
-    #[derive(Debug, Clone)]
-    pub struct TypeReference {
-        resolution: std::sync::RwLock<TypeResolution>,
-        syntax: super::syntax::TypeReference,
-    }
-
-    #[derive(Debug, Clone)]
-    pub enum TypeResolution {
-        Unresolved(),
-        Resolved(std::sync::Arc<VirtualType>),
+        Real(RealType),
+        Alias(TypeAlias),
     }
 }
 

@@ -189,7 +189,6 @@ impl PathNode {
 
         let handle = fh.as_ref().expect("File didn't open nicely");
 
-        //let ref =
         let r = super::parse_unit(handle, self.module.clone(), &self.cflags);
 
         match r {
