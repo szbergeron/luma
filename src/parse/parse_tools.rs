@@ -55,7 +55,7 @@ fn print_stack_inner(t: &schema::RuleUnit) {
 
 macro_rules! parse_header {
     ($tref:ident, [$($token:expr => $weight:expr),*]) => {{
-        let c = $tref.child().predict(&[$(($token, $weight)),*]).owner(current_function!());
+        let c = $tref.child().predict(&[$(($token, $weight.into())),*]).owner(current_function!());
 
         print_stack(&c);
 

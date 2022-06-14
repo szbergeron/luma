@@ -3,12 +3,14 @@ mod parse_expr;
 mod parse_helper;
 mod parse_tools;
 mod parse_type;
+mod parse_spec;
 
 pub use parse_base::*;
 pub use parse_expr::*;
 pub use parse_helper::*;
 pub use parse_tools::*;
 pub use parse_type::*;
+pub use parse_spec::*;
 
 //use crate::helper::lex_wrap::LookaheadStream;
 //use crate::helper::lex_wrap::{CodeLocation, ParseResultError};

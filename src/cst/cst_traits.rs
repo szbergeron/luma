@@ -147,7 +147,7 @@ impl std::fmt::Display for NodeInfo {
 }
 
 #[allow(dead_code)]
-pub trait AstNode: std::fmt::Debug + Send + Sync {
+pub trait CstNode: std::fmt::Debug + Send + Sync {
     fn node_info(&self) -> NodeInfo;
     //fn start(&self) -> CodeLocation;
     //fn end(&self) -> CodeLocation;
@@ -181,11 +181,9 @@ pub trait AstNode: std::fmt::Debug + Send + Sync {
     fn as_expr(&self) -> Option<&mut dyn expressions::Expression> {
         None
     }
-
-    //fn children(&self) -> [&'a mut dyn AstNode<'a>];
 }
 
-impl AstNode for Option<&dyn AstNode> {
+impl CstNode for Option<&dyn CstNode> {
     fn node_info(&self) -> NodeInfo {
         match self {
             Some(n) => n.node_info(),
@@ -198,12 +196,12 @@ impl AstNode for Option<&dyn AstNode> {
     }
 }
 
-impl IntoAstNode for Option<&dyn AstNode> {
+impl IntoCstNode for Option<&dyn CstNode> {
     /*fn as_node_mut(&mut self) -> Option<&mut dyn AstNode> {
         Some(self)
     }*/
 
-    fn as_node(&self) -> &dyn AstNode {
+    fn as_node(&self) -> &dyn CstNode {
         self
     }
 }
@@ -217,14 +215,6 @@ impl IntoAstNode for Option<&dyn AstNode> {
     }
 }*/
 
-pub trait IntoAstNode {
-    fn as_node(&self) -> &dyn AstNode;
+pub trait IntoCstNode {
+    fn as_node(&self) -> &dyn CstNode;
 }
-
-/*impl<'a>  std::ops::Deref for dyn IntoAstNode<'a> {
-    type Target = dyn AstNode<'a>;
-
-    fn deref(&self) -> &'a Self::Target {
-        self.as_node()
-    }
-}*/

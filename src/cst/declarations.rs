@@ -1,5 +1,5 @@
-use super::base::*;
 use super::expressions::ExpressionWrapper;
+
 use super::EnumDefinition;
 use super::FunctionDefinition;
 use super::Implementation;
@@ -17,6 +17,8 @@ use crate::types::GlobalCtxNode;
 use crate::types::Import;
 use crate::types::Resolution;
 use std::pin::Pin;
+
+use super::cst_traits::*;
 //use std::rc::Rc;
 
 //use std::cell::RefCell;
@@ -118,7 +120,7 @@ impl Namespace {
     }*/
 }
 
-impl AstNode for Namespace {
+impl CstNode for Namespace {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
@@ -224,7 +226,7 @@ impl OuterScope {
     }
 }
 
-impl AstNode for OuterScope {
+impl CstNode for OuterScope {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
@@ -275,17 +277,17 @@ pub enum LetComponent {
     Discard(NodeInfo),
 }
 
-impl IntoAstNode for LetComponent {
+impl IntoCstNode for LetComponent {
     /*fn as_node_mut(&mut self) -> Option<&mut dyn AstNode> {
         Some(self)
     }*/
 
-    fn as_node(&self) -> &dyn AstNode {
+    fn as_node(&self) -> &dyn CstNode {
         self
     }
 }
 
-impl AstNode for LetComponent {
+impl CstNode for LetComponent {
     fn node_info(&self) -> NodeInfo {
         match self {
             Self::ScopedDestructure(_lcsd) => {
@@ -437,7 +439,7 @@ impl UseDeclaration {
     }
 }
 
-impl AstNode for UseDeclaration {
+impl CstNode for UseDeclaration {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
@@ -482,7 +484,7 @@ impl ScopedNameReference {
     }
 }
 
-impl AstNode for ScopedNameReference {
+impl CstNode for ScopedNameReference {
     fn pretty(&self, f: &mut dyn std::fmt::Write, _depth: usize) {
         let s: String = self
             .scope
@@ -497,12 +499,12 @@ impl AstNode for ScopedNameReference {
     }
 }
 
-impl IntoAstNode for ScopedNameReference {
+impl IntoCstNode for ScopedNameReference {
     /*fn as_node_mut(&mut self) -> &mut dyn AstNode {
         self
     }*/
 
-    fn as_node(&self) -> &dyn AstNode {
+    fn as_node(&self) -> &dyn CstNode {
         self
     }
 }
@@ -534,7 +536,7 @@ impl Debug for StaticVariableDeclaration {
     }
 }
 
-impl AstNode for StaticVariableDeclaration {
+impl CstNode for StaticVariableDeclaration {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
@@ -558,7 +560,7 @@ pub enum TopLevel {
     //VariableDeclaration(VariableDeclaration),
 }
 
-impl IntoAstNode for TopLevel {
+impl IntoCstNode for TopLevel {
     /*fn as_node_mut(&mut self) -> Option<&mut dyn AstNode> {
         None
     }*/
@@ -572,7 +574,7 @@ impl IntoAstNode for TopLevel {
         }
     }*/
 
-    fn as_node(&self) -> &dyn AstNode {
+    fn as_node(&self) -> &dyn CstNode {
         match self {
             Self::FunctionDeclaration(fd) => fd,
             Self::NamespaceDeclaration(nd) => nd,

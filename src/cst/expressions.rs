@@ -1,9 +1,11 @@
 use std::fmt::Debug;
 
-use super::base::*;
+use super::cst_traits::*;
+
+/*use super::base::*;
 use super::outer::*;
 use super::ImplementationBody;
-use crate::ast::TypeReference;
+use crate::ast::TypeReference;*/
 use crate::helper::interner::*;
 
 use crate::lex::TokenWrapper;
@@ -12,7 +14,7 @@ use crate::lex::TokenWrapper;
 use crate::lex::Token;
 use crate::types;
 
-pub trait Expression: AstNode {
+pub trait Expression: CstNode {
     fn expr_type(&self) -> Box<dyn types::StaticType>;
 }
 
@@ -59,20 +61,11 @@ impl ExpressionWrapper {
         let node_info = NodeInfo::from_token(&input);
 
         WildcardExpression::new_expr(node_info)
-
-        //Box::new(ExpressionWrapper::
     }
 }
 
-/*impl std::fmt::Display for ExpressionWrapper {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        //let r = write!(f, "");
-        write!(f, "{}", self.as_node().format().pretty(100))
-    }
-}*/
-
-impl IntoAstNode for ExpressionWrapper {
-    fn as_node(&self) -> &dyn AstNode {
+impl IntoCstNode for ExpressionWrapper {
+    fn as_node(&self) -> &dyn CstNode {
         match self {
             Self::Assignment(e) => e,
             Self::BinaryOperation(e) => e,
@@ -95,10 +88,6 @@ impl IntoAstNode for ExpressionWrapper {
             Self::ImplementationModification(e) => e,
         }
     }
-
-    /*fn as_node_mut(&mut self) -> &mut dyn AstNode {
-        todo!()
-    }*/
 }
 
 #[derive(Debug, Clone)]
@@ -114,7 +103,7 @@ impl WildcardExpression {
     }
 }
 
-impl AstNode for WildcardExpression {
+impl CstNode for WildcardExpression {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
@@ -143,7 +132,7 @@ impl StatementExpression {
     }
 }
 
-impl AstNode for StatementExpression {
+impl CstNode for StatementExpression {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
@@ -181,13 +170,13 @@ impl Tuple {
     }
 }
 
-impl IntoAstNode for Tuple {
-    fn as_node(&self) -> &dyn AstNode {
+impl IntoCstNode for Tuple {
+    fn as_node(&self) -> &dyn CstNode {
         self
     }
 }
 
-impl AstNode for Tuple {
+impl CstNode for Tuple {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
@@ -235,7 +224,7 @@ impl Debug for WhileExpression {
     }
 }
 
-impl AstNode for WhileExpression {
+impl CstNode for WhileExpression {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
@@ -285,7 +274,7 @@ impl Debug for IfThenElseExpression {
     }
 }
 
-impl AstNode for IfThenElseExpression {
+impl CstNode for IfThenElseExpression {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
@@ -311,7 +300,7 @@ pub struct BlockExpression {
     pub contents: Vec<Box<ExpressionWrapper>>,
 }
 
-impl AstNode for BlockExpression {
+impl CstNode for BlockExpression {
     fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
         let _ = writeln!(f, "{{");
         for c in self.contents.iter() {
@@ -339,14 +328,14 @@ impl BlockExpression {
     }
 }
 
-/*#[derive(Debug)]
+#[derive(Debug)]
 pub struct LetExpression {
     node_info: NodeInfo,
 
     pub into: Box<ExpressionWrapper>,
-}*/
+}
 
-/*impl LetExpression {
+impl LetExpression {
     pub fn new_expr(
         node_info: NodeInfo,
         into: Box<ExpressionWrapper>,
@@ -356,9 +345,9 @@ pub struct LetExpression {
             into,
         }))
     }
-}*/
+}
 
-impl AstNode for LetExpression {
+impl CstNode for LetExpression {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
@@ -400,7 +389,7 @@ impl AssignmentExpression {
     }
 }
 
-impl AstNode for AssignmentExpression {
+impl CstNode for AssignmentExpression {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
@@ -448,7 +437,7 @@ impl BinaryOperationExpression {
     }
 }
 
-impl AstNode for BinaryOperationExpression {
+impl CstNode for BinaryOperationExpression {
     fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
         self.lhs.as_node().pretty(f, depth);
         let _ = write!(f, " {} ", self.operation.fmt());
@@ -502,7 +491,7 @@ impl ComparisonOperationExpression {
     }
 }
 
-impl AstNode for ComparisonOperationExpression {
+impl CstNode for ComparisonOperationExpression {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
@@ -615,7 +604,7 @@ impl std::fmt::Debug for MemberAccessExpression {
     }
 }
 
-impl AstNode for MemberAccessExpression {
+impl CstNode for MemberAccessExpression {
     fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
         //self.scope.as_node().pretty(f, depth);
         //self.on.iter().for_each(|on| on.as_node().pretty(f, depth));
@@ -636,7 +625,7 @@ pub struct FunctionCall {
     pub args: Box<Tuple>,
 }
 
-impl AstNode for FunctionCall {
+impl CstNode for FunctionCall {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
@@ -697,7 +686,7 @@ impl std::fmt::Debug for UnaryOperationExpression {
     }
 }
 
-impl AstNode for UnaryOperationExpression {
+impl CstNode for UnaryOperationExpression {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
@@ -760,7 +749,7 @@ pub struct LLVMLiteralExpression {
     pub output: Option<(TypeReference, IStr)>,
 }
 
-impl AstNode for LLVMLiteralExpression {
+impl CstNode for LLVMLiteralExpression {
     fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
         let _ = writeln!(f, " llvm{{");
         let s = self.text.resolve();
@@ -803,13 +792,13 @@ impl ReturnExpression {
     }
 }
 
-impl AstNode for ReturnExpression {
+impl CstNode for ReturnExpression {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
 }
 
-impl AstNode for CastExpression {
+impl CstNode for CastExpression {
     /*fn display(&self, f: &mut std::fmt::Formatter<'_>, depth: usize) {
         let _ = writeln!(f, "{}CastExpression of expression:", indent(depth),);
         [&self.subexpr]
@@ -872,7 +861,7 @@ impl std::fmt::Debug for IdentifierExpression {
     }
 }
 
-impl AstNode for IdentifierExpression {
+impl CstNode for IdentifierExpression {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
@@ -964,7 +953,7 @@ impl LiteralExpression {
     }
 }
 
-impl AstNode for LiteralExpression {
+impl CstNode for LiteralExpression {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
@@ -980,7 +969,7 @@ pub struct ImplementationModificationExpression {
     pub impl_block: Box<ImplementationBody>,
 }
 
-impl AstNode for ImplementationModificationExpression {
+impl CstNode for ImplementationModificationExpression {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }

@@ -42,6 +42,7 @@ extern crate lazy_static;
 use std::env;
 
 pub mod ast;
+pub mod cst;
 pub mod avec;
 pub mod build_expr;
 pub mod check;
