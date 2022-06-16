@@ -1,4 +1,4 @@
-use std::path::{PathBuf, Path};
+use std::{path::{PathBuf, Path}, str::FromStr};
 
 use crate::parse::*;
 
@@ -20,7 +20,7 @@ impl<'lexer> Parser<'lexer> {
     /// I know all of this is horribly ugly and hacky, I just threw it together to get something
     /// that works well enough for now for building out project structure without needing
     /// to define a whole other lexer/parser for the spec files
-    pub fn parse_spec_declaration(&mut self, t: &TokenProvider, current_path: Path) -> ParseResult<FileRole> {
+    pub fn parse_spec_declaration(&mut self, t: &TokenProvider, current_path: Path) -> ParseResult<(MountPoint, FileRole)> {
         let mut t = parse_header!(t,
             [Token::Identifier => 1,
             Token::Identifier => 1,
@@ -43,10 +43,13 @@ impl<'lexer> Parser<'lexer> {
 
         let file_name = t.take(Token::StringLiteral).join()?;
         let file_name = file_name.slice.resolve();
-        let file_name = file_name[1..file_name.len() - 2]; // strip " from literal
+        let file_name = &file_name[1..file_name.len() - 2]; // strip " from literal
         println!("Filename after cleaning: {file_name}");
 
-        let file_path = current_path.join(file_name);
+        // TODO: nicer handling of this entire file honestly
+        let file_path = PathBuf::from_str(file_name).unwrap().canonicalize().expect("bad path in spec");
+
+        //let file_path = current_path.join(file_name);
 
         let get_mount = match frd {
             FileRoleDescriminant::Data => {
@@ -68,38 +71,11 @@ impl<'lexer> Parser<'lexer> {
         };
 
         let inner = match frd {
-            FileRoleDescriminant::Data => FileRole::Data { path: file_path, mount_at: mount_point },
-            FileRoleDescriminant::Spec => FileRole::Spec { path: file_path, mount_at: mount_point },
-            FileRoleDescriminant::Source => FileRole::Source { path: file_path, mount_at: mount_point },
+            FileRoleDescriminant::Data => FileRole::Data { path: file_path },
+            FileRoleDescriminant::Spec => FileRole::Spec { path: file_path },
+            FileRoleDescriminant::Source => FileRole::Source { path: file_path },
         };
 
-        t.success(inner)
+        t.success((mount_point, inner))
     }
-}
-
-struct Spec {
-    entries: Vec<FileRole>,
-}
-
-enum MountPoint {
-    /// Acts as basically an "include" statement,
-    /// the spec or source elements from the target
-    /// module are dumped directly into the current module
-    Here(),
-
-    /// States that the referenced element should be mounted
-    /// within a module named <.0>
-    Nest(IStr),
-}
-
-enum FileRole {
-    Data { path: PathBuf, mount_at: MountPoint },
-    Spec { path: PathBuf, mount_at: MountPoint },
-    Source { path: PathBuf, mount_at: MountPoint },
-}
-
-enum FileRoleDescriminant {
-    Data,
-    Spec,
-    Source,
 }

@@ -19,7 +19,7 @@ use crate::helper::interner::*;
 use tokio::runtime::*;
 
 #[allow(unused_variables, dead_code)]
-pub fn parse_unit<'file>(
+pub fn parse_source_file<'file>(
     handle: FileHandleRef,
     scope: Vec<IStr>,
     cflags: &CFlags,
@@ -132,35 +132,40 @@ pub fn launch(args: &[&str]) {
 #[allow(dead_code)]
 pub struct ArgResult {
     pub flags: CFlags,
-    pub inputs: HashSet<PathBuf>,
+    pub source_input: HashSet<PathBuf>,
+    pub spec_input: HashSet<PathBuf>,
     pub outputs: HashSet<PathBuf>,
 }
 
 fn parse_args(args: &[&str]) -> Result<ArgResult, &'static str> {
     enum State {
-        ExpectInput,
+        ExpectNothing,
+        ExpectSourceInput,
+        ExpectSpecInput,
         ExpectOutput,
         ExpectThreadCount,
         _ExpectWarnFlags,
         _ExpectErrorFlags,
     }
 
-    let mut state = State::ExpectInput;
+    let mut state = State::ExpectSourceInput;
 
     let mut cflags = CFlags {
         thread_count: 1,
         ..CFlags::default() //..Default::default()
     };
 
-    let mut inputs = HashSet::<PathBuf>::new();
+    let mut source_files = HashSet::<PathBuf>::new();
+    let mut spec_files = HashSet::<PathBuf>::new();
     let mut outputs = HashSet::<PathBuf>::new(); // need to figure out what to do for this one
 
     for s in args.iter() {
         let slice = &s[..];
         println!("got arg '{}'", slice);
         match slice {
-            "-o" => state = State::ExpectOutput,
-            "-i" => state = State::ExpectInput,
+            "-o" | "--output" => state = State::ExpectOutput,
+            "-i" | "--input" => state = State::ExpectSourceInput,
+            "-r" | "--root" => state = State::ExpectSourceInput,
             "-Cthreads" => state = State::ExpectThreadCount,
             "-Dtree" => cflags.dump_tree = true,
             "-Dpretty" => cflags.dump_pretty = true,
@@ -169,7 +174,10 @@ fn parse_args(args: &[&str]) -> Result<ArgResult, &'static str> {
             //"-Obin" => cflags.output_binary = true,
             other => {
                 match state {
-                    State::ExpectOutput | State::ExpectInput => {
+                    State::ExpectNothing => {
+                        println!("Unexpected arg {other} was provided");
+                    },
+                    State::ExpectOutput | State::ExpectSourceInput | State::ExpectSpecInput => {
                         // should be a file or directory in this case
                         let path = Path::new(other);
                         let canonicalized = path.canonicalize().unwrap_or_else(|_| {
@@ -180,7 +188,8 @@ fn parse_args(args: &[&str]) -> Result<ArgResult, &'static str> {
                             process::exit(-1)
                         });
                         let _inserted = match state {
-                            State::ExpectInput => inputs.insert(canonicalized),
+                            State::ExpectSourceInput => source_files.insert(canonicalized),
+                            State::ExpectSpecInput => spec_files.insert(canonicalized),
                             State::ExpectOutput => outputs.insert(canonicalized),
                             _ => panic!("state was expecting a path then it wasn't"),
                         }; // maybe check for duplicates here?
@@ -195,16 +204,19 @@ fn parse_args(args: &[&str]) -> Result<ArgResult, &'static str> {
                     }
                     _ => todo!("unimplemented arg state handler"),
                 }
+
+                state = State::ExpectNothing;
             }
         }
     }
 
-    for p in inputs.iter() {
+    for p in source_files.iter() {
         println!("input file with path '{:#?}'", p);
     }
 
     Ok(ArgResult {
-        inputs,
+        source_input: source_files,
+        spec_input: spec_files,
         outputs,
         flags: cflags,
     })

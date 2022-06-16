@@ -189,7 +189,7 @@ impl PathNode {
 
         let handle = fh.as_ref().expect("File didn't open nicely");
 
-        let r = super::parse_unit(handle, self.module.clone(), &self.cflags);
+        let r = super::parse_source_file(handle, self.module.clone(), &self.cflags);
 
         match r {
             Err(_) => Node::ErrorNode(ErrorNode {}),
@@ -381,7 +381,7 @@ impl CompilationRoot {
         }*/
         let reg = FileRegistry::new();
 
-        let res: Vec<Node> = join_all(args.inputs.iter().map(|pb| {
+        let res: Vec<Node> = join_all(args.source_input.iter().map(|pb| {
             let v = Vec::new();
             first_pass(pb.clone(), v, error_channel.clone(), &reg, &args)
         }))

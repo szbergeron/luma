@@ -5,7 +5,6 @@
 #![feature(
     once_cell,
     new_uninit,
-    bool_to_option,
     iter_intersperse,
     vec_into_raw_parts,
     layout_for_ptr,
@@ -30,6 +29,9 @@ extern crate static_assertions;
 
 #[macro_use]
 extern crate lazy_static;
+
+#[macro_use]
+extern crate ouroboros;
 
 //#[macro_use]
 //extern crate enum_display_derive;

@@ -4,8 +4,10 @@ use std::convert::Infallible;
 use std::fs;
 use std::marker::PhantomData;
 use std::ops::ControlFlow;
-use std::path::PathBuf;
+use std::path::{PathBuf, Path};
 use std::sync::{Arc, RwLock};
+
+use self::interner::IStr;
 
 pub mod interner {
     use std::fmt::{Debug, Display};
@@ -294,10 +296,42 @@ pub enum Error {
     },
 }
 
+pub struct Spec {
+    entries: Vec<FileRole>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MountPoint {
+    /// Acts as basically an "include" statement,
+    /// the spec or source elements from the target
+    /// module are dumped directly into the current module
+    Here(),
+
+    /// States that the referenced element should be mounted
+    /// within a module named <.0>
+    Nest(IStr),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FileRole {
+    Data { path: PathBuf },
+    Spec { path: PathBuf },
+    Source { path: PathBuf },
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum FileRoleDescriminant {
+    Data,
+    Spec,
+    Source,
+}
+
 #[derive(Clone, Copy)]
 pub struct FileHandleRef<'a> {
     pub id: usize,
     pub contents: &'a str,
+    //pub path: Path,
+    pub role: FileRole,
 }
 
 #[derive(Debug, Clone)]
@@ -307,6 +341,8 @@ pub struct FileHandle /* where 'input: 'context */ {
     //context: Option<std::pin::Pin<Weak<RwLock<ScopeContext<'static>>>>>,
     pub location: PathBuf,
     contents: Option<String>,
+    pub role: FileRole,
+    //
     //phantom_str: std::marker::PhantomData<&'input str>,
 }
 
@@ -321,12 +357,14 @@ impl Drop for FileHandle {
 
 impl<'input> FileHandle {
     pub fn new(
+        role: FileRole,
         p: PathBuf,
         /*scope: Vec<String>,*/
         id: Option<usize>,
         //context: Arc<RwLock<ScopeContext<'context>>>, // should only refer to self here
     ) -> FileHandle {
         FileHandle {
+            role,
             location: p,
             //scope,
             id,
@@ -389,6 +427,7 @@ impl<'input> FileHandle {
             Some(s) => Some(FileHandleRef {
                 id: self.id.unwrap_or(0),
                 contents: s.get(..).unwrap(),
+                role: self.role,
             }),
             None => None,
         }
