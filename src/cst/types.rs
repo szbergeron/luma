@@ -4,8 +4,6 @@ use crate::helper::interner::{IStr, SpurHelper};
 
 use super::{NodeInfo, CstNode, IntoCstNode, FunctionDefinition};
 
-use derive_more::Constructor;
-
 #[derive(Clone, Debug)]
 pub struct StructDefinition {
     pub info: NodeInfo,
@@ -100,9 +98,9 @@ pub struct GenericHandle {
 
 impl GenericHandle {
     pub fn new(name: IStr) -> GenericHandle {
-        static id: AtomicUsize = AtomicUsize::new(1);
+        static ID: AtomicUsize = AtomicUsize::new(1);
 
-        GenericHandle { name, id: id.fetch_add(1, Ordering::SeqCst)}
+        GenericHandle { name, id: ID.fetch_add(1, Ordering::SeqCst)}
     }
 }
 

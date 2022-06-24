@@ -1,11 +1,9 @@
 use std::{
     alloc::{self, Layout},
-    cell::UnsafeCell,
     fmt::Display,
     marker::PhantomData,
-    mem::{ManuallyDrop, MaybeUninit},
-    pin::Pin,
-    ptr::{addr_of_mut, null_mut, NonNull},
+    mem::MaybeUninit,
+    ptr::{addr_of_mut, null_mut},
     sync::atomic::{AtomicPtr, AtomicUsize, fence},
 };
 
@@ -58,14 +56,12 @@ impl<T> ChunkEntry<T> {
     /// no backing store then one will be allocated.
     /// This also tries to ensure that
     unsafe fn touch(&self) -> *mut MaybeUninit<T> {
-        unsafe {
-            let lockfree = self.lockfree.load(std::sync::atomic::Ordering::Acquire);
+        let lockfree = self.lockfree.load(std::sync::atomic::Ordering::Acquire);
 
-            if lockfree.is_null() {
-                self.try_alloc()
-            } else {
-                lockfree
-            }
+        if lockfree.is_null() {
+            self.try_alloc()
+        } else {
+            lockfree
         }
     }
 
@@ -76,6 +72,7 @@ impl<T> ChunkEntry<T> {
         let mut guard = self.blocking.lock().unwrap();
 
         match *guard {
+            #[allow(unused_unsafe)]
             Some(inner) => unsafe { std::mem::transmute::<_, *mut MaybeUninit<T>>(inner) },
             None => {
                 let allocation =

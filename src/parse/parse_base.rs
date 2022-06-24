@@ -49,7 +49,7 @@ impl<'lexer> Parser<'lexer> {
                         println!("{:?}", e);
                     }
 
-                    let (v, mut _es, s) = r.update_solution(&t).open();
+                    let (v, mut _es, _s) = r.update_solution(&t).open();
                     println!("Opened the value");
 
                     //t.sync_with_solution(s);

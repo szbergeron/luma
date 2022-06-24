@@ -23,6 +23,10 @@
     never_type
 )]
 
+#![allow(irrefutable_let_patterns)]
+#![allow(dead_code)]
+#![allow(incomplete_features)]
+
 #[allow(unused_imports)]
 #[macro_use]
 extern crate static_assertions;
@@ -30,8 +34,8 @@ extern crate static_assertions;
 #[macro_use]
 extern crate lazy_static;
 
-#[macro_use]
-extern crate ouroboros;
+//#[macro_use]
+//extern crate ouroboros;
 
 //#[macro_use]
 //extern crate enum_display_derive;

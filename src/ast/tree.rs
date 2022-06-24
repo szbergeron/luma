@@ -2,7 +2,7 @@ use std::{
     pin::Pin,
     ptr::NonNull,
     sync::{
-        atomic::{compiler_fence, AtomicIsize},
+        atomic::{compiler_fence, AtomicIsize, Ordering},
         RwLock,
     },
 };
@@ -10,19 +10,14 @@ use std::{
 use dashmap::DashMap;
 use once_cell::sync::OnceCell;
 
-use crate::{
-    cst,
-    cst::expressions::ExpressionWrapper,
-    cst::TypeReference,
-    helper::interner::IStr,
-};
+use crate::{cst, cst::expressions::ExpressionWrapper, cst::TypeReference, helper::interner::IStr};
 
 //use super::GenericConstraint;
 
 mod makers {
     use super::*;
-    use crate::helper::interner::IStr;
     use crate::cst;
+    use crate::helper::interner::IStr;
 
     pub fn new_struct(
         named: IStr,
@@ -97,9 +92,7 @@ impl Contexts {
         //static s: Contexts = Contexts::default();
 
         lazy_static! {
-            static ref S: Contexts = {
-                Contexts::new()
-            };
+            static ref S: Contexts = Contexts::new();
         }
 
         &S
@@ -128,9 +121,9 @@ pub struct NodeReference {
 
 impl NodeReference {
     /// If this reference
-    pub fn resolve(&self, within: &NodeReference) {
+    pub fn resolve(&self, _within: &NodeReference) {
         match self.node_id.get() {
-            Some(id) => (), // we've already been resolved
+            Some(_id) => (), // we've already been resolved
             None => (),
         }
     }
@@ -202,14 +195,17 @@ impl OneWayBool {
                 return None;
             }
 
-            let new =
-                self.state
-                    .compare_and_swap(prior, prior + 1, std::sync::atomic::Ordering::AcqRel);
+            let new = self.state.compare_exchange(
+                prior,
+                prior + 1,
+                std::sync::atomic::Ordering::SeqCst,
+                std::sync::atomic::Ordering::SeqCst,
+            );
 
-            if new == prior {
-                return Some(OneWayBoolGuard { guards: &self });
-            } else {
+            if let Err(_) = new {
                 continue;
+            } else {
+                return Some(OneWayBoolGuard { guards: &self });
             }
         }
 
@@ -219,18 +215,10 @@ impl OneWayBool {
     /// If returns true, then fusing was able to complete
     /// If false, then there were still open blocks
     pub fn try_fuse(&self) -> bool {
-        let fuse = self
-            .state
-            .compare_and_swap(0, -1, std::sync::atomic::Ordering::AcqRel)
-            == 0;
-
-        if fuse {
-            // fill this out if we ever want to try to
-            // do fast path with non-atomic quick state
-            unsafe {}
+        match self.state.compare_exchange(0, -1, Ordering::SeqCst, Ordering::SeqCst) {
+            Err(_) => return self.state.load(Ordering::SeqCst) == -1,
+            Ok(_) => true,
         }
-
-        fuse
     }
 
     pub fn is_fused(&self) -> bool {
@@ -274,7 +262,7 @@ impl Node {
         global: OnceCell<CtxID>,
         inner: NodeUnion,
     ) -> CtxID {
-        let mut n = Node {
+        let n = Node {
             node_id: OnceCell::new(),
             name,
             generics,

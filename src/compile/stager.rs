@@ -10,11 +10,11 @@ use std::process::{self, abort};
 use crate::cst;
 
 //use crate::mid_repr::ScopeContext;
-use std::sync::Arc;
+
 
 //use crate::ast::*;
 
-use crate::encode::*;
+
 
 use crate::helper::interner::*;
 use tokio::runtime::*;
@@ -38,7 +38,7 @@ pub fn parse_source_file<'file>(
 
     let mut parser = Parser::new(scanner.clone(), scope);
 
-    let mut t: TokenProvider = TokenProvider::from_handle(scanner);
+    let t: TokenProvider = TokenProvider::from_handle(scanner);
 
     #[allow(irrefutable_let_patterns)]
     let p = if let iguard = interner() {
@@ -73,7 +73,7 @@ pub fn parse_source_file<'file>(
                 println!("Gets AST of: {:#?}", punit);
             }
             if cflags.dump_pretty {
-                let mut s = String::new();
+                let s = String::new();
                 //punit.pretty(&mut s, 0);
                 println!("Pretty output:");
                 println!("{}", s);

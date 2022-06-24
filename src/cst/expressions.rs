@@ -13,7 +13,6 @@ use crate::lex::TokenWrapper;
 //use super::types;
 
 use crate::lex::Token;
-use crate::types;
 
 pub trait Expression: CstNode {
     //fn expr_type(&self) -> Box<dyn types::StaticType>; // TODO

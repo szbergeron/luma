@@ -112,6 +112,7 @@ impl<'registry> PreParseTree<'registry> {
     pub fn merge(mut self, mut other: Self) -> Self {
         fence(std::sync::atomic::Ordering::Acquire);
 
+        #[allow(unused_unsafe)]
         let (selfroot, otherroot) = unsafe {
             let sroot = self.root.get_mut().take();
             let oroot = other.root.get_mut().take();

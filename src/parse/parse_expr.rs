@@ -350,7 +350,7 @@ impl<'lexer> Parser<'lexer> {
             None => return t.success((false, on)),
         };
 
-        let mut ni = on.as_node().node_info();
+        let ni = on.as_node().node_info();
         let start = ni
             .as_parsed()
             .map(|pni| pni.span.start)
@@ -667,7 +667,7 @@ impl<'lexer> Parser<'lexer> {
                         .catch(&mut t)
                         .handle_here()?;
 
-                    let (v, mut _es, s) = e.update_solution(&t).open();
+                    let (v, mut _es, _s) = e.update_solution(&t).open();
 
                     v.map(|exp| {
                         let exp = match t.try_take(Token::Semicolon) {

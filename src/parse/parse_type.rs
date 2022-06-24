@@ -181,7 +181,7 @@ impl<'lexer> Parser<'lexer> {
                         .catch(&mut t)
                         .handle_here()?;
 
-                    let (v, e, s) = f.update_solution(&t).open();
+                    let (v, _e, _s) = f.update_solution(&t).open();
 
                     match v {
                         Some(v) => {
@@ -294,7 +294,7 @@ impl<'lexer> Parser<'lexer> {
 
         let start = t1.node_info().as_parsed().unwrap().span.start;
 
-        let t2 = if let Some(v) = t.try_take(Token::For) {
+        let t2 = if let Some(_v) = t.try_take(Token::For) {
             Some(
                 self.parse_type_specifier(&t)
                     .join_hard(&mut t)

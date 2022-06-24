@@ -16,7 +16,7 @@ pub use parse_spec::*;
 //use crate::helper::lex_wrap::{CodeLocation, ParseResultError};
 use crate::helper::interner::*;
 use crate::helper::*;
-use crate::lex::{CodeLocation, LookaheadHandle, ParseResultError, TokenWrapper};
+use crate::lex::{CodeLocation, LookaheadHandle, ParseResultError};
 
 use crate::lex::Token;
 

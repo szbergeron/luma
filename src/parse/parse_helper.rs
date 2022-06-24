@@ -1,4 +1,4 @@
-use crate::lex::{ParseResultError, TokenWrapper};
+use crate::lex::TokenWrapper;
 
 use crate::parse::*;
 
