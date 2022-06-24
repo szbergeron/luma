@@ -1,11 +1,10 @@
 use std::{
-    collections::{HashMap, HashSet},
-    path::PathBuf, pin::Pin, cell::UnsafeCell, sync::atomic::fence,
+    path::PathBuf, cell::UnsafeCell, sync::atomic::fence,
 };
 
-use chashmap::CHashMap;
-use dashmap::DashSet;
-use once_cell::sync::OnceCell;
+
+use dashmap::DashMap;
+
 
 use crate::helper::{interner::IStr, FileRole};
 
@@ -22,93 +21,106 @@ pub struct SpecTree {
 pub struct PreParseTreeNode<'registry> {
     self_file: FileRole,
 
+    canonicalized_mount_point: IStr,
+
     native: Vec<PreParseTreeNode<'registry>>,
     mounted: Vec<(IStr, PreParseTreeNode<'registry>)>,
 
-    registry: &'registry DashSet<PathBuf>,
-}
-
-impl PartialEq for PreParseTreeNode<'_> {
+    path_registry: &'registry DashMap<PathBuf, IStr>,
+    //module_registry: &'registry DashMap<IStr, PathBuf>,
 }
 
 impl<'r> PreParseTreeNode<'r> {
+    pub fn native_path(&self) -> PathBuf {
+        Self::destructure_role(&self.self_file).0
+    }
+
     /// takes a stubbed node that was given only a file path and a role,
     /// and "expands" it into a full node
     pub fn open(self) -> Self {
         todo!()
     }
 
-    pub fn new(self_file: FileRole, within: &'r DashSet<PathBuf>) -> Self {
-        Self {
-            self_file,
-            native: Vec::new(),
-            mounted: Vec::new(),
-            registry: within,
+    pub fn destructure_role(r: &FileRole) -> (PathBuf, &'static str) {
+        match r {
+            FileRole::Data { path } => { (path.clone(), "data") },
+            FileRole::Spec { path } => { (path.clone(), "spec") },
+            FileRole::Source { path } => { (path.clone(), "source") },
+            FileRole::Virtual {  } => { (PathBuf::default(), "virtual") },
         }
     }
 
-    /// Take this node and merge both the native mounts and any
-    /// submounts recursively if they overlap
-    pub fn merge(self, other: Self) -> Self {
-        let native = self.native;
+    /**
+     * self_file: the file this is based on
+     * arena: set of all files referenced by this project, so we can check for reimports
+     * or import loops
+     * mount_point: the fully canonicalized path to where this module is mounted
+     **/
+    pub fn new(self_file: FileRole, registry: &'r DashMap<PathBuf, IStr>, mount_point: IStr) -> Option<Self> {
+        let (path, _) = Self::destructure_role(&self_file);
 
-        //self.native.insert(self.role);
+        match registry.get(&path) {
+            Some(m) => {
 
-        if native.contains(&other.role) {
-            println!(
-                "There was already a {:?} within native for role",
-                other.role
-            );
-        } else {
-            native.push(other.role);
-        }
+                let m = m.value();
+                println!("File {path:?} was already mounted at mount point {m:?}, when asked to mount it at {mount_point:?}");
 
-        for val in other.native.into_iter() {
-            if native.contains(&val) {
-                println!(
-                    "There was already a {:?} within native for role",
-                    other.role
-                );
-            } else {
-                native.push(val);
+                None
+            }
+            None => {
+                registry.insert(path, mount_point);
+
+                Some(Self {
+                    self_file,
+                    native: Vec::new(),
+                    mounted: Vec::new(),
+                    path_registry: registry,
+                    canonicalized_mount_point: mount_point,
+                })
             }
         }
+    }
 
-        for (mpoint, val) in other.mounted.into_iter() {
-        }
+    pub fn combine2(mut self, other: Self) -> Self {
+        //let native = self.native;
 
-        todo!()
+        self.native.push(other);
 
-        //
+        self
+    }
+
+    pub fn plumb(&mut self, rem_path: &[IStr], full_path: IStr) {
     }
 }
 
-use ouroboros::self_referencing;
 
 
-#[self_referencing]
-pub struct PreParseTree {
-    file_registry: Pin<Box<DashSet<PathBuf>>>,
 
-    #[borrows(file_registry)]
-    #[covariant] // I'm like 99% sure this is true, since a PreParseTreeNode<'a: 'this> is valid for shorter-than/same-as one from 'this
-    root: UnsafeCell<Option<PreParseTreeNode<'this>>>,
+//#[self_referencing]
+/// Make sure all roots use the same file_registry!
+pub struct PreParseTree<'registry> {
+    file_registry: &'registry DashMap<PathBuf, IStr>,
+    module_registry: &'registry DashMap<IStr, PathBuf>,
+
+    //#[borrows(file_registry)]
+    //#[covariant] // I'm like 99% sure this is true, since a PreParseTreeNode<'a: 'this> is valid for shorter-than/same-as one from 'this
+    root: UnsafeCell<Option<PreParseTreeNode<'registry>>>,
 }
 
-impl PreParseTree {
+impl<'registry> PreParseTree<'registry> {
     /// Allows taking two "roots" and joining them recursively
-    pub fn merge(self, other: Self) -> Self {
+    pub fn merge(mut self, mut other: Self) -> Self {
         fence(std::sync::atomic::Ordering::Acquire);
 
         let (selfroot, otherroot) = unsafe {
-            let sroot = *self.root.get();
-            let oroot = *other.root.get();
+            let sroot = self.root.get_mut().take();
+            let oroot = other.root.get_mut().take();
 
             (sroot, oroot)
         };
 
         let root = match selfroot {
-            Some(roota) => {
+            Some(mut roota) => {
                 match otherroot {
                     Some(rootb) => {
                         roota.native.push(rootb);
@@ -122,7 +134,7 @@ impl PreParseTree {
             },
             None => {
                 // we need to make otherroot have the ref of our own file registry now
-                otherroot.iter_mut().for_each(|r| r.registry = self.file_registry.get_ref());
+                //otherroot.iter_mut().for_each(|r| r.path_registry = self.file_registry.get_ref());
 
                 otherroot
             }
@@ -130,7 +142,7 @@ impl PreParseTree {
 
         // TODO: figure out if we need to emit warnings here if the same file
         // exists from two roots, it could potentially allow invalid loops
-        self.file_registry.extend(other.file_registry.into_iter());
+        //self.file_registry.extend(other.file_registry.into_iter());
 
         let v = Self { root: UnsafeCell::new(root), ..self };
 

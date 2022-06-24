@@ -7,11 +7,12 @@ use std::collections::HashSet;
 
 use std::path::{Path, PathBuf};
 use std::process::{self, abort};
+use crate::cst;
 
-use crate::mid_repr::ScopeContext;
+//use crate::mid_repr::ScopeContext;
 use std::sync::Arc;
 
-use crate::ast::*;
+//use crate::ast::*;
 
 use crate::encode::*;
 
@@ -23,7 +24,7 @@ pub fn parse_source_file<'file>(
     handle: FileHandleRef,
     scope: Vec<IStr>,
     cflags: &CFlags,
-) -> Result<OuterScope, ParseResultError> {
+) -> Result<cst::OuterScope, ParseResultError> {
     // clone because we don't want to keep lock open, and this should be rather cheap in the scheme
     // of things
     // TODO: eval if this even matters
@@ -73,7 +74,7 @@ pub fn parse_source_file<'file>(
             }
             if cflags.dump_pretty {
                 let mut s = String::new();
-                punit.pretty(&mut s, 0);
+                //punit.pretty(&mut s, 0);
                 println!("Pretty output:");
                 println!("{}", s);
             }
@@ -104,9 +105,10 @@ pub struct CFlags {
 }
 
 async fn async_launch(args: ArgResult) {
-    let (error_sender, _error_reciever) = crossbeam::unbounded();
+    //let (error_sender, _error_reciever) = crossbeam::unbounded();
 
-    let root = super::tree::CompilationRoot::initial(error_sender, args).await;
+    //let root = super::tree::CompilationRoot::initial(error_sender, args).await;
+    //TODO
     abort();
     //let _root_ctx = root.into_ctx().await;
 }
@@ -221,7 +223,7 @@ fn parse_args(args: &[&str]) -> Result<ArgResult, &'static str> {
         flags: cflags,
     })
 }
-
+/*
 pub fn prepass<'a>(p: &Arc<ScopeContext>) {
     println!("Prepass called on SC: {:#?}", &*p);
 }
@@ -240,3 +242,4 @@ pub fn tollvm<'a>(p: &Arc<ScopeContext>, egctx: &EncodeGlobalContext) {
     ));
     lctx.flush();
 }
+*/

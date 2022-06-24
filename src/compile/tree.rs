@@ -1,15 +1,16 @@
 use super::stager::ArgResult;
 use super::CFlags;
 
-use crate::ast::OuterScope;
+//use crate::ast::OuterScope;
 
 use crate::helper::Error;
 use crate::helper::*;
-use crate::types::{GlobalCtx, GlobalCtxNode};
+//use crate::types::{GlobalCtx, GlobalCtxNode};
 use dashmap::DashMap;
 
 #[allow(unused_imports)]
 use rayon::prelude::*;
+use crate::cst;
 
 use async_trait::async_trait;
 use std::path::PathBuf;
@@ -28,7 +29,7 @@ pub struct PathNode {
     module: Vec<IStr>,
 
     module_file: Option<PathBuf>,
-    parsed: Option<OuterScope>,
+    parsed: Option<cst::OuterScope>,
 
     cflags: CFlags,
     children: Vec<Node>,
@@ -211,58 +212,6 @@ impl PathNode {
     }*/
 }
 
-#[async_trait]
-impl IntoCtxNode for PathNode {
-    async unsafe fn into_ctx(
-        self,
-        parent: &GlobalCtxNode,
-        global: &GlobalCtxNode,
-    ) -> Option<Pin<Box<GlobalCtxNode>>> {
-        println!("PathNode {:?} is being into_ctx'd", self.module);
-        //dbg!(&self.parsed);
-        let self_ctx = match self.parsed {
-            None => GlobalCtxNode::new(
-                self.module.last().cloned().unwrap_or_else(|| intern("")),
-                Some(parent),
-                Some(global),
-                None,
-            ),
-            Some(outerscope) => outerscope.into_ctx(self.module, parent, global).await,
-        };
-
-        let children = join_all(
-            self.children
-                .into_iter()
-                .map(|child| child.into_ctx(self_ctx.get_selfref(), global)),
-        )
-        .await;
-
-        for child in children {
-            if let Some(child) = child {
-                self_ctx.add_child(child);
-            } else {
-                println!("Failed to add a child");
-            }
-        }
-
-        Some(self_ctx)
-    }
-}
-
-#[async_trait]
-impl IntoCtxNode for Node {
-    async unsafe fn into_ctx(
-        self,
-        parent: &GlobalCtxNode,
-        global: &GlobalCtxNode,
-    ) -> Option<Pin<Box<GlobalCtxNode>>> {
-        match self {
-            Self::PathNode(pn) => pn.into_ctx(parent, global).await,
-            Self::ErrorNode(_) => None,
-        }
-    }
-}
-
 pub struct FileRegistry {
     //files: Vec<FileHandle>,
     id: AtomicUsize,
@@ -304,15 +253,6 @@ impl FileRegistry {
 
         Some(fh)
     }
-}
-
-#[async_trait]
-pub trait IntoCtxNode {
-    async unsafe fn into_ctx(
-        self,
-        parent: &GlobalCtxNode,
-        global: &GlobalCtxNode,
-    ) -> Option<Pin<Box<GlobalCtxNode>>>;
 }
 
 /*#[async_trait]

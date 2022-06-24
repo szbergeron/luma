@@ -1,86 +1,180 @@
-use crate::ast::base::IntoAstNode;
-use crate::ast::{
+//use crate::ast::base::IntoAstNode;
+
+use crate::cst::{self, NodeInfo, CstNode, IntoCstNode};
+
+/*use cst::{
     self, FieldMember, Implementation, ImplementationBody, ImplementationItem, MemberAttributes,
-};
-use crate::lex::{CodeLocation, ErrorSet, ParseResultError, Token};
+};*/
+use crate::lex::{ErrorSet, Token};
 use crate::parse::*;
 
 use super::schema::{ResultHint, TokenProvider};
-use ast::base::*;
-use ast::expressions::*;
-use ast::outer::*;
+//use ast::base::*;
+//use ast::expressions::*;
+//use ast::outer::*;
 
 impl<'lexer> Parser<'lexer> {
     /// Currently unconditionally returns memberattrs as they are null-deriving
-    pub fn parse_member_attributes(&mut self, t: &mut TokenProvider) -> ast::MemberAttributes {
+    pub fn parse_member_attributes(&mut self, t: &mut TokenProvider) -> cst::MemberAttributes {
         let public = t.try_take(Token::Public).is_some();
         let mutable = t.try_take(Token::Mutable).is_some();
 
-        MemberAttributes { public, mutable }
+        cst::MemberAttributes { public, mutable }
     }
 
     pub fn parse_implementation_expression(
         &mut self,
         t: &TokenProvider,
-        lhs: Box<ExpressionWrapper>,
-    ) -> ParseResult<ExpressionWrapper> {
+        lhs: Box<cst::ExpressionWrapper>,
+    ) -> ParseResult<cst::ExpressionWrapper> {
         let mut t = parse_header!(t);
 
         let start = lhs.as_node().node_info().as_parsed().unwrap().span.start;
 
-        // parse trait list
+        let impl_block = self.parse_implementation_block(&t).join_hard(&mut t).catch(&mut t)?;
 
-        let mut trait_list = Vec::new();
-
-        loop {
-            let ts = self
-                .parse_type_specifier(&t)
-                .join_hard(&mut t)
-                .catch(&mut t)?;
-            trait_list.push(ts);
-            match t.try_take(Token::Plus) {
-                None => break,
-                Some(_) => continue,
-            }
-        }
-
-        let body = self
-            .parse_implementation_body(&t)
-            .join_hard(&mut t)
-            .catch(&mut t)?;
-
-        let end = body.node_info.as_parsed().unwrap().span.end;
+        let end = impl_block.node_info().as_parsed().unwrap().span.end;
 
         let node_info = NodeInfo::from_indices(start, end);
 
-        t.success(ExpressionWrapper::ImplementationModification(
-            ImplementationModificationExpression {
+        t.success(cst::ExpressionWrapper::ImplementationModification(
+            cst::ImplementationModificationExpression {
                 modifying: lhs,
-                traits: trait_list,
                 node_info,
-                impl_block: box body,
+                impl_block: box impl_block,
             },
         ))
+    }
+
+    pub fn parse_field(&mut self, t: &TokenProvider) -> ParseResult<cst::Field> {
+        let mut t = parse_header!(t);
+
+        let start = t.take(Token::Var).join()?.start;
+
+        let name = t.take(Token::Identifier).hint("A field declaration should have the name of the field directly following the <var> keyword").join()?;
+
+        t.take(Token::Colon).join()?;
+
+        let has_type = self
+            .parse_type_specifier(&t)
+            .join_hard(&mut t)
+            .catch(&mut t)?;
+
+        let end = has_type.as_node().node_info().as_parsed().unwrap().span.end;
+
+        //let end = t.take(Token::Semicolon).join()?.end;
+
+        let info = NodeInfo::from_indices(start, end);
+
+        t.success(cst::Field {
+            info,
+            has_type,
+            has_name: name.slice,
+        })
+    }
+
+    pub fn parse_generic_param_list(
+        &mut self,
+        t: &TokenProvider,
+    ) -> ParseResult<Vec<cst::GenericHandle>> {
+        let mut t = parse_header!(t);
+
+        let mut params = Vec::new();
+
+        match t.try_take(Token::CmpLessThan) {
+            Some(_) => {
+                loop {
+                    let id = t.take(Token::Identifier).join()?;
+
+                    let gh = cst::GenericHandle::new(id.slice);
+
+                    params.push(gh);
+
+                    match t.take_in(&[Token::Comma, Token::CmpGreaterThan]).join()?.token {
+                        Token::Comma => {
+                            continue
+                        },
+                        Token::CmpGreaterThan => {
+                            break
+                        },
+                        _ => unreachable!()
+                    }
+                }
+            }
+            None => ()
+        }
+
+        t.success(params)
+    }
+
+    pub fn parse_struct(&mut self, t: &TokenProvider) -> ParseResult<cst::StructDefinition> {
+        let mut t = parse_header!(t, [Token::Struct => 10, Token::Identifier => 1, Token::LBrace => 10, Token::Comma => 10, Token::RBrace => 10]);
+
+        let start = t.take(Token::Struct).join()?.start;
+        let mut end = start;
+
+        let name = t.take(Token::Identifier).join()?.slice;
+
+        let generics = self.parse_generic_param_list(&t).join_hard(&mut t).catch(&mut t)?;
+
+        let mut fields = Vec::new();
+
+        t.take(Token::LBrace).join()?;
+
+        while let Ok(Token::Var) = t.lh.la(0).map(|tw| tw.token) {
+            let field = self
+                .parse_field(&t)
+                .join_hard(&mut t)
+                .catch(&mut t)
+                .handle_here()?
+                .update_solution(&t)
+                .try_get();
+
+            //fields.push(field);
+            if let Some(v) = field {
+                fields.push(v);
+            }
+
+            let ending = t.take_in(&[Token::Comma, Token::RBrace]).join()?;
+            match ending.token {
+                Token::Comma => {
+                    t.predict_next((Token::Comma, 10.0));
+                    continue;
+                }
+                Token::RBrace => {
+                    end = ending.end;
+                    break;
+                }
+                _ => unreachable!(),
+            }
+        }
+
+        t.success(cst::StructDefinition {
+            info: NodeInfo::from_indices(start, end),
+            fields,
+            name,
+            generics,
+        })
     }
 
     pub fn parse_implementation_body(
         &mut self,
         t: &TokenProvider,
-    ) -> ParseResult<ImplementationBody> {
+    ) -> ParseResult<(Vec<cst::Field>, Vec<cst::FunctionDefinition>, NodeInfo)> {
         let mut t =
-            parse_header!(t, [Token::RBrace => 1.0, Token::Function => 10.0, Token::Var => 10.0]);
+            parse_header!(t, [Token::LBrace => 1.0, Token::Function => 10.0, Token::Var => 10.0, Token::RBrace => 10.0]);
 
         let start = t.take(Token::LBrace).join()?.start;
         let end;
 
-        let mut items = Vec::new();
+        let mut fields = Vec::new();
+        let mut functions = Vec::new();
 
         loop {
-            let expected = [Token::RBrace, Token::Function, Token::Var];
-            let next = t.take_in(&expected).join()?;
-            match next.token {
+            //let expected = [Token::RBrace, Token::Function, Token::Var];
+
+            match t.la(0).join_hard(&mut t).catch(&mut t)?.token {
                 Token::Function => {
-                    t.lh.backtrack();
                     let f = self
                         .parse_function_declaration(&t)
                         .join_hard(&mut t)
@@ -91,28 +185,28 @@ impl<'lexer> Parser<'lexer> {
 
                     match v {
                         Some(v) => {
-                            items.push(ImplementationItem::Function(v));
+                            functions.push(v);
                         }
                         None => (),
                     }
-
-                    //t.sync_with_solution(s);
                 }
                 Token::Var => {
-                    let ident = t.take(Token::Identifier).join()?;
+                    let f = self.parse_field(&t).join_hard(&mut t).catch(&mut t)?; // TODO: fix ya error handlin'
+                    fields.push(f);
+                    /*let ident = t.take(Token::Identifier).join()?;
                     let _ = t.take(Token::Colon).join()?;
                     let tr = self
                         .parse_type_specifier(&t)
                         .join_hard(&mut t)
                         .catch(&mut t)?;
 
-                    items.push(ImplementationItem::Field(FieldMember {
-                        name: ident.slice,
-                        ftype: tr,
-                    }));
+                    fields.push(cst::Field {
+                        has_name: ident.slice,
+                        has_type: tr,
+                    });*/
                 }
                 Token::RBrace => {
-                    end = next.end;
+                    end = t.take(Token::RBrace).join()?.end;
                     break;
                 }
                 _ => unreachable!(), //_ => return t.unexpected_token(&expected, "Was attempting to parse an implementation body")
@@ -121,20 +215,21 @@ impl<'lexer> Parser<'lexer> {
 
         let info = NodeInfo::from_indices(start, end);
 
-        t.success(ImplementationBody {
-            node_info: info,
-            items,
-        })
+        t.success((
+            fields,
+            functions,
+            info
+        ))
     }
 
     /*pub fn parse_implementation_item(&mut self, t: &TokenProvider) -> ParseResult<ImplementationItem> {
         let
     }*/
 
-    pub fn parse_struct_definition(
+    /*pub fn parse_struct_definition(
         &mut self,
         t: &TokenProvider,
-    ) -> ParseResult<ast::StructDefinition> {
+    ) -> ParseResult<cst::StructDefinition> {
         let mut t = t.child();
 
         let start = t.take(Token::Struct).join()?.start;
@@ -157,10 +252,10 @@ impl<'lexer> Parser<'lexer> {
                 None
             };*/
 
-            let field_member = ast::FieldMember {
+            let field_member = cst::Field {
                 //attributes: ma,
                 name: field_name.slice,
-                ftype: field_type,
+                has_type: field_type,
             };
 
             fields.push(field_member);
@@ -174,22 +269,23 @@ impl<'lexer> Parser<'lexer> {
 
         let end = t.take(Token::RBrace).join()?.end;
 
-        let node_info = ast::NodeInfo::from_indices(start, end);
+        let node_info = NodeInfo::from_indices(start, end);
 
-        t.success(ast::StructDefinition {
+        t.success(cst::StructDefinition {
             name,
             fields,
-            node_info,
+            info: node_info,
         })
-    }
+    }*/
 
     pub fn parse_implementation_block(
         &mut self,
         t: &TokenProvider,
-    ) -> ParseResult<ast::Implementation> {
+    ) -> ParseResult<cst::ImplementationDefinition> {
         let mut t = parse_header!(t);
 
         t.take(Token::Implementation).join()?;
+        let generics = self.parse_generic_param_list(&t).join_hard(&mut t).catch(&mut t)?;
 
         let t1 = self
             .parse_type_specifier(&t)
@@ -213,21 +309,28 @@ impl<'lexer> Parser<'lexer> {
             (t1, None) => (None, t1),
         };
 
-        let body = self
+        let (fields, functions, info) = self
             .parse_implementation_body(&t)
             .join_hard(&mut t)
             .catch(&mut t)
             .hint("Any implementation requires a body")?;
 
-        let end = body.node_info.as_parsed().unwrap().span.end;
+        let end = info.as_parsed().unwrap().span.end;
 
-        t.success(ast::Implementation {
-            node_info: NodeInfo::from_indices(start, end),
-            impl_for, impl_of, body
+        t.success(cst::ImplementationDefinition {
+            info: NodeInfo::from_indices(start, end),
+            for_type: Some(impl_for),
+            of_trait: impl_of,
+            fields,
+            functions,
+            generics,
         })
     }
 
-    pub fn parse_type_block(&mut self, t: &TokenProvider) -> ParseResult<ast::ImplementationBody> {
+    pub fn parse_type_block(
+        &mut self,
+        t: &TokenProvider,
+    ) -> ParseResult<cst::ImplementationDefinition> {
         let mut _errors = ErrorSet::new();
         /*let type_spec = Rule("type specifier");
         let field = subrule(&[Terminal(Token::Identifier), Terminal(Token::Colon), type_spec, ])
@@ -339,6 +442,7 @@ impl<'lexer> Parser<'lexer> {
         //t.take(Token::RBrace)?;
     }
 
+    /*
     /**
      * Used for:
      *
@@ -346,7 +450,7 @@ impl<'lexer> Parser<'lexer> {
      *   <fields and method decs/defs>
      * }
      */
-    pub fn parse_type_declaration(&mut self) -> Result<ast::TypeDefinition, ParseResultError> {
+    pub fn parse_type_declaration(&mut self) -> Result<cst::TypeDefinition, ParseResultError> {
         todo!()
     }
 
@@ -357,21 +461,21 @@ impl<'lexer> Parser<'lexer> {
      *   <fields and method defs/overrides>
      * }
      */
-    pub fn parse_type_implementation(&mut self) -> Result<ast::TypeDefinition, ParseResultError> {
+    pub fn parse_type_implementation(&mut self) -> Result<cst::TypeDefinition, ParseResultError> {
         todo!()
-    }
+    }*/
 
     pub fn parse_static_declaration(
         &mut self,
         t: &TokenProvider,
-    ) -> ParseResult<ast::StaticVariableDeclaration> {
+    ) -> ParseResult<cst::StaticVariableDeclaration> {
         let mut t = t.child();
 
         let expr = self.parse_expr(&t).join_hard(&mut t).catch(&mut t)?;
 
         t.take(Token::Semicolon).join()?;
 
-        t.success(ast::StaticVariableDeclaration {
+        t.success(cst::StaticVariableDeclaration {
             node_info: expr.as_node().node_info(),
             public: false,
             expression: expr,
@@ -395,7 +499,7 @@ impl<'lexer> Parser<'lexer> {
         t.success(svec)
     }*/
 
-    pub fn parse_type_list(&mut self, t: &TokenProvider) -> ParseResult<Vec<ast::TypeReference>> {
+    pub fn parse_type_list(&mut self, t: &TokenProvider) -> ParseResult<Vec<cst::TypeReference>> {
         let mut t = t.child();
 
         t.take(Token::CmpLessThan).join()?;
@@ -418,7 +522,7 @@ impl<'lexer> Parser<'lexer> {
         t.success(tvec)
     }
 
-    pub fn parse_type_reference(&mut self, t: &TokenProvider) -> ParseResult<ast::TypeReference> {
+    pub fn parse_type_reference(&mut self, t: &TokenProvider) -> ParseResult<cst::TypeReference> {
         let mut t = t.child();
 
         let _scope = self.parse_scope(&t).join_hard(&mut t).catch(&mut t)?; // fine to do unconditionally since null deriving
@@ -440,7 +544,7 @@ impl<'lexer> Parser<'lexer> {
     /// Typelist:
     /// | TYPE
     /// | TYPELIST, TYPE
-    pub fn parse_type_specifier(&mut self, t: &TokenProvider) -> ParseResult<ast::TypeReference> {
+    pub fn parse_type_specifier(&mut self, t: &TokenProvider) -> ParseResult<cst::TypeReference> {
         //let mut t = t.child();
         let mut t = parse_header!(t);
 
@@ -460,7 +564,11 @@ impl<'lexer> Parser<'lexer> {
 
                 let end = typename.end;
 
-                let tr = ast::TypeReference::new(scope, typename.slice, NodeInfo::from_indices(start, end));
+                let tr = cst::TypeReference::new(
+                    scope,
+                    typename.slice,
+                    NodeInfo::from_indices(start, end),
+                );
 
                 t.success(tr)
             }

@@ -3,14 +3,13 @@ use crate::cst;
 use crate::lex::{CodeLocation, ParseResultError, Token};
 
 //use crate::helper::lex_wrap::{CodeLocation, ParseResultError};
-use crate::helper::EitherNone;
 
 use crate::parse::*;
 
 //use crate::parse_helper::*;
 
-use cst::expressions::*;
-use cst::declarations::*;
+//use cst::expressions::*;
+//use cst::declarations::*;
 use cst::cst_traits::*;
 
 use super::schema::{ResultHint, TokenProvider};
@@ -37,7 +36,7 @@ impl<'lexer> Parser<'lexer> {
     /// let <parse_binding()> = <expression>;
     ///
     /// includes support for parsing type specifiers within
-    pub fn parse_binding(&mut self, t: &TokenProvider) -> ParseResult<Box<LetComponent>> {
+    pub fn parse_binding(&mut self, t: &TokenProvider) -> ParseResult<Box<cst::LetComponent>> {
         // want to find if this is going to be a destructuring operation
         /*let mut t = t
         .child()
@@ -53,7 +52,7 @@ impl<'lexer> Parser<'lexer> {
         // parse body/binding part of let statement
         let content = match next_token.token {
             Token::LParen => {
-                let mut elements: Vec<LetComponent> = Vec::new();
+                let mut elements: Vec<cst::LetComponent> = Vec::new();
                 //todo!("Pattern assignment not yet implemented")
                 start = t.take(Token::LParen).join()?.start; // consume start lparen
 
@@ -122,14 +121,14 @@ impl<'lexer> Parser<'lexer> {
 
         match content {
             Either::A(tuple_elements) => {
-                t.success(Box::new(LetComponent::Tuple(LetComponentTuple {
+                t.success(Box::new(cst::LetComponent::Tuple(cst::LetComponentTuple {
                     elements: tuple_elements,
                     node_info,
                     type_specifier: specified_type,
                 })))
             }
             Either::B(name) => {
-                t.success(Box::new(LetComponent::Identifier(LetComponentIdentifier {
+                t.success(Box::new(cst::LetComponent::Identifier(cst::LetComponentIdentifier {
                     identifier_string: name,
                     node_info,
                     type_specifier: specified_type,
@@ -155,21 +154,21 @@ impl<'lexer> Parser<'lexer> {
         // CodeLocation::Parsed
         let end = expr.as_node().end().unwrap_or(CodeLocation::Builtin);
 
-        let lexpr = LetExpression {
+        let lexpr = cst::LetExpression {
             node_info: NodeInfo::from_indices(start, end),
             primary_component: binding,
             expression: expr,
         };
 
         //todo!("Let expression parsing not yet complete")
-        t.success(Box::new(ExpressionWrapper::LetExpression(lexpr)))
+        t.success(Box::new(cst::ExpressionWrapper::LetExpression(lexpr)))
     }
 
     // follows typespecifier? pattern
     // where:
     //     typespecifier: <typelist>
     //     pattern: (expressionlist)
-    pub fn parse_pattern(&mut self, t: &TokenProvider) -> ParseResult<Tuple> {
+    pub fn parse_pattern(&mut self, t: &TokenProvider) -> ParseResult<cst::Tuple> {
         //let mut t = t.child();
         let mut t = parse_header!(t);
         // can be a single literal or tuple, and each tuple is a set of expressions
@@ -198,7 +197,7 @@ impl<'lexer> Parser<'lexer> {
 
         let node_info = NodeInfo::from_indices(start, end);
 
-        t.success(Tuple {
+        t.success(cst::Tuple {
             node_info,
             expressions,
         })
@@ -217,7 +216,7 @@ impl<'lexer> Parser<'lexer> {
         todo!()
     }
 
-    pub fn parse_scope(&mut self, t: &TokenProvider) -> ParseResult<ScopedNameReference> {
+    pub fn parse_scope(&mut self, t: &TokenProvider) -> ParseResult<cst::ScopedNameReference> {
         let mut t = parse_header!(t);
 
         let mut names = Vec::new();
@@ -232,7 +231,7 @@ impl<'lexer> Parser<'lexer> {
             node_info = node_info.extended(s[1]);
         }
 
-        t.success(ScopedNameReference {
+        t.success(cst::ScopedNameReference {
             node_info,
             silent: names.len() > 0,
             scope: names,
@@ -317,9 +316,9 @@ impl<'lexer> Parser<'lexer> {
 
         match tw.token {
             Token::UnknownIntegerLiteral | Token::StringLiteral => {
-                t.success(ExpressionWrapper::literal_expression(tw))
+                t.success(cst::ExpressionWrapper::literal_expression(tw))
             }
-            Token::Underscore => t.success(ExpressionWrapper::wildcard(tw)),
+            Token::Underscore => t.success(cst::ExpressionWrapper::wildcard(tw)),
             Token::Identifier | Token::DoubleColon => {
                 t.lh.backtrack();
 
@@ -341,8 +340,8 @@ impl<'lexer> Parser<'lexer> {
     pub fn parse_access_continuation(
         &mut self,
         t: &TokenProvider,
-        on: Box<ExpressionWrapper>,
-    ) -> ParseResult<(bool, Box<ExpressionWrapper>)> {
+        on: Box<cst::ExpressionWrapper>,
+    ) -> ParseResult<(bool, Box<cst::ExpressionWrapper>)> {
         let mut t = parse_header!(t);
 
         let next = t.try_take_in(&[Token::LBracket, Token::Dot, Token::LParen]);
@@ -370,14 +369,14 @@ impl<'lexer> Parser<'lexer> {
 
                 let ni = NodeInfo::from_indices(start, end);
 
-                if let ExpressionWrapper::Tuple(tup) = *call_tuple {
-                    let fc = FunctionCall {
+                if let cst::ExpressionWrapper::Tuple(tup) = *call_tuple {
+                    let fc = cst::FunctionCall {
                         function: on,
                         args: Box::new(tup),
                         node_info: ni,
                     };
 
-                    t.success((true, box ExpressionWrapper::FunctionCall(fc)))
+                    t.success((true, box cst::ExpressionWrapper::FunctionCall(fc)))
                 } else {
                     unreachable!()
                 }
@@ -393,13 +392,13 @@ impl<'lexer> Parser<'lexer> {
 
                 let ni = NodeInfo::from_indices(start, end);
 
-                let mae = MemberAccessExpression {
+                let mae = cst::MemberAccessExpression {
                     on,
                     name: ident.slice,
                     node_info: ni,
                 };
 
-                t.success((true, box ExpressionWrapper::MemberAccess(mae)))
+                t.success((true, box cst::ExpressionWrapper::MemberAccess(mae)))
             }
             Token::RBracket => {
                 todo!("Array access not yet implemented")
@@ -457,12 +456,12 @@ impl<'lexer> Parser<'lexer> {
                 self.parse_tuple(&t)
             }
             Token::Identifier => {
-                let e = IdentifierExpression::from_token(tw);
+                let e = cst::IdentifierExpression::from_token(tw);
 
                 t.success(box e)
             }
             other if other.is_literal() => {
-                let e = LiteralExpression::new_expr(tw);
+                let e = cst::LiteralExpression::new_expr(tw);
 
                 t.success(e)
             }
@@ -515,7 +514,7 @@ impl<'lexer> Parser<'lexer> {
 
         let ni = NodeInfo::from_indices(start, end);
 
-        let ex = Tuple::new_expr(ni, exprs);
+        let ex = cst::Tuple::new_expr(ni, exprs);
 
         t.success(ex)
     }
@@ -563,7 +562,7 @@ impl<'lexer> Parser<'lexer> {
 
         let body = t.take(Token::LLVMBlock).join()?;
 
-        let llvmle = LLVMLiteralExpression {
+        let llvmle = cst::LLVMLiteralExpression {
             node_info: NodeInfo::from_indices(start.start, body.end),
             bindings,
             vars,
@@ -571,7 +570,7 @@ impl<'lexer> Parser<'lexer> {
             output: maybe_result,
         };
 
-        t.success(Box::new(ExpressionWrapper::LLVMLiteral(llvmle)))
+        t.success(Box::new(cst::ExpressionWrapper::LLVMLiteral(llvmle)))
     }
 
     pub fn parse_if_then_else(&mut self, t: &TokenProvider) -> ExpressionResult {
@@ -594,7 +593,7 @@ impl<'lexer> Parser<'lexer> {
 
             (exp, end)
         } else {
-            let exp = BlockExpression::new_expr(NodeInfo::Builtin, Vec::new());
+            let exp = cst::BlockExpression::new_expr(NodeInfo::Builtin, Vec::new());
             let end = then_exp.as_node().end().expect("then had no end?");
 
             (exp, end)
@@ -602,7 +601,7 @@ impl<'lexer> Parser<'lexer> {
 
         let node_info = NodeInfo::from_indices(start, end);
 
-        t.success(IfThenElseExpression::new_expr(
+        t.success(cst::IfThenElseExpression::new_expr(
             node_info, if_exp, then_exp, else_exp,
         ))
     }
@@ -617,7 +616,7 @@ impl<'lexer> Parser<'lexer> {
 
         let node_info = NodeInfo::from_indices(start, do_exp.as_node().end().unwrap_or(start));
 
-        t.success(WhileExpression::new_expr(node_info, while_exp, do_exp))
+        t.success(cst::WhileExpression::new_expr(node_info, while_exp, do_exp))
     }
 
     pub fn syntactic_block(&mut self, t: &TokenProvider) -> ExpressionResult {
@@ -630,7 +629,7 @@ impl<'lexer> Parser<'lexer> {
         ]);*/
 
         t.take(Token::LBrace).join()?;
-        let mut declarations: Vec<Box<ExpressionWrapper>> = Vec::new();
+        let mut declarations: Vec<Box<cst::ExpressionWrapper>> = Vec::new();
 
         let start = t.lh.la(0).map_or(CodeLocation::Builtin, |tw| tw.start);
 
@@ -677,7 +676,7 @@ impl<'lexer> Parser<'lexer> {
                                     exp.as_node().start().map_or(CodeLocation::Builtin, |v| v);
                                 let end = semi.end;
                                 let node_info = NodeInfo::from_indices(start, end);
-                                StatementExpression::new_expr(node_info, exp)
+                                cst::StatementExpression::new_expr(node_info, exp)
                             }
                             None => exp,
                         };
@@ -696,7 +695,7 @@ impl<'lexer> Parser<'lexer> {
 
         t.take(Token::RBrace).join()?;
 
-        t.success(BlockExpression::new_expr(node_info, declarations))
+        t.success(cst::BlockExpression::new_expr(node_info, declarations))
     }
 
     pub fn parse_expr_inner(
@@ -797,7 +796,7 @@ impl<'lexer> Parser<'lexer> {
             if let Some(_colon) = t.try_take(Token::Colon) {
                 todo!("Type constraints not implemented yet")
             } else if let Some(_as) = t.try_take(Token::As) {
-                let typeref: Box<TypeReference> = Box::new(
+                let typeref: Box<cst::TypeReference> = Box::new(
                     self.parse_type_specifier(&t)
                         .join_hard(&mut t)
                         .catch(&mut t)?,
@@ -808,7 +807,7 @@ impl<'lexer> Parser<'lexer> {
                     .expect("parsed lhs did not have a start");
                 let end = typeref.end().expect("parsed typeref did not have an end");
                 let node_info = NodeInfo::from_indices(start, end);
-                lhs = CastExpression::new_expr(node_info, lhs, typeref);
+                lhs = cst::CastExpression::new_expr(node_info, lhs, typeref);
                 continue;
             } else if let Some(_arrow) = t.try_take(Token::ThinArrowLeft) {
                 let v = self
@@ -861,14 +860,14 @@ impl<'lexer> Parser<'lexer> {
         t: &TokenProvider,
         node_info: NodeInfo,
         token: Token,
-        lhs: Box<ExpressionWrapper>,
+        lhs: Box<cst::ExpressionWrapper>,
     ) -> ExpressionResult {
         match token {
             Token::Ampersand | Token::Asterisk | Token::Dash | Token::Bang => {
-                t.success(UnaryOperationExpression::new_expr(node_info, token, lhs))
+                t.success(cst::UnaryOperationExpression::new_expr(node_info, token, lhs))
             }
             //Token::Let => LetExpression::new_expr(node_info, lhs),
-            Token::Return => t.success(ReturnExpression::new_expr(node_info, lhs)),
+            Token::Return => t.success(cst::ReturnExpression::new_expr(node_info, lhs)),
             _ => {
                 println!("got unexpected token {:?}", token);
                 panic!("Programming error: no way to build unary expression from given token");
@@ -881,24 +880,24 @@ impl<'lexer> Parser<'lexer> {
         t: &TokenProvider,
         node_info: NodeInfo,
         token: Token,
-        lhs: Box<ExpressionWrapper>,
-        rhs: Box<ExpressionWrapper>,
+        lhs: Box<cst::ExpressionWrapper>,
+        rhs: Box<cst::ExpressionWrapper>,
     ) -> ExpressionResult {
         //let t = t.child();
         let t = parse_header!(t);
 
         match token {
             Token::Plus | Token::Dash | Token::Asterisk | Token::FSlash => t.success(
-                BinaryOperationExpression::new_expr(node_info, token, lhs, rhs),
+                cst::BinaryOperationExpression::new_expr(node_info, token, lhs, rhs),
             ),
             //Token::As => Ok(CastExpression::new_expr(node_info, lhs, rhs)),
-            Token::Equals => t.success(AssignmentExpression::new_expr(node_info, lhs, rhs)),
+            Token::Equals => t.success(cst::AssignmentExpression::new_expr(node_info, lhs, rhs)),
             Token::CmpEqual
             | Token::CmpLessThan
             | Token::CmpGreaterThan
             | Token::CmpLessThanOrEqual
             | Token::CmpGreaterThanOrEqual
-            | Token::CmpNotEqual => t.success(ComparisonOperationExpression::new_expr(
+            | Token::CmpNotEqual => t.success(cst::ComparisonOperationExpression::new_expr(
                 node_info, token, lhs, rhs,
             )),
             tok => {
@@ -919,7 +918,7 @@ impl<'lexer> Parser<'lexer> {
 
 pub enum DotAccess {
     Field(IStr),
-    Method(IStr, Vec<Box<ExpressionWrapper>>),
+    Method(IStr, Vec<Box<cst::ExpressionWrapper>>),
 }
 
 use IntoCstNode;

@@ -1,5 +1,5 @@
-use crate::ast::AstNode;
+use crate::cst::CstNode;
 
 trait Walker {
-    fn walk_root(root: &mut dyn AstNode);
+    fn walk_root(root: &mut dyn CstNode);
 }

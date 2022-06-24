@@ -1,6 +1,9 @@
 #[allow(non_upper_case_globals)]
-use crate::ast;
-use crate::ast::{StaticVariableDeclaration, TopLevel};
+//use crate::ast;
+//use crate::ast::{StaticVariableDeclaration, TopLevel};
+use crate::cst::cst_traits::NodeInfo;
+//use crate::cst::declarations::{OuterScope, TopLevel, Namespace, TypeReference, FunctionDefinition};
+use crate::cst;
 use crate::lex::{ParseResultError, Token};
 
 //use crate::helper::lex_wrap::LookaheadStream;
@@ -8,14 +11,14 @@ use crate::lex::{ParseResultError, Token};
 use crate::lex::CodeLocation;
 //use crate::helper::lex_wrap::TokenWrapper;
 //use std::collections::HashSet;
-use ast::IntoAstNode;
+use crate::cst::cst_traits::IntoCstNode;
 
 use crate::parse::*;
 
 use super::schema::{ResultHint, TokenProvider};
 
 impl<'lexer> Parser<'lexer> {
-    pub fn entry(&mut self, t: &TokenProvider) -> ParseResult<ast::OuterScope> {
+    pub fn entry(&mut self, t: &TokenProvider) -> ParseResult<cst::OuterScope> {
         //let mut t = t.child();
         let mut t = parse_header!(t, [Token::Module => 1.0, Token::Function => 1.0, Token::Struct => 1.0, Token::Use => 1.0, Token::DExpression => 10.0]);
 
@@ -69,9 +72,9 @@ impl<'lexer> Parser<'lexer> {
 
         let end = self.lex.la(-1).map_or(start, |tw| tw.start);
 
-        t.success(ast::OuterScope {
+        t.success(cst::OuterScope {
             declarations,
-            node_info: ast::NodeInfo::from_indices(start, end),
+            node_info: NodeInfo::from_indices(start, end),
         })
     }
 
@@ -147,7 +150,7 @@ impl<'lexer> Parser<'lexer> {
     }*/
     #[allow(non_upper_case_globals)]
     //const first_global: [Token; 3] = [Token::Module, Token::Function, Token::Struct];
-    pub fn parse_global_declaration(&mut self, t: &TokenProvider) -> ParseResult<ast::TopLevel> {
+    pub fn parse_global_declaration(&mut self, t: &TokenProvider) -> ParseResult<cst::TopLevel> {
         println!("Parsing global declaration, idx: {}", t.lh.index());
 
         //let mut t = parse_header!(t, [Token::Module => 1.0, Token::Function => 1.0, Token::Struct => 1.0, Token::Use => 1.0, Token::DExpression => 10.0]);
@@ -187,7 +190,7 @@ impl<'lexer> Parser<'lexer> {
                     todo!();
                     let mut ns = self.parse_namespace(&t).join_hard(&mut t).catch(&mut t)?;
                     ns.set_public(public);
-                    ast::TopLevel::NamespaceDeclaration(ns)
+                    cst::TopLevel::Namespace(ns)
                 }
                 Token::Function => {
                     todo!();
@@ -195,23 +198,23 @@ impl<'lexer> Parser<'lexer> {
                         .parse_function_declaration(&t)
                         .join_hard(&mut t)
                         .catch(&mut t)?;
-                    ast::TopLevel::FunctionDeclaration(fd)
+                    cst::TopLevel::Function(fd)
                 }
                 // TODO: maybe add global variable declaration?
                 Token::Struct => {
                     t.lh.backtrack();
                     let sd = self
-                        .parse_struct_definition(&t)
+                        .parse_struct(&t)
                         .join_hard(&mut t)
                         .catch(&mut t)?;
-                    ast::TopLevel::Struct(sd)
+                    cst::TopLevel::Struct(sd)
                 }
                 Token::Implementation => {
                     t.lh.backtrack();
                     let v = self.parse_implementation_block(&t)
                         .join_hard(&mut t)
                         .catch(&mut t)?;
-                    ast::TopLevel::Implementation(v)
+                    cst::TopLevel::Impl(v)
                 }
                 Token::Use => {
                     todo!();
@@ -219,7 +222,7 @@ impl<'lexer> Parser<'lexer> {
                         .parse_use_declaration(&t)
                         .join_hard(&mut t)
                         .catch(&mut t)?;
-                    ast::TopLevel::UseDeclaration(ud)
+                    cst::TopLevel::UseDeclaration(ud)
                 }
                 Token::DExpression => {
                     println!("Taking dexpr");
@@ -243,7 +246,7 @@ impl<'lexer> Parser<'lexer> {
                     println!("About to update solution for e, idx is {}", t.lh.index());
                     let e = e.update_solution(&t)?;
                     println!("Value of e: {e:#?}");
-                    ast::TopLevel::ExpressionDeclaration(e)
+                    cst::TopLevel::ExpressionDeclaration(e)
                 }
 
                 // only parse let expressions for now, since other (pure) expressions would be
@@ -282,7 +285,7 @@ impl<'lexer> Parser<'lexer> {
     }
 
     //const first_namespace: [Token; 1] = [Token::Module];
-    pub fn parse_namespace(&mut self, t: &TokenProvider) -> ParseResult<ast::Namespace> {
+    pub fn parse_namespace(&mut self, t: &TokenProvider) -> ParseResult<cst::NamespaceDefinition> {
         println!("Parsing a namespace");
 
         //let mut t = t.child().predict(&[(Token::Module, 10.0), (Token::Identifier, 0.01), (Token::LBrace, 0.5), (Token::RBrace, 0.5)]);
@@ -309,9 +312,9 @@ impl<'lexer> Parser<'lexer> {
 
         //let failed = pu.is_err();
 
-        let node_info = ast::NodeInfo::from_indices(start, end);
+        let node_info = NodeInfo::from_indices(start, end);
 
-        t.success(ast::Namespace {
+        t.success(cst::NamespaceDefinition {
             name: Some(id),
             contents: pu,
             public: false,
@@ -387,11 +390,11 @@ impl<'lexer> Parser<'lexer> {
     pub fn parse_function_param_list(
         &mut self,
         t: &TokenProvider,
-    ) -> ParseResult<Vec<(IStr, ast::TypeReference)>> {
+    ) -> ParseResult<Vec<(IStr, cst::TypeReference)>> {
         //let mut t = t.child();
         let mut t = parse_header!(t);
 
-        let mut rvec: Vec<(IStr, ast::TypeReference)> = Vec::new();
+        let mut rvec: Vec<(IStr, cst::TypeReference)> = Vec::new();
 
         while let Some(i) = t.try_take(Token::Identifier) {
             t.take(Token::Colon).join()?;
@@ -417,7 +420,7 @@ impl<'lexer> Parser<'lexer> {
     pub fn parse_function_declaration(
         &mut self,
         t: &TokenProvider,
-    ) -> ParseResult<ast::FunctionDefinition> {
+    ) -> ParseResult<cst::FunctionDefinition> {
         //let mut t = t.child();
         let mut t = parse_header!(t);
 
@@ -441,10 +444,10 @@ impl<'lexer> Parser<'lexer> {
 
         let end = body.as_node().start().expect("Some(_) body has None end");
 
-        let node_info = ast::NodeInfo::from_indices(start, end);
+        let info = NodeInfo::from_indices(start, end);
 
-        t.success(ast::FunctionDefinition {
-            node_info,
+        t.success(cst::FunctionDefinition {
+            info,
             body,
             params,
             //params: Vec::new(), // TODO
@@ -454,7 +457,7 @@ impl<'lexer> Parser<'lexer> {
         })
     }
 
-    pub fn parse_use_declaration(&mut self, t: &TokenProvider) -> ParseResult<ast::UseDeclaration> {
+    pub fn parse_use_declaration(&mut self, t: &TokenProvider) -> ParseResult<cst::UseDeclaration> {
         //let mut t = t.child();
         let mut t = parse_header!(t);
 
@@ -496,9 +499,9 @@ impl<'lexer> Parser<'lexer> {
 
         let end = t.take(Token::Semicolon).join()?.end; // don't need to directly bubble, since this individual statement is recoverable
 
-        let node_info = ast::NodeInfo::from_indices(start, end);
+        let node_info = NodeInfo::from_indices(start, end);
 
-        t.success(ast::UseDeclaration {
+        t.success(cst::UseDeclaration {
             public: false,
             scope,
             node_info,

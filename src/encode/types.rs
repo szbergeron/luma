@@ -1,7 +1,9 @@
+use crate::ast::tree::CtxID;
+
 pub struct Variable {
     pub vname: String,
     pub vtype: String,
-    pub vtid: Option<crate::types::TypeID>,
+    pub vtid: Option<CtxID>,
 }
 
 impl Variable {

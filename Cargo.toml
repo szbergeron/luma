@@ -36,7 +36,7 @@ staged-builder = "0.1.0"
 indent = "0.1.1"
 pretty = "0.11.2"
 #enum-display-derive = "0.1.1"
-#derive_more = "*"
+derive_more = "*"
 strum = "0.24.0"
 strum_macros = "*"
 

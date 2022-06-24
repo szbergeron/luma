@@ -2,6 +2,7 @@ use std::fmt::Debug;
 
 use super::cst_traits::*;
 
+
 /*use super::base::*;
 use super::outer::*;
 use super::ImplementationBody;
@@ -15,7 +16,7 @@ use crate::lex::Token;
 use crate::types;
 
 pub trait Expression: CstNode {
-    fn expr_type(&self) -> Box<dyn types::StaticType>;
+    //fn expr_type(&self) -> Box<dyn types::StaticType>; // TODO
 }
 
 #[derive(Clone)]
@@ -328,7 +329,7 @@ impl BlockExpression {
     }
 }
 
-#[derive(Debug)]
+/*#[derive(Debug)]
 pub struct LetExpression {
     node_info: NodeInfo,
 
@@ -345,6 +346,132 @@ impl LetExpression {
             into,
         }))
     }
+}*/
+
+#[derive(Debug, Clone)]
+pub struct LetExpression {
+    pub node_info: NodeInfo,
+
+    pub primary_component: Box<LetComponent>,
+
+    pub expression: Box<ExpressionWrapper>,
+}
+
+#[derive(Debug, Clone)]
+pub struct LetComponentScopedDestructure {
+    // TODO: need to pub more work into this, revisit when relevant for
+// product types down the line
+}
+
+#[derive(Debug, Clone)]
+pub struct LetComponentTuple {
+    pub node_info: NodeInfo,
+
+    // pub arity: usize, // implicit in length of component vec
+    pub elements: Vec<LetComponent>,
+
+    pub type_specifier: Option<Box<super::TypeReference>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct LetComponentIdentifier {
+    pub node_info: NodeInfo,
+
+    pub identifier_string: IStr,
+
+    pub type_specifier: Option<Box<super::TypeReference>>,
+}
+
+#[derive(Debug, Clone)]
+pub enum LetComponent {
+    ScopedDestructure(LetComponentScopedDestructure),
+    Tuple(LetComponentTuple),
+    Identifier(LetComponentIdentifier),
+    Discard(NodeInfo),
+}
+
+
+/*impl CstNode for LetExpression {
+    fn node_info(&self) -> NodeInfo {
+        self.node_info
+    }
+}*/
+
+impl IntoCstNode for LetComponent {
+    /*fn as_node_mut(&mut self) -> Option<&mut dyn AstNode> {
+        Some(self)
+    }*/
+
+    fn as_node(&self) -> &dyn CstNode {
+        self
+    }
+}
+
+impl CstNode for LetComponent {
+    fn node_info(&self) -> NodeInfo {
+        match self {
+            Self::ScopedDestructure(_lcsd) => {
+                todo!("LetComponentScopedDestructure not implemented for fmt")
+            }
+            Self::Discard(ni) => *ni,
+            Self::Tuple(lct) => lct.node_info,
+            Self::Identifier(lci) => lci.node_info,
+        }
+    }
+
+    /*fn format(&self) -> RcDoc {
+        match self {
+            Self::ScopedDestructure(_lcsd) => {
+                todo!("LetComponentScopedDestructure not implemented for fmt")
+            }
+            Self::Discard(_) => RcDoc::text("_"),
+            Self::Identifier(lci) => RcDoc::text(lci.identifier_string.resolve())
+                .append(": ")
+                .append(
+                    lci.type_specifier
+                        .as_ref()
+                        .map(|tr| tr.as_node().format())
+                        .unwrap_or(RcDoc::text("{unknown}")),
+                )
+                .group(),
+            Self::Tuple(lct) => {
+                let base = RcDoc::text("(")
+                    .append(
+                        RcDoc::intersperse(lct.elements.iter().map(|e| e.format()), comma_break())
+                            .nest(1),
+                    )
+                    .append(")");
+
+                let tspec = lct
+                    .type_specifier
+                    .as_ref()
+                    .map(|tr| tr.as_node().format())
+                    .unwrap_or(RcDoc::text("{unknown}"));
+
+                base.append(": ").append(tspec)
+                /*let mut inner = String::new();
+                for idx in 0..lct.elements.len() {
+                    inner.push_str(lct.elements[idx].format().as_str());
+                    //lct.elements[idx].display(f, depth);
+                    if idx < lct.elements.len() - 1 {
+                        inner.push_str(", ");
+                        //write!(f, ", ").unwrap();
+                    }
+                }
+                /*for cmp in lct.elements.iter() {
+                    cmp.display(f, depth);
+                    write!(f, ", ").unwrap();
+                }*/*/
+
+                /*let tspec = lct
+                    .type_specifier
+                    .as_ref()
+                    .map(|tr| tr.as_node().format())
+                    .unwrap_or("{unknown}".to_owned());
+                format!("({inner}): {tspec}")*/
+            }
+        }
+    }*/
 }
 
 impl CstNode for LetExpression {
@@ -746,7 +873,7 @@ pub struct LLVMLiteralExpression {
     /// the value will reside in will be referred to output.unwrap().1
     ///
     /// Care should be taken by the user that the binding name does not cause a name collision
-    pub output: Option<(TypeReference, IStr)>,
+    pub output: Option<(super::TypeReference, IStr)>,
 }
 
 impl CstNode for LLVMLiteralExpression {
@@ -964,9 +1091,9 @@ pub struct ImplementationModificationExpression {
     pub node_info: NodeInfo,
 
     pub modifying: Box<ExpressionWrapper>,
-    pub traits: Vec<TypeReference>,
+    //pub traits: Vec<super::TypeReference>,
 
-    pub impl_block: Box<ImplementationBody>,
+    pub impl_block: Box<super::ImplementationDefinition>,
 }
 
 impl CstNode for ImplementationModificationExpression {

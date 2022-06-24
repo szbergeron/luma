@@ -1,8 +1,10 @@
-use super::{CtxID, FunctionID, GlobalTypeID, TypeCtx, TypeID};
-use crate::{ast::Span, helper::interner::IStr};
+//use super::{CtxID, FunctionID, GlobalTypeID, TypeCtx, TypeID};
+//use crate::{ast::Span, helper::interner::IStr};
 
 use smallvec::SmallVec;
 use std::any::Any;
+
+use crate::{cst::Span, helper::interner::IStr};
 
 /// Acknowledgements:
 ///

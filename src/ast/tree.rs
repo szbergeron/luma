@@ -1,9 +1,8 @@
 use std::{
-    cell::UnsafeCell,
     pin::Pin,
     ptr::NonNull,
     sync::{
-        atomic::{compiler_fence, AtomicBool, AtomicIsize},
+        atomic::{compiler_fence, AtomicIsize},
         RwLock,
     },
 };
@@ -12,25 +11,28 @@ use dashmap::DashMap;
 use once_cell::sync::OnceCell;
 
 use crate::{
-    ast::{syntax::TypeReference, ExpressionWrapper},
+    cst,
+    cst::expressions::ExpressionWrapper,
+    cst::TypeReference,
     helper::interner::IStr,
 };
 
-use super::GenericConstraint;
+//use super::GenericConstraint;
 
 mod makers {
     use super::*;
     use crate::helper::interner::IStr;
+    use crate::cst;
 
     pub fn new_struct(
         named: IStr,
-        generics: Vec<GenericConstraint>,
+        generics: Vec<cst::GenericHandle>,
         fields: Vec<FieldMember>,
-    ) -> OwningNodeHandle {
+    ) -> CtxID {
         let t = TypeDefinition { fields };
         let inner = NodeUnion::Type(t);
 
-        let node = Node::new(named, generics, None, None, inner);
+        let node = Node::new(named, generics, OnceCell::new(), OnceCell::new(), inner);
 
         node
 
@@ -38,10 +40,10 @@ mod makers {
         //let inner = NodeUnion::
     }
 
-    pub fn new_namespace(named: IStr, generics: Vec<GenericConstraint>) -> OwningNodeHandle {
+    pub fn new_namespace(named: IStr, generics: Vec<cst::GenericHandle>) -> CtxID {
         let inner = NodeUnion::Empty();
 
-        let node = Node::new(named, generics, None, None, inner);
+        let node = Node::new(named, generics, OnceCell::new(), OnceCell::new(), inner);
 
         node
     }
@@ -52,6 +54,7 @@ mod makers {
 /// handles for the overall tree to be cheap to
 /// traverse and build without worrying about nice lifetimes
 /// or refcounting
+//#[derive(Default)]
 pub struct Contexts {
     owning: boxcar::Vec<Node>,
 
@@ -59,9 +62,17 @@ pub struct Contexts {
 }
 
 impl Contexts {
+    pub fn new() -> Self {
+        Self {
+            owning: boxcar::Vec::new(),
+            by_path: DashMap::new(),
+        }
+    }
+
     pub fn intern(&self, node: Node) -> CtxID {
         let index = self.owning.push(node);
         let id = CtxID(index);
+
         self.owning
             .get(index)
             .unwrap()
@@ -80,6 +91,18 @@ impl Contexts {
             .owning
             .get(r.0)
             .expect("was given an incorrectly constructed CtxID in a NodeReference, source was not Contexts?")
+    }
+
+    pub fn instance() -> &'static Contexts {
+        //static s: Contexts = Contexts::default();
+
+        lazy_static! {
+            static ref S: Contexts = {
+                Contexts::new()
+            };
+        }
+
+        &S
     }
 }
 
@@ -129,7 +152,7 @@ pub struct Node {
     node_id: OnceCell<CtxID>,
 
     //node_id: CtxID,
-    generics: Vec<GenericConstraint>,
+    generics: Vec<cst::GenericHandle>,
 
     children: DashMap<IStr, NodeReference>,
 
@@ -174,7 +197,7 @@ impl OneWayBool {
     /// If returns None, then the bool is already fused
     /// so it is impossible to block fusing
     pub fn block(&self) -> Option<OneWayBoolGuard> {
-        while let prior = self.state.load(std::sync::atomic::Ordering::AcqRel) {
+        while let prior = self.state.load(std::sync::atomic::Ordering::Acquire) {
             if prior < 0 {
                 return None;
             }
@@ -246,12 +269,13 @@ impl Node {
 
     pub fn new(
         name: IStr,
-        generics: Vec<GenericConstraint>,
-        parent: Option<NonNull<Node>>,
-        global: Option<NonNull<Node>>,
+        generics: Vec<cst::GenericHandle>,
+        parent: OnceCell<CtxID>,
+        global: OnceCell<CtxID>,
         inner: NodeUnion,
-    ) -> Pin<Box<Node>> {
+    ) -> CtxID {
         let mut n = Node {
+            node_id: OnceCell::new(),
             name,
             generics,
             parent,
@@ -259,25 +283,24 @@ impl Node {
             inner,
             children: DashMap::new(),
             implementations_in_scope: RwLock::new(Vec::new()),
-            selfref: None,
             frozen: OneWayBool::new(),
         };
 
-        let mut as_ptr = Box::into_raw(Box::new(n));
+        //let mut as_ptr = Box::into_raw(Box::new(n));
 
-        let pinned = unsafe {
+        /*let pinned = unsafe {
             (*as_ptr).selfref = Some(NonNull::new(as_ptr).expect("as_ptr should not be null"));
 
             // this should be fine but no promises.
             // Currently there is no way to construct a pinned box in place
             // from a raw pointer
             Pin::new_unchecked(Box::from_raw(as_ptr))
-        };
+        };*/
 
-        pinned
+        Contexts::instance().intern(n)
     }
 
-    pub fn set_parent(&mut self, parent: WeakNodeHandle) {
+    /*pub fn set_parent(&mut self, parent: WeakNodeHandle) {
         let guard = self
             .frozen
             .block()
@@ -296,7 +319,7 @@ impl Node {
         child.set_parent(self.selfref);
 
         self.children.insert(name, child);
-    }
+    }*/
 }
 
 pub enum NodeUnion {
@@ -380,7 +403,7 @@ pub struct Instance {
 /// (or at least a required subset of them)
 pub struct TypeInstiation {
     instantiates: WeakNodeHandle,
-    generic_arguments: DashMap<GenericHandle, TypeInstiation>,
+    generic_arguments: DashMap<cst::GenericHandle, TypeInstiation>,
 }
 
 pub enum TypeConstraint {
@@ -432,20 +455,6 @@ pub enum TypeConstraint {
     /// then Unconstrained can be used as a placeholder
     /// and folded into Multiple later on
     Unconstrained(),
-}
-
-/// The "T" in Something<T>
-///
-/// A GenericHandle aims to be a key type
-/// that can map down to an actual type during
-/// usage and implementation solving
-///
-/// If a handle is reused, then simply clone the existing one
-/// that you wish to refer to (don't use new!)
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct GenericHandle {
-    name: IStr,
-    id: usize,
 }
 
 struct RefPtr<T> {

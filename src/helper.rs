@@ -1,16 +1,16 @@
 //use crate::lex;
-use crate::ast::*;
+
 use std::convert::Infallible;
 use std::fs;
 use std::marker::PhantomData;
 use std::ops::ControlFlow;
-use std::path::{PathBuf, Path};
+use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
 use self::interner::IStr;
 
 pub mod interner {
-    use std::fmt::{Debug, Display};
+    use std::{fmt::{Debug, Display}, path::Path};
 
     #[derive(Copy, Clone, Hash, Eq, PartialEq)]
     pub struct IStr {
@@ -36,6 +36,34 @@ pub mod interner {
     impl Debug for IStr {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             write!(f, "S('{}')", self.resolve())
+        }
+    }
+
+    pub trait InternedModPath {
+        fn into_parts(self) -> Result<Vec<IStr>, IStr>;
+    }
+
+    impl InternedModPath for IStr {
+        fn into_parts(self) -> Result<Vec<IStr>, IStr> {
+            let s = self.resolve();
+
+            //s.chars().find(|c| c.is_alphabetic() || c == ':')
+
+            let mut failed = false;
+
+            let parts = s.split("::").map(|part| {
+                if !s.chars().all(|c| c.is_alphabetic()) {
+                    failed = true;
+                }
+
+                intern(s)
+            }).collect();
+
+            match failed {
+                false => Ok(parts),
+                true => Err(intern(format!("an invalid modpath was passed to into_parts, the given string was: {s}").as_str()))
+            }
+            //Ok(parts)
         }
     }
 
@@ -150,6 +178,28 @@ pub mod interner {
                 Rodeo::ThreadedRodeo(tr) => tr.get_or_intern(v),
                 _ => panic!("Tried to intern a string when interner was not in a writable state"),
             }
+        }
+    }
+
+    pub trait Internable {
+        fn intern(&self) -> IStr;
+    }
+
+    impl Internable for str {
+        fn intern(&self) -> IStr {
+            intern(&self)
+        }
+    }
+
+    impl Internable for String {
+        fn intern(&self) -> IStr {
+            self.as_str().intern()
+        }
+    }
+
+    impl Internable for Path {
+        fn intern(&self) -> IStr {
+            self.canonicalize().map(|canonicalized| canonicalized.to_str().map(|s| s.intern())).ok().flatten().unwrap_or(intern(self.to_str().unwrap_or("<unserializable path>")))
         }
     }
 
@@ -291,13 +341,13 @@ impl<A, B> std::ops::FromResidual for EitherAnd<A, B> {
 #[derive(Debug, Clone)]
 pub enum Error {
     DuplicateDefinition {
-        duplicate_symbol: Arc<RwLock<TopLevel>>,
-        existing_symbol: Arc<RwLock<TopLevel>>,
+        duplicate_symbol: Arc<RwLock<!>>,
+        existing_symbol: Arc<RwLock<!>>,
     },
 }
 
 pub struct Spec {
-    entries: Vec<FileRole>,
+    pub entries: Vec<(MountPoint, FileRole)>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -312,11 +362,26 @@ pub enum MountPoint {
     Nest(IStr),
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum FileRole {
+    /// A Data file is treated as pure
+    /// binary data, and appears as effectively a
+    /// vector of bytes, that is embedded within the
+    /// data segment of the provided binary
     Data { path: PathBuf },
+
+    /// A Spec file references other files (and potentially mount points)
+    /// and allows for adding project structure using directories
     Spec { path: PathBuf },
+
+    /// A Source file is a source code file in the language
     Source { path: PathBuf },
+
+    /// A Virtual file doesn't actually exist, it is used
+    /// for nodes within the project tree that are referred to
+    /// but are implicitly role-d or are not
+    /// actually directly mounted (such as a module within a mount path)
+    Virtual {},
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -326,7 +391,7 @@ pub enum FileRoleDescriminant {
     Source,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct FileHandleRef<'a> {
     pub id: usize,
     pub contents: &'a str,
@@ -427,7 +492,7 @@ impl<'input> FileHandle {
             Some(s) => Some(FileHandleRef {
                 id: self.id.unwrap_or(0),
                 contents: s.get(..).unwrap(),
-                role: self.role,
+                role: self.role.clone(),
             }),
             None => None,
         }

@@ -5,7 +5,7 @@ use crate::parse::*;
 use super::schema::TokenProvider;
 
 impl<'lexer> Parser<'lexer> {
-    pub fn parse_spec(&mut self, t: &TokenProvider, current_path: Path) -> ParseResult<Spec> {
+    pub fn parse_spec(&mut self, t: &TokenProvider, current_path: &Path) -> ParseResult<Spec> {
         let mut t = parse_header!(t, [Token::Use => 1]);
 
         let mut res = Vec::new();
@@ -20,7 +20,7 @@ impl<'lexer> Parser<'lexer> {
     /// I know all of this is horribly ugly and hacky, I just threw it together to get something
     /// that works well enough for now for building out project structure without needing
     /// to define a whole other lexer/parser for the spec files
-    pub fn parse_spec_declaration(&mut self, t: &TokenProvider, current_path: Path) -> ParseResult<(MountPoint, FileRole)> {
+    pub fn parse_spec_declaration(&mut self, t: &TokenProvider, current_path: &Path) -> ParseResult<(MountPoint, FileRole)> {
         let mut t = parse_header!(t,
             [Token::Identifier => 1,
             Token::Identifier => 1,

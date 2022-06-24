@@ -5,7 +5,7 @@ use std::{convert::Infallible, fmt::Formatter, marker::PhantomData, ops::Control
 use smallvec::smallvec;
 
 use crate::{
-    ast::Span,
+    cst::Span,
     helper::interner::SpurHelper,
     lex::{ErrorSet, ParseResultError, Token, TokenWrapper},
 };
@@ -781,7 +781,7 @@ pub mod schema {
     use smallvec::{smallvec, SmallVec};
 
     use crate::{
-        ast::Span,
+        cst::Span,
         helper::interner::SpurHelper,
         lex::{ErrorSet, LookaheadHandle, ParseResultError, Token, TokenWrapper},
     };

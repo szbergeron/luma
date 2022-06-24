@@ -73,7 +73,7 @@ impl<T> ChunkEntry<T> {
         /*let guard = self.blocking.lock() {
         };*/
 
-        let guard = self.blocking.lock().unwrap();
+        let mut guard = self.blocking.lock().unwrap();
 
         match *guard {
             Some(inner) => unsafe { std::mem::transmute::<_, *mut MaybeUninit<T>>(inner) },
@@ -101,7 +101,7 @@ impl<T> Drop for ChunkEntry<T> {
         // if len has been spanned across an index (and no panic has occurred on insert, which
         // is a guarantee that must be fulfilled by users of the type), then that index is
         // initialized and should be deallocated
-        let guard = self.blocking.lock().unwrap();
+        let mut guard = self.blocking.lock().unwrap();
 
         let alloc = guard.replace(null_mut());
 
@@ -117,7 +117,13 @@ impl<T> Drop for ChunkEntry<T> {
 
                 for i in 0..len {
                     unsafe {
-                        std::mem::drop((*alloc.offset(i as isize)).assume_init());
+                        //std::mem::drop((*alloc.offset(i as isize)).assume_init());
+                        //Box::from_raw((alloc.offset(i as isize)).assume_init());
+                        let p = alloc.offset(i as isize);
+                        //let init = &(*p).assume_init();
+                        let as_t_ptr: *mut T = std::mem::transmute(p);
+                        let b = Box::from_raw(as_t_ptr);
+                        std::mem::drop(b);
                     }
                 }
 
