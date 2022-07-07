@@ -212,6 +212,7 @@ impl PathNode {
     }*/
 }
 
+#[derive(Default)]
 pub struct FileRegistry {
     //files: Vec<FileHandle>,
     id: AtomicUsize,

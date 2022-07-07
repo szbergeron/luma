@@ -19,9 +19,15 @@ use crate::cst;
 use crate::helper::interner::*;
 use tokio::runtime::*;
 
+//use super::file_tree::FileHandle;
+
+use super::file_tree::{FileHandle, FileRegistry, FileRole, SourceFile, SpecFile};
+use super::tree2::PreParseTreeNode;
+
+
 #[allow(unused_variables, dead_code)]
 pub fn parse_source_file<'file>(
-    handle: FileHandleRef,
+    handle: FileHandle,
     scope: Vec<IStr>,
     cflags: &CFlags,
 ) -> Result<cst::OuterScope, ParseResultError> {
@@ -29,10 +35,13 @@ pub fn parse_source_file<'file>(
     // of things
     // TODO: eval if this even matters
 
-    let contents = handle.contents;
+    let contents = handle.contents().unwrap();
 
-    let base_path = handle.id;
-    let lex = TokenStream::new(contents, base_path);
+    let content_str = contents.as_str().unwrap();
+
+    //let base_path = handle.path();
+    let file_id = handle.id();
+    let lex = TokenStream::new(content_str, file_id);
     let tv = lex.to_vec();
     let scanner = LookaheadHandle::new(&tv);
 
@@ -61,11 +70,12 @@ pub fn parse_source_file<'file>(
         parser.print_errors(handle);
     }
 
+
     match &v {
         Some(punit) => {
             if cflags.dump_tree {
                 println!("Input file:");
-                for (line_num, line) in contents.lines().enumerate() {
+                for (line_num, line) in content_str.lines().enumerate() {
                     println!("{line_num:3}｜ {line}");
                 }
                 println!();
@@ -107,6 +117,40 @@ pub struct CFlags {
 async fn async_launch(args: ArgResult) {
     //let (error_sender, _error_reciever) = crossbeam::unbounded();
 
+    let files: FileRegistry = Default::default();
+
+    let root = PreParseTreeNode::new(&files);
+
+    //root.add_native(args.source_input)
+    //args.source_input.clone();
+
+    let mut roles = Vec::new();
+
+
+
+    args.source_input.iter().map(|p| {
+        let f = FileRole::Source(SourceFile { location: p.clone() });
+        f
+    }).for_each(|e| roles.push(e));
+
+    args.spec_input.iter().map(|p| {
+        let f = FileRole::Spec(SpecFile { location: p.clone() });
+        f
+    }).for_each(|e| roles.push(e));
+
+    /*.for_each(|h| {
+        root.add_native(Some(h).into_iter());
+    });*/
+    
+    let node = crate::compile::tree2::from_roots(&files, roles);
+
+    for native in args.source_input {
+        let f = FileRole::Source(SourceFile { location: native });
+        let handle = files.intern(f);
+
+        //root.add_native([f].into_iter());
+    }
+
     //let root = super::tree::CompilationRoot::initial(error_sender, args).await;
     //TODO
     abort();
@@ -127,6 +171,8 @@ pub fn launch(args: &[&str]) {
         .worker_threads(thread_count)
         .build()
         .expect("Couldn't initialize an async worker pool, bad args?");
+
+    // get root from our spec files
 
     tokio_rt.block_on(async { async_launch(args).await });
 }
@@ -167,6 +213,7 @@ fn parse_args(args: &[&str]) -> Result<ArgResult, &'static str> {
         match slice {
             "-o" | "--output" => state = State::ExpectOutput,
             "-i" | "--input" => state = State::ExpectSourceInput,
+            "-s" | "--spec" => state = State::ExpectSpecInput,
             "-r" | "--root" => state = State::ExpectSourceInput,
             "-Cthreads" => state = State::ExpectThreadCount,
             "-Dtree" => cflags.dump_tree = true,

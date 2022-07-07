@@ -316,7 +316,7 @@ impl<A, B> std::ops::Try for EitherAnd<A, B> {
 
     type Residual = EitherAnd<Infallible, B>;
 
-    fn from_output(output: Self::Output) -> Self {
+    fn from_output(_output: Self::Output) -> Self {
         todo!()
     }
 
@@ -346,23 +346,7 @@ pub enum Error {
     },
 }
 
-pub struct Spec {
-    pub entries: Vec<(MountPoint, FileRole)>,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum MountPoint {
-    /// Acts as basically an "include" statement,
-    /// the spec or source elements from the target
-    /// module are dumped directly into the current module
-    Here(),
-
-    /// States that the referenced element should be mounted
-    /// within a module named <.0>
-    Nest(IStr),
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
+/*#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum FileRole {
     /// A Data file is treated as pure
     /// binary data, and appears as effectively a
@@ -382,9 +366,9 @@ pub enum FileRole {
     /// but are implicitly role-d or are not
     /// actually directly mounted (such as a module within a mount path)
     Virtual {},
-}
+}*/
 
-#[derive(Clone, Copy, Debug)]
+/*#[derive(Clone, Copy, Debug)]
 pub enum FileRoleDescriminant {
     Data,
     Spec,
@@ -401,15 +385,15 @@ pub struct FileHandleRef<'a> {
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
-pub struct FileHandle /* where 'input: 'context */ {
+pub struct FileHandle2 /* where 'input: 'context */ {
     pub id: Option<usize>,
     //context: Option<std::pin::Pin<Weak<RwLock<ScopeContext<'static>>>>>,
     pub location: PathBuf,
     contents: Option<String>,
-    pub role: FileRole,
+    //pub role: FileRole,
     //
     //phantom_str: std::marker::PhantomData<&'input str>,
-}
+}*/
 
 /*#[allow(unused_unsafe)]
 impl Drop for FileHandle {
@@ -420,16 +404,16 @@ impl Drop for FileHandle {
     }
 }*/
 
-impl<'input> FileHandle {
+/*impl<'input> FileHandle2 {
     pub fn new(
-        role: FileRole,
+        //role: FileRole,
         p: PathBuf,
         /*scope: Vec<String>,*/
         id: Option<usize>,
         //context: Arc<RwLock<ScopeContext<'context>>>, // should only refer to self here
-    ) -> FileHandle {
-        FileHandle {
-            role,
+    ) -> FileHandle2 {
+        FileHandle2 {
+            //role,
             location: p,
             //scope,
             id,
@@ -492,7 +476,8 @@ impl<'input> FileHandle {
             Some(s) => Some(FileHandleRef {
                 id: self.id.unwrap_or(0),
                 contents: s.get(..).unwrap(),
-                role: self.role.clone(),
+                role: todo!(),
+                //role: self.role.clone(),
             }),
             None => None,
         }
@@ -505,7 +490,7 @@ impl<'input> FileHandle {
     pub fn path(&self) -> &PathBuf {
         &self.location
     }
-}
+}*/
 
 pub mod lex_wrap {}
 

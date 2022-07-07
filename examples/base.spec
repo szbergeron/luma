@@ -5,6 +5,6 @@ source "foo.rs" as foo;
 source "main.rs";
 
 // basically acts as an include statement for the spec file
-spec "other.spec";
+// spec "other.spec";
 
-data "icon.png" as icon;
+// data "icon.png" as icon;

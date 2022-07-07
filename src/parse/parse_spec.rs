@@ -4,6 +4,13 @@ use crate::parse::*;
 
 use super::schema::TokenProvider;
 
+#[derive(Clone, Copy, Debug)]
+pub enum FileRoleDescriminant {
+    Data,
+    Spec,
+    Source,
+}
+
 impl<'lexer> Parser<'lexer> {
     pub fn parse_spec(&mut self, t: &TokenProvider, current_path: &Path) -> ParseResult<Spec> {
         let mut t = parse_header!(t, [Token::Use => 1]);
@@ -20,7 +27,7 @@ impl<'lexer> Parser<'lexer> {
     /// I know all of this is horribly ugly and hacky, I just threw it together to get something
     /// that works well enough for now for building out project structure without needing
     /// to define a whole other lexer/parser for the spec files
-    pub fn parse_spec_declaration(&mut self, t: &TokenProvider, current_path: &Path) -> ParseResult<(MountPoint, FileRole)> {
+    pub fn parse_spec_declaration(&mut self, t: &TokenProvider, current_path: &Path) -> ParseResult<(Vec<IStr>, FileRole)> {
         let mut t = parse_header!(t,
             [Token::Identifier => 1,
             Token::Identifier => 1,
@@ -38,7 +45,7 @@ impl<'lexer> Parser<'lexer> {
             "source" => FileRoleDescriminant::Source,
             "spec" => FileRoleDescriminant::Spec,
             "data" => FileRoleDescriminant::Data,
-            other => t.failure(ParseResultError::SemanticIssue("expected source, spec, or data, found alternative value", dec_type.start, dec_type.end)).catch(&mut t).join_hard(&mut t)?,
+            _other => t.failure(ParseResultError::SemanticIssue("expected source, spec, or data, found alternative value", dec_type.start, dec_type.end)).catch(&mut t).join_hard(&mut t)?,
         };
 
         let file_name = t.take(Token::StringLiteral).join()?;
@@ -62,18 +69,21 @@ impl<'lexer> Parser<'lexer> {
         };
 
         let mount_point = match get_mount {
-            false => MountPoint::Here(),
+            false => vec![],
             true => {
                 t.take(Token::As).join()?;
-                let mount_point = t.take(Token::Identifier).join()?;
-                MountPoint::Nest(mount_point.slice)
+                //let mount_point = t.take(Token::Identifier).join()?;
+                let point = self.parse_scope(&t).join_hard(&mut t).catch(&mut t)?;
+                let point = point.scope;
+                point
+                //MountPoint::Nest(mount_point.slice)
             }
         };
 
         let inner = match frd {
-            FileRoleDescriminant::Data => FileRole::Data { path: file_path },
-            FileRoleDescriminant::Spec => FileRole::Spec { path: file_path },
-            FileRoleDescriminant::Source => FileRole::Source { path: file_path },
+            FileRoleDescriminant::Data => FileRole::Data(DataFile {location: file_path}),
+            FileRoleDescriminant::Spec => FileRole::Spec(SpecFile {location: file_path}),
+            FileRoleDescriminant::Source => FileRole::Source(SourceFile {location: file_path}),
         };
 
         t.success((mount_point, inner))

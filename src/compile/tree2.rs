@@ -1,155 +1,158 @@
-use std::{
-    path::PathBuf, cell::UnsafeCell, sync::atomic::fence,
+//use std::{cell::UnsafeCell, path::PathBuf, sync::atomic::fence};
+
+/// PROJECT_DEPTH allows setting the point
+/// at which we have to store some things not "inline"
+/// for module depth. If someone has more than PROJECT_DEPTH nested
+/// modules, some SmallVecs will have anything under those as OOL
+/// allocations which will cost more for those instances, and may come
+/// with a branch prediction penalty across other modules
+const PROJECT_DEPTH: usize = 8;
+
+use std::collections::VecDeque;
+
+use dashmap::{DashMap, DashSet};
+use smallvec::SmallVec;
+
+use crate::{
+    compile::file_tree::{FileHandle, FileRegistry, FileRole},
+    helper::interner::IStr,
+    lex::LookaheadHandle,
+    lex::TokenStream,
+    parse::schema::TokenProvider,
+    parse::Parser,
 };
 
+pub struct PreParseTreeNode<'r> {
+    files: &'r FileRegistry,
 
-use dashmap::DashMap;
-
-
-use crate::helper::{interner::IStr, FileRole};
-
-pub struct SpecTree {
-    files: Vec<FileRole>,
-
-    children: Vec<SpecTree>,
-}
-
-/// Covers the idea of a concrete syntax tree,
-/// with specs having done mounting and everything
-/// already and fil
-#[derive(Debug, Clone)]
-pub struct PreParseTreeNode<'registry> {
-    self_file: FileRole,
-
-    canonicalized_mount_point: IStr,
-
-    native: Vec<PreParseTreeNode<'registry>>,
-    mounted: Vec<(IStr, PreParseTreeNode<'registry>)>,
-
-    path_registry: &'registry DashMap<PathBuf, IStr>,
-    //module_registry: &'registry DashMap<IStr, PathBuf>,
+    //children: Vec<PreParseTreeNode<'r>>,
+    native: DashSet<FileHandle<'r>>,
+    children: DashMap<IStr, PreParseTreeNode<'r>>,
 }
 
 impl<'r> PreParseTreeNode<'r> {
-    pub fn native_path(&self) -> PathBuf {
-        Self::destructure_role(&self.self_file).0
-    }
-
-    /// takes a stubbed node that was given only a file path and a role,
-    /// and "expands" it into a full node
-    pub fn open(self) -> Self {
-        todo!()
-    }
-
-    pub fn destructure_role(r: &FileRole) -> (PathBuf, &'static str) {
-        match r {
-            FileRole::Data { path } => { (path.clone(), "data") },
-            FileRole::Spec { path } => { (path.clone(), "spec") },
-            FileRole::Source { path } => { (path.clone(), "source") },
-            FileRole::Virtual {  } => { (PathBuf::default(), "virtual") },
+    pub fn add_children<I>(&self, children: I)
+    where
+        I: Iterator<Item = (IStr, PreParseTreeNode<'r>)>,
+    {
+        for child in children {
+            self.children.insert(child.0, child.1);
         }
     }
 
-    /**
-     * self_file: the file this is based on
-     * arena: set of all files referenced by this project, so we can check for reimports
-     * or import loops
-     * mount_point: the fully canonicalized path to where this module is mounted
-     **/
-    pub fn new(self_file: FileRole, registry: &'r DashMap<PathBuf, IStr>, mount_point: IStr) -> Option<Self> {
-        let (path, _) = Self::destructure_role(&self_file);
+    pub fn add_native<I>(&self, files: I)
+    where
+        I: Iterator<Item = FileHandle<'r>>,
+    {
+        for file in files {
+            self.native.insert(file);
+        }
+    }
 
-        match registry.get(&path) {
-            Some(m) => {
+    pub fn new(files: &'r FileRegistry) -> Self {
+        Self {
+            files,
+            native: DashSet::new(),
+            children: DashMap::new(),
+        }
+    }
 
-                let m = m.value();
-                println!("File {path:?} was already mounted at mount point {m:?}, when asked to mount it at {mount_point:?}");
+    pub fn incorporate(&self, other: PreParseTreeNode<'r>) {
+        for elem in other.native.into_iter() {
+            self.native.insert(elem);
+        }
 
-                None
+        for (key, elem) in other.children.into_iter() {
+            self.children
+                .entry(key)
+                .or_insert_with(|| PreParseTreeNode::new(self.files))
+                .incorporate(elem);
+            //self.children.entry(key).and_modify
+            //self.children.entry(key).and_modify(|e| e.incorporate())
+            //self.children.insert(key, elem);
+        }
+    }
+
+    pub fn insert(&self, remainder: &[IStr], node: PreParseTreeNode<'r>) {
+        match remainder {
+            [] => {
+                // merge these nodes
+
+                self.incorporate(node);
             }
-            None => {
-                registry.insert(path, mount_point);
-
-                Some(Self {
-                    self_file,
-                    native: Vec::new(),
-                    mounted: Vec::new(),
-                    path_registry: registry,
-                    canonicalized_mount_point: mount_point,
-                })
+            [first, more @ ..] => {
+                let child = PreParseTreeNode::new(self.files);
+                child.insert(more, node);
+                self.children.insert(*first, child);
             }
         }
     }
 
-    pub fn combine2(mut self, other: Self) -> Self {
-        //let native = self.native;
-
-        self.native.push(other);
-
-        self
-    }
-
-    pub fn plumb(&mut self, rem_path: &[IStr], full_path: IStr) {
+    pub fn perform<F>(&self, remainder: &[IStr], f: F)
+    where
+        F: FnOnce(&PreParseTreeNode<'r>),
+    {
+        match remainder {
+            [] => f(&self),
+            [first, more @ ..] => {
+                self.children
+                    .entry(*first)
+                    .or_insert(Self::new(self.files))
+                    .perform(more, f);
+                //let val = self.children.entry(*first).or_insert(Self::new(self.files));
+                //let entry = self.children.entry(*first)
+            }
+        }
     }
 }
 
+pub fn from_roots<'r>(reg: &'r FileRegistry, files: Vec<FileRole>) -> PreParseTreeNode<'r> {
+    let mut remaining_files: VecDeque<(SmallVec<[IStr; PROJECT_DEPTH]>, FileRole)> =
+        VecDeque::new();
 
+    for file in files {
+        remaining_files.push_back((vec![].into(), file));
+    }
 
+    let root = PreParseTreeNode::new(reg);
 
-//#[self_referencing]
-/// Make sure all roots use the same file_registry!
-pub struct PreParseTree<'registry> {
-    file_registry: &'registry DashMap<PathBuf, IStr>,
-    module_registry: &'registry DashMap<IStr, PathBuf>,
+    while let Some((path, file)) = remaining_files.pop_front() {
+        let handle = reg.intern(file.clone());
+        match file {
+            FileRole::Data(_) | FileRole::Source(_) => {
+                root.perform(path.as_slice(), |h| {
+                    h.native.insert(handle);
+                });
+            }
+            FileRole::Spec(_) => {
+                // open, parse, add dependent files in
+                //
 
-    //#[borrows(file_registry)]
-    //#[covariant] // I'm like 99% sure this is true, since a PreParseTreeNode<'a: 'this> is valid for shorter-than/same-as one from 'this
-    root: UnsafeCell<Option<PreParseTreeNode<'registry>>>,
-}
+                let contents = handle.contents().unwrap();
+                let content_str = contents.as_str().unwrap();
 
-impl<'registry> PreParseTree<'registry> {
-    /// Allows taking two "roots" and joining them recursively
-    pub fn merge(mut self, mut other: Self) -> Self {
-        fence(std::sync::atomic::Ordering::Acquire);
+                let file_id = handle.id();
 
-        #[allow(unused_unsafe)]
-        let (selfroot, otherroot) = unsafe {
-            let sroot = self.root.get_mut().take();
-            let oroot = other.root.get_mut().take();
+                let lex = TokenStream::new(content_str, file_id);
+                let tv = lex.to_vec();
+                let scanner = LookaheadHandle::new(&tv);
 
-            (sroot, oroot)
-        };
+                let mut parser = Parser::new(scanner.clone(), path.to_vec());
 
-        let root = match selfroot {
-            Some(mut roota) => {
-                match otherroot {
-                    Some(rootb) => {
-                        roota.native.push(rootb);
+                let t: TokenProvider = TokenProvider::from_handle(scanner);
 
-                        Some(roota)
-                    },
-                    None => {
-                        Some(roota)
-                    }
+                let specs = parser.parse_spec(&t, handle.path().as_path());
+
+                let (v, es, s) = specs.open_anyway();
+
+                let spec = v.unwrap();
+
+                for (mount, file) in spec.entries {
+                    remaining_files.push_back((mount.into(), file));
                 }
-            },
-            None => {
-                // we need to make otherroot have the ref of our own file registry now
-                //otherroot.iter_mut().for_each(|r| r.path_registry = self.file_registry.get_ref());
-
-                otherroot
             }
-        };
-
-        // TODO: figure out if we need to emit warnings here if the same file
-        // exists from two roots, it could potentially allow invalid loops
-        //self.file_registry.extend(other.file_registry.into_iter());
-
-        let v = Self { root: UnsafeCell::new(root), ..self };
-
-        // make sure that the store to root is visible on all platforms
-        fence(std::sync::atomic::Ordering::Release);
-
-        v
+        }
     }
+
+    root
 }

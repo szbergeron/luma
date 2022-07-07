@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     error::Error,
+    hash::Hash,
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicUsize, Ordering},
@@ -9,6 +10,26 @@ use std::{
 };
 
 use dashmap::DashMap;
+
+use crate::helper::interner::IStr;
+
+//use crate::helper::interner::IStr;
+
+pub struct Spec {
+    pub entries: Vec<(Vec<IStr>, FileRole)>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MountPoint {
+    /// Acts as basically an "include" statement,
+    /// the spec or source elements from the target
+    /// module are dumped directly into the current module
+    Here(),
+
+    /// States that the referenced element should be mounted
+    /// within a module named <.0>
+    Nest(IStr),
+}
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub enum FileRole {
@@ -28,20 +49,21 @@ impl FileRole {
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]
-struct DataFile {
-    location: PathBuf,
+pub struct DataFile {
+    pub location: PathBuf,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]
-struct SpecFile {
-    location: PathBuf,
+pub struct SpecFile {
+    pub location: PathBuf,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]
-struct SourceFile {
-    location: PathBuf,
+pub struct SourceFile {
+    pub location: PathBuf,
 }
 
+#[derive(Default)]
 pub struct FileRegistry {
     //files: HashMap<FileRole, usize>,
     //by_index: Vec<Option<FileRole>>,
@@ -61,10 +83,73 @@ struct File {
     contents: OpenableFile,
 }
 
+#[derive(Clone, Copy)]
+pub struct FileHandle<'a> {
+    id: usize,
+    within: &'a FileRegistry,
+}
+
+impl<'a> FileHandle<'a> {
+    pub fn path(&self) -> PathBuf {
+        self.within
+            .stored
+            .get(&self.id)
+            .unwrap()
+            .value()
+            .acts_as
+            .as_path()
+            .to_owned()
+    }
+
+    pub fn id(&self) -> usize {
+        self.id
+    }
+
+    pub fn contents(&self) -> Result<Arc<Contents>, Box<dyn std::error::Error>> {
+        self.within.open_id(self.id)
+    }
+
+    pub fn close(&self) {
+        self.within.close(self.id)
+    }
+}
+
+impl PartialEq for FileHandle<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl Eq for FileHandle<'_> {}
+
+impl Hash for FileHandle<'_> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+    }
+}
+
+//trait ClonableError: Error + Clone {}
+
+//impl<E> ClonableError for E where E: Error + Clone {}
+
 #[derive(Clone)]
 enum OpenableFile {
-    Closed(),
-    Open(Arc<String>),
+    Closed(Option<Box<dyn Error>>),
+    Open(Arc<Contents>),
+}
+
+pub enum Contents {
+    String(String),
+    Binary(Vec<u8>),
+}
+
+impl Contents {
+    pub fn as_str(&self) -> Option<&str> {
+        match self {
+            Self::String(s) => Some(s.as_str()),
+            _ => None,
+        }
+    }
 }
 
 impl OpenedFile {
@@ -83,43 +168,74 @@ impl OpenedFile {
 }
 
 impl FileRegistry {
-    pub fn open_id(&self, id: usize) -> Result<Arc<String>, Box<dyn Error>> {
+    pub fn open_id(&self, id: usize) -> Result<Arc<Contents>, Box<dyn Error>> {
         let entry = self.stored.get(&id);
 
-        match entry {
-            Some(v) => {
-                let val = v.value();
-                match val.contents {
-                    OpenableFile::Closed() => {
+        let res = self
+            .stored
+            .entry(id)
+            .and_modify(|e| {
+                let val = e;
+                //let val = v.value();
+                match &val.contents {
+                    OpenableFile::Closed(_) => {
                         let v = std::fs::read_to_string(val.acts_as.as_path());
                         match v {
                             Ok(s) => {
-                                let v = Arc::new(s);
+                                let v = Arc::new(Contents::String(s));
 
                                 let file = File {
                                     contents: OpenableFile::Open(v.clone()),
                                     ..val.clone()
                                 };
 
-                                let _ = self.stored.insert(id, file);
+                                *e = file;
 
-                                Ok(v)
+                                //let _ = self.stored.insert(id, file);
+
+                                //Ok(v)
                             }
-                            Err(e) => Err(e.into()),
-                        }
+                            Err(err) => {
+                                *e = File {
+                                    contents: OpenableFile::Closed(Some(err.into())),
+                                    ..val.clone()
+                                };
+                            }
+                        };
                     }
-                    OpenableFile::Open(contents) => Ok(contents.clone()),
-                }
-            }
-            None => panic!("tried to open an invalid id"),
+                    OpenableFile::Open(contents) => {
+                        // already open, do nothing
+                    }
+                };
+            })
+            .or_insert_with(|| File {
+                contents: OpenableFile::Closed(Some(
+                    "opaque error trying to open file, ID must not have existed".into(),
+                )),
+                id,
+                acts_as: FileRole::Source(SourceFile {
+                    location: "/dev/null".into(),
+                }),
+            });
+
+        let res = res.value().clone();
+
+        match res.contents {
+            OpenableFile::Closed(e) => Err(e.unwrap()),
+            OpenableFile::Open(c) => Ok(c),
         }
     }
 
-    pub fn intern(&self, path: FileRole) -> usize {
+    pub fn intern(&self, path: FileRole) -> FileHandle {
         if let Some(v) = self.by_path.get(&path) {
-            return *v.value(); // short circuit if already exists
+            return FileHandle {
+                id: *v.value(),
+                within: &self,
+            }; // short circuit if already exists
         }
 
+        // allows us to only hash the ID for a given filehandle,
+        // since they're unique across *all* registries
         static ID: AtomicUsize = AtomicUsize::new(1);
 
         let id = ID.fetch_add(1, Ordering::Relaxed);
@@ -129,28 +245,33 @@ impl FileRegistry {
             File {
                 id,
                 acts_as: path.clone(),
-                contents: OpenableFile::Closed(),
+                contents: OpenableFile::Closed(None),
             },
         );
 
         let entry = self.by_path.entry(path);
 
-        let real_id = entry.or_insert(id).value();
-        if *real_id != id {
+        let real_id = *entry.or_insert(id).value();
+        if real_id != id {
             self.stored.remove(&id); // clean up, since we already existed
         }
 
-        *real_id
+        FileHandle {
+            id: real_id,
+            within: &self,
+        }
     }
 
-    pub fn open(&self, path: FileRole) -> (usize, Result<Arc<String>, Box<dyn Error>>) {
+    pub fn open(&self, path: FileRole) -> (FileHandle, Result<Arc<Contents>, Box<dyn Error>>) {
         // just double check if we even need to open it
 
-        let id = self.intern(path);
-        (id, self.open_id(id))
+        let handle = self.intern(path);
+        (handle, self.open_id(handle.id))
     }
 
     pub fn close(&self, id: usize) {
-        self.stored.entry(id).and_modify(|val| val.contents = OpenableFile::Closed());
+        self.stored
+            .entry(id)
+            .and_modify(|val| val.contents = OpenableFile::Closed());
     }
 }
