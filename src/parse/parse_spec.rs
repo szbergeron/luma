@@ -1,6 +1,6 @@
 use std::{path::{PathBuf, Path}, str::FromStr};
 
-use crate::parse::*;
+use crate::{parse::*, lex::TokenWrapper};
 
 use super::schema::TokenProvider;
 
@@ -17,8 +17,12 @@ impl<'lexer> Parser<'lexer> {
 
         let mut res = Vec::new();
         
-        while t.lh.la(0).is_ok() {
+        //while t.lh.la(0).is_ok() {
+        while let Ok(TokenWrapper { token: Token::Identifier, .. }) = t.lh.la(0) {
+            println!("La is: {:?}", t.lh.la(0));
+            println!("Trying to get a spec");
             res.push(self.parse_spec_declaration(&t, current_path).catch(&mut t).join_hard(&mut t)?);
+            println!("Got a spec");
         }
 
         t.success(Spec { entries: res })
@@ -50,11 +54,16 @@ impl<'lexer> Parser<'lexer> {
 
         let file_name = t.take(Token::StringLiteral).join()?;
         let file_name = file_name.slice.resolve();
-        let file_name = &file_name[1..file_name.len() - 2]; // strip " from literal
+        let file_name = &file_name[1..file_name.len() - 1]; // strip " from literal
+        let file_base = current_path.parent().expect("we weren't in a directory somehow?");
+        let file_path = file_base.join(file_name);
+        println!("P: {file_path:?}");
+        let file_path = file_path.canonicalize().expect("bad path in spec");
+        //let file_path = current_path.join(file_name).canonicalize().expect("bad path in spec");
         println!("Filename after cleaning: {file_name}");
 
         // TODO: nicer handling of this entire file honestly
-        let file_path = PathBuf::from_str(file_name).unwrap().canonicalize().expect("bad path in spec");
+        //let file_path = PathBuf::from_str(file_name).unwrap().canonicalize().expect("bad path in spec");
 
         //let file_path = current_path.join(file_name);
 
@@ -68,13 +77,18 @@ impl<'lexer> Parser<'lexer> {
             }
         };
 
+        println!("get_mount is {get_mount}");
+
         let mount_point = match get_mount {
             false => vec![],
             true => {
-                t.take(Token::As).join()?;
+                //t.take(Token::As).join()?;
                 //let mount_point = t.take(Token::Identifier).join()?;
                 let point = self.parse_scope(&t).join_hard(&mut t).catch(&mut t)?;
-                let point = point.scope;
+                let mut point = point.scope;
+                let last = t.take(Token::Identifier).join()?;
+                point.push(last.slice);
+                t.take(Token::Semicolon).join()?;
                 point
                 //MountPoint::Nest(mount_point.slice)
             }
@@ -85,6 +99,8 @@ impl<'lexer> Parser<'lexer> {
             FileRoleDescriminant::Spec => FileRole::Spec(SpecFile {location: file_path}),
             FileRoleDescriminant::Source => FileRole::Source(SourceFile {location: file_path}),
         };
+
+        println!("Returns from parse_spec, val: {inner:?}");
 
         t.success((mount_point, inner))
     }

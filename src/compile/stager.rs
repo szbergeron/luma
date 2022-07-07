@@ -141,15 +141,14 @@ async fn async_launch(args: ArgResult) {
     /*.for_each(|h| {
         root.add_native(Some(h).into_iter());
     });*/
+
+    println!("Building node");
     
     let node = crate::compile::tree2::from_roots(&files, roles);
 
-    for native in args.source_input {
-        let f = FileRole::Source(SourceFile { location: native });
-        let handle = files.intern(f);
+    println!("Built node");
 
-        //root.add_native([f].into_iter());
-    }
+    // now need to parse tree into...more
 
     //let root = super::tree::CompilationRoot::initial(error_sender, args).await;
     //TODO

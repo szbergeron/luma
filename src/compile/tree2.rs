@@ -111,6 +111,7 @@ pub fn from_roots<'r>(reg: &'r FileRegistry, files: Vec<FileRole>) -> PreParseTr
         VecDeque::new();
 
     for file in files {
+        println!("Pushed {file:?}");
         remaining_files.push_back((vec![].into(), file));
     }
 
@@ -127,8 +128,11 @@ pub fn from_roots<'r>(reg: &'r FileRegistry, files: Vec<FileRole>) -> PreParseTr
             FileRole::Spec(_) => {
                 // open, parse, add dependent files in
                 //
+                println!("Parsing a spec");
 
                 let contents = handle.contents().unwrap();
+
+                println!("Got contents");
                 let content_str = contents.as_str().unwrap();
 
                 let file_id = handle.id();
@@ -137,17 +141,24 @@ pub fn from_roots<'r>(reg: &'r FileRegistry, files: Vec<FileRole>) -> PreParseTr
                 let tv = lex.to_vec();
                 let scanner = LookaheadHandle::new(&tv);
 
+                println!("About to create parser");
                 let mut parser = Parser::new(scanner.clone(), path.to_vec());
 
+                println!("Creating tokenprovider");
                 let t: TokenProvider = TokenProvider::from_handle(scanner);
 
+                println!("About to entry");
+
                 let specs = parser.parse_spec(&t, handle.path().as_path());
+
+                println!("Done parse");
 
                 let (v, es, s) = specs.open_anyway();
 
                 let spec = v.unwrap();
 
                 for (mount, file) in spec.entries {
+                    println!("Pushing entry: {file:?}");
                     remaining_files.push_back((mount.into(), file));
                 }
             }

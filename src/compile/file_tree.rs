@@ -31,7 +31,7 @@ pub enum MountPoint {
     Nest(IStr),
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum FileRole {
     Data(DataFile),
     Spec(SpecFile),
@@ -48,17 +48,17 @@ impl FileRole {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct DataFile {
     pub location: PathBuf,
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct SpecFile {
     pub location: PathBuf,
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct SourceFile {
     pub location: PathBuf,
 }
@@ -134,7 +134,7 @@ impl Hash for FileHandle<'_> {
 
 #[derive(Clone)]
 enum OpenableFile {
-    Closed(Option<Box<dyn Error>>),
+    Closed(Option<String>),
     Open(Arc<Contents>),
 }
 
@@ -169,24 +169,27 @@ impl OpenedFile {
 
 impl FileRegistry {
     pub fn open_id(&self, id: usize) -> Result<Arc<Contents>, Box<dyn Error>> {
-        let entry = self.stored.get(&id);
+        println!("Entering open_id");
+        //let entry = self.stored.get(&id);
+
+        println!("Got entry");
 
         let res = self
             .stored
             .entry(id)
             .and_modify(|e| {
-                let val = e;
+                //let val = e;
                 //let val = v.value();
-                match &val.contents {
+                match &e.contents {
                     OpenableFile::Closed(_) => {
-                        let v = std::fs::read_to_string(val.acts_as.as_path());
+                        let v = std::fs::read_to_string(e.acts_as.as_path());
                         match v {
                             Ok(s) => {
                                 let v = Arc::new(Contents::String(s));
 
                                 let file = File {
                                     contents: OpenableFile::Open(v.clone()),
-                                    ..val.clone()
+                                    ..e.clone()
                                 };
 
                                 *e = file;
@@ -197,20 +200,24 @@ impl FileRegistry {
                             }
                             Err(err) => {
                                 *e = File {
-                                    contents: OpenableFile::Closed(Some(err.into())),
-                                    ..val.clone()
+                                    contents: OpenableFile::Closed(Some(format!("{err}").into())),
+                                    ..e.clone()
                                 };
                             }
                         };
                     }
-                    OpenableFile::Open(contents) => {
+                    OpenableFile::Open(_contents) => {
                         // already open, do nothing
                     }
                 };
-            })
+            });
+
+        println!("Did first part");
+
+        let res = res
             .or_insert_with(|| File {
                 contents: OpenableFile::Closed(Some(
-                    "opaque error trying to open file, ID must not have existed".into(),
+                    "opaque error trying to open file, ID must not have existed".to_owned(),
                 )),
                 id,
                 acts_as: FileRole::Source(SourceFile {
@@ -221,7 +228,7 @@ impl FileRegistry {
         let res = res.value().clone();
 
         match res.contents {
-            OpenableFile::Closed(e) => Err(e.unwrap()),
+            OpenableFile::Closed(e) => Err(e.unwrap_or("empty error".to_string()).into()),
             OpenableFile::Open(c) => Ok(c),
         }
     }
@@ -272,6 +279,6 @@ impl FileRegistry {
     pub fn close(&self, id: usize) {
         self.stored
             .entry(id)
-            .and_modify(|val| val.contents = OpenableFile::Closed());
+            .and_modify(|val| val.contents = OpenableFile::Closed(None));
     }
 }

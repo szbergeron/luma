@@ -1,8 +1,8 @@
 // puts everything in foo.rs inside a foo namespace within the current module (named base)
-source "foo.rs" as foo;
+source "foo.rsh" as foo;
 
 // takes everything in main.rs and puts it in the current module (named base)
-source "main.rs";
+source "main.rsh";
 
 // basically acts as an include statement for the spec file
 // spec "other.spec";
