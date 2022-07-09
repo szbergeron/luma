@@ -1,16 +1,16 @@
 struct Foo {
-    bar: i32
-}
-
-trait Bar {
-    fn a() -> () {
-        print("from trait");
-    }
+    //bar: i32
 }
 
 impl Bar for Foo {
     fn a() -> () {
         print("original");
+    }
+}
+
+trait Bar {
+    fn a() -> () {
+        print("from trait");
     }
 }
 

@@ -226,11 +226,11 @@ impl<'lexer> Parser<'lexer> {
         }
     }
 
-    pub fn print_errors(&self, handle: FileHandle) {
+    pub fn print_errors(&self, file_handle: FileHandle) {
         //let linemap = self.build_line_map(input);
         //let input: std::sync::Arc<String> = handle.get().unwrap();
         //let input = handle.slice().unwrap();
-        let contents = handle.contents().unwrap();
+        let contents = file_handle.contents().unwrap();
         let input = contents.as_str().unwrap();
         let lines_iter = input.lines();
         //let v: Vec<&str> = lines.collect();
@@ -240,6 +240,7 @@ impl<'lexer> Parser<'lexer> {
         let handle = stdout.lock();
 
         println!();
+        println!("File: {}", file_handle.path().to_string_lossy());
         println!("{}", "Errors:".red());
         if self.errors.len() == 0 {
             println!("{}", "No errors reported".blue());

@@ -80,7 +80,9 @@ impl<'lexer> Parser<'lexer> {
         println!("get_mount is {get_mount}");
 
         let mount_point = match get_mount {
-            false => vec![],
+            false => {
+                vec![]
+            },
             true => {
                 //t.take(Token::As).join()?;
                 //let mount_point = t.take(Token::Identifier).join()?;
@@ -88,11 +90,13 @@ impl<'lexer> Parser<'lexer> {
                 let mut point = point.scope;
                 let last = t.take(Token::Identifier).join()?;
                 point.push(last.slice);
-                t.take(Token::Semicolon).join()?;
+                //t.take(Token::Semicolon).join()?;
                 point
                 //MountPoint::Nest(mount_point.slice)
             }
         };
+
+        t.take(Token::Semicolon).join()?;
 
         let inner = match frd {
             FileRoleDescriminant::Data => FileRole::Data(DataFile {location: file_path}),

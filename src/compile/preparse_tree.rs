@@ -23,11 +23,11 @@ use crate::{
 };
 
 pub struct PreParseTreeNode<'r> {
-    files: &'r FileRegistry,
+    pub files: &'r FileRegistry,
 
     //children: Vec<PreParseTreeNode<'r>>,
-    native: DashSet<FileHandle<'r>>,
-    children: DashMap<IStr, PreParseTreeNode<'r>>,
+    pub native: DashSet<FileHandle<'r>>,
+    pub children: DashMap<IStr, PreParseTreeNode<'r>>,
 }
 
 impl<'r> PreParseTreeNode<'r> {

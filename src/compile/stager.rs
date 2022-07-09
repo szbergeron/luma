@@ -1,6 +1,7 @@
+use crate::compile::parse_tree::ParseTreeNode;
 //use crate::ast;
 use crate::helper::*;
-use crate::lex::{LookaheadHandle, ParseResultError, TokenStream};
+use crate::lex::{LookaheadHandle, ParseResultError, TokenStream, ErrorSet};
 use crate::parse::schema::TokenProvider;
 use crate::parse::Parser;
 use std::collections::HashSet;
@@ -22,7 +23,7 @@ use tokio::runtime::*;
 //use super::file_tree::FileHandle;
 
 use super::file_tree::{FileHandle, FileRegistry, FileRole, SourceFile, SpecFile};
-use super::tree2::PreParseTreeNode;
+use super::preparse_tree::PreParseTreeNode;
 
 
 #[allow(unused_variables, dead_code)]
@@ -30,7 +31,7 @@ pub fn parse_source_file<'file>(
     handle: FileHandle,
     scope: Vec<IStr>,
     cflags: &CFlags,
-) -> Result<cst::OuterScope, ParseResultError> {
+) -> (Option<cst::OuterScope>, ErrorSet) {
     // clone because we don't want to keep lock open, and this should be rather cheap in the scheme
     // of things
     // TODO: eval if this even matters
@@ -59,7 +60,7 @@ pub fn parse_source_file<'file>(
 
     let (v, es, s) = p.open_anyway();
 
-    for e in es {
+    for e in es.clone() {
         println!("Error: {:?}", e);
         let _ = parser.err::<()>(e);
     }
@@ -67,7 +68,10 @@ pub fn parse_source_file<'file>(
     //e.map(|e| parser.err::<()>(e));
 
     if !cflags.eflags.silence_errors {
+        println!("Printing errors");
         parser.print_errors(handle);
+    } else {
+        println!("Not printing errors");
     }
 
 
@@ -94,8 +98,11 @@ pub fn parse_source_file<'file>(
             println!("Failed to parse with error: {:?}", err);
         }*/
     }
+    println!("Returns parse issue");
 
-    v.ok_or(ParseResultError::InternalParseIssue)
+    //v.ok_or(ParseResultError::InternalParseIssue)
+    //v.ok_or(ParseResultError::ErrorWithHint { hint: "file", original: es.into() })
+    (v, es)
 }
 
 #[derive(Default, Copy, Clone)]
@@ -114,19 +121,8 @@ pub struct CFlags {
     pub thread_count: usize,
 }
 
-async fn async_launch(args: ArgResult) {
-    //let (error_sender, _error_reciever) = crossbeam::unbounded();
-
-    let files: FileRegistry = Default::default();
-
-    let root = PreParseTreeNode::new(&files);
-
-    //root.add_native(args.source_input)
-    //args.source_input.clone();
-
+fn args_to_roles(args: &ArgResult) -> Vec<FileRole> {
     let mut roles = Vec::new();
-
-
 
     args.source_input.iter().map(|p| {
         let f = FileRole::Source(SourceFile { location: p.clone() });
@@ -138,15 +134,27 @@ async fn async_launch(args: ArgResult) {
         f
     }).for_each(|e| roles.push(e));
 
-    /*.for_each(|h| {
-        root.add_native(Some(h).into_iter());
-    });*/
+    roles
+}
+
+async fn async_launch(args: ArgResult) {
+    //let (error_sender, _error_reciever) = crossbeam::unbounded();
+
+    let files: FileRegistry = Default::default();
+
+    let roles = args_to_roles(&args);
+
+    //let root = PreParseTreeNode::new(&files);
 
     println!("Building node");
     
-    let node = crate::compile::tree2::from_roots(&files, roles);
+    let node = crate::compile::preparse_tree::from_roots(&files, roles);
 
     println!("Built node");
+
+    let node = ParseTreeNode::from_preparse(node, vec![], &args.flags).await;
+
+    println!("{node:#?}");
 
     // now need to parse tree into...more
 
@@ -269,6 +277,10 @@ fn parse_args(args: &[&str]) -> Result<ArgResult, &'static str> {
         flags: cflags,
     })
 }
+
+pub fn parse<'a>(n: PreParseTreeNode<'a>) {
+}
+
 /*
 pub fn prepass<'a>(p: &Arc<ScopeContext>) {
     println!("Prepass called on SC: {:#?}", &*p);

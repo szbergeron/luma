@@ -71,19 +71,25 @@ pub struct FileRegistry {
     stored: DashMap<usize, File>,
 }
 
+impl std::fmt::Debug for FileRegistry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FileRegistry").finish()
+    }
+}
+
 #[derive(Clone)]
-struct OpenedFile {
+pub struct OpenedFile {
     contents: Arc<String>,
 }
 
 #[derive(Clone)]
-struct File {
+pub struct File {
     id: usize,
     acts_as: FileRole,
     contents: OpenableFile,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct FileHandle<'a> {
     id: usize,
     within: &'a FileRegistry,
@@ -174,56 +180,52 @@ impl FileRegistry {
 
         println!("Got entry");
 
-        let res = self
-            .stored
-            .entry(id)
-            .and_modify(|e| {
-                //let val = e;
-                //let val = v.value();
-                match &e.contents {
-                    OpenableFile::Closed(_) => {
-                        let v = std::fs::read_to_string(e.acts_as.as_path());
-                        match v {
-                            Ok(s) => {
-                                let v = Arc::new(Contents::String(s));
+        let res = self.stored.entry(id).and_modify(|e| {
+            //let val = e;
+            //let val = v.value();
+            match &e.contents {
+                OpenableFile::Closed(_) => {
+                    let v = std::fs::read_to_string(e.acts_as.as_path());
+                    match v {
+                        Ok(s) => {
+                            let v = Arc::new(Contents::String(s));
 
-                                let file = File {
-                                    contents: OpenableFile::Open(v.clone()),
-                                    ..e.clone()
-                                };
+                            let file = File {
+                                contents: OpenableFile::Open(v.clone()),
+                                ..e.clone()
+                            };
 
-                                *e = file;
+                            *e = file;
 
-                                //let _ = self.stored.insert(id, file);
+                            //let _ = self.stored.insert(id, file);
 
-                                //Ok(v)
-                            }
-                            Err(err) => {
-                                *e = File {
-                                    contents: OpenableFile::Closed(Some(format!("{err}").into())),
-                                    ..e.clone()
-                                };
-                            }
-                        };
-                    }
-                    OpenableFile::Open(_contents) => {
-                        // already open, do nothing
-                    }
-                };
-            });
+                            //Ok(v)
+                        }
+                        Err(err) => {
+                            *e = File {
+                                contents: OpenableFile::Closed(Some(format!("{err}").into())),
+                                ..e.clone()
+                            };
+                        }
+                    };
+                }
+                OpenableFile::Open(_contents) => {
+                    // already open, do nothing
+                }
+            };
+        });
 
         println!("Did first part");
 
-        let res = res
-            .or_insert_with(|| File {
-                contents: OpenableFile::Closed(Some(
-                    "opaque error trying to open file, ID must not have existed".to_owned(),
-                )),
-                id,
-                acts_as: FileRole::Source(SourceFile {
-                    location: "/dev/null".into(),
-                }),
-            });
+        let res = res.or_insert_with(|| File {
+            contents: OpenableFile::Closed(Some(
+                "opaque error trying to open file, ID must not have existed".to_owned(),
+            )),
+            id,
+            acts_as: FileRole::Source(SourceFile {
+                location: "/dev/null".into(),
+            }),
+        });
 
         let res = res.value().clone();
 

@@ -32,8 +32,11 @@ impl<'lexer> Parser<'lexer> {
 
         while let Ok(tw) = t.sync().la(0) {
             println!("Entry: got a tw {:?}", tw);
-            let _ = match tw.token {
-                Token::RBrace => break,
+            match tw.token {
+                Token::RBrace => {
+                    println!("Ending entry since found }}");
+                    break
+                },
                 _ => {
                     println!("Trying for a global dec");
                     //let r = self.parse_global_declaration(&t);
@@ -43,6 +46,8 @@ impl<'lexer> Parser<'lexer> {
                         .join_hard(&mut t)
                         .catch(&mut t)
                         .handle_here()?;
+
+                    println!("Got global dec");
 
                     println!("___");
                     for e in r.errors().iter() {
@@ -67,7 +72,7 @@ impl<'lexer> Parser<'lexer> {
                         }
                     };
                 }
-            };
+            }
         }
 
         let end = self.lex.la(-1).map_or(start, |tw| tw.start);
@@ -187,13 +192,13 @@ impl<'lexer> Parser<'lexer> {
                 .token
             {
                 Token::Module => {
-                    todo!();
+                    //todo!("modules");
                     let mut ns = self.parse_namespace(&t).join_hard(&mut t).catch(&mut t)?;
                     ns.set_public(public);
                     cst::TopLevel::Namespace(ns)
                 }
                 Token::Function => {
-                    todo!();
+                    //todo!();
                     let fd = self
                         .parse_function_declaration(&t)
                         .join_hard(&mut t)
@@ -203,15 +208,13 @@ impl<'lexer> Parser<'lexer> {
                 // TODO: maybe add global variable declaration?
                 Token::Struct => {
                     t.lh.backtrack();
-                    let sd = self
-                        .parse_struct(&t)
-                        .join_hard(&mut t)
-                        .catch(&mut t)?;
+                    let sd = self.parse_struct(&t).join_hard(&mut t).catch(&mut t)?;
                     cst::TopLevel::Struct(sd)
                 }
                 Token::Implementation => {
                     t.lh.backtrack();
-                    let v = self.parse_implementation_block(&t)
+                    let v = self
+                        .parse_implementation_block(&t)
                         .join_hard(&mut t)
                         .catch(&mut t)?;
                     cst::TopLevel::Impl(v)
@@ -262,7 +265,9 @@ impl<'lexer> Parser<'lexer> {
                     // may be expression?
                     println!("Token was not as expected for a global declaration");
 
-                    return t.failure(ParseResultError::UnexpectedToken(
+                    panic!("bad take")
+
+                    /*return t.failure(ParseResultError::UnexpectedToken(
                         tw,
                         vec![
                             Token::Module,
@@ -272,7 +277,7 @@ impl<'lexer> Parser<'lexer> {
                             Token::DExpression,
                         ],
                         None,
-                    ));
+                    ));*/
                 }
             };
 
@@ -295,7 +300,7 @@ impl<'lexer> Parser<'lexer> {
 
         println!("Idx is: {}", t.lh.index());
 
-        let start = t.take(Token::Module).join().unwrap().start;
+        let start = t.take(Token::Module).join()?.start;
 
         println!("Idx is: {}", t.lh.index());
 
