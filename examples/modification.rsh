@@ -14,6 +14,8 @@ trait Bar {
     }
 }
 
+sdfjkl
+
 fn main() {
     let f = Foo { 1i32 };
 

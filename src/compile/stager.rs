@@ -52,13 +52,15 @@ pub fn parse_source_file<'file>(
 
     #[allow(irrefutable_let_patterns)]
     let p = if let iguard = interner() {
-        let p = parser.entry(&t);
+        let p = parser.entry(&t, true);
         p
     } else {
         panic!("irrefutable pattern")
     };
 
     let (v, es, s) = p.open_anyway();
+
+    println!("v: {v:?}, es: {es:?}");
 
     for e in es.clone() {
         println!("Error: {:?}", e);

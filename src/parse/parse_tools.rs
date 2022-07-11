@@ -392,13 +392,14 @@ impl<V, C: catch::Catchable, B: bubble::Bubbling, D> GuardedResult<V, join::Unjo
             JoinMethod::Hard(t) | JoinMethod::Handled(t) => {
                 println!("Adds errors: {:?}", self.e.errors);
                 t.add_errors(&mut self.e.errors);
+                self.e.errors = t.errors();
 
-                match self.value.is_some() {
+                /*match self.value.is_some() {
                     false => {
                         self.e.errors = t.errors();
                     }
                     _ => (),
-                }
+                }*/
             }
             _ => (),
         }

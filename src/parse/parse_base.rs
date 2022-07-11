@@ -18,7 +18,7 @@ use crate::parse::*;
 use super::schema::{ResultHint, TokenProvider};
 
 impl<'lexer> Parser<'lexer> {
-    pub fn entry(&mut self, t: &TokenProvider) -> ParseResult<cst::OuterScope> {
+    pub fn entry(&mut self, t: &TokenProvider, is_file: bool) -> ParseResult<cst::OuterScope> {
         //let mut t = t.child();
         let mut t = parse_header!(t, [Token::Module => 1.0, Token::Function => 1.0, Token::Struct => 1.0, Token::Use => 1.0, Token::DExpression => 10.0]);
 
@@ -35,6 +35,7 @@ impl<'lexer> Parser<'lexer> {
             match tw.token {
                 Token::RBrace => {
                     println!("Ending entry since found }}");
+                    t.take(Token::RBrace).join()?;
                     break
                 },
                 _ => {
@@ -75,7 +76,12 @@ impl<'lexer> Parser<'lexer> {
             }
         }
 
-        let end = self.lex.la(-1).map_or(start, |tw| tw.start);
+        //let end = self.lex.la(-1).map_or(start, |tw| tw.start);
+        let end = t.lh.la(-1).map_or(start, |tw| tw.end);
+
+        if is_file && let Ok(tw) = t.lh.la(0) {
+            t.add_error(ParseResultError::UnexpectedToken(tw, vec![], Some("Found trailing input at end of file")));
+        }
 
         t.success(cst::OuterScope {
             declarations,
@@ -310,7 +316,7 @@ impl<'lexer> Parser<'lexer> {
         t.take(Token::LBrace).join()?;
         println!("Pulling entry");
 
-        let pu = self.entry(&t).join_hard(&mut t).catch(&mut t)?;
+        let pu = self.entry(&t, false).join_hard(&mut t).catch(&mut t)?;
         t.take(Token::RBrace).join()?;
 
         let end = self.lex.la(-1).map_or(CodeLocation::Builtin, |tw| tw.end);

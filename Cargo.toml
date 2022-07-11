@@ -46,5 +46,7 @@ ouroboros = "0.15"
 
 [profile.dev]
 incremental = true
+panic = "abort"
 
 [build-dependencies]
+

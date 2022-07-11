@@ -121,7 +121,15 @@ impl<'lexer> Parser<'lexer> {
 
         t.take(Token::LBrace).join()?;
 
-        while let Ok(Token::Var) = t.lh.la(0).map(|tw| tw.token) {
+
+        //while let Ok(Token::Var) = t.lh.la(0).map(|tw| tw.token) {
+        while let next = t.take_in(&[Token::Var, Token::RBrace]).join()? {
+            match next.token {
+                Token::RBrace => break,
+                Token::Var => (),
+                _ => unreachable!(),
+            }
+
             let field = self
                 .parse_field(&t)
                 .join_hard(&mut t)
