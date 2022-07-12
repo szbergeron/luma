@@ -30,15 +30,36 @@ impl<'lexer> Parser<'lexer> {
         //let mut failed = false;
         println!("At entry, idx: {}", t.lh.index());
 
-        while let Ok(tw) = t.sync().la(0) {
+        //while let Ok(tw) = t.sync().la(0) {
+        let tw = t.take_in(&[
+                    Token::RBrace,
+                    Token::Module,
+                    Token::Function,
+                    Token::Struct,
+                    Token::Use,
+                    Token::DExpression,
+                    Token::Implementation,
+                    Token::Specification,
+            ]).join()?;
+        loop {
             println!("Entry: got a tw {:?}", tw);
             match tw.token {
                 Token::RBrace => {
-                    println!("Ending entry since found }}");
                     t.take(Token::RBrace).join()?;
-                    break
+                    if !is_file || t.sync().la(0).is_err() {
+                        println!("Ending entry since found }}");
+                    } else {
+                        //
+                        let e = ParseResultError::UnexpectedToken(t.sync().la(0).unwrap(), vec![], Some("Found trailing input at end of file"));
+                        println!("{e:?}");
+                        t.add_error(e);
+                        //panic!();
+                    }
+                    break;
                 },
                 _ => {
+                    t.lh.backtrack();
+
                     println!("Trying for a global dec");
                     //let r = self.parse_global_declaration(&t);
 

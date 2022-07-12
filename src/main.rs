@@ -20,7 +20,9 @@
     const_heap,
     const_mut_refs,
     box_syntax,
-    never_type
+    never_type,
+    backtrace,
+    backtrace_frames,
 )]
 
 #![allow(irrefutable_let_patterns)]

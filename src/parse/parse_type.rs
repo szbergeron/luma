@@ -32,7 +32,7 @@ impl<'lexer> Parser<'lexer> {
         let start = lhs.as_node().node_info().as_parsed().unwrap().span.start;
 
         let impl_block = self
-            .parse_implementation_block(&t)
+            .parse_implementation_block_expression(&t)
             .join_hard(&mut t)
             .catch(&mut t)?;
 
@@ -292,7 +292,15 @@ impl<'lexer> Parser<'lexer> {
         })
     }*/
 
-    pub fn parse_implementation_block(
+    pub fn parse_implementation_block(&mut self, t: &TokenProvider) -> ParseResult<cst::ImplementationDefinition> {
+        let mut t = parse_header!(t);
+
+        t.take(Token::Implementation).join()?;
+
+        self.parse_implementation_block_expression(&t)
+    }
+
+    pub fn parse_implementation_block_expression(
         &mut self,
         t: &TokenProvider,
     ) -> ParseResult<cst::ImplementationDefinition> {

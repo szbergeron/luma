@@ -810,12 +810,14 @@ impl<'lexer> Parser<'lexer> {
                 lhs = cst::CastExpression::new_expr(node_info, lhs, typeref);
                 continue;
             } else if let Some(_arrow) = t.try_take(Token::ThinArrowLeft) {
+                println!("Parsing implementation expression");
                 let v = self
                     .parse_implementation_expression(&t, lhs)
                     .join_hard(&mut t)
                     .catch(&mut t)?;
 
                 lhs = box v;
+                continue;
             } else if let Some(((l_bp, r_bp), tw)) =
                 t.try_take_if(|tw| infix_binding_power(tw.token))
             {

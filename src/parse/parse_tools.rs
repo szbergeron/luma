@@ -463,11 +463,15 @@ impl<V, J: join::Joinable, B: bubble::Bubbling, D> GuardedResult<V, J, catch::Un
     {
         let s = match self.solution {
             // if no solution, this is uncatchable
-            SolutionClass::UnsolvedFailure { index: _ } => GuardedResult {
-                caught: true,
-                _j: Default::default(),
-                _c: Default::default(),
-                ..self
+            SolutionClass::UnsolvedFailure { index: _ } => {
+                println!("UnsolvedFailure bubbling!");
+                //panic!();
+                GuardedResult {
+                    caught: true,
+                    _j: Default::default(),
+                    _c: Default::default(),
+                    ..self
+                }
             },
 
             // don't need to catch since this is a success!
@@ -777,13 +781,13 @@ pub type JoinedResult<V, D = ()> = GuardedResult<V, join::Joined, catch::Caught,
  */
 pub mod schema {
 
-    use std::{convert::Infallible, ops::ControlFlow};
+    use std::{convert::Infallible, ops::ControlFlow, collections::VecDeque, backtrace::Backtrace};
 
     use smallvec::{smallvec, SmallVec};
 
     use crate::{
         cst::Span,
-        helper::interner::SpurHelper,
+        helper::interner::{SpurHelper, Internable},
         lex::{ErrorSet, LookaheadHandle, ParseResultError, Token, TokenWrapper},
     };
 
@@ -1121,12 +1125,49 @@ pub mod schema {
             r
         }
 
+        pub fn print_error_loc(&self, lh: &LookaheadHandle) {
+            use colored::*;
+
+            let mut before = VecDeque::new();
+            let mut after = VecDeque::new();
+            //toks.push_back("|".red().intern());
+
+            for i in 0..10isize {
+                if let Ok(t) = lh.la(i) {
+                    after.push_back(t.slice);
+                    after.push_back(" ".intern());
+                }
+            }
+
+            for i in 1..10isize {
+                if let Ok(t) = lh.la(-i) {
+                    before.push_front(t.slice);
+                    before.push_front(" ".intern());
+                }
+            }
+
+            let after = after.into_iter().fold(String::new(), |mut a, b| {
+                a.push_str(b.resolve());
+                a
+            });
+
+            let before = before.into_iter().fold(String::new(), |mut a, b| {
+                a.push_str(b.resolve());
+                a
+            });
+
+            println!("Error context: {} {} {}", before.as_str().normal().dimmed(), "|".red(), after.as_str().normal().dimmed());
+        }
+
         pub fn search(&self, lh: &LookaheadHandle) -> Option<SolutionClass> {
             println!(
                 "Search called with lh index {}, which has token {:?}",
                 lh.index(),
                 lh.la(0).unwrap()
             );
+
+            self.print_error_loc(lh);
+
             println!("Lookahead at this point is:");
             self.print_lookahead();
 
@@ -1152,7 +1193,23 @@ pub mod schema {
                 );
             }
 
-            candidates.iter().min_by_key(|e| e.0 as i64).map(|o| o.1)
+            let sol = candidates.iter().min_by_key(|e| e.0 as i64).map(|o| o.1);
+            println!("Chooses solution: {}", sol.map(|s| format!("{s}")).unwrap_or("no solution".into()));
+
+            let bt = Backtrace::capture();
+            let frames = bt.frames();
+            for frame in frames {
+                println!("{:#?}", frame);
+            }
+
+            if let Some(sol) = sol {
+                if sol.index() == 63 {
+                    panic!();
+                }
+            }
+            //println!("Bt: {bt:#?}");
+
+            sol
         }
 
         pub fn print_lookahead(&self) {

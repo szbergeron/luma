@@ -152,7 +152,7 @@ impl<'r> ParseTreeNode<'r> {
                 obj.map_err(|e| {
                     println!("\n\nHandled a panic\n\n");
                     let e = e.into_panic();
-                    std::panic::resume_unwind(e);
+                    //std::panic::resume_unwind(e);
                 })
                     .unwrap()
             })
