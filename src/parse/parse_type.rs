@@ -1,6 +1,6 @@
 //use crate::ast::base::IntoAstNode;
 
-use crate::cst::{self, NodeInfo, CstNode, IntoCstNode};
+use crate::cst::{self, CstNode, IntoCstNode, NodeInfo};
 
 /*use cst::{
     self, FieldMember, Implementation, ImplementationBody, ImplementationItem, MemberAttributes,
@@ -31,7 +31,10 @@ impl<'lexer> Parser<'lexer> {
 
         let start = lhs.as_node().node_info().as_parsed().unwrap().span.start;
 
-        let impl_block = self.parse_implementation_block(&t).join_hard(&mut t).catch(&mut t)?;
+        let impl_block = self
+            .parse_implementation_block(&t)
+            .join_hard(&mut t)
+            .catch(&mut t)?;
 
         let end = impl_block.node_info().as_parsed().unwrap().span.end;
 
@@ -82,26 +85,24 @@ impl<'lexer> Parser<'lexer> {
         let mut params = Vec::new();
 
         match t.try_take(Token::CmpLessThan) {
-            Some(_) => {
-                loop {
-                    let id = t.take(Token::Identifier).join()?;
+            Some(_) => loop {
+                let id = t.take(Token::Identifier).join()?;
 
-                    let gh = cst::GenericHandle::new(id.slice);
+                let gh = cst::GenericHandle::new(id.slice);
 
-                    params.push(gh);
+                params.push(gh);
 
-                    match t.take_in(&[Token::Comma, Token::CmpGreaterThan]).join()?.token {
-                        Token::Comma => {
-                            continue
-                        },
-                        Token::CmpGreaterThan => {
-                            break
-                        },
-                        _ => unreachable!()
-                    }
+                match t
+                    .take_in(&[Token::Comma, Token::CmpGreaterThan])
+                    .join()?
+                    .token
+                {
+                    Token::Comma => continue,
+                    Token::CmpGreaterThan => break,
+                    _ => unreachable!(),
                 }
-            }
-            None => ()
+            },
+            None => (),
         }
 
         t.success(params)
@@ -115,12 +116,14 @@ impl<'lexer> Parser<'lexer> {
 
         let name = t.take(Token::Identifier).join()?.slice;
 
-        let generics = self.parse_generic_param_list(&t).join_hard(&mut t).catch(&mut t)?;
+        let generics = self
+            .parse_generic_param_list(&t)
+            .join_hard(&mut t)
+            .catch(&mut t)?;
 
         let mut fields = Vec::new();
 
         t.take(Token::LBrace).join()?;
-
 
         //while let Ok(Token::Var) = t.lh.la(0).map(|tw| tw.token) {
         while let next = t.take_in(&[Token::Var, Token::RBrace]).join()? {
@@ -169,8 +172,7 @@ impl<'lexer> Parser<'lexer> {
         &mut self,
         t: &TokenProvider,
     ) -> ParseResult<(Vec<cst::Field>, Vec<cst::FunctionDefinition>, NodeInfo)> {
-        let mut t =
-            parse_header!(t, [Token::LBrace => 1.0, Token::Function => 10.0, Token::Var => 10.0, Token::RBrace => 10.0]);
+        let mut t = parse_header!(t, [Token::LBrace => 1.0, Token::Function => 10.0, Token::Var => 10.0, Token::RBrace => 10.0]);
 
         let start = t.take(Token::LBrace).join()?.start;
         let end;
@@ -181,8 +183,15 @@ impl<'lexer> Parser<'lexer> {
         loop {
             //let expected = [Token::RBrace, Token::Function, Token::Var];
 
-            match t.la(0).join_hard(&mut t).catch(&mut t)?.token {
+            let tw = t
+                .take_in(&[Token::RBrace, Token::Function, Token::Var])
+                .join()?;
+
+            //match t.la(0).join_hard(&mut t).catch(&mut t)?.token {
+            match tw.token {
                 Token::Function => {
+                    let _ = t.lh.prev();
+
                     let f = self
                         .parse_function_declaration(&t)
                         .join_hard(&mut t)
@@ -214,7 +223,8 @@ impl<'lexer> Parser<'lexer> {
                     });*/
                 }
                 Token::RBrace => {
-                    end = t.take(Token::RBrace).join()?.end;
+                    end = t.lh.la(-1).unwrap().end;
+                    //end = t.take(Token::RBrace).join()?.end;
                     break;
                 }
                 _ => unreachable!(), //_ => return t.unexpected_token(&expected, "Was attempting to parse an implementation body")
@@ -223,11 +233,7 @@ impl<'lexer> Parser<'lexer> {
 
         let info = NodeInfo::from_indices(start, end);
 
-        t.success((
-            fields,
-            functions,
-            info
-        ))
+        t.success((fields, functions, info))
     }
 
     /*pub fn parse_implementation_item(&mut self, t: &TokenProvider) -> ParseResult<ImplementationItem> {
@@ -293,7 +299,10 @@ impl<'lexer> Parser<'lexer> {
         let mut t = parse_header!(t);
 
         t.take(Token::Implementation).join()?;
-        let generics = self.parse_generic_param_list(&t).join_hard(&mut t).catch(&mut t)?;
+        let generics = self
+            .parse_generic_param_list(&t)
+            .join_hard(&mut t)
+            .catch(&mut t)?;
 
         let t1 = self
             .parse_type_specifier(&t)
@@ -332,6 +341,38 @@ impl<'lexer> Parser<'lexer> {
             fields,
             functions,
             generics,
+        })
+    }
+
+    pub fn parse_specification(&mut self, t: &TokenProvider) -> ParseResult<cst::TraitDefinition> {
+        let mut t = parse_header!(t);
+
+        let start = t.take(Token::Specification).join()?.start;
+
+        let generics = self.parse_generic_param_list(&t).join_hard(&mut t).catch(&mut t)?;
+
+        let name = t.take(Token::Identifier).join()?.slice;
+
+        let (fields, functions, info) = self
+            .parse_implementation_body(&t)
+            .join_hard(&mut t)
+            .catch(&mut t)
+            .hint("Any trait requires an implementation/declaration body")?;
+
+        let constraint = if let Some(_) = t.try_take(Token::Colon) {
+            Some(self.parse_type_specifier(&t).join_hard(&mut t).catch(&mut t)?)
+        } else {
+            None
+        };
+
+        let end = info.as_parsed().unwrap().span.end;
+
+        t.success(cst::TraitDefinition {
+            info: NodeInfo::from_indices(start, end),
+            generics,
+            name,
+            functions,
+            constraint,
         })
     }
 
@@ -507,15 +548,19 @@ impl<'lexer> Parser<'lexer> {
         t.success(svec)
     }*/
 
-    pub fn parse_type_list(&mut self, t: &TokenProvider) -> ParseResult<Vec<cst::TypeReference>> {
+    pub fn parse_type_list(
+        &mut self,
+        t: &TokenProvider,
+        terminator: Token,
+    ) -> ParseResult<Vec<cst::TypeReference>> {
         let mut t = t.child();
 
-        t.take(Token::CmpLessThan).join()?;
+        //t.take(Token::CmpLessThan).join()?;
 
         //GuardedResult::catch(GuardedResult::join_hard(t.take(Token::CmpLessThan), &mut t), &mut t);
 
         let mut tvec = Vec::new();
-        while let None = t.try_take(Token::CmpLessThan) {
+        while let None = t.try_take(terminator) {
             let tspec = self
                 .parse_type_specifier(&t)
                 .join_hard(&mut t)
@@ -560,7 +605,7 @@ impl<'lexer> Parser<'lexer> {
         // optionally parameterized type
         let start = t.lh.la(0).unwrap().start;
 
-        match t.try_take_in(&[Token::Ampersand, Token::Asterisk, Token::RParen]) {
+        match t.try_take_in(&[Token::Ampersand, Token::Asterisk, Token::LParen]) {
             None => {
                 //let scope = self.parse_scope(&t).join_hard(&mut t).catch(&mut t)?;
                 let scope = self.parse_scope(&t).join_hard(&mut t).catch(&mut t)?;
@@ -580,13 +625,30 @@ impl<'lexer> Parser<'lexer> {
 
                 t.success(tr)
             }
-            Some(t) if t.token.matches(Token::RParen) => {
-                todo!("Need to implement tuple types/type references")
+            Some(tw) if tw.token.matches(Token::LParen) => {
+                let list = self
+                    .parse_type_list(&t, Token::RParen)
+                    .join_hard(&mut t)
+                    .catch(&mut t)?;
+
+                let tr = cst::TypeReference::generic_new(
+                    cst::ScopedNameReference {
+                        node_info: NodeInfo::Builtin,
+                        scope: Vec::new(),
+                        silent: true,
+                    },
+                    "".intern(),
+                    NodeInfo::from_indices(tw.start, t.lh.la(-1).unwrap().end),
+                    list,
+                );
+
+                t.success(tr)
+                //todo!("Need to implement tuple types/type references")
             }
-            Some(t) if t.token.matches(Token::Ampersand) => {
+            Some(tw) if tw.token.matches(Token::Ampersand) => {
                 panic!()
             }
-            Some(t) if t.token.matches(Token::Asterisk) => {
+            Some(tw) if tw.token.matches(Token::Asterisk) => {
                 panic!()
             }
             _ => unreachable!(),

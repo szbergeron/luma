@@ -165,10 +165,14 @@ pub struct TypeReference {
 
 impl TypeReference {
     pub fn new(ctx: ScopedNameReference, name: IStr, node_info: NodeInfo) -> TypeReference {
+        Self::generic_new(ctx, name, node_info, Vec::new())
+    }
+
+    pub fn generic_new(ctx: ScopedNameReference, name: IStr, node_info: NodeInfo, type_args: Vec<TypeReference>) -> TypeReference {
         TypeReference {
             info: node_info,
             ctx,
-            type_args: Vec::new(),
+            type_args,
             canonicalized_repr: name,
         }
     }

@@ -35,10 +35,10 @@ pub enum Token {
     #[token("nodyn")]
     Nodynamic,
 
-    #[token("func")]
+    #[token("fn")]
     Function,
 
-    #[token("spec")]
+    #[token("trait")]
     Specification,
 
     #[token("impl")]

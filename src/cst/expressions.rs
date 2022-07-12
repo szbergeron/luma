@@ -1063,13 +1063,18 @@ impl Debug for LiteralExpression {
 
 impl LiteralExpression {
     pub fn new_expr(tw: TokenWrapper) -> Box<ExpressionWrapper> {
+        let slice = tw.slice.resolve();
         let literal = match tw.token {
             Token::UnknownIntegerLiteral => {
                 Literal::UnknownIntegerLiteral(tw.slice.resolve().parse().unwrap())
             }
             Token::i8Literal => Literal::i8Literal(tw.slice.resolve().parse().unwrap()),
+            Token::i32Literal => Literal::i32Literal(slice[..slice.len() - 3].parse().unwrap()),
             Token::StringLiteral => Literal::StringLiteral(tw.slice),
-            _ => todo!(),
+            _ => {
+                println!("No literal handler for {tw:?}");
+                todo!()
+            },
         };
 
         Box::new(ExpressionWrapper::Literal(LiteralExpression {

@@ -16,7 +16,7 @@ trait Bar {
 
 sdfjkl
 
-fn main() {
+fn main() -> () {
     let f = Foo { 1i32 };
 
     f <- Bar {

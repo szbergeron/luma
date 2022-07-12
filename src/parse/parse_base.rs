@@ -204,6 +204,8 @@ impl<'lexer> Parser<'lexer> {
                     cst::TopLevel::Namespace(ns)
                 }
                 Token::Function => {
+                    t.lh.backtrack();
+
                     //todo!();
                     let fd = self
                         .parse_function_declaration(&t)
@@ -225,6 +227,15 @@ impl<'lexer> Parser<'lexer> {
                         .catch(&mut t)?;
                     cst::TopLevel::Impl(v)
                 }
+
+                Token::Specification => {
+                    t.lh.backtrack();
+                    let v = self.parse_specification(&t)
+                        .join_hard(&mut t)
+                        .catch(&mut t)?;
+                    cst::TopLevel::Trait(v)
+                }
+
                 Token::Use => {
                     todo!();
                     let ud = self
@@ -267,10 +278,11 @@ impl<'lexer> Parser<'lexer> {
                     }
                     ed
                 }),*/
-                _ => {
+                tw => {
                     // may be expression?
                     println!("Token was not as expected for a global declaration");
 
+                    println!("Token was: {tw:?}");
                     panic!("bad take")
 
                     /*return t.failure(ParseResultError::UnexpectedToken(
