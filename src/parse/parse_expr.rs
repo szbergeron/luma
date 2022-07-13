@@ -21,14 +21,17 @@ type ExpressionResult = ParseResult<Box<cst::expressions::ExpressionWrapper>>;
 impl<'lexer> Parser<'lexer> {
     pub fn parse_expr(&mut self, t: &TokenProvider) -> ExpressionResult {
         //let t = t.child();
-        let t = parse_header!(t);
+        let mut t = parse_header!(t);
 
-        let r = self.parse_expr_inner(0, 1, &t);
+        let r = self
+            .parse_expr_inner(0, 1, &t)
+            .join_hard(&mut t)
+            .catch(&mut t)?;
 
         /*println!("Expression:");
         println!("{r}");*/
 
-        r
+        t.success(r)
     }
 
     /// Parses the recursively defined first part of a let statement,
@@ -127,13 +130,13 @@ impl<'lexer> Parser<'lexer> {
                     type_specifier: specified_type,
                 })))
             }
-            Either::B(name) => {
-                t.success(Box::new(cst::LetComponent::Identifier(cst::LetComponentIdentifier {
+            Either::B(name) => t.success(Box::new(cst::LetComponent::Identifier(
+                cst::LetComponentIdentifier {
                     identifier_string: name,
                     node_info,
                     type_specifier: specified_type,
-                })))
-            }
+                },
+            ))),
         }
     }
 
@@ -664,8 +667,7 @@ impl<'lexer> Parser<'lexer> {
                     let e = self
                         .parse_expr(&t)
                         .join_hard(&mut t)
-                        .catch(&mut t)
-                        .handle_here()?;
+                        .catch(&mut t).handle_here()?;
 
                     let (v, mut _es, _s) = e.update_solution(&t).open();
 
@@ -711,6 +713,16 @@ impl<'lexer> Parser<'lexer> {
 
         //let t1 = t.sync().la(0).map_err(|e| CorrectionBubblingError::from_fatal_error(e))?;
         let t1 = t.la(0).join_hard(&mut t).catch(&mut t)?;
+        /*let t1 = t
+            .take_in(&[
+                Token::LBracket,
+                Token::LBrace,
+                Token::If,
+                Token::InteriorBuiltin,
+                Token::While,
+                Token::Let,
+            ])
+            .join()?;*/
         let mut lhs = match t1.token {
             Token::LBracket => {
                 let r = self
@@ -865,9 +877,9 @@ impl<'lexer> Parser<'lexer> {
         lhs: Box<cst::ExpressionWrapper>,
     ) -> ExpressionResult {
         match token {
-            Token::Ampersand | Token::Asterisk | Token::Dash | Token::Bang => {
-                t.success(cst::UnaryOperationExpression::new_expr(node_info, token, lhs))
-            }
+            Token::Ampersand | Token::Asterisk | Token::Dash | Token::Bang => t.success(
+                cst::UnaryOperationExpression::new_expr(node_info, token, lhs),
+            ),
             //Token::Let => LetExpression::new_expr(node_info, lhs),
             Token::Return => t.success(cst::ReturnExpression::new_expr(node_info, lhs)),
             _ => {

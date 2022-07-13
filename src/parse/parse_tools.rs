@@ -489,6 +489,8 @@ impl<V, J: join::Joinable, B: bubble::Bubbling, D> GuardedResult<V, J, catch::Un
                 solution_unit_id,
                 range_discarded: _,
             } => {
+                println!("SolvedFailure bubbling, has unit id {solution_unit_id} while provided was {}", t.unit_rules.id);
+
                 let caught = t.provides(solution_unit_id).max(self.caught);
 
                 if caught {
@@ -621,7 +623,7 @@ impl<V, J: join::Joinable, C: catch::Catchable, D> GuardedResult<V, J, C, bubble
     pub fn handle_here(self) -> GuardedResult<V, J, C, bubble::OnlyNotMine, D> {
         GuardedResult {
             _b: Default::default(),
-            caught: true,
+            //caught: true,
             ..self
         }
     }
@@ -1196,15 +1198,16 @@ pub mod schema {
             let sol = candidates.iter().min_by_key(|e| e.0 as i64).map(|o| o.1);
             println!("Chooses solution: {}", sol.map(|s| format!("{s}")).unwrap_or("no solution".into()));
 
-            let bt = Backtrace::capture();
+            /*let bt = Backtrace::capture();
             let frames = bt.frames();
             for frame in frames {
                 println!("{:#?}", frame);
-            }
+            }*/
 
             if let Some(sol) = sol {
                 if sol.index() == 63 {
-                    panic!();
+                    //panic!();
+                    println!("Weirdness!");
                 }
             }
             //println!("Bt: {bt:#?}");
