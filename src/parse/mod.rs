@@ -5,6 +5,8 @@ mod parse_tools;
 mod parse_type;
 mod parse_spec;
 
+use std::collections::HashSet;
+
 pub use parse_base::*;
 pub use parse_expr::*;
 pub use parse_helper::*;
@@ -245,9 +247,23 @@ impl<'lexer> Parser<'lexer> {
         if self.errors.len() == 0 {
             println!("{}", "No errors reported".blue());
         }
+
         self.print_bar();
         println!();
-        for e in self.errors.iter() {
+        let errors: HashSet<ParseResultError> = self.errors.clone().into_iter().collect();
+
+        let mut errors: Vec<ParseResultError> = errors.into_iter().collect();
+
+        //errors.sort_by_key(|e| e.)
+
+        errors.sort_by_key(|e| {
+            e.start().map(|cl| match cl {
+                CodeLocation::Builtin => (0, 0),
+                CodeLocation::Parsed(v) => (v.line, v.offset),
+            }).unwrap_or((0, 0))
+        });
+
+        for e in errors.iter() {
             println!();
             self.print_err(e, &lines);
             println!();

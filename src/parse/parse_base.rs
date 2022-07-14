@@ -31,17 +31,22 @@ impl<'lexer> Parser<'lexer> {
         println!("At entry, idx: {}", t.lh.index());
 
         //while let Ok(tw) = t.sync().la(0) {
-        let tw = t.take_in(&[
-                    Token::RBrace,
-                    Token::Module,
-                    Token::Function,
-                    Token::Struct,
-                    Token::Use,
-                    Token::DExpression,
-                    Token::Implementation,
-                    Token::Specification,
-            ]).join()?;
         loop {
+            if t.lh.la(0).is_err() && is_file {
+                break; // no decs left in file
+            }
+
+            let tw = t.take_in(&[
+                        Token::RBrace,
+                        Token::Module,
+                        Token::Function,
+                        Token::Struct,
+                        Token::Use,
+                        Token::DExpression,
+                        Token::Implementation,
+                        Token::Specification,
+                ]).join()?;
+
             println!("Entry: got a tw {:?}", tw);
             match tw.token {
                 Token::RBrace => {
@@ -242,6 +247,7 @@ impl<'lexer> Parser<'lexer> {
                 }
                 Token::Implementation => {
                     t.lh.backtrack();
+
                     let v = self
                         .parse_implementation_block(&t)
                         .join_hard(&mut t)

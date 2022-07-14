@@ -465,12 +465,23 @@ impl std::fmt::Display for CodeLocation {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub struct TokenWrapper {
     pub token: crate::lex::Token,
     pub slice: IStr,
     pub start: CodeLocation,
     pub end: CodeLocation,
+}
+
+impl TokenWrapper {
+    pub fn error() -> Self {
+        Self {
+            token: Token::Error,
+            start: CodeLocation::Builtin,
+            end: CodeLocation::Builtin,
+            slice: "".intern(),
+        }
+    }
 }
 
 /*pub enum Error {
@@ -485,7 +496,7 @@ pub struct TokenWrapper {
 //pub type Sync = (Synchronizer, SmallVec<[ParseResultError; 3]>);
 pub type ErrorSet = SmallVec<[ParseResultError; 3]>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum ParseResultError {
     InternalParseIssue,
     EndOfFile,
@@ -501,6 +512,17 @@ pub enum ParseResultError {
 }
 
 impl ParseResultError {
+    pub fn start(&self) -> Option<CodeLocation> {
+        match self {
+                ParseResultError::UnexpectedToken(tw, _, _) => Some(tw.start),
+                ParseResultError::SemanticIssue(_, start, _end) => Some(*start),
+                Self::ErrorWithHint { hint, original } => {
+                    original.iter().find(|e| e.start().is_some()).map(|e| e.start()).unwrap_or(None)
+                },
+                _ => None,
+        }
+    }
+
     pub fn add_expect(&mut self, toks: &[crate::lex::Token]) {
         match self {
             Self::UnexpectedToken(_tw, v, None) => {

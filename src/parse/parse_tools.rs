@@ -1165,7 +1165,7 @@ pub mod schema {
             println!(
                 "Search called with lh index {}, which has token {:?}",
                 lh.index(),
-                lh.la(0).unwrap()
+                lh.la(0).unwrap_or(TokenWrapper::error())
             );
 
             self.print_error_loc(lh);
@@ -1496,14 +1496,20 @@ pub mod schema {
 
         pub fn try_take_string<const LEN: usize>(
             &mut self,
-            _t: [Token; LEN],
+            tokens: [Token; LEN],
         ) -> Option<SmallVec<[TokenWrapper; LEN]>> {
+            let start = self.lh.index();
+
             let mut res = SmallVec::new();
-            for (i, t) in _t.iter().enumerate() {
-                if let Ok(tw) = self.lh.la(i as isize) && tw.token == *t {
-                    res.push(tw);
+
+            for (_i, t) in tokens.iter().enumerate() {
+                if let Some(v) = self.try_take(*t) {
+                    res.push(v);
+                    continue;
                 } else {
-                    return None;
+                    // reset what we just tried
+                    self.lh.seek_to(start);
+                    return None
                 }
             }
 

@@ -14,10 +14,12 @@ trait Bar {
     }
 }
 
-sdfjkl
+sdfjl
 
 fn main() -> () {
     let f = Foo { 1i32 };
+
+    sdfhakl;
 
     f <- Bar {
         fn a() -> () {

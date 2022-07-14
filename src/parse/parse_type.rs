@@ -128,8 +128,13 @@ impl<'lexer> Parser<'lexer> {
         //while let Ok(Token::Var) = t.lh.la(0).map(|tw| tw.token) {
         while let next = t.take_in(&[Token::Var, Token::RBrace]).join()? {
             match next.token {
-                Token::RBrace => break,
-                Token::Var => (),
+                Token::RBrace => {
+                    println!("Got a brace");
+                    break
+                },
+                Token::Var => {
+                    println!("getting a var");
+                }
                 _ => unreachable!(),
             }
 
@@ -306,7 +311,8 @@ impl<'lexer> Parser<'lexer> {
     ) -> ParseResult<cst::ImplementationDefinition> {
         let mut t = parse_header!(t);
 
-        t.take(Token::Implementation).join()?;
+        //t.take(Token::Implementation).join()?;
+
         let generics = self
             .parse_generic_param_list(&t)
             .join_hard(&mut t)
