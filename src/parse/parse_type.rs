@@ -50,6 +50,7 @@ impl<'lexer> Parser<'lexer> {
     }
 
     pub fn parse_field(&mut self, t: &TokenProvider) -> ParseResult<cst::Field> {
+        println!("Parsing a field");
         let mut t = parse_header!(t);
 
         let start = t.take(Token::Var).join()?.start;
@@ -133,6 +134,7 @@ impl<'lexer> Parser<'lexer> {
                     break
                 },
                 Token::Var => {
+                    t.lh.backtrack();
                     println!("getting a var");
                 }
                 _ => unreachable!(),

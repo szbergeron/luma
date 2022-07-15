@@ -17,11 +17,11 @@ use super::{
 
 #[derive(Debug)]
 pub struct ParsedFile<'r> {
-    file: FileHandle<'r>,
+    pub file: FileHandle<'r>,
 
-    value: Option<cst::OuterScope>,
+    pub value: Option<cst::OuterScope>,
 
-    errors: Vec<ParseResultError>,
+    pub errors: Vec<ParseResultError>,
 }
 
 impl<'r> ParsedFile<'r> {
@@ -52,11 +52,11 @@ impl<'r> ParsedFile<'r> {
 
 #[derive(Debug)]
 pub struct ParseTreeNode<'r> {
-    files: &'r FileRegistry,
+    pub files: &'r FileRegistry,
 
-    parsed: Vec<ParsedFile<'r>>,
+    pub parsed: Vec<ParsedFile<'r>>,
 
-    children: DashMap<IStr, ParseTreeNode<'r>>,
+    pub children: DashMap<IStr, ParseTreeNode<'r>>,
 }
 
 struct SendPtr<V>(V);

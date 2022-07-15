@@ -8,7 +8,7 @@ use std::collections::HashSet;
 
 use std::path::{Path, PathBuf};
 use std::process::{self, abort};
-use crate::cst;
+use crate::{cst, ast};
 
 //use crate::mid_repr::ScopeContext;
 
@@ -157,6 +157,10 @@ async fn async_launch(args: ArgResult) {
     let node = ParseTreeNode::from_preparse(node, vec![], &args.flags).await;
 
     println!("{node:#?}");
+
+    let node = ast::tree::Node::from_parse(node, "global".intern(), None, None);
+
+    println!("{:#?}", node.to_ref());
 
     // now need to parse tree into...more
 
