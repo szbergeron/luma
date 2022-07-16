@@ -155,10 +155,10 @@ impl ScopedName {
 
 #[derive(Debug, Clone)]
 pub struct TypeReference {
-    info: NodeInfo,
+    pub info: NodeInfo,
 
     pub ctx: ScopedNameReference,
-    pub canonicalized_repr: IStr,
+    pub name: IStr,
 
     pub type_args: Vec<TypeReference>,
 }
@@ -173,14 +173,14 @@ impl TypeReference {
             info: node_info,
             ctx,
             type_args,
-            canonicalized_repr: name,
+            name,
         }
     }
 }
 
 impl CstNode for TypeReference {
     fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
-        let _ = write!(f, "{}", self.canonicalized_repr);
+        let _ = write!(f, "{}", self.name);
         if !self.type_args.is_empty() {
             let _ = write!(f, "<args: !impl>");
         }

@@ -591,7 +591,7 @@ impl<'lexer> Parser<'lexer> {
         t.success(tvec)
     }
 
-    pub fn parse_type_reference(&mut self, t: &TokenProvider) -> ParseResult<cst::TypeReference> {
+    /*pub fn parse_type_reference(&mut self, t: &TokenProvider) -> ParseResult<cst::TypeReference> {
         let mut t = t.child();
 
         let _scope = self.parse_scope(&t).join_hard(&mut t).catch(&mut t)?; // fine to do unconditionally since null deriving
@@ -602,7 +602,7 @@ impl<'lexer> Parser<'lexer> {
             .join()?;
 
         todo!()
-    }
+    }*/
 
     /// Type reference specification:
     /// | &TYPE

@@ -11,8 +11,12 @@ use dashmap::DashMap;
 use once_cell::sync::OnceCell;
 
 use crate::{
-    ast, compile::parse_tree::ParseTreeNode, cst, cst::expressions::ExpressionWrapper,
-    cst::TypeReference, helper::interner::{IStr, SpurHelper},
+    ast,
+    compile::parse_tree::ParseTreeNode,
+    cst,
+    cst::expressions::ExpressionWrapper,
+    cst::TypeReference,
+    helper::interner::{IStr, SpurHelper},
 };
 
 //use super::GenericConstraint;
@@ -170,7 +174,7 @@ pub struct Node {
 
     inner: NodeUnion,
 
-    implementations_in_scope: RwLock<Vec<Implementation>>,
+    implementations_in_scope: RwLock<Vec<super::types::Implementation>>,
 
     frozen: OneWayBool,
     //implementations_for_self: RwLock<Vec<Implementation>>,
@@ -293,7 +297,7 @@ impl Node {
                     let name = f.name;
                     //let cst::FunctionDefinition { info, public, name, body, return_type, params } = f;
 
-                    let fd = ast::tree::FunctionDefinition::from_cst(f);
+                    let fd = ast::types::FunctionDefinition::from_cst(f);
 
                     let inner = NodeUnion::Function(fd);
 
@@ -308,39 +312,90 @@ impl Node {
                     //let fd = ast::FunctionDefinition { parameters}
                 }
 
-                TopLevel::Impl(i) => {}
-                TopLevel::Trait(t) => {}
-                TopLevel::Struct(s) => {
-                    let cst::StructDefinition { info, generics, name, fields } = s;
+                TopLevel::Impl(i) => {
+                    println!("Detected an impl!");
+                    let cst::ImplementationDefinition {
+                        info,
+                        generics,
+                        for_type,
+                        of_trait,
+                        functions,
+                        fields,
+                    } = i;
 
-                    let fields = fields.into_iter().map(|field| {
+                    //let mut items = Vec::new();
+
+                    //use super::types::ImplementationItem;
+
+                    /*for field in fields {
                         let cst::Field { info, has_type, has_name } = field;
 
-                        let field = FieldMember { name: has_name, ftype: has_type, default: () };
+                        let item = ImplementationItem::Field(FieldMember { name: has_name, ftype: has_type, default: () });
+                    }
 
-                        field
-                    }).collect();
+                    let body = super::types::ImplementationBody {
+                        node_info,
+                        items: todo!(),
+                    };
 
-                    let td = ast::tree::TypeDefinition { fields };
+                    let inner = super::types::Implementation {
+                        node_info,
+                        body: todo!(),
+                        impl_of: todo!(),
+                        impl_for: todo!(),
+                    };*/
+                }
+                TopLevel::Trait(t) => {
+                    println!("Detected a trait!");
+                }
+                TopLevel::Struct(s) => {
+                    let cst::StructDefinition {
+                        info,
+                        generics,
+                        name,
+                        fields,
+                    } = s;
+
+                    let fields = fields
+                        .into_iter()
+                        .map(|field| {
+                            let cst::Field {
+                                info,
+                                has_type,
+                                has_name,
+                            } = field;
+
+                            let field = ast::types::FieldMember {
+                                name: has_name,
+                                has_type: ast::types::TypeConstraint::from_cst(has_type),
+                            };
+
+                            field
+                        })
+                        .collect();
+
+                    let td = ast::types::StructDefinition { fields };
 
                     let inner = NodeUnion::Type(td);
 
-                    let child = Self::new(
-                        name,
-                        generics,
-                        Some(node),
-                        global,
-                        inner
-                        );
+                    let child = Self::new(name, generics, Some(node), global, inner);
 
-                    node.to_ref().children.entry(name).and_modify(|prior| {
-                        let p = prior.node_id.get().unwrap().to_ref();
-                        println!("");
-                        println!("There was an existing entry! Conflict between:");
-                        println!("{p}");
-                        println!("{}", child.to_ref());
-                        println!("");
-                    }).or_insert(NodeReference { node_id: child.into(), within: node, relative_path: vec![name] });
+                    node.to_ref()
+                        .children
+                        .entry(name)
+                        .and_modify(|prior| {
+                            let p = prior.node_id.get().unwrap().to_ref();
+                            println!("");
+                            println!("There was an existing entry! Conflict between:");
+                            println!("{p}");
+                            println!("{}", child.to_ref());
+                            println!("");
+                        })
+                        .or_insert(NodeReference {
+                            node_id: child.into(),
+                            within: node,
+                            relative_path: vec![name],
+                        });
                 }
                 _ => todo!(),
             };
@@ -408,11 +463,16 @@ impl std::fmt::Display for Node {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.inner {
             NodeUnion::Type(td) => {
-                writeln!(f, "struct {} with fields {:?}", self.name.resolve(), td.fields)
+                writeln!(
+                    f,
+                    "struct {} with fields {:?}",
+                    self.name.resolve(),
+                    td.fields
+                )
             }
             NodeUnion::Empty() => {
                 writeln!(f, "namespace {}", self.name.resolve())
-            },
+            }
             _ => todo!(),
         }
     }
@@ -420,160 +480,11 @@ impl std::fmt::Display for Node {
 
 #[derive(Debug)]
 pub enum NodeUnion {
-    Type(TypeDefinition),
-    Function(FunctionDefinition),
+    Type(ast::types::StructDefinition),
+    Function(ast::types::FunctionDefinition),
     Global(!),
     Empty(),
     //Implementation(Implementation),
-}
-
-/// A TypeDefinition is ...
-#[derive(Debug)]
-pub struct TypeDefinition {
-    fields: Vec<FieldMember>,
-}
-
-#[derive(Debug, Clone)]
-/// A fieldmember can be either a method or a sized field.
-/// For value types within the inherent impl context, fields exist within
-/// the structural record and methods are fully devirtualized.
-///
-/// For virtual types, fieldmembers exist as entries within the virttype vtable whether
-/// they are methods or variables.
-pub struct FieldMember {
-    /// Every attribute of a type is named (even if not uniquely).
-    pub name: IStr,
-
-    /// Every field is uniquely described by the pair of name and type
-    pub ftype: TypeReference,
-
-    /// Any field may have a provided default value for a member.
-    ///
-    /// Struct inherent implementations of functions demand default falues,
-    /// but virtual types do not. Every other (known) instance of FieldMember does not require
-    /// any default literal value
-    ///
-    /// A default value is not really a "value", but is instead implicitly a callable with the
-    /// contents wrapped in a parameterless closure. These closures have static constants all
-    /// visible to them, as well as typical literals and all imported constants.
-    pub default: (),
-    //pub default: Callable<()>,
-}
-
-#[derive(Debug)]
-pub struct FunctionDefinition {
-    parameters: Vec<(IStr, TypeReference)>,
-    return_type: TypeReference,
-
-    implementation: ExpressionWrapper,
-}
-
-impl FunctionDefinition {
-    pub fn from_cst(f: cst::FunctionDefinition) -> Self {
-        let cst::FunctionDefinition {
-            info,
-            public,
-            name,
-            body,
-            return_type,
-            params,
-        } = f;
-
-        Self {
-            implementation: *body,
-            parameters: params,
-            return_type,
-        }
-    }
-}
-
-/// Implementations are not a variant within NodeUnion because they don't actually represent
-/// any referenceable symbol. Instead, an implementation (with constraints) is "applied"
-/// as it exists to the matching children of any node that has "imported" it (which
-/// implicitly includes the context in which it is defined)
-///
-/// Eventually, implementations might be a named property that can be imported and act as a regular
-/// node.
-#[derive(Debug)]
-pub struct Implementation {
-    of_type: TypeReference,
-    for_type: TypeReference,
-
-    implementation: !,
-}
-
-type OwningNodeHandle = Pin<Box<Node>>;
-type WeakNodeHandle = Option<NonNull<Node>>;
-
-/// An Instance is a (partially | fully) resolved
-/// representation of "some type".
-///
-/// Types can usually have instances, modules and functions
-/// aren't really types and thus can't really have "instances",
-/// though a function is/can be held as an "instance" of a type.
-///
-/// An Instance is basically best thought of as the type
-/// information for a variable or expression
-pub struct Instance {
-    narrowings: TypeConstraint,
-}
-
-/// Represents a fully resolved type, with all generics filled in
-/// (or at least a required subset of them)
-pub struct TypeInstiation {
-    instantiates: WeakNodeHandle,
-    generic_arguments: DashMap<cst::GenericHandle, TypeInstiation>,
-}
-
-pub enum TypeConstraint {
-    /// A "has" type constraint states that the type must "have"
-    /// a symbol with the given name with the given Instance,
-    /// for example "v.foo(bar)" is described by `Instance(v)`
-    /// having a Has constraint with symbol `foo` and
-    /// type `(Instance(bar)) -> *`.
-    ///
-    /// This is not implemented yet since we haven't explored
-    /// type inference (only simple deduction so far)
-    Has(!),
-
-    /// An "of" type constraint states that the type must
-    /// accept a compatible generic argument list to the
-    /// one provided
-    Of(!),
-
-    /// An "in" type constraint states that the target type
-    /// must be exported (either aliased or declared) within a specific module
-    ///
-    /// Refers to a module context that has been fully resolved by name
-    In(WeakNodeHandle),
-
-    /// A "named" type constraint states that the target type
-    /// has a base name matching the provided string
-    ///
-    /// TODO: consider adding a "generic redirect" here
-    /// that can provide for GATs later on or for
-    /// templated outer generics as at least a "poor man's GATs"
-    Named(IStr),
-
-    /// If a deduction/reduction can be made that narrows to
-    /// a single, fully defined, type (such as accessing a field
-    /// on a known type struct of a known type member), then
-    /// a "complete" TypeConstraint can be constructed that
-    /// need not specify any more complicated relationships
-    Complete(TypeInstiation),
-
-    /// If multiple constraints are put on a single object
-    /// then Multiple can encompass them.
-    ///
-    /// This works for a variable that is constrained in two or more places,
-    /// or for example with generics and specialization
-    Multiple(Vec<TypeConstraint>),
-
-    /// If an instance has no guiding information "yet" (for example,
-    /// a simple generic argument or a wildcard during assignment),
-    /// then Unconstrained can be used as a placeholder
-    /// and folded into Multiple later on
-    Unconstrained(),
 }
 
 struct RefPtr<T> {
