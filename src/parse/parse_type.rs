@@ -568,7 +568,7 @@ impl<'lexer> Parser<'lexer> {
         &mut self,
         t: &TokenProvider,
         terminator: Token,
-    ) -> ParseResult<Vec<cst::TypeReference>> {
+    ) -> ParseResult<Vec<cst::SyntaxTypeReference>> {
         let mut t = t.child();
 
         //t.take(Token::CmpLessThan).join()?;
@@ -613,7 +613,7 @@ impl<'lexer> Parser<'lexer> {
     /// Typelist:
     /// | TYPE
     /// | TYPELIST, TYPE
-    pub fn parse_type_specifier(&mut self, t: &TokenProvider) -> ParseResult<cst::TypeReference> {
+    pub fn parse_type_specifier(&mut self, t: &TokenProvider) -> ParseResult<cst::SyntaxTypeReference> {
         //let mut t = t.child();
         let mut t = parse_header!(t);
 
@@ -633,7 +633,7 @@ impl<'lexer> Parser<'lexer> {
 
                 let end = typename.end;
 
-                let tr = cst::TypeReference::new(
+                let tr = cst::SyntaxTypeReference::new(
                     scope,
                     typename.slice,
                     NodeInfo::from_indices(start, end),
@@ -647,7 +647,7 @@ impl<'lexer> Parser<'lexer> {
                     .join_hard(&mut t)
                     .catch(&mut t)?;
 
-                let tr = cst::TypeReference::generic_new(
+                let tr = cst::SyntaxTypeReference::generic_new(
                     cst::ScopedNameReference {
                         node_info: NodeInfo::Builtin,
                         scope: Vec::new(),

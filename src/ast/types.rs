@@ -1,7 +1,7 @@
 //use crate::types::FunctionDeclaration;
 //
 mod old {
-    use crate::{cst::TypeReference, helper::interner::IStr};
+    use crate::{cst::SyntaxTypeReference, helper::interner::IStr};
 
     use crate::cst;
 
@@ -17,7 +17,7 @@ mod old {
         #[derive(Debug)]
         pub struct TypeReference {
             resolution: std::sync::RwLock<TypeResolution>,
-            syntax: crate::cst::TypeReference,
+            syntax: crate::cst::SyntaxTypeReference,
         }
 
         impl Clone for TypeReference {
@@ -188,9 +188,9 @@ mod old {
 
         pub body: ImplementationBody,
 
-        pub impl_of: Option<TypeReference>,
+        pub impl_of: Option<SyntaxTypeReference>,
 
-        pub impl_for: TypeReference,
+        pub impl_for: SyntaxTypeReference,
     }
 
     impl CstNode for Implementation {
@@ -204,7 +204,7 @@ mod old {
         //pub attributes: MemberAttributes,
         pub name: IStr,
 
-        pub ftype: TypeReference,
+        pub ftype: SyntaxTypeReference,
     }
 
     impl CstNode for FieldMember {
@@ -240,8 +240,8 @@ mod old {
         pub node_info: NodeInfo,
         pub attrs: cst::MemberAttributes,
         //generic_params: Vec<IStr>,
-        pub implements_type: Option<TypeReference>,
-        pub for_type: TypeReference,
+        pub implements_type: Option<SyntaxTypeReference>,
+        pub for_type: SyntaxTypeReference,
         pub body: DefinitionBody,
     }
 
@@ -334,6 +334,9 @@ pub struct StructDefinition {
 
 #[derive(Debug)]
 pub struct FunctionDefinition {
+    info: cst::NodeInfo,
+    name: IStr,
+
     parameters: Vec<(IStr, TypeConstraint)>,
     return_type: TypeConstraint,
 
@@ -351,12 +354,6 @@ impl FunctionDefinition {
             params,
         } = f;
 
-        /*Self {
-            implementation: *body,
-            parameters: params,
-            return_type,
-        }*/
-
         let return_type = TypeConstraint::from_cst(return_type);
 
         let parameters = params.into_iter().map(|(name, tr)| {
@@ -364,7 +361,9 @@ impl FunctionDefinition {
         }).collect();
 
         Self {
-            implementation: *body,
+            info,
+            name,
+            implementation: body.into_ast(),
             return_type,
             parameters,
         }
@@ -386,9 +385,6 @@ pub struct Implementation {
     implementation: !,
 }
 
-//type OwningNodeHandle = Pin<Box<Node>>;
-//type WeakNodeHandle = Option<NonNull<Node>>;
-
 /// An Instance is a (partially | fully) resolved
 /// representation of "some type".
 ///
@@ -405,21 +401,16 @@ pub struct Instance {
 
 /// Represents a fully resolved type, with all generics filled in
 /// (or at least a required subset of them)
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TypeInstiation {
     instantiates: CtxID,
     generic_arguments: DashMap<cst::GenericHandle, TypeInstiation>,
 }
 
-/*pub struct TypeConstraint {
-    origin: cst::NodeInfo,
-    constraint: TypeConstraintInner,
-}*/
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TypeConstraint(cst::NodeInfo, TypeConstraintInner);
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum TypeConstraintInner {
     /// A "has" type constraint states that the type must "have"
     /// a symbol with the given name with the given Instance,
@@ -500,9 +491,6 @@ pub enum TypeConstraintInner {
 
 impl TypeConstraint {
     pub fn add(self, other: TypeConstraint) -> Self {
-        //let Self { origin: self_origin, constraint: self_inner } = self;
-        //let Self { origin: other_origin, constraint: other_inner } = constraint;
-
         use TypeConstraintInner as TCI;
 
         match (self, other) {
@@ -523,23 +511,6 @@ impl TypeConstraint {
             }
             (other1, other2) => Self(cst::NodeInfo::Builtin, TCI::Multiple(vec![other1, other2])),
         }
-
-        /*match (self_inner, other_inner) {
-            (Multiple(mut v1), Multiple(mut v2)) => {
-                // no conflict checks at this stage, just blindly combine
-                v1.append(&mut v2);
-
-                Self::Multiple(v1)
-            }
-            (original, Unconstrained()) => Self { origin: self_origin, constraint: original },
-            Unconstrained(), constraint) => Self { origin: other_origin, constraint },
-            Multiple(mut v), other) | (other, Multiple(mut v)) => {
-                v.push(other);
-
-                Multiple(v)
-            }
-            (other1, other2) => other1.to_multiple().add(other2),
-        }*/
     }
 
     pub fn remove(&mut self) -> Self {
@@ -549,31 +520,10 @@ impl TypeConstraint {
         swapped
     }
 
-    /*pub fn from_scope(s: &[IStr]) -> Option<Self> {
-        match s {
-            [] => None,
-            [e] => {
-                let n = TypeConstraintInner::Named
-                //let inner = TypeConstraintInner::Multiple()
-            }
-        }
-    }
-
-    pub fn from_scope(s: &[IStr]) -> Option<Self> {
-        match s {
-            [] => None,
-            [one] => Some(Self::Within(Box::new(Self::Named(*one)))), // just nicer shorthand
-            [more @ .., one] => Some(Self::Within(Box::new(Self::Multiple(vec![
-                Self::from_scope(more).unwrap(),
-                Self::Named(*one),
-            ])))),
-        }
-    }*/
-
     pub fn with_generics(
         info: cst::NodeInfo,
         name: IStr,
-        generics: Vec<cst::TypeReference>,
+        generics: Vec<cst::SyntaxTypeReference>,
     ) -> Self {
         // TODO: wildcard generic args
         let gens = generics.into_iter().map(|tr| Some(Self::from_cst(tr))).collect();
@@ -588,8 +538,8 @@ impl TypeConstraint {
         Self(info, TCI::Multiple(vec![named, of]))
     }
 
-    pub fn from_cst(r: cst::TypeReference) -> Self {
-        let cst::TypeReference {
+    pub fn from_cst(r: cst::SyntaxTypeReference) -> Self {
+        let cst::SyntaxTypeReference {
             info,
             ctx,
             name,

@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::helper::interner::{IStr, SpurHelper};
+use crate::{helper::interner::{IStr, SpurHelper}, ast::types::TypeConstraint};
 
 use super::{NodeInfo, CstNode, IntoCstNode, FunctionDefinition};
 
@@ -27,8 +27,8 @@ pub struct ImplementationDefinition {
 
     pub generics: Vec<GenericHandle>,
 
-    pub for_type: Option<TypeReference>,
-    pub of_trait: Option<TypeReference>,
+    pub for_type: Option<SyntaxTypeReference>,
+    pub of_trait: Option<SyntaxTypeReference>,
 
     pub functions: Vec<FunctionDefinition>,
     pub fields: Vec<Field>,
@@ -48,7 +48,7 @@ pub struct TraitDefinition {
 
     pub name: IStr,
 
-    pub constraint: Option<TypeReference>,
+    pub constraint: Option<SyntaxTypeReference>,
 
     pub functions: Vec<FunctionDefinition>,
 }
@@ -74,7 +74,7 @@ impl CstNode for EnumDefinition {
 pub struct Field {
     pub info: NodeInfo,
 
-    pub has_type: TypeReference,
+    pub has_type: SyntaxTypeReference,
     pub has_name: IStr,
 }
 
@@ -151,25 +151,30 @@ impl ScopedName {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum TypeReference {
+    Syntax(SyntaxTypeReference),
+    Abstract(TypeConstraint),
+}
 
 
 #[derive(Debug, Clone)]
-pub struct TypeReference {
+pub struct SyntaxTypeReference {
     pub info: NodeInfo,
 
     pub ctx: ScopedNameReference,
     pub name: IStr,
 
-    pub type_args: Vec<TypeReference>,
+    pub type_args: Vec<SyntaxTypeReference>,
 }
 
-impl TypeReference {
-    pub fn new(ctx: ScopedNameReference, name: IStr, node_info: NodeInfo) -> TypeReference {
+impl SyntaxTypeReference {
+    pub fn new(ctx: ScopedNameReference, name: IStr, node_info: NodeInfo) -> SyntaxTypeReference {
         Self::generic_new(ctx, name, node_info, Vec::new())
     }
 
-    pub fn generic_new(ctx: ScopedNameReference, name: IStr, node_info: NodeInfo, type_args: Vec<TypeReference>) -> TypeReference {
-        TypeReference {
+    pub fn generic_new(ctx: ScopedNameReference, name: IStr, node_info: NodeInfo, type_args: Vec<SyntaxTypeReference>) -> SyntaxTypeReference {
+        SyntaxTypeReference {
             info: node_info,
             ctx,
             type_args,
@@ -178,7 +183,7 @@ impl TypeReference {
     }
 }
 
-impl CstNode for TypeReference {
+impl CstNode for SyntaxTypeReference {
     fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
         let _ = write!(f, "{}", self.name);
         if !self.type_args.is_empty() {
@@ -213,7 +218,7 @@ impl CstNode for TypeReference {
     }
 }
 
-impl IntoCstNode for TypeReference {
+impl IntoCstNode for SyntaxTypeReference {
     /*fn as_node_mut(&mut self) -> &mut dyn AstNode {
         self
     }*/

@@ -162,6 +162,10 @@ async fn async_launch(args: ArgResult) {
 
     println!("{:#?}", node.to_ref());
 
+    //let node = node.into_ast();
+
+    //let (node, errors) = node.typecheck();
+
     // now need to parse tree into...more
 
     //let root = super::tree::CompilationRoot::initial(error_sender, args).await;

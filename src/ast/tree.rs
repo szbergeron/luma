@@ -15,7 +15,7 @@ use crate::{
     compile::parse_tree::ParseTreeNode,
     cst,
     cst::expressions::ExpressionWrapper,
-    cst::TypeReference,
+    cst::SyntaxTypeReference,
     helper::interner::{IStr, SpurHelper},
 };
 
@@ -169,8 +169,8 @@ pub struct Node {
     /// of these fields are allowed unless node
     /// is unfrozen and the modification is
     /// guarded by a OneWayBoolGuard
-    parent: OnceCell<CtxID>,
-    global: OnceCell<CtxID>,
+    parent: Option<CtxID>,
+    global: Option<CtxID>,
 
     inner: NodeUnion,
 
@@ -197,12 +197,12 @@ impl Node {
         global: Option<CtxID>,
         inner: NodeUnion,
     ) -> CtxID {
-        let parent = parent
+        /*let parent = parent
             .map(|e| OnceCell::with_value(e))
             .unwrap_or(OnceCell::new());
         let global = global
             .map(|e| OnceCell::with_value(e))
-            .unwrap_or(OnceCell::new());
+            .unwrap_or(OnceCell::new());*/
 
         let n = Node {
             node_id: OnceCell::new(),

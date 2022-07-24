@@ -1,5 +1,5 @@
 //use crate::ast;
-use crate::cst;
+use crate::cst::{self, TypeReference};
 use crate::lex::{CodeLocation, ParseResultError, Token};
 
 //use crate::helper::lex_wrap::{CodeLocation, ParseResultError};
@@ -115,7 +115,7 @@ impl<'lexer> Parser<'lexer> {
                     .join_hard(&mut t)
                     .catch(&mut t)?;
                 r.end().map(|loc| end = loc);
-                Some(Box::new(r))
+                Some(box TypeReference::Syntax(r))
             }
             None => None,
         };
@@ -558,7 +558,7 @@ impl<'lexer> Parser<'lexer> {
                 .parse_type_specifier(&t)
                 .join_hard(&mut t)
                 .catch(&mut t)?;
-            Some((tr, name.slice))
+            Some((TypeReference::Syntax(tr), name.slice))
         } else {
             None
         };
@@ -808,18 +808,16 @@ impl<'lexer> Parser<'lexer> {
             if let Some(_colon) = t.try_take(Token::Colon) {
                 todo!("Type constraints not implemented yet")
             } else if let Some(_as) = t.try_take(Token::As) {
-                let typeref: Box<cst::TypeReference> = Box::new(
-                    self.parse_type_specifier(&t)
+                let typeref: cst::SyntaxTypeReference = self.parse_type_specifier(&t)
                         .join_hard(&mut t)
-                        .catch(&mut t)?,
-                );
+                        .catch(&mut t)?;
                 let start = lhs
                     .as_node()
                     .start()
                     .expect("parsed lhs did not have a start");
                 let end = typeref.end().expect("parsed typeref did not have an end");
                 let node_info = NodeInfo::from_indices(start, end);
-                lhs = cst::CastExpression::new_expr(node_info, lhs, typeref);
+                lhs = cst::CastExpression::new_expr(node_info, lhs, box TypeReference::Syntax(typeref));
                 continue;
             } else if let Some(_arrow) = t.try_take(Token::ThinArrowLeft) {
                 println!("Parsing implementation expression");
