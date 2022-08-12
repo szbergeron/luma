@@ -635,6 +635,7 @@ pub trait VecOps {
     type Item;
     fn appended(self, i: Self::Item) -> Self;
     fn appended_opt(self, i: Option<Self::Item>) -> Self;
+    fn indexed_insert(&mut self, val: Self::Item) -> usize;
 }
 
 impl<T> VecOps for Vec<T> {
@@ -652,6 +653,12 @@ impl<T> VecOps for Vec<T> {
         }
 
         self
+    }
+
+    fn indexed_insert(&mut self, val: Self::Item) -> usize {
+        let index = self.len();
+        self.push(val);
+        index
     }
 }
 

@@ -1,23 +1,46 @@
-use crate::helper::interner::IStr;
+use crate::helper::interner::{IStr, Internable};
 
-use super::types::TypeConstraint;
+use super::{
+    quark::{Linear, NoOperation, Operation},
+    types::InstanceConstraint,
+};
 
 pub enum AnyExpression {
+    Assign(Assign),
+    Compare(Compare),
+    Convert(Convert),
+    While(While),
+    Branch(Branch),
+    Binding(Binding),
+}
+
+impl AnyExpression {
+    /// lower returns the
+    /// node ref for the "entry" node, is given the
+    /// node ref for the "next" node
+    pub fn lower(&self, into: &mut Linear, entry: usize) -> usize {
+        match self {
+            AnyExpression::While(a) => a.lower(into),
+            AnyExpression::Compare(a) => a.lower(into),
+            AnyExpression::Convert(a) => a.lower(into),
+            AnyExpression::Assign(a) => a.lower(into),
+            AnyExpression::Branch(a) => a.lower(into),
+            AnyExpression::Binding(a) => a.lower(into),
+        }
+    }
 }
 
 /// Describes the type of the expression
 /// as well as the type that it needs to eventually
 /// be
 pub struct TypeInfo {
-    source_type: TypeConstraint,
-    target_type: Option<Box<TypeConstraint>>,
+    source_type: InstanceConstraint,
+    target_type: Option<Box<InstanceConstraint>>,
 }
 
 pub struct MetaData {
     type_info: TypeInfo,
 }
-
-
 
 pub struct Assign {
     meta: MetaData,
@@ -38,7 +61,6 @@ pub struct Convert {
 
     source: Box<AnyExpression>,
     //target: TypeConstraint,
-
     /// Indicates that this is an inverred conversion,
     /// which can allow things like deref conversions
     /// and the like, but not more involved conversions
@@ -51,6 +73,17 @@ pub struct While {
     condition: Box<AnyExpression>,
 
     body: Box<AnyExpression>,
+}
+
+impl While {
+    pub fn lower(&self, into: &mut Linear, backto: usize) {
+        let begin = Operation::new(
+            super::quark::OperationInner::Noop(NoOperation {}),
+            "loop begin".intern(),
+        );
+
+        let 
+    }
 }
 
 pub struct Branch {
@@ -71,6 +104,12 @@ pub struct BranchArm {
     body: AnyExpression,
 }
 
+impl Branch {
+    pub fn lower(&self, into: &mut Linear, entry: usize) -> usize {
+        todo!()
+    }
+}
+
 pub enum Pattern {
     Binding(Binding),
     Literal(Literal),
@@ -79,12 +118,12 @@ pub enum Pattern {
 
 pub struct Binding {
     name: IStr,
-    
-    has_type: TypeConstraint,
+
+    has_type: InstanceConstraint,
 }
 
 struct Literal {
-    has_type: TypeConstraint,
+    has_type: InstanceConstraint,
 }
 
 struct VariableReference {
@@ -108,24 +147,20 @@ struct Break {
 }
 
 /// Corresponds to unary `-` operator
-struct Negate {
-}
+struct Negate {}
 
 /// Corresponds to unary `&` operator
-struct Ref {
-}
+struct Ref {}
 
 /// Corresponds to unary `*` operator
-struct Deref {
-}
+struct Deref {}
 
 /// Corresponds to unary `!` operator
-struct Invert {
-}
+struct Invert {}
 
 struct Guard {
     check: AnyExpression,
-    has: TypeConstraint,
+    has: InstanceConstraint,
 
     then: AnyExpression,
     otherwise: AnyExpression,

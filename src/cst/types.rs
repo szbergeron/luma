@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::{helper::interner::{IStr, SpurHelper}, ast::types::TypeConstraint};
+use crate::{helper::interner::{IStr, SpurHelper}, ast::types::InstanceConstraint};
 
 use super::{NodeInfo, CstNode, IntoCstNode, FunctionDefinition};
 
@@ -154,7 +154,7 @@ impl ScopedName {
 #[derive(Debug, Clone)]
 pub enum TypeReference {
     Syntax(SyntaxTypeReference),
-    Abstract(TypeConstraint),
+    Abstract(InstanceConstraint),
 }
 
 

@@ -367,7 +367,7 @@ impl Node {
 
                             let field = ast::types::FieldMember {
                                 name: has_name,
-                                has_type: ast::types::TypeConstraint::from_cst(has_type),
+                                has_type: ast::types::InstanceConstraint::from_cst(has_type),
                             };
 
                             field

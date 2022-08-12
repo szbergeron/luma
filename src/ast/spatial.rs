@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 
-use super::{types::TypeConstraint, expressions::AnyExpression};
+use super::{types::InstanceConstraint, expressions::AnyExpression};
 
 
 /// A binding has no name, it is only ever aliased as a variable
 ///
 /// Multiple variables can theoretically have the same binding
 struct Binding {
-    has_type: TypeConstraint,
+    has_type: InstanceConstraint,
     mutable: bool,
 
     initialization: AnyExpression,

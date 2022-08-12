@@ -314,7 +314,7 @@ mod old {
 use std::mem::swap;
 
 //use crate::cst::{self, TypeReference}::{self, TypeReference};
-use crate::cst;
+use crate::cst::{self, NodeInfo}::{self, NodeInfo};
 use crate::helper::interner::IStr;
 use dashmap::DashMap;
 use smallvec::SmallVec;
@@ -324,7 +324,7 @@ use crate::ast::tree::CtxID;
 #[derive(Debug)]
 pub struct FieldMember {
     pub name: IStr,
-    pub has_type: TypeConstraint,
+    pub has_type: InstanceConstraint,
 }
 
 #[derive(Debug)]
@@ -337,8 +337,8 @@ pub struct FunctionDefinition {
     info: cst::NodeInfo,
     name: IStr,
 
-    parameters: Vec<(IStr, TypeConstraint)>,
-    return_type: TypeConstraint,
+    parameters: Vec<(IStr, InstanceConstraint)>,
+    return_type: InstanceConstraint,
 
     implementation: cst::ExpressionWrapper,
 }
@@ -354,10 +354,10 @@ impl FunctionDefinition {
             params,
         } = f;
 
-        let return_type = TypeConstraint::from_cst(return_type);
+        let return_type = InstanceConstraint::from_cst(return_type);
 
         let parameters = params.into_iter().map(|(name, tr)| {
-            (name, TypeConstraint::from_cst(tr))
+            (name, InstanceConstraint::from_cst(tr))
         }).collect();
 
         Self {
@@ -379,8 +379,8 @@ impl FunctionDefinition {
 /// node.
 #[derive(Debug)]
 pub struct Implementation {
-    of_type: TypeConstraint,
-    for_type: TypeConstraint,
+    of_type: InstanceConstraint,
+    for_type: InstanceConstraint,
 
     implementation: !,
 }
@@ -396,7 +396,7 @@ pub struct Implementation {
 /// information for a variable or expression
 #[derive(Debug)]
 pub struct Instance {
-    narrowings: TypeConstraint,
+    narrowings: InstanceConstraint,
 }
 
 /// Represents a fully resolved type, with all generics filled in
@@ -408,10 +408,10 @@ pub struct TypeInstiation {
 }
 
 #[derive(Debug, Clone)]
-pub struct TypeConstraint(cst::NodeInfo, TypeConstraintInner);
+pub struct InstanceConstraint(cst::NodeInfo, InstanceConstraintInner);
 
 #[derive(Debug, Clone)]
-pub enum TypeConstraintInner {
+pub enum InstanceConstraintInner {
     /// A "has" type constraint states that the type must "have"
     /// a symbol with the given name with the given Instance,
     /// for example "v.foo(bar)" is described by `Instance(v)`
@@ -420,12 +420,12 @@ pub enum TypeConstraintInner {
     ///
     /// This is not implemented yet since we haven't explored
     /// type inference (only simple deduction so far)
-    Has(IStr, Box<TypeConstraint>),
+    Has(IStr, Box<InstanceConstraint>),
 
     /// An "of" type constraint states that the type must
     /// accept a compatible generic argument list to the
     /// one provided
-    Of(Vec<Option<TypeConstraint>>),
+    Of(Vec<Option<InstanceConstraint>>),
 
     /// An "in" type constraint states that the target type
     /// must be exported (either aliased or declared) within a specific module
@@ -458,7 +458,7 @@ pub enum TypeConstraintInner {
     /// things like "you tried to use B with two different (wrong)
     /// sets of generics, but we know that B is inside A so we
     /// can just tell you what the correct generics are"
-    Containing(Box<TypeConstraint>),
+    Containing(Box<InstanceConstraint>),
 
     /// A "named" type constraint states that the target type
     /// has a base name matching the provided string
@@ -480,7 +480,7 @@ pub enum TypeConstraintInner {
     ///
     /// This works for a variable that is constrained in two or more places,
     /// or for example with generics and specialization
-    Multiple(Vec<TypeConstraint>),
+    Multiple(Vec<InstanceConstraint>),
 
     /// If an instance has no guiding information "yet" (for example,
     /// a simple generic argument or a wildcard during assignment),
@@ -489,9 +489,9 @@ pub enum TypeConstraintInner {
     Unconstrained(),
 }
 
-impl TypeConstraint {
-    pub fn add(self, other: TypeConstraint) -> Self {
-        use TypeConstraintInner as TCI;
+impl InstanceConstraint {
+    pub fn add(self, other: InstanceConstraint) -> Self {
+        use InstanceConstraintInner as TCI;
 
         match (self, other) {
             (Self(so, TCI::Multiple(mut sc)), Self(oo, TCI::Multiple(mut oc))) => {
@@ -514,7 +514,7 @@ impl TypeConstraint {
     }
 
     pub fn remove(&mut self) -> Self {
-        let mut swapped = Self(cst::NodeInfo::Builtin, TypeConstraintInner::Unconstrained());
+        let mut swapped = Self(cst::NodeInfo::Builtin, InstanceConstraintInner::Unconstrained());
         swap(self, &mut swapped);
 
         swapped
@@ -528,7 +528,7 @@ impl TypeConstraint {
         // TODO: wildcard generic args
         let gens = generics.into_iter().map(|tr| Some(Self::from_cst(tr))).collect();
 
-        use TypeConstraintInner as TCI;
+        use InstanceConstraintInner as TCI;
 
         let of = TCI::Of(gens);
         let of = Self(info, of);
@@ -536,6 +536,10 @@ impl TypeConstraint {
         let named = Self(info, TCI::Named(name));
 
         Self(info, TCI::Multiple(vec![named, of]))
+    }
+
+    pub fn unconstrained() -> Self {
+        Self(NodeInfo::Builtin, InstanceConstraintInner::Unconstrained())
     }
 
     pub fn from_cst(r: cst::SyntaxTypeReference) -> Self {
@@ -551,12 +555,12 @@ impl TypeConstraint {
         for entry in ctx.scope.iter().rev() {
             root = box Self(
                 cst::NodeInfo::Builtin,
-                TypeConstraintInner::Multiple(vec![
+                InstanceConstraintInner::Multiple(vec![
                     Self(
                         cst::NodeInfo::Builtin,
-                        TypeConstraintInner::Containing(root),
+                        InstanceConstraintInner::Containing(root),
                     ),
-                    Self(cst::NodeInfo::Builtin, TypeConstraintInner::Named(*entry)),
+                    Self(cst::NodeInfo::Builtin, InstanceConstraintInner::Named(*entry)),
                 ]),
             );
         }
