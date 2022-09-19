@@ -1,4 +1,7 @@
-use std::{sync::atomic::{AtomicUsize, Ordering}, collections::{HashMap, HashSet}};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::atomic::{AtomicUsize, Ordering},
+};
 
 use smallvec::SmallVec;
 
@@ -52,7 +55,11 @@ impl Quark {
     }
 
     fn get_variable(&mut self, named: IStr) -> Option<AllocationReference> {
-        self.variables.iter().rev().find(|(name, aref)| *name == named).map(|(_, aref)| *aref)
+        self.variables
+            .iter()
+            .rev()
+            .find(|(name, aref)| *name == named)
+            .map(|(_, aref)| *aref)
     }
 
     /// Returns a reference to a blank, new, allocation
@@ -75,7 +82,7 @@ impl Quark {
             match cur.inner {
                 AllocationReferenceInner::Direct(d) => {
                     //break self.allocations.get_mut(&d).unwrap()
-                    break d
+                    break d;
                 }
                 AllocationReferenceInner::Indirect(i) => {
                     if seen.contains(&i) {
@@ -89,8 +96,7 @@ impl Quark {
         }
     }
 
-    fn solve_move(&mut self, from: AllocationReference, into: AllocationReference) {
-    }
+    fn solve_move(&mut self, from: AllocationReference, into: AllocationReference) {}
 
     pub fn typecheck(&mut self) {
         let variables: Vec<(IStr, AllocationReference)>;
@@ -144,15 +150,18 @@ impl Quark {
                 // calls create allocations as their result,
                 // can be used if a call is identified to
                 // perform inference
-                Call(c) => {
-                }
+                Call(c) => {}
 
                 // bindings can contain type constraints
                 // that can (up to) fully solve the
                 // type of a call or allocation
                 Bind(b) => {
                     //
-                    let BindOperation { allocation_type, named, allocation } = b;
+                    let BindOperation {
+                        allocation_type,
+                        named,
+                        allocation,
+                    } = b;
 
                     let allocation_id = self.allocation_for(b.allocation);
 
@@ -160,8 +169,7 @@ impl Quark {
 
                     allocation.constrain(b.allocation_type, operation.id);
                 }
-                Reference(r) => {
-                }
+                Reference(r) => {}
             }
         }
 
@@ -180,7 +188,6 @@ pub struct Variable {
 pub struct Linear {
     //is_a: CtxID,
     //with: Vec<Type>,
-
     operations: Vec<Operation>,
 
     /// This is constructed as a vecmap
@@ -219,7 +226,7 @@ impl Linear {
     }*/
 
     /*
-     * I could make this work but I'm 
+     * I could make this work but I'm
      * gonna come back later when I actually
      * have things working to consider optimizing lowering these
      *
@@ -288,8 +295,7 @@ impl Operation {
         todo!()
     }
 
-    pub fn push_llvm(&self, next: IStr) {
-    }
+    pub fn push_llvm(&self, next: IStr) {}
 
     pub fn call(&self, back_to: IStr) -> OperationResult {
         todo!()
@@ -381,6 +387,7 @@ impl Allocation {
     }
 }
 
+#[derive(Copy, Clone)]
 struct AllocationReference(usize);
 
 #[derive(Clone, Copy)]
@@ -439,14 +446,12 @@ pub struct AssignOperation {
 /// other (non-return) operations
 ///
 /// Used for lowering loops
-pub struct NoOperation {
-}
+pub struct NoOperation {}
 
 /// A neverop should never be reachable from
 /// anywhere in the code (should not be a connected
 /// leaf in any CFG).
-pub struct NeverOperation {
-}
+pub struct NeverOperation {}
 
 /// Any node connected to an ExitOperation
 /// must provide a result value,
@@ -454,8 +459,7 @@ pub struct NeverOperation {
 /// CFG. This node appears
 /// at the end of functions only, and forms
 /// the basis for implicit return
-pub struct ExitOperation {
-}
+pub struct ExitOperation {}
 
 pub struct CallOperation {
     base: OperationReference,
@@ -488,8 +492,7 @@ pub struct ModifyOperation {
     from: OperationReference,
 }
 
-pub struct ImplementOperation {
-}
+pub struct ImplementOperation {}
 
 pub struct GuardOperation {
     /// The guard target
@@ -546,7 +549,6 @@ pub struct BindOperation {
     named: Option<IStr>,
 
     allocation: AllocationReference,
-
     //level: usize,
 }
 
@@ -621,7 +623,188 @@ enum TypeValue {
     /// A type with the given size in bytes
     /// even if we don't know what specific
     /// value type it is (sized constraints or an identity relationship)
-    UnknownValue{ size_bytes: usize },
+    UnknownValue {
+        size_bytes: usize,
+    },
 
-    Node()
+    Node(),
+}
+
+struct TypeConstraint {
+    id: usize,
+
+    assigns_into: Vec<AllocationReference>,
+
+    assigns_from: Vec<AllocationReference>,
+
+    mentions: Vec<CompleteMention>,
+
+    offers: Vec<Offer>,
+
+    subtype_of: Vec<TypeConstraintReference>,
+
+    supertype_of: Vec<TypeConstraintReference>,
+
+    callable: Vec<CallableSpecification>,
+    //same_as: Vec<TypeConstraintReference>,
+
+    //generics: Vec<GenericConstraint>,
+}
+
+/// An Offer is best thought of as a
+/// single capability of an object,
+/// as in it offers the `f()` operation,
+/// or offers a field named `g`
+#[derive(PartialEq, Eq, Hash, Clone, Copy)]
+struct Offer {
+    named: IStr,
+
+    /// If this is a callable, this is Some(_)
+    /// even for () -> ? functions, and
+    /// is only None if not a callable or is not called
+    typed: TypeConstraintReference,
+}
+
+#[derive(PartialEq, Eq, Hash, Clone)]
+struct CallableSpecification {
+    arguments: Vec<TypeConstraintReference>,
+
+    returns: TypeConstraintReference,
+}
+
+/// A Mention is basically a scoped name reference
+#[derive(PartialEq, Eq, Hash, Clone)]
+struct CompleteMention {
+    elements: Vec<SingleMention>,
+}
+
+#[derive(PartialEq, Eq, Hash, Clone)]
+struct SingleMention {
+    named: IStr,
+    generics: GenericConstraint,
+}
+
+#[derive(PartialEq, Eq, Hash, Clone)]
+struct GenericConstraint {
+    elements: Vec<Option<TypeConstraintReference>>,
+}
+
+struct TypeContext {
+    indirects: Vec<AbsoluteTypeReference>,
+    reals: Vec<TypeConstraint>,
+}
+
+/*#[derive(PartialEq, Eq, Hash, Clone, Copy)]
+enum TypeReferenceBacking {
+    Real(AbsoluteTypeReference),
+    Indirect(IndirectTypeReference),
+}*/
+
+#[derive(PartialEq, Eq, Hash, Clone, Copy)]
+struct AbsoluteTypeReference(usize);
+
+#[derive(PartialEq, Eq, Hash, Clone, Copy)]
+struct IndirectTypeReference(usize);
+
+#[derive(PartialEq, Eq, Hash, Clone, Copy)]
+struct TypeConstraintReference(IndirectTypeReference);
+
+impl TypeContext {
+    /// When we know two types must be the same (it is a single
+    /// variable within a segment), then we can declare they must be the same type
+    pub fn same(
+        &mut self,
+        a: TypeConstraintReference,
+        b: TypeConstraintReference,
+    ) -> TypeConstraintReference {
+        // combine and change their reference pointers
+        let ta = self.entry(a);
+        let tb = self.entry(b);
+
+        let id = self.reals.len();
+
+        let new = TypeConstraint {
+            assigns_into: ta.assigns_into.clone().merged(tb.assigns_into.clone()),
+            assigns_from: ta.assigns_from.clone().merged(tb.assigns_from.clone()),
+            mentions: ta.mentions.clone().merged(tb.mentions.clone()),
+            offers: ta.offers.clone().merged(tb.offers.clone()),
+            subtype_of: ta.subtype_of.clone().merged(tb.subtype_of.clone()),
+            supertype_of: ta.supertype_of.clone().merged(tb.supertype_of.clone()),
+            callable: ta.callable.merged(tb.callable.clone()),
+            id,
+        };
+
+        let real_id = self.reals.len();
+        let indirect_id = self.indirects.len();
+
+        self.reals.push(new);
+
+        self.indirects
+            .push(AbsoluteTypeReference(real_id));
+
+        TypeConstraintReference(IndirectTypeReference(indirect_id))
+    }
+
+    /// When a type "offers" some capability, we add it here
+    pub fn offers(&mut self, a: TypeConstraintReference, offers: Offer) -> TypeConstraintReference {
+        todo!()
+    }
+
+    /// Says that a must be a subtype or sametype as b
+    pub fn subtype(
+        &mut self,
+        a: TypeConstraintReference,
+        b: TypeConstraintReference,
+    ) -> (TypeConstraintReference, TypeConstraintReference) {
+        //self.entry_mut(a).subtype_of.push(self.indirect(self.chase(b)));
+
+        todo!()
+    }
+
+    pub fn callable(
+        &mut self,
+        a: TypeConstraintReference,
+        call: CallableSpecification,
+    ) -> TypeConstraintReference {
+        self.entry_mut(a).callable.push(call);
+
+        todo!("pump solve here")
+    }
+
+    fn entry_mut(&mut self, r: TypeConstraintReference) -> &mut TypeConstraint {
+        let absolute = self.chase(r);
+
+        let val = self
+            .reals
+            .get_mut(absolute.0)
+            .expect("malformed absolute ref from chase");
+
+        val
+    }
+
+    fn entry(&mut self, r: TypeConstraintReference) -> &TypeConstraint {
+        self.entry_mut(r)
+    }
+
+    fn chase(&mut self, mut r: TypeConstraintReference) -> &mut AbsoluteTypeReference {
+        let mut seen = HashSet::new();
+
+        while let None = seen.get(&r.0) {
+            seen.insert(r.0);
+
+            let trb = self
+                .indirects
+                .get_mut(r.0)
+                .expect("chase was given an invalid or orphan type constraint reference");
+
+            match trb {
+                TypeReferenceBacking::Real(r) => return r,
+                TypeReferenceBacking::Indirect(i) => {
+                    r = *i;
+                }
+            }
+        }
+
+        panic!("BUG: type constraints are mutually indirect")
+    }
 }

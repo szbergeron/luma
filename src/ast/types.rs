@@ -314,7 +314,7 @@ mod old {
 use std::mem::swap;
 
 //use crate::cst::{self, TypeReference}::{self, TypeReference};
-use crate::cst::{self, NodeInfo}::{self, NodeInfo};
+use crate::cst::{self, NodeInfo};
 use crate::helper::interner::IStr;
 use dashmap::DashMap;
 use smallvec::SmallVec;

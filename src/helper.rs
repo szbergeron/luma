@@ -634,6 +634,7 @@ pub mod locks {
 pub trait VecOps {
     type Item;
     fn appended(self, i: Self::Item) -> Self;
+    fn merged(self, o: Self) -> Self;
     fn appended_opt(self, i: Option<Self::Item>) -> Self;
     fn indexed_insert(&mut self, val: Self::Item) -> usize;
 }
@@ -643,6 +644,12 @@ impl<T> VecOps for Vec<T> {
 
     fn appended(mut self, i: Self::Item) -> Self {
         self.push(i);
+        self
+    }
+
+    fn merged(self, o: Self) -> Self {
+        self.append(&mut o);
+
         self
     }
 
