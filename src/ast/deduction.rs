@@ -1,3 +1,5 @@
+use super::quark::Linear;
+
 /// Deduction method takes a Linear and resolves types by doing straightforward assignment back
 /// propagation
 ///
@@ -7,3 +9,5 @@
 /// 
 ///
 
+pub fn solve(l: &mut Linear) {
+}
