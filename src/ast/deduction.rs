@@ -5,9 +5,14 @@ use super::quark::Linear;
 ///
 /// Constructors must be able to be fully constrained from forward stepping from their import,
 /// so the base of a call or expression must be something we can resolve directly to a module or item
-/// 
-/// 
+///
+///
 ///
 
-pub fn solve(l: &mut Linear) {
+impl Quark {
+    pub fn solve(l: &mut Linear) {
+        //
+    }
+
+    pub fn chase(a: AllocationReference) {}
 }

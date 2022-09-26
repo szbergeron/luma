@@ -4,5 +4,7 @@ mod expressions;
 mod spatial;
 mod quark;
 mod deduction;
+mod lowering;
+mod circles;
 //mod types2;
 //pub use crate::types::*;

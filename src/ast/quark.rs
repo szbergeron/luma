@@ -20,7 +20,7 @@ use super::{tree::CtxID, types::InstanceConstraint};
 /// while outputs are references to actual Nodes
 /// with IDs and filled in generics
 pub struct Quark {
-    type_args: Vec<Type>,
+    type_args: Vec<SymbolicType>,
 
     value: Linear,
 
@@ -185,6 +185,10 @@ pub struct Variable {
     reads: Vec<OperationReference>,
 }
 
+/// A Linear roughly corresponds to a function or method
+///
+/// There are a list of inputs and their associated contracted
+/// types, as well as an output expected type
 pub struct Linear {
     //is_a: CtxID,
     //with: Vec<Type>,
@@ -207,6 +211,10 @@ pub struct Linear {
     /// The value at each index is the id
     /// of the operation at that index
     refs: Vec<usize>,
+
+    inputs: Vec<(IStr, Type)>,
+
+    output: Type,
 }
 
 impl Linear {
@@ -348,6 +356,40 @@ pub struct OperationReference {
     index: Option<usize>,
 }
 
+
+
+/// An initialization is a branch point for type inference
+///
+/// When we construct, it takes a set of literals or other expressions
+/// and ties them all into the type of a new object
+pub struct Initialization {
+    is_type: SymbolicType,
+
+    values: Vec<(IStr, Value)>,
+}
+
+pub enum Value {
+    /// Used when we don't have a literal,
+    /// and we aren't composing a nested initialization
+    Expression(AllocationReference),
+
+    Initialization(Initialization),
+
+    /// A list of bytes
+    Literal(Vec<u8>),
+
+    /// If a value is not provided we can simply zero the field
+    /// Shouldn't actually expose syntactically, but used under the hood
+    Zeroed(),
+
+    /// Really shouldn't be used, and should almost never be exposed
+    /// to the programmer except with intrinsics with a lot of warnings
+    Uninit(),
+
+    /// later use, can use for partial initialization similar to rust { ..., ..val } syntax
+    Expanded(),
+}
+
 /// An Allocation is a typed memory region
 /// that can be referenced, assigned into,
 /// modified, and read
@@ -361,9 +403,16 @@ pub struct Allocation {
     name: Option<IStr>,
     note: Option<IStr>,
 
-    allocation_type: Type,
+    allocation_type: SymbolicType,
 
     size: Option<usize>,
+
+    /// When we create an allocation
+    /// that isn't moved directly into, we use an Initialization.
+    ///
+    /// This is effectively a fully resolved type
+    /// that comes from a struct or value literal
+    constructed_from: Option<Initialization>,
 
     moves_into: Vec<AllocationReference>,
     moves_from: Vec<AllocationReference>,
@@ -378,7 +427,7 @@ impl Allocation {
             name: None,
             note: None,
 
-            allocation_type: Type::unknown(),
+            allocation_type: SymbolicType::unknown(),
             size: None,
 
             moves_into: Vec::new(),
@@ -466,15 +515,15 @@ pub struct CallOperation {
 
     named: IStr,
 
-    type_args: Vec<Type>,
+    type_args: Vec<SymbolicType>,
 
-    result_type: Option<Type>,
+    result_type: Option<SymbolicType>,
 
     resolved_target: Option<CtxID>,
 }
 
 pub struct ReturnOperation {
-    value: Type,
+    value: SymbolicType,
 }
 
 pub struct JumpOperation {
@@ -499,7 +548,7 @@ pub struct GuardOperation {
     check: OperationReference,
 
     /// GuardOperation checks that the value in `check` is an `is`
-    is: Type,
+    is: SymbolicType,
 
     then: OperationReference,
 
@@ -544,7 +593,7 @@ pub struct BranchOperation {
 /// the bind is done to an allocation of type (A, B)
 /// even though that bind itself is unnamed
 pub struct BindOperation {
-    allocation_type: Type,
+    allocation_type: SymbolicType,
 
     named: Option<IStr>,
 
@@ -558,8 +607,17 @@ pub struct UnbindOperation {
     level: usize,
 }
 
-/// The known type of a variable at a point in the code
-struct Type {
+enum Type {
+    Pointer(Box<Type>),
+    Reference(Box<Type>),
+    Generic(GenericConstraint),
+    Value(SymbolicType),
+    Dynamic(SymbolicType),
+}
+
+/// The known type of a variable at a point in the code,
+/// but symbolically accounting for generics
+struct SymbolicType {
     /// The known interfaces that exist on this type
     /// that the programmer can actually use without having to guard
     interfaces: Vec<InterfaceValue>,
@@ -578,7 +636,7 @@ struct Type {
     bounds: InstanceConstraint,
 }
 
-impl Type {
+impl SymbolicType {
     pub fn unknown() -> Self {
         Self {
             interfaces: Vec::new(),
@@ -593,7 +651,7 @@ struct InterfaceValue {
     instance_of: CtxID,
 
     ///
-    with_generics: Vec<Type>,
+    with_generics: Vec<SymbolicType>,
 
     /// If this interface was guarded against "fast",
     /// then the involved pointer is cached within
@@ -627,7 +685,7 @@ enum TypeValue {
         size_bytes: usize,
     },
 
-    Node(),
+    Node(CtxID),
 }
 
 struct TypeConstraint {
