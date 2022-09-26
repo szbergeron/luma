@@ -6,5 +6,6 @@ mod quark;
 mod deduction;
 mod lowering;
 mod circles;
+mod types3;
 //mod types2;
 //pub use crate::types::*;

@@ -109,3 +109,90 @@ a <- i32 { 5 }
 a <- "adds" {
     fn add(a: i32, b: i32) -> i32 { a + b }
 }
+
+// up here, a is just whatever type it was before
+
+ensure a is "adds" {
+    a.add(1, 2)
+}
+
+
+
+a = Foo {
+    f: i32 = 3,
+    g: str = "hello"
+}
+
+schema Bar {
+    h: i32
+}
+
+a <- Bar { h: 3 }
+
+if rand() {
+    a <- "users" {
+        users: [1, 2, 3]
+    }
+} else {
+    a <- "cheaters" {
+        users: ["phil", "bob"]
+    }
+}
+
+static-assert(a: Foo)
+static-assert-not(a: Foo + "users")
+
+print(a.f) // infallible
+
+ensure "users" in a {
+    static-assert(a: Foo + "users")
+
+    for elem in a.users {
+        print(elem)
+    } // "1, 2, 3"
+}
+
+ensure "users" in a { a.users[0] } else { -1 }
+
+a[["users"]] { a.users[0] } else { -1 }
+
+each tag a {
+    "users" => {
+        print("runs if rand() true")
+    }
+    Foo => {
+        print("also runs")
+    }
+}
+
+//a.map\_tag("users", |a| a.users[0])
+
+a.users // ill defined
+
+fname = "blah"
+
+ensure "blah": { foo: i32, bar: [string] } in b {
+} else ensure "blah" { bar: [string], .. } in b {
+}
+
+
+struct Bar {
+    field: string = "field"
+}
+
+ensure "blah" in b where {
+    { foo: i32, bar: [string] } => {
+        // things
+    }
+
+    { bar: [string], .. } => {
+        // other things
+    }
+}
+
+
+struct Bar(i32);
+
+b.0 : i32
+
+let Bar(c) = b // c is i32
