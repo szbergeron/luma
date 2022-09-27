@@ -156,6 +156,23 @@ ensure "users" in a { a.users[0] } else { -1 }
 
 a[["users"]] { a.users[0] } else { -1 }
 
+// or for panic on nonexistence:
+a[["users"]].users[0]
+
+a[[i32]] + 3
+
+// for stringly tagged members, we use implicit context
+// as our descriminating property
+// by having it use the held type that it is applied to
+// as part of the narrowing. If we have an i32 that we [["a"]] on and an i64 that we [["a"]] on
+// they do not have to be compatible member types, and will occupy different slots within
+// intersection types
+
+// By looking at the intersection of these values we can issue warnings for potentially
+// ambiguous or *mentally* similar/ambiguous slots. We can declare certain interfaces/slots as
+// not ambiguity hinting, so for instance two objects that overlap by the "Printable" interface
+// don't need to hint that they have an ambiguous dynamic tag
+
 each tag a {
     "users" => {
         print("runs if rand() true")
