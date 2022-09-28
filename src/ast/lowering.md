@@ -161,6 +161,9 @@ a[["users"]].users[0]
 
 a[[i32]] + 3
 
+
+a[["users"]] = { users: [1, 2, 3] }
+
 // for stringly tagged members, we use implicit context
 // as our descriminating property
 // by having it use the held type that it is applied to
