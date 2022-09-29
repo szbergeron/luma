@@ -29,11 +29,21 @@ pub struct Type {
 /// is given a tag even if it isn't directly used,
 /// and this all allows default implementations for types as well
 pub struct Tag {
-    generic_args: Vec<Tag>,
+    //generic_args: Vec<Tag>,
 
     value: Option<Literal>,
 
-    terminal: CtxID,
+    //terminal: CtxID,
 
     id: usize,
+}
+
+/// A held type is different from a Node in the sense that
+/// it is the *static type of a particular variable*.
+///
+/// It includes both the primary held type (the one implicitly
+/// rooted for dynamic member selection) as well as the
+/// outer type chain that can also be referred to
+pub struct HeldType {
+    //
 }

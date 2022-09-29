@@ -174,7 +174,7 @@ pub struct Node {
 
     inner: NodeUnion,
 
-    implementations_in_scope: RwLock<Vec<super::types::Implementation>>,
+    //implementations_in_scope: RwLock<Vec<super::types::Implementation>>,
 
     frozen: OneWayBool,
     //implementations_for_self: RwLock<Vec<Implementation>>,
