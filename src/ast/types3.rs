@@ -47,3 +47,9 @@ pub struct Tag {
 pub struct HeldType {
     //
 }
+
+pub struct FieldMember {
+    named: IStr,
+    typed: CtxID,
+    initialization: Option<Initialization>,
+}

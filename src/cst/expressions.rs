@@ -1,5 +1,7 @@
 use std::fmt::Debug;
 
+use super::TypeReference;
+use super::TypeReference;
 use super::cst_traits::*;
 
 
@@ -41,6 +43,7 @@ pub enum ExpressionWrapper {
     Identifier(IdentifierExpression),
     FunctionCall(FunctionCall),
     ImplementationModification(ImplementationModificationExpression),
+    DynamicMember(DynamicMemberExpression),
 }
 
 impl Debug for ExpressionWrapper {
@@ -1104,4 +1107,36 @@ impl CstNode for ImplementationModificationExpression {
     fn node_info(&self) -> NodeInfo {
         self.node_info
     }
+}
+
+pub enum CSTTag {
+    /// Basic version, a tag can just be a string literal.
+    /// All blocks must match type for a given member on a given base type
+    /// (disambiguated explicitly later)
+    STag(IStr),
+
+    /// Not yet used, but we can eventually allow tags to be based on a type
+    /// and do enforcement that the value provided matches the interface of the type
+    /// (or inherits the remainder of the impl)
+    Type(TypeReference),
+}
+
+pub struct DynamicMemberAccess {
+    base: Box<ExpressionWrapper>,
+
+    tag: CSTTag,
+}
+
+pub struct Member {
+    tagged: CSTTag,
+
+    typed: Option<TypeReference>,
+
+    value: Option<Box<ExpressionWrapper>>, // if value not provided, we default initialize the member
+}
+
+pub struct DynamicMemberExpression {
+    tag: IStr,
+
+    members: Vec<Member>,
 }

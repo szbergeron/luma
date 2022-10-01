@@ -324,16 +324,17 @@ use crate::ast::tree::CtxID;
 #[derive(Debug)]
 pub struct FieldMember {
     pub name: IStr,
-    pub has_type: InstanceConstraint,
+    pub has_type: Option<InstanceConstraint>,
+    pub initialization: Option<Initialization>,
 }
 
 #[derive(Debug)]
-pub struct StructDefinition {
+pub struct StructuralDataDefinition {
     pub fields: Vec<FieldMember>,
 }
 
 #[derive(Debug)]
-pub struct FunctionDefinition {
+pub struct CallableDefinition {
     info: cst::NodeInfo,
     name: IStr,
 
@@ -343,7 +344,7 @@ pub struct FunctionDefinition {
     implementation: cst::ExpressionWrapper,
 }
 
-impl FunctionDefinition {
+impl CallableDefinition {
     pub fn from_cst(f: cst::FunctionDefinition) -> Self {
         let cst::FunctionDefinition {
             info,

@@ -164,7 +164,7 @@ pub struct Node {
 
     children: DashMap<IStr, NodeReference>,
 
-    /// UNSAFE: no deref is allowed unti node
+    /// UNSAFE: no deref is allowed until node
     /// itself is frozen, no modifications
     /// of these fields are allowed unless node
     /// is unfrozen and the modification is
@@ -174,10 +174,7 @@ pub struct Node {
 
     inner: NodeUnion,
 
-    //implementations_in_scope: RwLock<Vec<super::types::Implementation>>,
-
     frozen: OneWayBool,
-    //implementations_for_self: RwLock<Vec<Implementation>>,
 }
 
 impl Node {
@@ -212,7 +209,7 @@ impl Node {
             global,
             inner,
             children: DashMap::new(),
-            implementations_in_scope: RwLock::new(Vec::new()),
+            //implementations_in_scope: RwLock::new(Vec::new()),
             frozen: OneWayBool::new(),
         };
 
@@ -297,7 +294,7 @@ impl Node {
                     let name = f.name;
                     //let cst::FunctionDefinition { info, public, name, body, return_type, params } = f;
 
-                    let fd = ast::types::FunctionDefinition::from_cst(f);
+                    let fd = ast::types::CallableDefinition::from_cst(f);
 
                     let inner = NodeUnion::Function(fd);
 
@@ -374,7 +371,7 @@ impl Node {
                         })
                         .collect();
 
-                    let td = ast::types::StructDefinition { fields };
+                    let td = ast::types::StructuralDataDefinition { fields };
 
                     let inner = NodeUnion::Type(td);
 
@@ -480,8 +477,8 @@ impl std::fmt::Display for Node {
 
 #[derive(Debug)]
 pub enum NodeUnion {
-    Type(ast::types::StructDefinition),
-    Function(ast::types::FunctionDefinition),
+    Type(ast::types::StructuralDataDefinition),
+    Function(ast::types::CallableDefinition),
     Global(!),
     Empty(),
     //Implementation(Implementation),
