@@ -53,3 +53,12 @@ pub struct FieldMember {
     typed: CtxID,
     initialization: Option<Initialization>,
 }
+
+// An ESpan roughly corresponds to an expression, except it *does* know things like where
+// a variable came from, and allows doing incremental deduction of types
+//
+// I don't want to have to make an SAT solver so here we are
+pub struct ESpan {
+    depends_on: Vec<ExpressionID>,
+    depends_for: Vec<ExpressionID>,
+}

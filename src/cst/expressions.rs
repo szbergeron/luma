@@ -1128,6 +1128,8 @@ pub struct DynamicMemberAccess {
 }
 
 pub struct Member {
+    info: NodeInfo,
+
     tagged: CSTTag,
 
     typed: Option<TypeReference>,
@@ -1135,8 +1137,10 @@ pub struct Member {
     value: Option<Box<ExpressionWrapper>>, // if value not provided, we default initialize the member
 }
 
-pub struct DynamicMemberExpression {
-    tag: IStr,
+/// Used for dynamic members, contains a set of
+/// fields within a `struct {}` block
+pub struct Initializer {
+    //tag: Option<IStr>,
 
     members: Vec<Member>,
 }
