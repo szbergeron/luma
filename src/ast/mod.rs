@@ -7,5 +7,6 @@ mod deduction;
 mod lowering;
 mod circles;
 mod types3;
+mod solver;
 //mod types2;
 //pub use crate::types::*;
