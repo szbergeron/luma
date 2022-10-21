@@ -1,3 +1,5 @@
+use std::collections::{HashMap, HashSet, VecDeque};
+
 /// This is a start-from-scratch expression type solution engine, just like my other 6
 /// start-from-scratch attempts at making a type solution engine except this one
 /// will *definitely* work
@@ -46,41 +48,6 @@ struct DynamicAccess {
 struct DynamicLiteral {
 }
 
-/// the type of a given expression is itself
-/// a value, but more specifically is a fully
-/// const value
-///
-/// The type of `3`, say, is both `i32` and `3`, but
-/// only `3` within const context for, say, tags and selectors
-///
-/// We can therefore have a function that
-/// has a signature `func f(a: i32, b: 10)` where
-/// the function can be called with `f(3, 10)` but not `f(3, 9)`,
-/// because there `9` does not have type `10`
-///
-/// This neat trick means we can verify some really
-/// cool generic requirements later on, say with
-/// list concatenation and such
-struct Type {
-}
-
-/// Model typeof("hello") as
-/// Tag(str) + Size(sizeof(str)) + Value(['h', 'e', 'l', 'l', 'o'])
-enum Constraint {
-    Tag(TagConstraint),
-    Size(SizeConstraint),
-    Value(ValueConstraint),
-    Operation(OperationConstraint),
-    Type(TypeConstraint),
-}
-
-impl Type {
-    pub fn as_const(&self) -> Vec<ID> {
-    }
-
-    pub fn 
-}
-
 struct Expressionable {
     operation: Expression,
 
@@ -91,16 +58,113 @@ struct NodeInstance {
     dynmem: HashMap<ConstValue, NodeInstanceID>,
 
     members: HashMap<IStr, Member>,
+
+    instanceof: NodeID,
 }
 
-struct Type {
+struct TypeInstance {
     chain: Vec<NodeInstanceID>,
 }
 
+enum Answer {
+    Yes,
+    No,
+    Maybe,
+}
+
+enum Operation {
+    Add(),
+    Subtract(),
+    
+    Call(CallOp),
+
+    DynIndex(),
+
+    DynConstruct(DynConstructOp),
+
+    Literal(LiteralOp),
+
+    Variable(VariableOp),
+}
+
+struct CallOp {
+    name: IStr,
+}
+
+struct DynConstructOp {
+    field_names: Vec<IStr>,
+    field_types: Vec<Option<TypeInstance>>,
+}
+
+// A value is basically an expression
 struct Value {
-    origin: ExpressionID,
+    operation: Operation,
+
+    derived_from: ExpressionID,
 
     value: Option<ConstValue>,
 
     is_a: Future<Type>,
 }
+
+struct Satisfier {
+    requires: Vec<ValueID>,
+
+    required_for: Vec<ValueID>,
+
+    value_requirements_remaining: HashSet<ValueID>,
+}
+
+impl Satisfier {
+    /// This satisfier is "complete", so notify all dependants that
+    /// we're done
+    pub fn dependants(&self) -> Vec<ValueID> {
+        self.required_for.clone()
+    }
+
+    pub fn notify(&mut self, completed: ValueID) {
+        if self.requires.contains(&completed) {
+            self.value_requirements_remaining -= 1;
+        }
+    }
+
+    pub fn is_satisfied(&self) -> bool {
+        self.value_requirements_remaining == 0
+    }
+}
+
+impl Value {
+    pub fn is_const(&self) -> Answer {
+        todo!()
+    }
+}
+
+struct Solver {
+    expressions: HashMap<ValueID, Value>,
+}
+
+impl Solver {
+    pub fn solve(&mut self) {
+        // first populate our list of leaves
+
+        let waits = VecDeque::new();
+
+        for (val_id, val) in self.expressions.iter() {
+            if val.is_satisfied() {
+                waits.push_back(val_id);
+            }
+        }
+
+        while waits.len() > 0 {
+        }
+
+        for (val_id, val) in self.expressions.iter() {
+            // if anything is unsatisfied then we weren't able to resolve, so that's an error
+            if !val.is_satisfied() {
+                // program error
+            }
+        }
+    }
+}
+
+

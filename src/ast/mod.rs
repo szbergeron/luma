@@ -8,5 +8,6 @@ mod lowering;
 mod circles;
 mod types3;
 mod solver;
+mod node;
 //mod types2;
 //pub use crate::types::*;
