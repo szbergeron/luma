@@ -166,5 +166,3 @@ impl Solver {
         }
     }
 }
-
-

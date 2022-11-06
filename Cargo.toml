@@ -44,6 +44,8 @@ boxcar = "0.1.0"
 
 ouroboros = "0.15"
 
+smallstr = { version="*", features=["union"] }
+
 [profile.dev]
 incremental = true
 panic = "abort"

@@ -23,6 +23,8 @@
     never_type,
     backtrace,
     backtrace_frames,
+    unboxed_closures,
+    fn_traits,
 )]
 
 #![allow(irrefutable_let_patterns)]
@@ -63,6 +65,9 @@ pub mod mid_repr;
 pub mod parse;
 pub mod traits;
 pub mod types;
+pub mod lowered;
+pub mod llvm;
+pub mod bump_interner;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
