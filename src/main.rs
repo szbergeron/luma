@@ -24,9 +24,8 @@
     backtrace,
     backtrace_frames,
     unboxed_closures,
-    fn_traits,
+    fn_traits
 )]
-
 #![allow(irrefutable_let_patterns)]
 #![allow(dead_code)]
 #![allow(incomplete_features)]
@@ -51,23 +50,23 @@ extern crate lazy_static;
 
 use std::env;
 
+pub mod llvm;
 pub mod ast;
-pub mod cst;
 pub mod avec;
 pub mod build_expr;
 pub mod check;
 pub mod compile;
+pub mod cst;
 pub mod encode;
 pub mod helper;
 pub mod lalrpop_lexer;
 pub mod lex;
+pub mod lowered;
 pub mod mid_repr;
 pub mod parse;
 pub mod traits;
 pub mod types;
-pub mod lowered;
-pub mod llvm;
-pub mod bump_interner;
+//pub mod bump_interner;
 
 fn main() {
     let args: Vec<String> = env::args().collect();

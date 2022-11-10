@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt::format};
 
-use crate::{helper::interner::{IStr, Internable}, llvm::{LLVMPrimitive, LLVMVar}};
+use crate::{helper::interner::{IStr, Internable}, llvm::{LLVMPrimitive, LLVMVar, LoweredTypeID, LLVMChunk, LLVMFunctionBlock}};
 
 
 struct DynamicMemberRepresentation {
@@ -32,37 +32,26 @@ impl LoweredType {
         //let regular_fields_size = 
     }
 
-    pub fn bitfield_check(&self, self_ref: LLVMVar, tag: ConstValue) -> Option<(LLVMBlock, LLVMVar)> {
+    pub fn bitfield_check(&self, self_ref: LLVMVar, tag: ConstValue) -> Option<LLVMChunk> {
         let bit_index = *self.dynmem_lookup.get(&tag)?;
 
-        let out_name = thread::varname();
-
-        let _v = LLVMPrimitive::i1_t();
-
-        let outvar = LLVMVar {
-            var_type: LLVMPrimitive::i1_t(),
-            is_ref: false,
-            title: "".intern(),
-            uname: out_name,
-        };
-
-        let block = format("")
+        //let out_name = thread::varname();
 
         None
     }
 
-    pub fn field(&self, name: IStr) -> Option<Reference> {
+    pub fn field(&self, name: IStr) -> Option<LLVMChunk> {
         todo!()
     }
 
-    pub fn dynmem(&self, tag: ConstValue) -> Option<Reference> {
+    pub fn dynmem(&self, tag: ConstValue) -> Option<LLVMChunk> {
         todo!()
     }
 
     /// returns an llvmvar that points into the stack at an unboxed instance of the type
     ///
     /// inits the provided instance variables with the provided llvmvar vals
-    pub fn construct(&self, inputs: Vec<(IStr, LLVMVar)>) -> (LLVMBlock, LLVMVar) {
+    pub fn construct(&self, inputs: Vec<(IStr, LLVMVar)>) -> LLVMChunk {
         let stack_alloc_size = self.size();
     }
 }
@@ -72,7 +61,7 @@ impl LoweredType {
 /// If we can monomorphise here, we do, and we also allow inlining of
 /// sufficiently-simple operations at this site
 struct Apply {
-    sources: Vec<Encoding>,
+    sources: Vec<LLVMFunctionBlock>,
 
     parameters: Vec<LoweredTypeID>,
     returns: LoweredTypeID,
@@ -80,7 +69,7 @@ struct Apply {
 
 impl Apply {
     //pub fn set_attributes
-    pub fn call(&self, function_ptr: LLVMVar, inputs: Vec<LLVMVar>) -> (LLVMBlock, LLVMVar) {
+    pub fn call(&self, function_ptr: LLVMVar, inputs: Vec<LLVMVar>) -> LLVMChunk {
         match (self.should_inline(), self.should_monomorphize()) {
             (true, true) => {
                 // the rare case that we can actually just stick it in
@@ -102,15 +91,15 @@ impl Apply {
         }
     }
 
-    pub fn encode_inlined(&self) -> (LLVMBlock, LLVMVar) {
+    pub fn encode_inlined(&self) -> LLVMChunk {
         todo!()
     }
 
-    pub fn encode_monomorphized(&self) -> (LLVMBlock, LLVMVar) {
+    pub fn encode_monomorphized(&self) -> LLVMChunk {
         todo!()
     }
 
-    pub fn encode_virtual(&self) -> (LLVMBlock, LLVMVar) {
+    pub fn encode_virtual(&self) -> LLVMChunk {
         todo!()
     }
 
