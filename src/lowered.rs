@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt::format};
 
-use crate::{helper::interner::{IStr, Internable}, llvm::{LLVMPrimitive, LLVMVar, LoweredTypeID, LLVMChunk, LLVMFunctionBlock}};
+use crate::{helper::interner::{IStr, Internable}, llvm::{LLVMPrimitive, LLVMVar, LoweredTypeID, LLVMChunk, LLVMFunctionBlock, LLVMType, LLVMBlob}};
 
 
 struct DynamicMemberRepresentation {
@@ -15,6 +15,22 @@ struct ConstValue {
     val: usize,
 }
 
+/// Note on layout:
+///
+/// A lowered type starts with a bitfield (if any dynamic members are
+/// ever used on the type). The size of the bitfield is controlled
+/// by the type, but will be padded out to align the other fields of the type
+///
+/// Following that bitfield, the type contains all direct fields of the type,
+/// in an order defined by the type
+///
+/// Following the always-fields, the dynamic members each are given an aligned slot
+/// in the type. Whether a dynamic member is put in the type by-value
+/// or as an allocated out-of-line is determined by a later note,
+/// but the given interface allows that decision to be local
+/// to the type itself, with the out of line being taken reference to or
+/// copied from out-of-line to in-line on access
+///
 struct LoweredType {
     id: LoweredTypeID,
     fields: Vec<(IStr, LoweredTypeID, Option<ConstValue>)>,
@@ -30,6 +46,7 @@ impl LoweredType {
         // all fields are known to be inlined, but need
         // to figure out if the dynamic members should each be inlined too
         //let regular_fields_size = 
+        todo!("size may be unknowable before packing done by llvm")
     }
 
     pub fn bitfield_check(&self, self_ref: LLVMVar, tag: ConstValue) -> Option<LLVMChunk> {
@@ -40,19 +57,25 @@ impl LoweredType {
         None
     }
 
-    pub fn field(&self, name: IStr) -> Option<LLVMChunk> {
+    pub fn field(&self, name: IStr) -> Option<LLVMBlob> {
         todo!()
     }
 
-    pub fn dynmem(&self, tag: ConstValue) -> Option<LLVMChunk> {
+    pub fn dynmem(&self, tag: ConstValue) -> Option<LLVMBlob> {
         todo!()
     }
 
     /// returns an llvmvar that points into the stack at an unboxed instance of the type
     ///
     /// inits the provided instance variables with the provided llvmvar vals
-    pub fn construct(&self, inputs: Vec<(IStr, LLVMVar)>) -> LLVMChunk {
-        let stack_alloc_size = self.size();
+    pub fn construct(&self, inputs: Vec<(IStr, LLVMVar)>) -> LLVMBlob {
+        let (chunk, v) = LLVMVar::stalloc(self.as_llvm());
+
+        todo!()
+    }
+
+    pub fn as_llvm(&self) -> LLVMType {
+        todo!()
     }
 }
 

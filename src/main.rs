@@ -24,7 +24,8 @@
     backtrace,
     backtrace_frames,
     unboxed_closures,
-    fn_traits
+    fn_traits,
+    array_chunks
 )]
 #![allow(irrefutable_let_patterns)]
 #![allow(dead_code)]
@@ -50,7 +51,6 @@ extern crate lazy_static;
 
 use std::env;
 
-pub mod llvm;
 pub mod ast;
 pub mod avec;
 pub mod build_expr;
@@ -61,6 +61,7 @@ pub mod encode;
 pub mod helper;
 pub mod lalrpop_lexer;
 pub mod lex;
+pub mod llvm;
 pub mod lowered;
 pub mod mid_repr;
 pub mod parse;
