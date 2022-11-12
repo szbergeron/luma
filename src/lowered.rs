@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt::format};
 
-use crate::{helper::interner::{IStr, Internable}, llvm::{LLVMPrimitive, LLVMVar, LoweredTypeID, LLVMChunk, LLVMFunctionBlock, LLVMType, LLVMBlob}};
+use crate::{helper::interner::{IStr, Internable}, llvm::{LLVMPrimitive, LLVMVar, LoweredTypeID, LLVMChunk, LLVMFunctionBlock, LLVMType, LLVMBlob, Instruction}};
 
 
 struct DynamicMemberRepresentation {
@@ -49,8 +49,21 @@ impl LoweredType {
         todo!("size may be unknowable before packing done by llvm")
     }
 
+    // in "powers of 2"
+    pub fn bitfield_type(&self) -> LLVMType {
+        todo!()
+    }
+
     pub fn bitfield_check(&self, self_ref: LLVMVar, tag: ConstValue) -> Option<LLVMChunk> {
         let bit_index = *self.dynmem_lookup.get(&tag)?;
+
+        let chunk = LLVMChunk::empty();
+
+        let btype = self.bitfield_type();
+
+        let bref = LLVMVar::temp(btype);
+
+        //chunk.push(Instruction::invoke("getelementptr", args))
 
         //let out_name = thread::varname();
 
