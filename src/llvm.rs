@@ -1,6 +1,7 @@
 use std::io::Write;
 
-use crate::helper::interner::{IStr, Internable, SpurHelper};
+use crate::{helper::interner::{IStr, Internable, SpurHelper}, lowered::LoweredType};
+use futures::never::Never;
 use smallstr::SmallString;
 use smallvec::SmallVec;
 
@@ -16,6 +17,12 @@ pub struct Instruction {
     inst: BumpStr,
     args: SmallVec<[LLVMVar; 3]>,
     //output: Option<LLVMVar>,
+}
+
+impl LoweredTypeID {
+    pub fn resolve(self, within: &Option<Never>) -> &LoweredType {
+        todo!()
+    }
 }
 
 //struct LLVMValue {}
@@ -239,20 +246,56 @@ pub struct LLVMVar {
     flags: LLVMVarFlags,
 }
 
+#[repr(packed)]
+pub struct LLVMArg {
+    annotation: BumpStr, // u64, could be moved inside content
+
+    flags: LLVMArgFlags, // u32
+    
+    pad: u8, // make sure tag goes directly after so content is on u64
+
+    content: LLVMArgInner, // align content to u64 boundary
+
+}
+
+#[repr(u8)]
+pub enum LLVMArgInner {
+    Var(LLVMVar),
+    Label(LLVMLabel),
+    Immediate(LLVMImmediate),
+}
+
 #[bitfield]
 #[derive(Copy, Clone)]
 pub struct LLVMVarFlags {
-    #[bits = 2]
+    #[bits = 4]
     role: Role,
 
-    filler: B14,
+    filler: B12,
 }
 
 pub enum VarData {
     VarID(IID),
     Label(IID),
     Immediate(u64),
+    ICMPFlag(ICMPFlag),
     Empty(),
+}
+
+#[allow(non_snake_case, non_camel_case_types)]
+#[derive(Copy, Clone)]
+enum ICMPFlag {
+    eq,
+}
+
+impl std::ops::FnOnce<()> for ICMPFlag {
+    type Output = LLVMVar;
+
+    extern "rust-call" fn call_once(self, args: ()) -> Self::Output {
+        let t = LLVMType::undefined();
+
+        todo!()
+    }
 }
 
 impl std::fmt::Display for VarData {
@@ -267,6 +310,9 @@ impl std::fmt::Display for VarData {
             Self::Immediate(imm) => {
                 write!(f, "{}", imm)
             }
+            Self::ICMPFlag(icmp) => {
+                write!(f, "{}", icmp)
+            }
             Self::Empty() => panic!("tried to format a typeonly variable's data"),
         }
     }
@@ -278,6 +324,7 @@ impl VarData {
             Role::Label => VarData::Label(packed.label),
             Role::Variable => VarData::VarID(packed.varid),
             Role::Immediate => VarData::Immediate(packed.immediate as u64),
+            Role::ICMPFlag => VarData::ICMPFlag(packed.icmp),
             Role::TypeOnly => VarData::Empty(),
         }
     }
@@ -288,6 +335,7 @@ pub union VarDataInner {
     varid: IID,
     label: IID,
     immediate: u32,
+    icmp: ICMPFlag,
     empty: (),
 }
 
@@ -333,12 +381,13 @@ impl LLVMVarFlags {}
 //assert_eq_size!(LLVMVarFlags, u16);
 
 #[derive(BitfieldSpecifier, PartialEq, Eq)]
-#[bits = 2]
+#[bits = 4]
 enum Role {
     Label,
     Variable,
     TypeOnly,
     Immediate,
+    ICMPFlag,
 }
 
 impl LLVMVarFlags {
@@ -582,6 +631,14 @@ impl LLVMType {
             reference_depth: 0,
             inner_type: LLVMTargetType::Primitive(LLVMPrimitive::void_t),
         }
+    }
+
+    pub fn never() -> Self {
+        todo!()
+    }
+
+    pub fn undefined() -> Self {
+        todo!()
     }
 }
 

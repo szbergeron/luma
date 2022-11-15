@@ -714,3 +714,5 @@ pub struct InternedRef<T> {
 
 impl<T> InternedRef<T> {
 }
+
+pub enum Never {}
