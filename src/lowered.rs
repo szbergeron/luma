@@ -5,8 +5,8 @@ use smallstr::SmallString;
 use crate::{
     helper::interner::{IStr, Internable},
     llvm::{
-        Instruction, LLVMBlob, LLVMChunk, LLVMFunctionBlock, LLVMPrimitive, LLVMType, LLVMVar,
-        LoweredTypeID,
+        CMPFlag, Instruction, LLVMArg, LLVMBlob, LLVMChunk, LLVMFunctionBlock, LLVMPrimitive,
+        LLVMType, LoweredTypeID,
     },
 };
 
@@ -95,18 +95,27 @@ impl LoweredType {
 
     // in "powers of 2"
     pub fn bitfield_type(&self) -> LLVMType {
-        todo!()
+        let count = self.dynmems.len();
+        match count {
+            0..8 => LLVMPrimitive::i8_t(),
+            8..16 => LLVMPrimitive::i16_t(),
+            16..32 => LLVMPrimitive::i32_t(),
+            32..64 => LLVMPrimitive::i64_t(),
+            64..128 => LLVMPrimitive::i128_t(),
+            128..256 => LLVMPrimitive::i256_t(),
+            _ => panic!("currently only 255 distinct dynmems are allowed on any given type"),
+        }
     }
 
-    pub fn bitfield_check(&self, self_ref: LLVMVar, tag: ConstValue) -> Option<LLVMBlob> {
+    pub fn bitfield_check(&self, self_ref: LLVMArg, tag: ConstValue) -> Option<LLVMBlob> {
         let bit_index = *self.dynmem_lookup.get(&tag)?;
 
         let chunk = LLVMChunk::empty();
 
         let btype = self.bitfield_type();
-        let bval = LLVMVar::temp(btype);
+        let bval = LLVMArg::temp(btype);
 
-        let bref = LLVMVar::temp(btype.referenced());
+        let bref = LLVMArg::temp(btype.referenced());
 
         // a bitfield is always the first field of a type that has any bitfield
         chunk.push(Instruction::invoke(
@@ -114,35 +123,47 @@ impl LoweredType {
             [
                 bref,
                 self_ref,
-                LLVMVar::immediate(todo!(), LLVMPrimitive::i32_t(), 0),
-                LLVMVar::immediate(todo!(), LLVMPrimitive::i32_t(), 0),
+                LLVMArg::immediate(LLVMPrimitive::i32_t(), 0),
+                LLVMArg::immediate(LLVMPrimitive::i32_t(), 0),
             ],
         ));
 
         chunk.push(Instruction::invoke("load", [bval, bref]));
 
-        let shifted = LLVMVar::temp(btype);
+        let shifted = LLVMArg::temp(btype);
 
-        let shift_amount = LLVMVar::immediate(todo!(), btype, bit_index as u32);
+        let shift_amount = LLVMArg::immediate(btype, bit_index as u32);
 
         chunk.push(Instruction::invoke("lshr", [shifted, bval, shift_amount]));
 
-        let mask = LLVMVar::immediate(todo!(), btype, 0x1); // lsb
+        let mask = LLVMArg::immediate(btype, 0x1); // lsb
 
-        let masked = LLVMVar::temp(btype);
+        let masked = LLVMArg::temp(btype);
 
         chunk.push(Instruction::invoke("and", [masked, shifted, mask]));
 
-        let has_member = LLVMVar::temp(LLVMPrimitive::i1_t());
+        let has_member = LLVMArg::temp(LLVMPrimitive::i1_t());
 
         // TODO: comparison
-        chunk.push(Instruction::invoke("icmp", [has_member, icmp::eq(), immediate(btype, 1), masked]));
+        chunk.push(Instruction::invoke(
+            "icmp",
+            [
+                has_member,
+                CMPFlag::i_eq(),
+                LLVMArg::immediate(btype, 1),
+                masked,
+            ],
+        ));
 
         //chunk.push(Instruction::invoke("getelementptr", args))
 
         //let out_name = thread::varname();
 
         Some((chunk, has_member))
+    }
+
+    pub fn bitfield_set(&self, self_ref: LLVMArg, tag: ConstValue) -> Option<LLVMBlob> {
+        let bit_index = *self.dynmem_lookup.get(&tag)?;
     }
 
     pub fn field(&self, name: IStr) -> Option<LLVMBlob> {
@@ -156,8 +177,8 @@ impl LoweredType {
     /// returns an llvmvar that points into the stack at an unboxed instance of the type
     ///
     /// inits the provided instance variables with the provided llvmvar vals
-    pub fn construct(&self, inputs: Vec<(IStr, LLVMVar)>) -> LLVMBlob {
-        let (chunk, v) = LLVMVar::stalloc(self.as_llvm());
+    pub fn construct(&self, inputs: Vec<(IStr, LLVMArg)>) -> LLVMBlob {
+        let (chunk, v) = LLVMArg::stalloc(self.as_llvm());
 
         todo!()
     }
@@ -180,7 +201,7 @@ struct Apply {
 
 impl Apply {
     //pub fn set_attributes
-    pub fn call(&self, function_ptr: LLVMVar, inputs: Vec<LLVMVar>) -> LLVMChunk {
+    pub fn call(&self, function_ptr: LLVMArg, inputs: Vec<LLVMArg>) -> LLVMChunk {
         match (self.should_inline(), self.should_monomorphize()) {
             (true, true) => {
                 // the rare case that we can actually just stick it in

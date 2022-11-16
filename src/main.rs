@@ -25,7 +25,9 @@
     backtrace_frames,
     unboxed_closures,
     fn_traits,
-    array_chunks
+    array_chunks,
+    assert_matches,
+    exclusive_range_pattern
 )]
 #![allow(irrefutable_let_patterns)]
 #![allow(dead_code)]

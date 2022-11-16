@@ -1,11 +1,14 @@
-use std::io::Write;
+use std::{io::Write, assert_matches::debug_assert_matches, fmt::Debug};
 
-use crate::{helper::interner::{IStr, Internable, SpurHelper}, lowered::LoweredType};
+use crate::{
+    helper::interner::{IStr, Internable, SpurHelper},
+    lowered::LoweredType,
+};
 use futures::never::Never;
 use smallstr::SmallString;
 use smallvec::SmallVec;
 
-pub type LLVMBlob = (LLVMChunk, LLVMVar);
+pub type LLVMBlob = (LLVMChunk, LLVMArg);
 
 use modular_bitfield::prelude::*;
 
@@ -15,7 +18,9 @@ pub struct LoweredTypeID(u32);
 #[derive(Clone)]
 pub struct Instruction {
     inst: BumpStr,
-    args: SmallVec<[LLVMVar; 3]>,
+    args: SmallVec<[LLVMArg; 3]>,
+
+    // TODO: instruction metadata, bitfield?
     //output: Option<LLVMVar>,
 }
 
@@ -72,7 +77,7 @@ pub fn tid_gen(space: Space) -> GlobalID {
 }
 
 impl Instruction {
-    pub fn invoke<const N: usize>(inst: &'static str, args: [LLVMVar; N]) -> Instruction {
+    pub fn invoke<const N: usize>(inst: &'static str, args: [LLVMArg; N]) -> Instruction {
         //
         Instruction {
             inst: inst.into(),
@@ -177,8 +182,10 @@ impl Instruction {
                 start
                     .array_chunks::<2>()
                     .map(|[value, label]| {
-                        debug_assert!(value.flags.role() == Role::Variable);
-                        debug_assert!(label.flags.role() == Role::Label);
+                        //debug_assert!(value.flags.role() == Role::Variable);
+                        //debug_assert!(label.flags.role() == Role::Label);
+                        debug_assert_matches!(value.content, VarData::VarID(_));
+                        debug_assert_matches!(value.content, VarData::Label(_));
 
                         Some((value, label))
                     })
@@ -218,6 +225,16 @@ impl Instruction {
                     _ => unreachable!(),
                 }
             }
+            (inst @ ("icmp" | "fcmp"), [result, icmp_cond, op1, op2]) => {
+                let (_, result) = result.split();
+                let (_, cond) = icmp_cond.split();
+                let (ty, op1) = op1.split();
+                let (_, op2) = op2.split();
+
+                debug_assert_matches!(cond, VarData::ICMPFlag(_));
+
+                writeln!(w, "{result} = {inst} {cond} {ty} {op1}, {op2}");
+            }
             (other, _) => {
                 panic!("Instruction {other} failed because of improper args or unrecognized opcode")
             }
@@ -231,9 +248,8 @@ impl Instruction {
     }
 }
 
-#[derive(Copy, Clone)]
 //#[repr(packed)]
-pub struct LLVMVar {
+/*pub struct LLVMVar {
     title: BumpStr, // hopefully a u64
     //
     var_type: LLVMType, // a u64
@@ -244,73 +260,141 @@ pub struct LLVMVar {
     vardata: VarDataInner,
 
     flags: LLVMVarFlags,
-}
+}*/
 
+#[derive(Copy, Clone)]
 #[repr(packed)]
 pub struct LLVMArg {
     annotation: BumpStr, // u64, could be moved inside content
 
+    var_type: LLVMType,
+
     flags: LLVMArgFlags, // u32
-    
+
     pad: u8, // make sure tag goes directly after so content is on u64
 
-    content: LLVMArgInner, // align content to u64 boundary
-
+    content: VarData, // align content to u64 boundary
 }
 
-#[repr(u8)]
-pub enum LLVMArgInner {
-    Var(LLVMVar),
-    Label(LLVMLabel),
-    Immediate(LLVMImmediate),
+#[repr(packed)]
+#[derive(Copy, Clone, Debug)]
+struct Packed<T> where T: Debug {
+    v: T,
 }
 
 #[bitfield]
 #[derive(Copy, Clone)]
-pub struct LLVMVarFlags {
-    #[bits = 4]
-    role: Role,
-
-    filler: B12,
+pub struct LLVMArgFlags {
+    //role: Role,
+    filler: B16,
 }
 
+#[derive(Copy, Clone, Debug)]
+#[repr(u8)]
 pub enum VarData {
-    VarID(IID),
-    Label(IID),
-    Immediate(u64),
-    ICMPFlag(ICMPFlag),
+    VarID(Packed<IID>),
+    Label(Packed<IID>),
+    Immediate(Packed<u32>),
+    ICMPFlag(Packed<CMPFlag>),
     Empty(),
 }
 
 #[allow(non_snake_case, non_camel_case_types)]
-#[derive(Copy, Clone)]
-enum ICMPFlag {
-    eq,
+#[derive(Copy, Clone, Debug)]
+pub enum CMPFlag {
+    i_eq,
+    i_ne,
+    i_ugt,
+    i_uge,
+    i_ult,
+    i_ule,
+    i_sgt,
+    i_sge,
+    i_slt,
+    i_sle,
+
+    f_oeq,
+    f_ogt,
+    f_oge,
+    f_olt,
+    f_ole,
+    f_one,
+    f_ord,
+
+    f_ueq,
+    f_ugt,
+    f_uge,
+    f_ult,
+    f_ule,
+    f_une,
+    f_uno,
+
+    f_false,
+    f_true,
 }
 
-impl std::ops::FnOnce<()> for ICMPFlag {
-    type Output = LLVMVar;
+impl std::ops::FnOnce<()> for CMPFlag {
+    type Output = LLVMArg;
 
     extern "rust-call" fn call_once(self, args: ()) -> Self::Output {
-        let t = LLVMType::undefined();
+        LLVMArg {
+            content: VarData::ICMPFlag(Packed { v: self }),
+            ..LLVMArg::basic()
+        }
+    }
+}
 
-        todo!()
+impl std::fmt::Display for CMPFlag {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            i_eq => "eq",
+            i_ne => "ne",
+            i_ugt => "ugt",
+            i_uge => "uge",
+            i_ult => "ult",
+            i_ule => "ule",
+            i_sgt => "sgt",
+            i_sge => "sge",
+            i_slt => "slt",
+            i_sle => "sle",
+
+            f_oeq => "oeq",
+            f_ogt => "ogt",
+            f_oge => "oge",
+            f_olt => "olt",
+            f_ole => "ole",
+            f_one => "one",
+            f_ord => "ord",
+
+            f_ueq => "ueq",
+            f_ugt => "ugt",
+            f_uge => "uge",
+            f_ult => "ult",
+            f_ule => "ule",
+            f_une => "une",
+            f_uno => "uno",
+
+            f_false => "false",
+            f_true => "true",
+        };
+
+        write!(f, "{s}")
     }
 }
 
 impl std::fmt::Display for VarData {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::VarID(iid) => {
+            Self::VarID(Packed { v: iid }) => {
                 write!(f, "%{}", iid.ident())
             }
-            Self::Label(iid) => {
+            Self::Label(Packed { v: iid }) => {
                 write!(f, "{}", iid.ident())
             }
-            Self::Immediate(imm) => {
+            Self::Immediate(Packed { v: imm }) => {
                 write!(f, "{}", imm)
             }
-            Self::ICMPFlag(icmp) => {
+            Self::ICMPFlag(Packed { v: icmp }) => {
                 write!(f, "{}", icmp)
             }
             Self::Empty() => panic!("tried to format a typeonly variable's data"),
@@ -318,12 +402,12 @@ impl std::fmt::Display for VarData {
     }
 }
 
-impl VarData {
+/*impl VarData {
     pub unsafe fn unpack(role: Role, packed: VarDataInner) -> Self {
         match role {
             Role::Label => VarData::Label(packed.label),
             Role::Variable => VarData::VarID(packed.varid),
-            Role::Immediate => VarData::Immediate(packed.immediate as u64),
+            Role::Immediate => VarData::Immediate(packed.immediate),
             Role::ICMPFlag => VarData::ICMPFlag(packed.icmp),
             Role::TypeOnly => VarData::Empty(),
         }
@@ -337,16 +421,16 @@ pub union VarDataInner {
     immediate: u32,
     icmp: ICMPFlag,
     empty: (),
-}
+}*/
 
-assert_eq_size!(LLVMVarFlags, u16);
+assert_eq_size!(LLVMArgFlags, u16);
 
 //assert_eq_size!(IID, U48T);
 
 struct U192T(u64, u64, u64);
-assert_eq_size!(LLVMVar, U192T);
+assert_eq_size!(LLVMArg, U192T);
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 #[repr(packed)]
 pub struct IID {
     lid: u32,
@@ -376,10 +460,6 @@ impl IID {
 //#[repr(align)]
 struct ThreadLocalState {}
 
-impl LLVMVarFlags {}
-
-//assert_eq_size!(LLVMVarFlags, u16);
-
 #[derive(BitfieldSpecifier, PartialEq, Eq)]
 #[bits = 4]
 enum Role {
@@ -390,56 +470,68 @@ enum Role {
     ICMPFlag,
 }
 
-impl LLVMVarFlags {
+impl LLVMArgFlags {
     pub fn cleared() -> Self {
         todo!()
     }
 }
 
-impl LLVMVar {
+impl LLVMArg {
     pub fn temp(vtype: LLVMType) -> Self {
         Self {
             var_type: vtype,
-            title: todo!(),
-            vardata: VarDataInner { varid: todo!() },
+            content: VarData::VarID(todo!()),
+            //content: VarDataInner { varid: todo!() },
             //iid: IID::new(),
-            flags: LLVMVarFlags::new().with_role(Role::Variable),
+            ..Self::basic()
         }
     }
 
-    pub fn proper(title: BumpStr, var_type: LLVMType) -> Self {
+    pub fn proper(var_type: LLVMType) -> Self {
         Self {
             var_type,
-            title,
-            vardata: VarDataInner { varid: todo!() },
-            flags: LLVMVarFlags::new().with_role(Role::Variable),
+            content: VarData::VarID(todo!()),
+            ..Self::basic()
         }
     }
 
-    pub fn label(title: BumpStr) -> Self {
+    pub fn label() -> Self {
         Self {
-            var_type: LLVMType::void(),
-            vardata: VarDataInner { label: todo!() },
-            title,
-            flags: LLVMVarFlags::new().with_role(Role::Label),
+            var_type: LLVMType::undefined(),
+            content: VarData::Label(todo!()),
+            ..Self::basic()
         }
     }
 
-    pub fn immediate(title: BumpStr, var_type: LLVMType, val: u32) -> Self {
+    pub fn immediate(var_type: LLVMType, val: u32) -> Self {
         Self {
             var_type,
-            vardata: VarDataInner { immediate: val },
-            title,
-            flags: LLVMVarFlags::new().with_role(Role::Immediate),
+            content: VarData::Immediate(Packed { v: val }),
+            ..Self::basic()
         }
     }
 
-    pub fn typeonly(title: BumpStr, var_type: LLVMType) -> Self {
+    pub fn typeonly(var_type: LLVMType) -> Self {
         Self {
             var_type,
-            vardata: VarDataInner { empty: () },
-            title,
-            flags: LLVMVarFlags::new().with_role(Role::Immediate),
+            ..Self::basic()
+        }
+    }
+
+    pub fn means(self, s: &str) -> Self {
+        Self {
+            annotation: todo!("intern s"),
+            ..self
+        }
+    }
+
+    fn basic() -> Self {
+        Self {
+            annotation: BumpStr::empty(),
+            var_type: LLVMType::undefined(),
+            pad: 0,
+            content: VarData::Empty(),
+            flags: LLVMArgFlags::new(),
         }
     }
 
@@ -449,7 +541,7 @@ impl LLVMVar {
     pub fn deref(&self) -> Option<LLVMBlob> {
         let new_type = self.var_type.dereferenced()?; // if type not deref, then None as var not
                                                       // deref
-        let new_var = LLVMVar::temp(new_type);
+        let new_var = LLVMArg::temp(new_type);
 
         let chunk = LLVMChunk::empty();
 
@@ -486,8 +578,7 @@ impl LLVMVar {
     }
 
     pub fn split(self) -> (LLVMType, VarData) {
-        let vdata = unsafe { VarData::unpack(self.flags.role(), self.vardata) };
-        (self.var_type, vdata)
+        (self.var_type, self.content)
     }
 
     pub fn stalloc(var_type: LLVMType) -> LLVMBlob {
@@ -600,6 +691,10 @@ pub enum LLVMPrimitive {
     i8_t,
     i16_t,
     i32_t,
+    i64_t,
+    i128_t,
+    i256_t,
+    i512_t,
 }
 
 assert_eq_size!(LLVMType, u64);
