@@ -107,78 +107,71 @@ impl LoweredType {
         }
     }
 
-    pub fn bitfield_check(&self, self_ref: LLVMArg, tag: ConstValue) -> Option<LLVMBlob> {
+    pub fn bitfield_check(&self, self_ref: LLVMArg, tag: ConstValue) -> Option<LLVMBlob<1>> {
         let bit_index = *self.dynmem_lookup.get(&tag)?;
 
         let chunk = LLVMChunk::empty();
 
         let btype = self.bitfield_type();
-        let bval = LLVMArg::temp(btype);
 
         let bref = LLVMArg::temp(btype.referenced());
 
         // a bitfield is always the first field of a type that has any bitfield
-        chunk.push(Instruction::invoke(
-            "getelementptr",
-            [
-                bref,
-                self_ref,
-                LLVMArg::immediate(LLVMPrimitive::i32_t(), 0),
-                LLVMArg::immediate(LLVMPrimitive::i32_t(), 0),
-            ],
-        ));
+        let zero = LLVMArg::immediate(LLVMPrimitive::i32_t(), 0);
+        chunk.then("getelementptr", [bref, self_ref, zero, zero]);
 
-        chunk.push(Instruction::invoke("load", [bval, bref]));
+        let derefd: LLVMArg = chunk.blob(bref.deref().unwrap());
 
-        let shifted = LLVMArg::temp(btype);
+        let bval = chunk.blob(derefd.get_bit(bit_index));
 
-        let shift_amount = LLVMArg::immediate(btype, bit_index as u32);
-
-        chunk.push(Instruction::invoke("lshr", [shifted, bval, shift_amount]));
-
-        let mask = LLVMArg::immediate(btype, 0x1); // lsb
-
-        let masked = LLVMArg::temp(btype);
-
-        chunk.push(Instruction::invoke("and", [masked, shifted, mask]));
-
-        let has_member = LLVMArg::temp(LLVMPrimitive::i1_t());
-
-        // TODO: comparison
-        chunk.push(Instruction::invoke(
-            "icmp",
-            [
-                has_member,
-                CMPFlag::i_eq(),
-                LLVMArg::immediate(btype, 1),
-                masked,
-            ],
-        ));
+        Some((chunk, bval))
 
         //chunk.push(Instruction::invoke("getelementptr", args))
 
         //let out_name = thread::varname();
 
-        Some((chunk, has_member))
+        //Some((chunk, has_member))
     }
 
-    pub fn bitfield_set(&self, self_ref: LLVMArg, tag: ConstValue) -> Option<LLVMBlob> {
+    pub fn bitfield_set(&self, self_ref: LLVMArg, tag: ConstValue, val: bool) -> Option<LLVMChunk<10>> {
         let bit_index = *self.dynmem_lookup.get(&tag)?;
+
+        let chunk = LLVMChunk::empty();
+
+        let btype = self.bitfield_type();
+
+        let bref = LLVMArg::temp(btype.referenced());
+
+        let zero = LLVMArg::immediate(LLVMPrimitive::i32_t(), 0);
+        chunk.then("getelementptr", [bref, self_ref, zero, zero]);
+
+        let derefd = chunk.blob(bref.deref().unwrap());
+
+        let bval = chunk.blob(derefd.set_bit(bit_index, val));
+
+        chunk.then("store", [bref, bval]);
+
+        Some(chunk)
     }
 
-    pub fn field(&self, name: IStr) -> Option<LLVMBlob> {
+    pub fn field(&self, name: IStr) -> Option<(LLVMChunk, LVal)> {
         todo!()
     }
 
-    pub fn dynmem(&self, tag: ConstValue) -> Option<LLVMBlob> {
+    pub fn dynmem(&self, tag: ConstValue) -> Option<(LLVMChunk, LVal)> {
         todo!()
     }
 
     /// returns an llvmvar that points into the stack at an unboxed instance of the type
     ///
     /// inits the provided instance variables with the provided llvmvar vals
-    pub fn construct(&self, inputs: Vec<(IStr, LLVMArg)>) -> LLVMBlob {
+    pub fn construct(&self, inputs: Vec<(IStr, LLVMArg)>) -> LLVMBlob<1> {
         let (chunk, v) = LLVMArg::stalloc(self.as_llvm());
+
+        for (fname, fval) in inputs {
+            let fref = self.field(fname);
+            //chunk.blob(fref.unwrap())
+        }
 
         todo!()
     }
@@ -187,6 +180,9 @@ impl LoweredType {
         todo!()
     }
 }
+
+#[derive(Clone, Copy)]
+struct LVal(LLVMArg);
 
 /// Some "fields" or values can be called, or "applied"
 ///

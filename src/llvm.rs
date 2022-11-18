@@ -1,4 +1,4 @@
-use std::{io::Write, assert_matches::debug_assert_matches, fmt::Debug};
+use std::{assert_matches::debug_assert_matches, fmt::Debug, io::Write};
 
 use crate::{
     helper::interner::{IStr, Internable, SpurHelper},
@@ -8,7 +8,7 @@ use futures::never::Never;
 use smallstr::SmallString;
 use smallvec::SmallVec;
 
-pub type LLVMBlob = (LLVMChunk, LLVMArg);
+pub type LLVMBlob<const INLINE_INSTRUCTIONS: usize> = (LLVMChunk<INLINE_INSTRUCTIONS>, LLVMArg);
 
 use modular_bitfield::prelude::*;
 
@@ -16,10 +16,9 @@ use modular_bitfield::prelude::*;
 pub struct LoweredTypeID(u32);
 
 #[derive(Clone)]
-pub struct Instruction {
+pub struct Instruction<const INLINE: usize = 3> {
     inst: BumpStr,
-    args: SmallVec<[LLVMArg; 3]>,
-
+    args: SmallVec<[LLVMArg; INLINE]>,
     // TODO: instruction metadata, bitfield?
     //output: Option<LLVMVar>,
 }
@@ -141,8 +140,8 @@ impl Instruction {
                 );
             }
             (
-                inst @ ("add" | "sub" | "mul" | "div" | "and" | "or" | "xor" | "ashr" | "lshr"
-                | "fsub" | "fadd" | "fmul" | "fdiv" | "urem" | "srem" | "frem"),
+                inst @ ("add" | "sub" | "mul" | "div" | "and" | "or" | "xor" | "shl" | "ashr"
+                | "lshr" | "fsub" | "fadd" | "fmul" | "fdiv" | "urem" | "srem" | "frem"),
                 [out, op1, op2],
             ) => {
                 //let ty = self.inputs[0].var_type.encode();
@@ -278,7 +277,10 @@ pub struct LLVMArg {
 
 #[repr(packed)]
 #[derive(Copy, Clone, Debug)]
-struct Packed<T> where T: Debug {
+struct Packed<T>
+where
+    T: Debug,
+{
     v: T,
 }
 
@@ -294,7 +296,7 @@ pub struct LLVMArgFlags {
 pub enum VarData {
     VarID(Packed<IID>),
     Label(Packed<IID>),
-    Immediate(Packed<u32>),
+    Immediate(Packed<i32>),
     ICMPFlag(Packed<CMPFlag>),
     Empty(),
 }
@@ -503,7 +505,7 @@ impl LLVMArg {
         }
     }
 
-    pub fn immediate(var_type: LLVMType, val: u32) -> Self {
+    pub fn immediate(var_type: LLVMType, val: i32) -> Self {
         Self {
             var_type,
             content: VarData::Immediate(Packed { v: val }),
@@ -538,7 +540,7 @@ impl LLVMArg {
     /// If this type is dereferenceable,
     /// constructs a new var with a decremented
     /// refcount and provides a chunk with a `load`
-    pub fn deref(&self) -> Option<LLVMBlob> {
+    pub fn deref(&self) -> Option<LLVMBlob<1>> {
         let new_type = self.var_type.dereferenced()?; // if type not deref, then None as var not
                                                       // deref
         let new_var = LLVMArg::temp(new_type);
@@ -550,7 +552,7 @@ impl LLVMArg {
         Some((chunk, new_var))
     }
 
-    pub fn bitcast(&self, other: LLVMType) -> LLVMBlob {
+    pub fn bitcast(&self, other: LLVMType) -> LLVMBlob<1> {
         let new_var = Self::temp(other);
 
         let chunk = LLVMChunk::empty();
@@ -562,7 +564,7 @@ impl LLVMArg {
 
     /// Take the contents of this var and push them into the stack, returning
     /// a variable referencing them
-    pub fn push(&self) -> LLVMBlob {
+    pub fn push(&self) -> LLVMBlob<2> {
         let pty = self.var_type.referenced();
         let space = Self::temp(pty);
 
@@ -581,7 +583,7 @@ impl LLVMArg {
         (self.var_type, self.content)
     }
 
-    pub fn stalloc(var_type: LLVMType) -> LLVMBlob {
+    pub fn stalloc(var_type: LLVMType) -> LLVMBlob<1> {
         let nv = Self::temp(var_type.referenced());
 
         let chunk = LLVMChunk::empty();
@@ -589,6 +591,73 @@ impl LLVMArg {
         chunk.push(Instruction::invoke("alloca", [nv]));
 
         (chunk, nv)
+    }
+
+    /// produces an LLVMArg of type i1 with the
+    /// requested bit index
+    ///
+    /// self must be an integral type
+    #[rustfmt::skip]
+    pub fn get_bit(self, bit_index: usize) -> LLVMBlob<3> {
+        let chunk = LLVMChunk::empty();
+
+        /*
+         * inputs [bit_index, original]
+         * outputs [output]
+         *
+         * shifted := original >> bit_index
+         * masked := shifted & 0x1
+         * output := masked == 1
+         */
+
+        let shifted = LLVMArg::temp(self.var_type);
+        let masked = LLVMArg::temp(self.var_type);
+        let output = LLVMArg::temp(LLVMPrimitive::i1_t());
+
+        chunk.then("lshr", [shifted, self, LLVMArg::immediate(self.var_type, bit_index as i32)]);
+        chunk.then("and", [masked, shifted, LLVMArg::immediate(self.var_type, 0x1)]);
+        chunk.then("icmp", [output, CMPFlag::i_eq(), LLVMArg::immediate(self.var_type, 0x1), masked]);
+
+        (chunk, output)
+
+    }
+
+    /// produces an LLVMArg with the bit set to the new desired value
+    ///
+    /// self must be an integral type
+    #[rustfmt::skip]
+    pub fn set_bit(self, bit_index: usize, value: bool) -> LLVMBlob<5> {
+        let chunk = LLVMChunk::empty();
+
+        /*
+         * inputs [bit_index, original, value]
+         * outputs [output]
+         * mask := 0x1 << bit_index
+         * negmask := ~mask
+         * cleared := original & negmask
+         * bit := (value as mask_type) << bit_index
+         * output := cleared | bit
+         */
+
+        let bit_index = LLVMArg::immediate(self.var_type, bit_index as i32);
+
+        let mask = LLVMArg::temp(self.var_type);
+
+        let negmask = LLVMArg::temp(self.var_type);
+
+        let cleared = LLVMArg::temp(self.var_type);
+        let bit = LLVMArg::temp(self.var_type);
+        let output = LLVMArg::temp(self.var_type);
+
+        let value = LLVMArg::immediate(self.var_type, if value { 1 } else { 0 });
+
+        chunk.then("shl", [mask, LLVMArg::immediate(self.var_type, 1), bit_index]);
+        chunk.then("xor", [negmask, mask, LLVMArg::immediate(self.var_type, -1)]);
+        chunk.then("and", [cleared, self, negmask]);
+        chunk.then("shl", [bit, value, bit_index]);
+        chunk.then("or", [output, cleared, bit]);
+
+        (chunk, output)
     }
 }
 
@@ -598,11 +667,11 @@ pub struct LLVMBasicBlock {
 }
 
 /// A "segment" of instructions that do a short action
-pub struct LLVMChunk {
-    instructions: SmallVec<[Instruction; 5]>,
+pub struct LLVMChunk<const INLINE_INSTRUCTIONS: usize = 5> {
+    instructions: SmallVec<[Instruction; INLINE_INSTRUCTIONS]>,
 }
 
-impl LLVMChunk {
+impl<const INLINE_INSTRUCTIONS: usize> LLVMChunk<INLINE_INSTRUCTIONS> {
     pub fn empty() -> Self {
         Self {
             instructions: SmallVec::new(),
@@ -612,6 +681,32 @@ impl LLVMChunk {
     pub fn push(&mut self, inst: Instruction) {
         self.instructions.push(inst)
     }
+
+    pub fn combine<const A: usize, const B: usize>(
+        a: LLVMChunk<A>,
+        b: LLVMChunk<B>,
+    ) -> LLVMChunk<{ (A + B).min(10) }> {
+        todo!()
+    }
+
+    pub fn then<const N: usize>(&mut self, inst: &str, args: [LLVMArg; N]) {
+        self.push(Instruction::invoke(inst, args));
+    }
+
+    pub fn blob<const N: usize>(&mut self, other: LLVMBlob<N>) -> LLVMArg {
+        let (c, a) = other;
+
+        for inst in c.instructions {
+            self.push(inst);
+        }
+
+        a
+    }
+}
+
+const fn limit(a: usize, b: usize) -> usize {
+    let c = a + b;
+    c.min(10)
 }
 
 pub struct LLVMFunctionBlock {

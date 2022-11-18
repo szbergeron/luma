@@ -27,7 +27,8 @@
     fn_traits,
     array_chunks,
     assert_matches,
-    exclusive_range_pattern
+    exclusive_range_pattern,
+    generic_const_exprs
 )]
 #![allow(irrefutable_let_patterns)]
 #![allow(dead_code)]
@@ -53,7 +54,7 @@ extern crate lazy_static;
 
 use std::env;
 
-pub mod ast;
+//pub mod ast; // just until we fix lowering, reduce error count
 pub mod avec;
 pub mod build_expr;
 pub mod check;
