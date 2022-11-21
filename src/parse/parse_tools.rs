@@ -523,11 +523,11 @@ impl<V, D> std::ops::Try for GuardedResult<V, join::Joined, catch::Caught, bubbl
 
     type Residual = GuardedResult<Infallible, join::Unjoined, catch::Uncaught, bubble::All, D>;
 
-    fn from_output(_output: Self::Output) -> Self {
+    fn from_output(_output: V) -> Self {
         panic!("A GuardedResult can not be safely rebuilt from its output")
     }
 
-    fn branch(self) -> std::ops::ControlFlow<Self::Residual, Self::Output> {
+    fn branch(self) -> std::ops::ControlFlow<Self::Residual, V> {
         match (self.solution, self.value) {
             (SolutionClass::Success { index: _ }, Some(v)) => ControlFlow::Continue(v),
             _ => ControlFlow::Break(GuardedResult {
@@ -562,11 +562,11 @@ impl<V, D> std::ops::Try for GuardedResult<V, join::Joined, catch::Caught, bubbl
 
     type Residual = GuardedResult<Infallible, join::Unjoined, catch::Uncaught, bubble::All, D>;
 
-    fn from_output(_output: Self::Output) -> Self {
+    fn from_output(_output: GuardedResult<V, join::Unjoined, catch::Uncaught, bubble::All, D>) -> Self {
         panic!("A GuardedResult can not be safely rebuilt from its output")
     }
 
-    fn branch(self) -> std::ops::ControlFlow<Self::Residual, Self::Output> {
+    fn branch(self) -> std::ops::ControlFlow<Self::Residual, GuardedResult<V, join::Unjoined, catch::Uncaught, bubble::All, D>> {
         println!("OnlyNotMine bubbling, solution is: {:?}", self.solution);
         match (self.solution, self.caught) {
             (SolutionClass::Success { .. }, _) => ControlFlow::Continue(GuardedResult {

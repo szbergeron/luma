@@ -54,7 +54,7 @@ extern crate lazy_static;
 
 use std::env;
 
-//pub mod ast; // just until we fix lowering, reduce error count
+pub mod ast; // just until we fix lowering, reduce error count
 pub mod avec;
 pub mod build_expr;
 pub mod check;

@@ -329,7 +329,7 @@ pub enum OperationInner {
     Return(ReturnOperation),
     Branch(BranchOperation),
     Bind(BindOperation),
-    Implement(ImplementOperation),
+    //Implement(ImplementOperation),
     Reference(VariableReferenceOperation),
 
     Noop(NoOperation),

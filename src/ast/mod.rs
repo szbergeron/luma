@@ -1,13 +1,13 @@
 pub mod tree;
 pub mod types;
 mod expressions;
-mod spatial;
+//mod spatial;
 mod quark;
-mod deduction;
+//mod deduction;
 mod lowering;
-mod circles;
+//mod circles;
 mod types3;
-mod solver;
+//mod solver;
 mod node;
 mod quark2;
 //mod types2;

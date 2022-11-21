@@ -36,7 +36,7 @@ impl Oracle {
         todo!()
     }
 
-    pub fn add_fact(&mut self, fact: TypeFact) {
+    pub fn add_fact(&mut self, fact: Fact) {
     }
 
     /// The "single thread" that steps the phases

@@ -154,11 +154,15 @@ impl LoweredType {
         Some(chunk)
     }
 
-    pub fn field(&self, name: IStr) -> Option<(LLVMChunk, LVal)> {
+    pub fn field(&self, self_ref: LLVMArg, name: IStr) -> Option<(LLVMChunk, LVal)> {
+        let chunk = LLVMChunk::empty();
+
         todo!()
     }
 
-    pub fn dynmem(&self, tag: ConstValue) -> Option<(LLVMChunk, LVal)> {
+    pub fn dynmem(&self, self_ref: LLVMArg, tag: ConstValue) -> Option<DynMem> {
+        let chunk = LLVMChunk::empty();
+
         todo!()
     }
 
@@ -169,11 +173,16 @@ impl LoweredType {
         let (chunk, v) = LLVMArg::stalloc(self.as_llvm());
 
         for (fname, fval) in inputs {
-            let fref = self.field(fname);
+            let (f, lv) = self.field(v, fname).unwrap();
+            let rv = f.blob(lv.to_rval());
+
+            let fref = chunk.blob((f, rv));
+
+            chunk.then("store", [fval, fref]);
             //chunk.blob(fref.unwrap())
         }
 
-        todo!()
+        (chunk, v)
     }
 
     pub fn as_llvm(&self) -> LLVMType {
@@ -183,6 +192,40 @@ impl LoweredType {
 
 #[derive(Clone, Copy)]
 struct LVal(LLVMArg);
+
+struct DynMem {
+    base_type: LoweredTypeID,
+    tag: ConstValue,
+}
+
+impl DynMem {
+    /// convert this DynMem into an RVal by unwrapping
+    /// the tagged reference, panic on nonexistence
+    pub fn unwrap(&self) -> (LLVMChunk, LLVMChunk) {
+        let panic_edge = LLVMArg::label();
+        let contains_edge = LLVMArg::label();
+
+        let (chunk, has_member, member) = self.checked();
+
+        chunk.push()
+    }
+
+    pub fn assign(&self, val: LLVMArg) -> LLVMBlob {
+    }
+
+    /// First var is an i1 of whether the second var contains
+    /// a populated RVal to the target of the DynMem
+    pub fn checked(&self) -> (LLVMChunk, LLVMArg, LLVMArg) {
+    }
+}
+
+impl LVal {
+    pub fn to_rval(self) -> LLVMBlob<1> {
+        let inner = self.0;
+
+        inner.deref().unwrap()
+    }
+}
 
 /// Some "fields" or values can be called, or "applied"
 ///
