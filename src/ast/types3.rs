@@ -31,7 +31,7 @@ pub struct Type {
 pub struct Tag {
     //generic_args: Vec<Tag>,
 
-    value: Option<Literal>,
+    value: Option<>,
 
     //terminal: CtxID,
 
@@ -51,7 +51,7 @@ pub struct HeldType {
 pub struct FieldMember {
     named: IStr,
     typed: CtxID,
-    initialization: Option<Initialization>,
+    initialization: Option<ConstExpression>,
 }
 
 // An ESpan roughly corresponds to an expression, except it *does* know things like where

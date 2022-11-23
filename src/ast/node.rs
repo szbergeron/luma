@@ -129,6 +129,8 @@ impl Oracle {
     }
 }
 
+enum EmptyReason {}
+
 /*
  * fn corge<T>(f: T) -> Baz<T> {
  *     Baz<T> { d: "g" }

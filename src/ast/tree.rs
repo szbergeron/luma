@@ -174,7 +174,7 @@ pub struct Node {
 
     inner: NodeUnion,
 
-    frozen: OneWayBool,
+    frozen: Fuse,
 }
 
 impl Node {
@@ -210,7 +210,7 @@ impl Node {
             inner,
             children: DashMap::new(),
             //implementations_in_scope: RwLock::new(Vec::new()),
-            frozen: OneWayBool::new(),
+            frozen: Fuse::new(),
         };
 
         //let mut as_ptr = Box::into_raw(Box::new(n));
@@ -515,7 +515,7 @@ impl<T> RefPtr<T> {
 }
 
 #[derive(Debug)]
-struct OneWayBool {
+struct Fuse {
     /// State holds either -1 (if fused) or an
     /// integer number of writers that block
     /// fusing the bool
@@ -526,9 +526,9 @@ struct OneWayBool {
     //quick: UnsafeCell<bool>,
 }
 
-impl OneWayBool {
-    pub fn new() -> OneWayBool {
-        let r = OneWayBool {
+impl Fuse {
+    pub fn new() -> Fuse {
+        let r = Fuse {
             state: AtomicIsize::new(0),
             //quick: UnsafeCell::new(false),
         };
@@ -587,7 +587,7 @@ impl OneWayBool {
 }
 
 pub struct OneWayBoolGuard<'b> {
-    guards: &'b OneWayBool,
+    guards: &'b Fuse,
 }
 
 impl<'b> std::ops::Drop for OneWayBoolGuard<'b> {
