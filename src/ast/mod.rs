@@ -10,5 +10,6 @@ mod types3;
 //mod solver;
 mod node;
 mod quark2;
+mod tree2;
 //mod types2;
 //pub use crate::types::*;

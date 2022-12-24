@@ -1,0 +1,16 @@
+object Ta {
+    ma = 3
+
+    mb = "hello"
+
+    fn fa(self, va: int, vb: Tb) -> str {
+        format(va + vb[['a']])
+    }
+}
+
+object Tb {
+    fn fb()
+}
+
+object Tc {
+}

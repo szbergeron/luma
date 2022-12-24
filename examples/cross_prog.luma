@@ -1,0 +1,25 @@
+struct User {
+    name: str,
+    id: Uuid,
+}
+
+fn add_dependents(user: &User, dependents: [Uuid]) {
+    user.["dependents"] = dependents
+}
+
+fn print_dependents(user: &User) {
+    match user.["dependents"] {
+        Some(dependents) => {
+            for dep in dependents {
+                print(dep.as_str());
+            }
+        },
+        None => print("no dependents"),
+    }
+}
+
+fn assume_dependents(user: &User) {
+    let deps: [Uuid] = user.["dependents"]!;
+}
+
+
