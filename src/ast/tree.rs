@@ -194,12 +194,6 @@ impl Node {
         global: Option<CtxID>,
         inner: NodeUnion,
     ) -> CtxID {
-        /*let parent = parent
-            .map(|e| OnceCell::with_value(e))
-            .unwrap_or(OnceCell::new());
-        let global = global
-            .map(|e| OnceCell::with_value(e))
-            .unwrap_or(OnceCell::new());*/
 
         let n = Node {
             node_id: OnceCell::new(),
@@ -213,40 +207,8 @@ impl Node {
             frozen: Fuse::new(),
         };
 
-        //let mut as_ptr = Box::into_raw(Box::new(n));
-
-        /*let pinned = unsafe {
-            (*as_ptr).selfref = Some(NonNull::new(as_ptr).expect("as_ptr should not be null"));
-
-            // this should be fine but no promises.
-            // Currently there is no way to construct a pinned box in place
-            // from a raw pointer
-            Pin::new_unchecked(Box::from_raw(as_ptr))
-        };*/
-
         Contexts::instance().intern(n)
     }
-
-    /*pub fn set_parent(&mut self, parent: WeakNodeHandle) {
-        let guard = self
-            .frozen
-            .block()
-            .expect("tried to add a child to a frozen node");
-
-        self.parent = parent;
-
-        std::mem::drop(guard);
-    }
-
-    pub fn add_child(&self, child: Pin<Box<Node>>) {
-        let name = child.name;
-
-        // Since we have the only valid-to-deref handle to the child,
-        // we can freely set parent
-        child.set_parent(self.selfref);
-
-        self.children.insert(name, child);
-    }*/
 
     pub fn from_outer(
         o: cst::OuterScope,
@@ -319,28 +281,6 @@ impl Node {
                         functions,
                         fields,
                     } = i;
-
-                    //let mut items = Vec::new();
-
-                    //use super::types::ImplementationItem;
-
-                    /*for field in fields {
-                        let cst::Field { info, has_type, has_name } = field;
-
-                        let item = ImplementationItem::Field(FieldMember { name: has_name, ftype: has_type, default: () });
-                    }
-
-                    let body = super::types::ImplementationBody {
-                        node_info,
-                        items: todo!(),
-                    };
-
-                    let inner = super::types::Implementation {
-                        node_info,
-                        body: todo!(),
-                        impl_of: todo!(),
-                        impl_for: todo!(),
-                    };*/
                 }
                 TopLevel::Trait(t) => {
                     println!("Detected a trait!");

@@ -11,5 +11,6 @@ mod types3;
 mod node;
 mod quark2;
 mod tree2;
+mod resolve;
 //mod types2;
 //pub use crate::types::*;
