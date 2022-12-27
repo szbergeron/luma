@@ -240,10 +240,11 @@ pub mod interner {
     }
 }
 
-pub enum Either<A, B> {
+/*pub enum Either<A, B> {
     A(A),
     B(B),
-}
+}*/
+pub type Either<A, B> = Result<A, B>;
 
 pub enum EitherNone<A, B> {
     A(A),

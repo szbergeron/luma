@@ -1,0 +1,83 @@
+// in a library, or some part of the project that we don't want to mess with
+mod SomeoneElses {
+    struct Point {
+        x: f64,
+        y: f64,
+        z: f64,
+
+        fn operation[add] (self, other: Point) -> Point {
+            Point {
+                x: self.x + other.x,
+                y: self.y + other.y,
+                z: self.z + other.z,
+            }
+        }
+
+        // performs dot product
+        fn operation[multiply] (self, other: Point) -> f64 {
+            self.x * other.x + self.y * other.y + self.z * other.z
+        }
+
+        fn scale(self, by: f64) -> Point {
+            Point {
+                x: self.x * by,
+                y: self.y * by,
+                z: self.z * by
+            }
+        }
+    }
+
+    fn read_points() -> Vec<Point> {
+        // todo!
+    }
+}
+
+struct Sphere {
+    center: Point,
+    radius: f64,
+}
+
+// Finds the sphere that best matches the cloud of points
+// This can be used if the points are known to be centered
+// around (but not on) their average to find a kind of ring cluster
+fn best_sphere(p: Vec<Point>) -> Sphere {
+    let mut average: Point = Point { x: 0.0, y: 0.0, z: 0.0 };
+
+    for i: &mut Point in p {
+        //
+    }
+
+    average = average.scale(1 / p.len());
+
+    // now find best sphere
+    let mut total_distance: f64 = 0.0;
+
+    for i: &mut Point in p {
+        let dist: f64 = p[["distance"]](average).abs();
+
+        total_distance = total_distance + dist
+    }
+
+    let average_distance: f64 = total_distance / p.len() as f64;
+
+    Sphere { center: average, radius: average_distance }
+}
+
+fn main() {
+    let points: Vec<Point> = read_points();
+
+    for p: &mut Point in points {
+        p[["distance"]] = fn(self, other: Point) {
+            let diff: Point = other - self;
+
+            // do pythagorean for first 2 dim
+            let base_len: f64 = (diff.x.pow(2.0) + diff.z.pow(2.0)).sqrt();
+
+            let hyp_len: f64 = (base_len.pow(2.0) + diff.y.pow(2.0)).sqrt();
+
+            hyp_len // this is the distance between the points
+        }
+    }
+
+    let s: Sphere = best_sphere(points);
+}

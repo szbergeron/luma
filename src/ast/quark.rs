@@ -5,7 +5,7 @@ use std::{
 
 use smallvec::SmallVec;
 
-use crate::helper::{interner::IStr, VecOps};
+use crate::{helper::{interner::IStr, VecOps, Either}, cst::GenericHandle};
 
 use super::{tree::CtxID, types::InstanceConstraint};
 
@@ -615,16 +615,34 @@ enum Type {
     Dynamic(SymbolicType),
 }
 
+enum Fact {
+    /// The index of the generic, as well as the type that we have info on it for
+    Generic(usize, SymbolicType),
+
+    /// A possible base type for this
+    Base(SymbolicBase),
+}
+
+#[derive(Clone)]
+enum SymbolicBase {
+    Value(NodeID),
+}
+
 /// The known type of a variable at a point in the code,
 /// but symbolically accounting for generics
 struct SymbolicType {
-    /// The known interfaces that exist on this type
-    /// that the programmer can actually use without having to guard
-    interfaces: Vec<InterfaceValue>,
-
     /// The actual underlying base "value type", which
     /// could even be Unit
-    value_type: TypeValue,
+    //value_type: TypeValue,
+
+    //source_roots: Vec<>
+    //source_roots: Vec<NodeID>,
+
+    //generics: Vec<(GenericHandle, Vec<Either<>>)>,
+
+    facts: Vec<Fact>,
+
+    resolved: Option<ResolvedType>,
 
     /// When we construct a Type,
     /// we give it some TypeConstraints
@@ -642,6 +660,22 @@ impl SymbolicType {
             interfaces: Vec::new(),
             value_type: TypeValue::Unknown(),
             bounds: InstanceConstraint::unconstrained(),
+        }
+    }
+
+    /// At the moment, we don't support inheritance
+    /// But we do support deref
+    ///
+    /// So this is actually somewhat complicated, as
+    /// a variable of type T can come from a source of type *T or &T,
+    /// and that coercion needs to be backpropagated (sort of) here
+    ///
+    /// What we do is we try to find a candidate base that could satisfy the
+    /// other bases after some operation(s), and then try to resolve generics on that
+    pub fn try_merge(&self, other: SymbolicType) -> Result<SymbolicType, CompilationError> {
+        let mut bases: Vec<_> = other.facts.iter().chain(self.facts.iter()).filter_map(|e| if let Fact::Base(b) = e { Some(b.clone()) } else { None }).collect();
+
+        for b in bases {
         }
     }
 }
