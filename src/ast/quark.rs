@@ -407,15 +407,84 @@ pub struct Allocation {
 
     size: Option<usize>,
 
-    /// When we create an allocation
-    /// that isn't moved directly into, we use an Initialization.
-    ///
-    /// This is effectively a fully resolved type
-    /// that comes from a struct or value literal
-    constructed_from: Option<Initialization>,
+    source: Source,
+}
 
-    moves_into: Vec<AllocationReference>,
-    moves_from: Vec<AllocationReference>,
+struct FunctionCall {
+    to: CallableReference,
+
+    args: Vec<AllocationReference>,
+
+    returns: AllocationReference,
+
+    generics: Vec<GenericHandle>,
+}
+
+struct Construction {
+    of: NodeReference,
+
+    /// Each `field:value` pair provided
+    inputs: HashMap<IStr, AllocationReference>,
+
+    returns: AllocationReference,
+}
+
+struct UnresolvedMethodCall {
+    named: IStr,
+
+    args: Vec<AllocationReference>,
+
+    returns: AllocationReference,
+}
+
+pub enum Source {
+    /// If `!` or an analogue is provided,
+    /// this does not have a source since
+    /// it is unreachable. The type
+    /// of this allocation must be inferred
+    /// from downstream rather than top-to-bottom
+    Never(),
+
+    /// A Literal can be treated as an F(<builtin>) -> T,
+    /// the output is inferred but with (some) constraints
+    /// placed on it, such as "if the input parameter is an integer,
+    /// the inferred type must be integral in nature".
+    /// The input itself does have a type, but is casted
+    /// into the output type and the cast is optimized away.
+    Literal(),
+
+    /// A Function has a set of inputs and a set of outputs,
+    /// with generics linking them together. Through
+    /// those parameters, and their constraints,
+    /// Functions can help with inference both forward and backward,
+    /// and are very helpful specifically *because* they
+    /// are never overloaded, and thus provide
+    /// information that is as helpful as construction
+    /// and literals with single output types.
+    Function(Arc<FunctionCall>),
+
+    /// When we do Foo { a: b, c: d },
+    /// We perform a Construction
+    ///
+    /// A Construction is *very* similar to a normal
+    /// function, and the types are resolved in much the same way.
+    ///
+    /// A Constructor does not currently allow dynamic members
+    /// to be directly populated, instead those are desugared
+    /// into dot assignments after construction
+    Construction(Arc<Construction>),
+
+    /// Methods are separate from functions because
+    /// the target method is, if looking at all base T,
+    /// likely overloaded. Thus, until the
+    /// base type can be sufficiently inferred to determine
+    /// which method(s) are candidates for the call,
+    /// this lookup is blocked.
+    ///
+    /// Once the method is resolved, it is turned into a Function(FunctionCall),
+    /// with the target method as the callable
+    MethodUnresolved(Arc<UnresolvedMethodCall>),
+    //MethodResolved(Arc<ResolvedMethodCall>),
 }
 
 impl Allocation {
@@ -626,6 +695,10 @@ enum Fact {
 #[derive(Clone)]
 enum SymbolicBase {
     Value(NodeID),
+}
+
+trait Function {
+    fn 
 }
 
 /// The known type of a variable at a point in the code,

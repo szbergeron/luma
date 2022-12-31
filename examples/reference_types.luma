@@ -1,0 +1,15 @@
+struct &<T> {
+    inner: *T,
+
+    fn operation[deref] (self) -> T {
+        // intrinsic
+    }
+}
+
+struct Box<T> {
+    inner: *T,
+
+    fn operation[deref] (self) -> T {
+        &*self.inner
+    }
+}
