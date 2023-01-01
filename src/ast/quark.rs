@@ -34,6 +34,13 @@ pub struct Quark {
 }
 
 impl Quark {
+    fn build_from(root: FunctionDefinition) -> Quark {
+    }
+
+    /// Entry point to start the augmented Hindley Milner algorithm from a built quark
+    fn do_hm(&mut self) {
+    }
+
     fn push_frame(&mut self) {
         self.frames.push(self.variables.len())
     }
