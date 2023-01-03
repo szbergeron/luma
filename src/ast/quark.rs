@@ -825,7 +825,7 @@ impl TypeContext {
 
     /// Takes two roots (non Refer types) and creates a new type with
     /// the combination of their information
-    pub fn union_roots(&self, a: usize, b: usize) -> TypeType {
+    pub fn union_roots(&mut self, a: usize, b: usize) -> Result<TypeType, TypeError> {
     }
 
     /// descends this type ID until the type in question
