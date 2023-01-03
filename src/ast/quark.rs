@@ -34,6 +34,7 @@ pub struct Quark {
 }
 
 impl Quark {
+    /// Convert tree form into serial-evaluated sea of nodes (to be translated down to LLVM later)
     fn build_from(root: FunctionDefinition) -> Quark {
     }
 
@@ -683,13 +684,13 @@ pub struct UnbindOperation {
     level: usize,
 }
 
-enum Type {
+/*enum Type {
     Pointer(Box<Type>),
     Reference(Box<Type>),
     Generic(GenericConstraint),
     Value(SymbolicType),
     Dynamic(SymbolicType),
-}
+}*/
 
 enum Fact {
     /// The index of the generic, as well as the type that we have info on it for
@@ -734,6 +735,115 @@ struct SymbolicType {
     bounds: InstanceConstraint,
 }
 
+pub enum SymbolicType {
+    SameAs(Arc<SymbolicType>),
+    Unresolved(UnresolvedSymbolicType),
+    Resolved(ResolvedSymbolicType),
+}
+
+/// No, this has nothing *directly* to do with HKTs,
+/// it's just rust doesn't allow anonymous unions
+pub enum TypeType {
+    /// This type has been unioned with another to
+    /// create a new type, that this and the other ID both are the same as
+    Refer(usize),
+
+    /// A type that refers to a node and has all
+    /// of its generics populated with also resolved types
+    Resolved(Box<ResolvedType>),
+
+    /// A type with *some* information known,
+    /// either the
+    Symbolic(Box<SymbolicType>),
+
+    /// If you want to be all academic about it, this
+    /// is a "T"
+    Unknown(),
+}
+
+impl TypeType {
+}
+
+pub struct Type {
+    pub referees: Vec<usize>,
+    pub current: TypeType,
+}
+
+/*impl Type {
+    /// Modifies this, and the other, type to refer
+    /// to the same, new, type
+    pub fn union(&mut self, other: &mut Type, into: &mut Type, into_id: usize ) {
+
+        // update both to be sameas the new type
+        self.current = TypeType::Refer(into_id);
+        other.current = TypeType::Refer(into_id);
+        into.referees.appended()
+    }
+}*/
+
+pub struct TypeContext {
+    types: Vec<usize, Type>,
+}
+
+impl TypeContext {
+    pub fn union(&mut self, a: usize, b: usize) {
+
+        let root_1 = self.root(a);
+        let root_2 = self.root(b);
+
+        if root_1 == root2 {
+            return; // these types are already unioned, they have the same root
+        }
+
+        // we can safely do a get_two, since the types are not
+        // the same 
+
+        //let merged = ar.current.union(&br.current);
+        let merged = self.union_roots(root_1, root_2);
+
+
+        let nt = Type {
+            referees: vec![root_1, root_2],
+            current: merged,
+        };
+
+        let nti = self.types.indexed_insert(nt);
+
+        let (ar, br) = self.get_two(root_1, root_2);
+        ar.current = TypeType::Refer(nti);
+        br.current = TypeType::Refer(nti);
+    }
+
+    /// returns, *unordered*, mut refs to two Type vals by ID
+    pub fn get_two(&mut self, a: usize, b: usize) -> (&mut Type, &mut Type) {
+        let first = a.min(b);
+        let second = a.max(b);
+
+        let (vf, vs) = self.types.split_at_mut(second);
+        return (vf[first], vs[0]);
+    }
+
+    /// Takes two roots (non Refer types) and creates a new type with
+    /// the combination of their information
+    pub fn union_roots(&self, a: usize, b: usize) -> TypeType {
+    }
+
+    /// descends this type ID until the type in question
+    /// no longer is a Refer(), so a "root" type has been found
+    pub fn root(&self, mut id: usize) -> usize {
+        while let TypeType::Refer(iid) = self.types[id].current {
+            id = iid;
+        }
+
+        id
+    }
+}
+
+/*impl SymbolicType {
+    pub fn union(&self, other: &SymbolicType) ->  {
+    }
+}*/
+
 impl SymbolicType {
     pub fn unknown() -> Self {
         Self {
@@ -741,6 +851,9 @@ impl SymbolicType {
             value_type: TypeValue::Unknown(),
             bounds: InstanceConstraint::unconstrained(),
         }
+    }
+
+    pub fn union(&self, other: SymbolicType) -> Self {
     }
 
     /// At the moment, we don't support inheritance
