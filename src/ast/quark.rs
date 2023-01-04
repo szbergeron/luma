@@ -721,7 +721,10 @@ struct SymbolicType {
 
     //generics: Vec<(GenericHandle, Vec<Either<>>)>,
 
-    facts: Vec<Fact>,
+    //facts: Vec<Fact>,
+
+    /// a vec of symbolic types within the context that are being resolved
+    generics: Vec<usize>,
 
     resolved: Option<ResolvedType>,
 
