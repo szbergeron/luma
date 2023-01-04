@@ -7,7 +7,7 @@ use smallvec::SmallVec;
 
 use crate::{helper::{interner::IStr, VecOps, Either}, cst::GenericHandle};
 
-use super::{tree::CtxID, types::InstanceConstraint};
+use super::{tree::CtxID, types::InstanceConstraint, quark2::TypeError};
 
 /// Quark instances are provided a single
 /// function context to try to resolve within,
@@ -826,6 +826,34 @@ impl TypeContext {
     /// Takes two roots (non Refer types) and creates a new type with
     /// the combination of their information
     pub fn union_roots(&mut self, a: usize, b: usize) -> Result<TypeType, TypeError> {
+    }
+
+    /// In most cases, simple direct substitution is directly possible
+    ///
+    /// So, we optimize this case, and try to build the narrowing method as
+    /// a more expensive, less intuitive, fallback
+    ///
+    /// This is called with roots, so a and b must be distinct
+    pub fn simple_merge(&mut self, a: usize, b: usize) -> Result<TypeType, TypeError> {
+        let ta: &Type = self.types[a];
+        let tb: &Type = self.types[b];
+
+        match (ta.current, tb.current) {
+            (TypeType::Unknown(), TypeType::Unknown()) => Ok(TypeType::Unknown()),
+            (v, TypeType::Unknown()) | (TypeType::Unknown(), v) => Ok(v),
+            (TypeType::Resolved(a), TypeType::Resolved(b)) => {
+                // TODO: check that the two resolved types are the same type, if they've been
+                // resolved but are different then the programmer made a typing error
+            }
+            (TypeType::Resolved(r), TypeType::Symbolic(s)) | (TypeType::Symbolic(s), TypeType::Resolved(r)) => {
+                // TODO: check that the symbolic constraints are compatible with the resolved
+                // constraints
+            }
+            (TypeType::Symbolic(a), TypeType::Symbolic(b)) => {
+                // TODO: merge the types, this is the substitution case
+            }
+            (_, TypeType::Refer(_)) | (TypeType::Refer(_), _) => unreachable!("values are roots, so can not be refer")
+        }
     }
 
     /// descends this type ID until the type in question
