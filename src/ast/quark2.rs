@@ -35,7 +35,10 @@ pub struct Resolution {
 }
 
 #[derive(Clone)]
-pub struct TypeError {}
+pub struct TypeError {
+    components: Vec<usize>,
+    complaint: String,
+}
 
 impl Expression {
     /// Internally concurrently awaits a future on the resolved

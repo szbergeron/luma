@@ -706,36 +706,17 @@ enum SymbolicBase {
 }
 
 trait Function {
-    fn 
 }
 
 /// The known type of a variable at a point in the code,
 /// but symbolically accounting for generics
 struct SymbolicType {
-    /// The actual underlying base "value type", which
-    /// could even be Unit
-    //value_type: TypeValue,
-
-    //source_roots: Vec<>
-    //source_roots: Vec<NodeID>,
-
-    //generics: Vec<(GenericHandle, Vec<Either<>>)>,
-
-    //facts: Vec<Fact>,
-
-    /// a vec of symbolic types within the context that are being resolved
+    /// A vec of symbolic types within the context that are being resolved
+    /// The first element of this list is a generic for the "self" type,
+    /// if the other generics are provided. This allows
+    /// the user to combine a `_<u32>` constraint with a `Vec<_>` constraint
+    /// to get a Vec<u32>
     generics: Vec<usize>,
-
-    resolved: Option<ResolvedType>,
-
-    /// When we construct a Type,
-    /// we give it some TypeConstraints
-    /// that can be used to help solve an actual type
-    /// until either a solution type emerges,
-    /// or an impossibly satisfied set of constraints
-    /// emerges, or we reach limits to how hard we're
-    /// allowed to try to resolve a given type
-    bounds: InstanceConstraint,
 }
 
 pub enum SymbolicType {
@@ -770,6 +751,9 @@ impl TypeType {
 pub struct Type {
     pub referees: Vec<usize>,
     pub current: TypeType,
+}
+
+impl Type {
 }
 
 /*impl Type {
@@ -829,6 +813,9 @@ impl TypeContext {
     /// Takes two roots (non Refer types) and creates a new type with
     /// the combination of their information
     pub fn union_roots(&mut self, a: usize, b: usize) -> Result<TypeType, TypeError> {
+        if a == b {
+            // already unified, same type
+        }
     }
 
     /// In most cases, simple direct substitution is directly possible
@@ -837,9 +824,9 @@ impl TypeContext {
     /// a more expensive, less intuitive, fallback
     ///
     /// This is called with roots, so a and b must be distinct
-    pub fn simple_merge(&mut self, a: usize, b: usize) -> Result<TypeType, TypeError> {
-        let ta: &Type = self.types[a];
-        let tb: &Type = self.types[b];
+    pub fn simple_merge(&mut self, ia: usize, ib: usize) -> Result<TypeType, TypeError> {
+        let ta: &Type = self.types[ia];
+        let tb: &Type = self.types[ib];
 
         match (ta.current, tb.current) {
             (TypeType::Unknown(), TypeType::Unknown()) => Ok(TypeType::Unknown()),
@@ -854,6 +841,16 @@ impl TypeContext {
             }
             (TypeType::Symbolic(a), TypeType::Symbolic(b)) => {
                 // TODO: merge the types, this is the substitution case
+                if a.generics.len() != b.generics.len() {
+                    Err(TypeError { components: vec![ia, ib], complaint: String::from("types could not be unified because the cardinality of their generics was not compatible") })
+                } else {
+                    let unified_generics = a.generics.iter().zip(b.generics.iter()).map(|(ga, gb)| {
+                        let unioned = self.union(a, b);
+
+                        unioned
+                    }).collect();
+
+                }
             }
             (_, TypeType::Refer(_)) | (TypeType::Refer(_), _) => unreachable!("values are roots, so can not be refer")
         }
@@ -868,6 +865,8 @@ impl TypeContext {
 
         id
     }
+
+    pub fn register_type(&mut self, t: Type)
 }
 
 /*impl SymbolicType {
@@ -878,9 +877,9 @@ impl TypeContext {
 impl SymbolicType {
     pub fn unknown() -> Self {
         Self {
-            interfaces: Vec::new(),
-            value_type: TypeValue::Unknown(),
             bounds: InstanceConstraint::unconstrained(),
+            generics: todo!(),
+            resolved: todo!(),
         }
     }
 
