@@ -119,3 +119,167 @@ impl Block {
         //
     }
 }
+
+pub enum OperationResult {
+    /// If this block could not be resolved correctly,
+    /// then Error() is returned. Error() substitutes for every other
+    /// variant, and TODO: figure out if we can still compile
+    /// even with type errors and simply panic
+    Error(),
+
+    /// This block yields no result, and
+    /// purely produces side effects
+    Empty(),
+
+    /// This block yields a unified result
+    /// in a single value (not destructured, can still be composite)
+    Single(IStr),
+}
+
+pub struct MoveOperation {
+    from: AllocationReference,
+    into: AllocationReference,
+}
+
+pub struct AssignOperation {
+    /// Need to change this into pattern syntax at
+    /// some point for destructuring,
+    /// for now just make it a variable or reference
+    into: OperationReference,
+
+    value: OperationReference,
+}
+
+/// Does nothing, but falls through
+/// to the next operation just like
+/// other (non-return) operations
+///
+/// Used for lowering loops
+pub struct NoOperation {}
+
+/// A neverop should never be reachable from
+/// anywhere in the code (should not be a connected
+/// leaf in any CFG).
+pub struct NeverOperation {}
+
+/// Any node connected to an ExitOperation
+/// must provide a result value,
+/// and that result value forms an exit from the
+/// CFG. This node appears
+/// at the end of functions only, and forms
+/// the basis for implicit return
+pub struct ExitOperation {}
+
+pub struct CallOperation {
+    base: OperationReference,
+
+    named: IStr,
+
+    type_args: Vec<SymbolicType>,
+
+    result_type: Option<SymbolicType>,
+
+    resolved_target: Option<CtxID>,
+}
+
+pub struct ReturnOperation {
+    value: SymbolicType,
+}
+
+pub struct JumpOperation {
+    to: OperationReference,
+}
+
+pub struct ModifyOperation {
+    /// The target of a Modify,
+    /// the value in `from` is added as an implementation
+    /// to this object
+    into: OperationReference,
+
+    /// Must yield an expression of Implemetation
+    /// type
+    from: OperationReference,
+}
+
+pub struct ImplementOperation {}
+
+pub struct GuardOperation {
+    /// The guard target
+    check: OperationReference,
+
+    /// GuardOperation checks that the value in `check` is an `is`
+    is: SymbolicType,
+
+    then: OperationReference,
+
+    otherwise: Option<OperationReference>,
+
+    /// Not yet useful, will allow statically
+    /// ensuring that a type propagates for a given usage for any possible path
+    ///
+    /// Basically allows for a guard inside an `if true` or on the basic path
+    /// to force itself to pass, so if we're a closure called
+    /// inside of a function that isn't offering generics but we can know that
+    /// we're passing in a given type, that intermediate function can be monomorphised to
+    /// pass additional information and not require a recheck of the type
+    require_resolvable: bool,
+}
+
+pub struct BranchOperation {
+    /// Use `eval` as the descriminant for the branch,
+    /// it should either produce a bool (an i1) or
+    /// a larger integer type (that may have more data from guards)
+    /// that allows a "switch"
+    eval: OperationReference,
+
+    /// Take the result of `eval` as an integral
+    /// type aliased `n` and branch to the `n`th
+    /// entry in `targets` before converging at the end of
+    /// this operation
+    ///
+    /// All entries in `targets` should
+    /// be possible to narrow to a single type,
+    /// with additional checks possible to warn
+    /// about very loose divergences
+    targets: SmallVec<[OperationReference; 2]>,
+}
+
+/// A name is optional here as
+/// binding can occur during destructuring
+/// but is different from
+/// a destructure operation.
+///
+/// Think if someone does `let (a, b): (A, B);`,
+/// the bind is done to an allocation of type (A, B)
+/// even though that bind itself is unnamed
+pub struct BindOperation {
+    allocation_type: SymbolicType,
+
+    named: Option<IStr>,
+
+    allocation: AllocationReference,
+    //level: usize,
+}
+
+/// Any bindings at a level equal to or greater than `level`
+/// expire here
+pub struct UnbindOperation {
+    level: usize,
+}
+
+/*enum Type {
+    Pointer(Box<Type>),
+    Reference(Box<Type>),
+    Generic(GenericConstraint),
+    Value(SymbolicType),
+    Dynamic(SymbolicType),
+}*/
+
+enum Fact {
+    /// The index of the generic, as well as the type that we have info on it for
+    Generic(usize, SymbolicType),
+
+    /// A possible base type for this
+    Base(SymbolicBase),
+}
+

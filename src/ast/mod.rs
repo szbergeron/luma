@@ -9,7 +9,7 @@ mod lowering;
 mod types3;
 //mod solver;
 mod node;
-mod quark2;
+//mod quark2;
 mod tree2;
 mod resolve;
 //mod types2;

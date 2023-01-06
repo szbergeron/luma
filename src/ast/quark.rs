@@ -7,7 +7,9 @@ use smallvec::SmallVec;
 
 use crate::{helper::{interner::IStr, VecOps, Either}, cst::GenericHandle};
 
-use super::{tree::CtxID, types::InstanceConstraint, quark2::TypeError};
+use super::{tree::{CtxID, NodeReference}, types::InstanceConstraint, quark2::TypeError};
+
+struct TypeID(usize);
 
 /// Quark instances are provided a single
 /// function context to try to resolve within,
@@ -187,217 +189,6 @@ impl Quark {
     }
 }
 
-pub struct Variable {
-    id: usize,
-    writes: Vec<OperationReference>,
-    reads: Vec<OperationReference>,
-}
-
-/// A Linear roughly corresponds to a function or method
-///
-/// There are a list of inputs and their associated contracted
-/// types, as well as an output expected type
-pub struct Linear {
-    //is_a: CtxID,
-    //with: Vec<Type>,
-    operations: Vec<Operation>,
-
-    /// This is constructed as a vecmap
-    /// since we modify it (splicing)
-    /// much more often than we need to read it in practice
-    /// (and during real checking we'll construct
-    /// a proper map after a threshold) I'd expect
-    /// a "proper" map to be much slower for the
-    /// almost always <100 element (often only 10)
-    /// slices that this will contain. The
-    /// values here are also so *dumb simple* (pairs of
-    /// two usize) that this will branch
-    /// predict almost perfectly up until
-    /// the actual result, and will vectorize
-    /// incredibly well
-    ///
-    /// The value at each index is the id
-    /// of the operation at that index
-    refs: Vec<usize>,
-
-    inputs: Vec<(IStr, Type)>,
-
-    output: Type,
-}
-
-impl Linear {
-    pub fn insert(&mut self, operation: Operation) {
-        self.refs.push(operation.id);
-        self.operations.push(operation);
-    }
-    /*pub fn append(&mut self, other: Linear) {
-        let prior = self.operations.len();
-
-        self.operations.append(&mut other.operations);
-        self.refs.append(&mut other.refs);
-
-
-    }*/
-    /*pub fn from_expression(expression: super::expressions::AnyExpression) -> Self {
-    }*/
-
-    /*
-     * I could make this work but I'm
-     * gonna come back later when I actually
-     * have things working to consider optimizing lowering these
-     *
-    /// position says which element to insert before.
-    /// If position is >= 0, it is the 0 indexed offset
-    /// from the start of the operation vec at which to insert.
-    ///
-    /// If position is < 0, it is the offset from the end
-    /// at which to insert the given segment with -1
-    /// translating to appending the span to the very
-    /// end of the list
-    pub fn insert(&mut self, other: Linear, position: isize) {
-        let position = if position > 0 {
-            position
-        } else {
-            self.operations.len() as isize + position - 1
-        };
-
-        assert!(position <= self.operations.len() as isize);
-        assert!(self.operations.len() == self.refs.len());
-        assert!(other.operations.len() == other.refs.len());
-
-        self.operations.reserve(other.operations.len());
-        self.refs.reserve(other.operations.len());
-
-        let (optr, osize, ocapacity) = self.operations.into_raw_parts();
-        let (rptr, rsize, rcapacity) = self.refs.into_raw_parts();
-
-        unsafe {
-            // first shift down the old elements
-
-            let offset = optr.offset(position);
-
-            std::ptr::copy
-        }
-
-        //self.operations.extend_one
-        todo!()
-    }
-
-    pub fn append(&mut self, other: Linear) {
-        self.insert(other, -1)
-    }*/
-}
-
-pub struct Operation {
-    id: usize,
-
-    /// a list of IDs of operations that can flow into this one
-    comes_from: SmallVec<[usize; 2]>,
-
-    /// any operation has a note that can be added
-    /// that will be
-    /// emitted with the node
-    /// during encode and is visible during debugging
-    note: IStr,
-    inner: OperationInner,
-}
-
-impl Operation {
-    /// Operations translate directly to syntactic LLVM basic blocks,
-    /// though they don't really translate to logical basic blocks.
-    /// Each one has a label, but they basically
-    /// implicitly "fall through" to the next block
-    pub fn generate_label(&self) -> IStr {
-        todo!()
-    }
-
-    pub fn push_llvm(&self, next: IStr) {}
-
-    pub fn call(&self, back_to: IStr) -> OperationResult {
-        todo!()
-    }
-
-    pub fn new(inner: OperationInner, note: IStr) -> Self {
-        static ID: AtomicUsize = AtomicUsize::new(1);
-
-        Self {
-            id: ID.fetch_add(1, Ordering::Relaxed),
-            note,
-            inner,
-            comes_from: Default::default(),
-        }
-    }
-}
-
-pub enum OperationInner {
-    Guard(GuardOperation),
-    Modify(ModifyOperation),
-    Call(CallOperation),
-    Jump(JumpOperation),
-    Return(ReturnOperation),
-    Branch(BranchOperation),
-    Bind(BindOperation),
-    //Implement(ImplementOperation),
-    Reference(VariableReferenceOperation),
-
-    Noop(NoOperation),
-    Never(NeverOperation),
-
-    Move(MoveOperation),
-
-    /// This could be modeled as a call, but
-    /// it is significant enough to our
-    /// resolution algorithm that it deserves
-    /// a separate representation
-    //Assign(AssignOperation),
-
-    /// When a scope starts (so bindings inside of it should be limited by a corresponding scope
-    /// end)
-    BeginScope(),
-
-    /// See BeginScope
-    EndScope(),
-}
-
-pub struct OperationReference {
-    id: usize,
-    index: Option<usize>,
-}
-
-
-
-/// An initialization is a branch point for type inference
-///
-/// When we construct, it takes a set of literals or other expressions
-/// and ties them all into the type of a new object
-pub struct Initialization {
-    is_type: SymbolicType,
-
-    values: Vec<(IStr, Value)>,
-}
-
-pub enum Value {
-    /// Used when we don't have a literal,
-    /// and we aren't composing a nested initialization
-    Expression(AllocationReference),
-
-    Initialization(Initialization),
-
-    /// A list of bytes
-    Literal(Vec<u8>),
-
-    /// If a value is not provided we can simply zero the field
-    /// Shouldn't actually expose syntactically, but used under the hood
-    Zeroed(),
-
-    /// Really shouldn't be used, and should almost never be exposed
-    /// to the programmer except with intrinsics with a lot of warnings
-    Uninit(),
-
-    /// later use, can use for partial initialization similar to rust { ..., ..val } syntax
-    Expanded(),
-}
-
 /// An Allocation is a typed memory region
 /// that can be referenced, assigned into,
 /// modified, and read
@@ -411,7 +202,7 @@ pub struct Allocation {
     name: Option<IStr>,
     note: Option<IStr>,
 
-    allocation_type: SymbolicType,
+    allocation_type: TypeID,
 
     size: Option<usize>,
 
@@ -506,9 +297,7 @@ impl Allocation {
 
             allocation_type: SymbolicType::unknown(),
             size: None,
-
-            moves_into: Vec::new(),
-            moves_from: Vec::new(),
+            source: todo!(),
         }
     }
 }
@@ -521,6 +310,12 @@ struct OwnedAllocationReference {
     id: usize,
 
     inner: AllocationReferenceInner,
+}
+
+#[derive(Clone)]
+pub struct TypeError {
+    components: Vec<usize>,
+    complaint: String,
 }
 
 #[derive(Clone, Copy)]
@@ -536,170 +331,6 @@ enum AllocationReferenceInner {
     /// it talks about the same reference
     Indirect(usize),
 }
-
-pub enum OperationResult {
-    /// If this block could not be resolved correctly,
-    /// then Error() is returned. Error() substitutes for every other
-    /// variant, and TODO: figure out if we can still compile
-    /// even with type errors and simply panic
-    Error(),
-
-    /// This block yields no result, and
-    /// purely produces side effects
-    Empty(),
-
-    /// This block yields a unified result
-    /// in a single value (not destructured, can still be composite)
-    Single(IStr),
-}
-
-pub struct MoveOperation {
-    from: AllocationReference,
-    into: AllocationReference,
-}
-
-pub struct AssignOperation {
-    /// Need to change this into pattern syntax at
-    /// some point for destructuring,
-    /// for now just make it a variable or reference
-    into: OperationReference,
-
-    value: OperationReference,
-}
-
-/// Does nothing, but falls through
-/// to the next operation just like
-/// other (non-return) operations
-///
-/// Used for lowering loops
-pub struct NoOperation {}
-
-/// A neverop should never be reachable from
-/// anywhere in the code (should not be a connected
-/// leaf in any CFG).
-pub struct NeverOperation {}
-
-/// Any node connected to an ExitOperation
-/// must provide a result value,
-/// and that result value forms an exit from the
-/// CFG. This node appears
-/// at the end of functions only, and forms
-/// the basis for implicit return
-pub struct ExitOperation {}
-
-pub struct CallOperation {
-    base: OperationReference,
-
-    named: IStr,
-
-    type_args: Vec<SymbolicType>,
-
-    result_type: Option<SymbolicType>,
-
-    resolved_target: Option<CtxID>,
-}
-
-pub struct ReturnOperation {
-    value: SymbolicType,
-}
-
-pub struct JumpOperation {
-    to: OperationReference,
-}
-
-pub struct ModifyOperation {
-    /// The target of a Modify,
-    /// the value in `from` is added as an implementation
-    /// to this object
-    into: OperationReference,
-
-    /// Must yield an expression of Implemetation
-    /// type
-    from: OperationReference,
-}
-
-pub struct ImplementOperation {}
-
-pub struct GuardOperation {
-    /// The guard target
-    check: OperationReference,
-
-    /// GuardOperation checks that the value in `check` is an `is`
-    is: SymbolicType,
-
-    then: OperationReference,
-
-    otherwise: Option<OperationReference>,
-
-    /// Not yet useful, will allow statically
-    /// ensuring that a type propagates for a given usage for any possible path
-    ///
-    /// Basically allows for a guard inside an `if true` or on the basic path
-    /// to force itself to pass, so if we're a closure called
-    /// inside of a function that isn't offering generics but we can know that
-    /// we're passing in a given type, that intermediate function can be monomorphised to
-    /// pass additional information and not require a recheck of the type
-    require_resolvable: bool,
-}
-
-pub struct BranchOperation {
-    /// Use `eval` as the descriminant for the branch,
-    /// it should either produce a bool (an i1) or
-    /// a larger integer type (that may have more data from guards)
-    /// that allows a "switch"
-    eval: OperationReference,
-
-    /// Take the result of `eval` as an integral
-    /// type aliased `n` and branch to the `n`th
-    /// entry in `targets` before converging at the end of
-    /// this operation
-    ///
-    /// All entries in `targets` should
-    /// be possible to narrow to a single type,
-    /// with additional checks possible to warn
-    /// about very loose divergences
-    targets: SmallVec<[OperationReference; 2]>,
-}
-
-/// A name is optional here as
-/// binding can occur during destructuring
-/// but is different from
-/// a destructure operation.
-///
-/// Think if someone does `let (a, b): (A, B);`,
-/// the bind is done to an allocation of type (A, B)
-/// even though that bind itself is unnamed
-pub struct BindOperation {
-    allocation_type: SymbolicType,
-
-    named: Option<IStr>,
-
-    allocation: AllocationReference,
-    //level: usize,
-}
-
-/// Any bindings at a level equal to or greater than `level`
-/// expire here
-pub struct UnbindOperation {
-    level: usize,
-}
-
-/*enum Type {
-    Pointer(Box<Type>),
-    Reference(Box<Type>),
-    Generic(GenericConstraint),
-    Value(SymbolicType),
-    Dynamic(SymbolicType),
-}*/
-
-enum Fact {
-    /// The index of the generic, as well as the type that we have info on it for
-    Generic(usize, SymbolicType),
-
-    /// A possible base type for this
-    Base(SymbolicBase),
-}
-
 #[derive(Clone)]
 enum SymbolicBase {
     Value(NodeID),
@@ -712,11 +343,10 @@ trait Function {
 /// but symbolically accounting for generics
 struct SymbolicType {
     /// A vec of symbolic types within the context that are being resolved
-    /// The first element of this list is a generic for the "self" type,
-    /// if the other generics are provided. This allows
-    /// the user to combine a `_<u32>` constraint with a `Vec<_>` constraint
-    /// to get a Vec<u32>
     generics: Vec<usize>,
+
+    /// The type that this allocation must provide at this usage site
+    typeclass: Option<NodeReference>,
 }
 
 pub enum SymbolicType {
@@ -1123,3 +753,215 @@ impl TypeContext {
         panic!("BUG: type constraints are mutually indirect")
     }
 }
+
+pub struct Variable {
+    id: usize,
+    writes: Vec<OperationReference>,
+    reads: Vec<OperationReference>,
+}
+
+/// A Linear roughly corresponds to a function or method
+///
+/// There are a list of inputs and their associated contracted
+/// types, as well as an output expected type
+pub struct Linear {
+    //is_a: CtxID,
+    //with: Vec<Type>,
+    operations: Vec<Operation>,
+
+    /// This is constructed as a vecmap
+    /// since we modify it (splicing)
+    /// much more often than we need to read it in practice
+    /// (and during real checking we'll construct
+    /// a proper map after a threshold) I'd expect
+    /// a "proper" map to be much slower for the
+    /// almost always <100 element (often only 10)
+    /// slices that this will contain. The
+    /// values here are also so *dumb simple* (pairs of
+    /// two usize) that this will branch
+    /// predict almost perfectly up until
+    /// the actual result, and will vectorize
+    /// incredibly well
+    ///
+    /// The value at each index is the id
+    /// of the operation at that index
+    refs: Vec<usize>,
+
+    inputs: Vec<(IStr, Type)>,
+
+    output: Type,
+}
+
+impl Linear {
+    pub fn insert(&mut self, operation: Operation) {
+        self.refs.push(operation.id);
+        self.operations.push(operation);
+    }
+    /*pub fn append(&mut self, other: Linear) {
+        let prior = self.operations.len();
+
+        self.operations.append(&mut other.operations);
+        self.refs.append(&mut other.refs);
+
+
+    }*/
+    /*pub fn from_expression(expression: super::expressions::AnyExpression) -> Self {
+    }*/
+
+    /*
+     * I could make this work but I'm
+     * gonna come back later when I actually
+     * have things working to consider optimizing lowering these
+     *
+    /// position says which element to insert before.
+    /// If position is >= 0, it is the 0 indexed offset
+    /// from the start of the operation vec at which to insert.
+    ///
+    /// If position is < 0, it is the offset from the end
+    /// at which to insert the given segment with -1
+    /// translating to appending the span to the very
+    /// end of the list
+    pub fn insert(&mut self, other: Linear, position: isize) {
+        let position = if position > 0 {
+            position
+        } else {
+            self.operations.len() as isize + position - 1
+        };
+
+        assert!(position <= self.operations.len() as isize);
+        assert!(self.operations.len() == self.refs.len());
+        assert!(other.operations.len() == other.refs.len());
+
+        self.operations.reserve(other.operations.len());
+        self.refs.reserve(other.operations.len());
+
+        let (optr, osize, ocapacity) = self.operations.into_raw_parts();
+        let (rptr, rsize, rcapacity) = self.refs.into_raw_parts();
+
+        unsafe {
+            // first shift down the old elements
+
+            let offset = optr.offset(position);
+
+            std::ptr::copy
+        }
+
+        //self.operations.extend_one
+        todo!()
+    }
+
+    pub fn append(&mut self, other: Linear) {
+        self.insert(other, -1)
+    }*/
+}
+
+pub struct Operation {
+    id: usize,
+
+    /// a list of IDs of operations that can flow into this one
+    comes_from: SmallVec<[usize; 2]>,
+
+    /// any operation has a note that can be added
+    /// that will be
+    /// emitted with the node
+    /// during encode and is visible during debugging
+    note: IStr,
+    inner: OperationInner,
+}
+
+impl Operation {
+    /// Operations translate directly to syntactic LLVM basic blocks,
+    /// though they don't really translate to logical basic blocks.
+    /// Each one has a label, but they basically
+    /// implicitly "fall through" to the next block
+    pub fn generate_label(&self) -> IStr {
+        todo!()
+    }
+
+    pub fn push_llvm(&self, next: IStr) {}
+
+    pub fn call(&self, back_to: IStr) -> OperationResult {
+        todo!()
+    }
+
+    pub fn new(inner: OperationInner, note: IStr) -> Self {
+        static ID: AtomicUsize = AtomicUsize::new(1);
+
+        Self {
+            id: ID.fetch_add(1, Ordering::Relaxed),
+            note,
+            inner,
+            comes_from: Default::default(),
+        }
+    }
+}
+
+pub enum OperationInner {
+    Guard(GuardOperation),
+    Modify(ModifyOperation),
+    Call(CallOperation),
+    Jump(JumpOperation),
+    Return(ReturnOperation),
+    Branch(BranchOperation),
+    Bind(BindOperation),
+    //Implement(ImplementOperation),
+    Reference(VariableReferenceOperation),
+
+    Noop(NoOperation),
+    Never(NeverOperation),
+
+    Move(MoveOperation),
+
+    /// This could be modeled as a call, but
+    /// it is significant enough to our
+    /// resolution algorithm that it deserves
+    /// a separate representation
+    //Assign(AssignOperation),
+
+    /// When a scope starts (so bindings inside of it should be limited by a corresponding scope
+    /// end)
+    BeginScope(),
+
+    /// See BeginScope
+    EndScope(),
+}
+
+pub struct OperationReference {
+    id: usize,
+    index: Option<usize>,
+}
+
+
+
+/// An initialization is a branch point for type inference
+///
+/// When we construct, it takes a set of literals or other expressions
+/// and ties them all into the type of a new object
+pub struct Initialization {
+    is_type: SymbolicType,
+
+    values: Vec<(IStr, Value)>,
+}
+
+pub enum Value {
+    /// Used when we don't have a literal,
+    /// and we aren't composing a nested initialization
+    Expression(AllocationReference),
+
+    Initialization(Initialization),
+
+    /// A list of bytes
+    Literal(Vec<u8>),
+
+    /// If a value is not provided we can simply zero the field
+    /// Shouldn't actually expose syntactically, but used under the hood
+    Zeroed(),
+
+    /// Really shouldn't be used, and should almost never be exposed
+    /// to the programmer except with intrinsics with a lot of warnings
+    Uninit(),
+
+    /// later use, can use for partial initialization similar to rust { ..., ..val } syntax
+    Expanded(),
+}
+
