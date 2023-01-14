@@ -355,6 +355,11 @@ pub enum SymbolicType {
     Resolved(ResolvedSymbolicType),
 }
 
+struct ResolvedType {
+    node: NodeReference,
+    generics: Vec<ResolvedType>,
+}
+
 /// No, this has nothing *directly* to do with HKTs,
 /// it's just rust doesn't allow anonymous unions
 pub enum TypeType {
@@ -403,7 +408,7 @@ pub struct TypeContext {
 }
 
 impl TypeContext {
-    pub fn union(&mut self, a: usize, b: usize) {
+    pub fn unify(&mut self, a: usize, b: usize) -> usize {
 
         let root_1 = self.root(a);
         let root_2 = self.root(b);
@@ -416,7 +421,7 @@ impl TypeContext {
         // the same 
 
         //let merged = ar.current.union(&br.current);
-        let merged = self.union_roots(root_1, root_2);
+        let merged = self.unify_roots(root_1, root_2);
 
 
         let nt = Type {
@@ -440,13 +445,18 @@ impl TypeContext {
         return (vf[first], vs[0]);
     }
 
+    /*
     /// Takes two roots (non Refer types) and creates a new type with
     /// the combination of their information
-    pub fn union_roots(&mut self, a: usize, b: usize) -> Result<TypeType, TypeError> {
+    pub fn unify_roots(&mut self, a: usize, b: usize) -> Result<TypeType, TypeError> {
         if a == b {
             // already unified, same type
+        } else {
+            let unified = TypeType::Symbolic(());
+            let ty = 
+            self.types.indexed_insert(unified);
         }
-    }
+    }*/
 
     /// In most cases, simple direct substitution is directly possible
     ///
@@ -454,7 +464,7 @@ impl TypeContext {
     /// a more expensive, less intuitive, fallback
     ///
     /// This is called with roots, so a and b must be distinct
-    pub fn simple_merge(&mut self, ia: usize, ib: usize) -> Result<TypeType, TypeError> {
+    pub fn unify_simple(&mut self, ia: usize, ib: usize) -> Result<TypeType, TypeError> {
         let ta: &Type = self.types[ia];
         let tb: &Type = self.types[ib];
 
@@ -496,7 +506,8 @@ impl TypeContext {
         id
     }
 
-    pub fn register_type(&mut self, t: Type)
+    pub fn register_type(&mut self, t: Type) {
+    }
 }
 
 /*impl SymbolicType {
