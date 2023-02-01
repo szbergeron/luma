@@ -20,7 +20,7 @@ impl ExpressionContext {
 #[derive(Clone, Debug)]
 pub enum AnyExpression {
     Assign(Assign),
-    Compare(Compare),
+
     Convert(Convert),
     While(Iterate),
     Branch(Branch),
@@ -113,6 +113,11 @@ impl AnyExpression {
 
                 self_id
             }
+            ExpressionWrapper::LetExpression(le) => {
+                let cst::LetExpression { node_info, primary_component, expression } = le;
+
+                todo!()
+            }
             ExpressionWrapper::Cast(_) => todo!(),
             ExpressionWrapper::Literal(_) => todo!(),
             ExpressionWrapper::MemberAccess(_) => todo!(),
@@ -120,7 +125,6 @@ impl AnyExpression {
             ExpressionWrapper::Block(_) => todo!(),
             ExpressionWrapper::IfThenElse(_) => todo!(),
             ExpressionWrapper::While(_) => todo!(),
-            ExpressionWrapper::LetExpression(_) => todo!(),
             ExpressionWrapper::Tuple(_) => todo!(),
             ExpressionWrapper::Return(_) => todo!(),
             ExpressionWrapper::Wildcard(_) => todo!(),

@@ -21,7 +21,6 @@
     const_mut_refs,
     box_syntax,
     never_type,
-    backtrace,
     backtrace_frames,
     unboxed_closures,
     fn_traits,
@@ -34,6 +33,8 @@
 #![allow(irrefutable_let_patterns)]
 #![allow(dead_code)]
 #![allow(incomplete_features)]
+#![allow(unused_variables)]
+#![allow(unreachable_code)]
 
 #[allow(unused_imports)]
 #[macro_use]

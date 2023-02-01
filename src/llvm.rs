@@ -85,15 +85,15 @@ impl Instruction {
     }
 
     pub fn annotype<W: std::io::Write>(&self, w: &mut std::io::BufWriter<W>, indent: usize) {
-        write!(w, "; members: ");
+        let _ = write!(w, "; members: ");
 
         for _ in 0..indent {
-            write!(w, "  ");
+            let _ = write!(w, "  ");
         }
 
         for a in self.args.clone() {
             let (ty, l) = a.split();
-            write!(w, "{l}:{ty:?}, ");
+            let _ = write!(w, "{l}:{ty:?}, ");
         }
     }
 
@@ -101,7 +101,7 @@ impl Instruction {
         self.annotype(w, indent);
 
         for _ in 0..indent {
-            write!(w, "  ");
+            let _ = write!(w, "  ");
         }
 
         match (self.inst.as_str(), self.args.as_slice()) {
@@ -118,7 +118,7 @@ impl Instruction {
                 let (from_type, from_label) = from.split();
                 let (into_type, into_label) = into.split();
 
-                writeln!(
+                let _ = writeln!(
                     w,
                     "{into_label} = load {into_type}, {from_type} {from_label}"
                 );
@@ -134,7 +134,7 @@ impl Instruction {
 
                 //writeln!(w, "{into_label} = load {into_type}, ptr {from_label}");
                 //writeln!(w, "; annotype: {}")
-                writeln!(
+                let _ = writeln!(
                     w,
                     "store {from_type} {from_label}, {into_type} {into_label}"
                 );
@@ -153,7 +153,7 @@ impl Instruction {
                 let (_, op1) = op1.split();
                 let (_, op2) = op2.split();
 
-                writeln!(w, "{out} = {inst} {ty} {op1}, {op2}");
+                let _ = writeln!(w, "{out} = {inst} {ty} {op1}, {op2}");
             }
             ("alloca", [arg]) => {
                 let (ty, l) = arg.split();
@@ -162,13 +162,13 @@ impl Instruction {
                     .dereferenced()
                     .expect("tried to assign alloca into a non-ptr type");
 
-                writeln!(w, "{l} = alloca {ty}");
+                let _ = writeln!(w, "{l} = alloca {ty}");
             }
             ("bitcast", [into, from]) => {
                 let (from_type, from_label) = from.split();
                 let (into_type, into_label) = into.split();
 
-                writeln!(
+                let _ = writeln!(
                     w,
                     "{into_label} = bitcast {from_type} {from_label} to {into_type}"
                 );
@@ -176,7 +176,7 @@ impl Instruction {
             ("phi", [out, start @ ..]) => {
                 let (ty, out) = out.split();
 
-                write!(w, "{out} = phi {ty} ");
+                let _ = write!(w, "{out} = phi {ty} ");
 
                 start
                     .array_chunks::<2>()
@@ -194,14 +194,14 @@ impl Instruction {
                             let (_, v) = v.split();
                             let (_, l) = l.split();
 
-                            write!(w, "[ {v}, {l} ]");
+                            let _ = write!(w, "[ {v}, {l} ]");
                         }
                         None => {
-                            write!(w, ", ");
+                            let _ = write!(w, ", ");
                         }
                     });
 
-                writeln!(w); // iter didn't push a newline
+                let _ = writeln!(w); // iter didn't push a newline
             }
             ("getelementptr", [out, ptr, ar_idx, rest @ ..]) if rest.len() <= 1 => {
                 let (ty, result) = out.split();
@@ -212,14 +212,14 @@ impl Instruction {
                 match rest {
                     // no field, just stride
                     [] => {
-                        writeln!(
+                        let _ = writeln!(
                             w,
                             "{result} = getelementptr {ty}, {ptr_ty} {ptr}, {ar_idx_ty} {ar_idx}"
                         );
                     }
                     [field_idx] => {
                         let (field_idx_ty, field_idx) = field_idx.split();
-                        writeln!(w, "{result} = getelementptr {ty}, {ptr_ty} {ptr}, {ar_idx_ty} {ar_idx}, {field_idx_ty} {field_idx}");
+                        let _ = writeln!(w, "{result} = getelementptr {ty}, {ptr_ty} {ptr}, {ar_idx_ty} {ar_idx}, {field_idx_ty} {field_idx}");
                     }
                     _ => unreachable!(),
                 }
@@ -232,7 +232,7 @@ impl Instruction {
 
                 debug_assert_matches!(cond, VarData::ICMPFlag(_));
 
-                writeln!(w, "{result} = {inst} {cond} {ty} {op1}, {op2}");
+                let _ = writeln!(w, "{result} = {inst} {cond} {ty} {op1}, {op2}");
             }
             (other, _) => {
                 panic!("Instruction {other} failed because of improper args or unrecognized opcode")
@@ -360,36 +360,37 @@ impl std::ops::FnOnce<()> for CMPFlag {
 
 impl std::fmt::Display for CMPFlag {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+
         let s = match self {
-            i_eq => "eq",
-            i_ne => "ne",
-            i_ugt => "ugt",
-            i_uge => "uge",
-            i_ult => "ult",
-            i_ule => "ule",
-            i_sgt => "sgt",
-            i_sge => "sge",
-            i_slt => "slt",
-            i_sle => "sle",
+            Self::i_eq => "eq",
+            Self::i_ne => "ne",
+            Self::i_ugt => "ugt",
+            Self::i_uge => "uge",
+            Self::i_ult => "ult",
+            Self::i_ule => "ule",
+            Self::i_sgt => "sgt",
+            Self::i_sge => "sge",
+            Self::i_slt => "slt",
+            Self::i_sle => "sle",
 
-            f_oeq => "oeq",
-            f_ogt => "ogt",
-            f_oge => "oge",
-            f_olt => "olt",
-            f_ole => "ole",
-            f_one => "one",
-            f_ord => "ord",
+            Self::f_oeq => "oeq",
+            Self::f_ogt => "ogt",
+            Self::f_oge => "oge",
+            Self::f_olt => "olt",
+            Self::f_ole => "ole",
+            Self::f_one => "one",
+            Self::f_ord => "ord",
 
-            f_ueq => "ueq",
-            f_ugt => "ugt",
-            f_uge => "uge",
-            f_ult => "ult",
-            f_ule => "ule",
-            f_une => "une",
-            f_uno => "uno",
+            Self::f_ueq => "ueq",
+            Self::f_ugt => "ugt",
+            Self::f_uge => "uge",
+            Self::f_ult => "ult",
+            Self::f_ule => "ule",
+            Self::f_une => "une",
+            Self::f_uno => "uno",
 
-            f_false => "false",
-            f_true => "true",
+            Self::f_false => "false",
+            Self::f_true => "true",
         };
 
         write!(f, "{s}")
@@ -728,7 +729,7 @@ pub struct LLVMFunctionBlock {
 }
 
 impl LLVMFunctionBlock {
-    pub fn encode<W: std::io::Write>(&self, into: &mut std::io::BufWriter<W>, indent: usize) {}
+    pub fn encode<W: std::io::Write>(&self, _into: &mut std::io::BufWriter<W>, _indent: usize) {}
 }
 
 #[derive(Copy, Clone)]
@@ -774,7 +775,7 @@ pub enum LLVMTargetType {
 }
 
 impl std::fmt::Display for LLVMTargetType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         todo!()
     }
 }
@@ -850,7 +851,7 @@ impl std::fmt::Display for LLVMType {
             0 => {
                 todo!()
             }
-            other => {
+            _other => {
                 write!(f, "ptr")
             }
         }
@@ -870,7 +871,7 @@ impl std::fmt::Debug for LLVMType {
 impl std::ops::FnOnce<()> for LLVMPrimitive {
     type Output = LLVMType;
 
-    extern "rust-call" fn call_once(self, args: ()) -> Self::Output {
+    extern "rust-call" fn call_once(self, _args: ()) -> Self::Output {
         let t = LLVMType {
             reference_depth: 0,
             inner_type: LLVMTargetType::Primitive(self),
