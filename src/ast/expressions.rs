@@ -19,6 +19,21 @@ impl ExpressionContext {
 }
 
 #[derive(Clone, Debug)]
+pub struct VarID(usize);
+
+#[derive(Clone, Debug)]
+pub struct StaticAccess {
+    field: IStr,
+    on: ExpressionID,
+}
+
+#[derive(Clone, Debug)]
+pub struct DynamicAccess {
+    tag: ExpressionID,
+    on: ExpressionID,
+}
+
+#[derive(Clone, Debug)]
 pub enum AnyExpression {
     /// A series of expressions that are evaluated in-order
     /// and their result is currently discarded
@@ -38,7 +53,6 @@ pub enum AnyExpression {
 
     Expire(VarID),
 
-
     ///
     Binding(Binding),
 
@@ -54,7 +68,7 @@ pub enum AnyExpression {
     /// just matched for within the inference engine
     CombinedInvokeVirtual(InvokeVirtual),
 
-    Access(Access),
+    StaticAccess(StaticAccess),
 
     DynamicAccess(DynamicAccess),
 }
@@ -102,14 +116,15 @@ impl AnyExpression {
 
                 // for now just have binary expressions be
                 // called on LHS regardless of actual associativity
-                let self_node = AnyExpression::InvokeVirtual(InvokeVirtual {
-                    args: vec![lhs_id, rhs_id],
-                    on: lhs_id,
-                    named: opstr,
-                    generics: vec![],
-                });
+                let self_id = AnyExpression::make_call(
+                    within,
+                    lhs_id,
+                    opstr,
+                    vec![lhs_id, rhs_id],
+                    vec![],
+                );
 
-                let (self_id, _self_ref) = within.add(self_node);
+                //let (self_id, _self_ref) = within.add(self_node);
 
                 self_id
             }
@@ -130,14 +145,9 @@ impl AnyExpression {
                 }
                 .intern();
 
-                let self_node = AnyExpression::InvokeVirtual(InvokeVirtual {
-                    args: vec![on_id],
-                    on: on_id,
-                    named: opstr,
-                    generics: vec![],
-                });
+                let self_id = AnyExpression::make_call(within, on_id, opstr, vec![on_id], vec![]);
 
-                let (self_id, _self_ref) = within.add(self_node);
+                //let (self_id, _self_ref) = within.add(self_node);
 
                 self_id
             }
@@ -162,14 +172,15 @@ impl AnyExpression {
                 }
                 .intern();
 
-                let self_node = AnyExpression::InvokeVirtual(InvokeVirtual {
-                    args: vec![lhs_id, rhs_id],
-                    on: lhs_id,
-                    named: opstr,
-                    generics: vec![],
-                });
+                let self_id = AnyExpression::make_call(
+                    within,
+                    lhs_id,
+                    opstr,
+                    vec![lhs_id, rhs_id],
+                    vec![],
+                );
 
-                let (self_id, _self_ref) = within.add(self_node);
+                //let (self_id, _self_ref) = within.add(self_node);
 
                 self_id
             }
@@ -182,14 +193,20 @@ impl AnyExpression {
 
                 let from_exp_id = Self::from_ast(within, expression);
 
-                fn let_recursive(primary_component: cst::LetComponent, within: &mut ExpressionContext) -> ExpressionID {
+                fn let_recursive(
+                    primary_component: cst::LetComponent,
+                    within: &mut ExpressionContext,
+                ) -> ExpressionID {
                     let binding = match primary_component {
                         cst::LetComponent::Identifier(LetComponentIdentifier {
                             node_info,
                             identifier_string,
                             type_specifier,
                         }) => {
-                            let b = AnyExpression::Binding(Binding { name: identifier_string, has_type: type_specifier });
+                            let b = AnyExpression::Binding(Binding {
+                                name: identifier_string,
+                                has_type: type_specifier,
+                            });
 
                             b
                         }
@@ -212,7 +229,6 @@ impl AnyExpression {
 
                 let self_id = let_recursive(primary_component, within);
 
-
                 self_id
             }
             ExpressionWrapper::Cast(_) => todo!(),
@@ -231,6 +247,16 @@ impl AnyExpression {
             ExpressionWrapper::ImplementationModification(_) => todo!(),
             ExpressionWrapper::DynamicMember(_) => todo!(),
         }
+    }
+
+    pub fn make_call(
+        within: &mut ExpressionContext,
+        on: ExpressionID,
+        to: IStr,
+        args: Vec<ExpressionID>,
+        generics: Vec<()>,
+    ) -> ExpressionID {
+        todo!()
     }
 }
 
