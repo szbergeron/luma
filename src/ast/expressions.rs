@@ -10,6 +10,7 @@ use super::{types::InstanceConstraint, tree::NodeReference};
 
 pub type ExpressionID = crate::avec::AtomicVecIndex;
 
+#[derive(Debug)]
 pub struct ExpressionContext {
     expressions: AtomicVec<AnyExpression>,
 }

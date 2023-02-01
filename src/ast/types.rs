@@ -320,7 +320,7 @@ use dashmap::DashMap;
 
 use crate::ast::tree::CtxID;
 
-use super::expressions;
+use super::expressions::{self, ExpressionID, ExpressionContext};
 
 #[derive(Debug)]
 pub struct FieldMember {
@@ -342,7 +342,7 @@ pub struct FunctionDefinition {
     parameters: Vec<(IStr, InstanceConstraint)>,
     return_type: InstanceConstraint,
 
-    implementation: cst::ExpressionWrapper,
+    implementation: ExpressionContext,
 }
 
 impl FunctionDefinition {

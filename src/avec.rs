@@ -183,12 +183,14 @@ impl<T> Chunk<T> {
 
 #[repr(C)]
 #[allow(dead_code)]
+#[derive(Debug)]
 struct SizedChunk<T> {
     size: usize,
     cur: AtomicUsize,
     content: [MaybeUninit<T>; 1],
 }
 
+#[derive(Debug)]
 pub struct AtomicVec<T, const CHUNK_COUNT: usize = 32, const FIRST_CHUNK_SIZE: usize = 32> {
     self_key: usize,
     chunks: [AtomicPtr<()>; CHUNK_COUNT],
