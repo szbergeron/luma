@@ -28,7 +28,8 @@
     assert_matches,
     exclusive_range_pattern,
     generic_const_exprs,
-    const_trait_impl
+    const_trait_impl,
+    box_patterns
 )]
 #![allow(irrefutable_let_patterns)]
 #![allow(dead_code)]

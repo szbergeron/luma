@@ -361,7 +361,7 @@ pub struct LetExpression {
 
 #[derive(Debug, Clone)]
 pub struct LetComponentScopedDestructure {
-    // TODO: need to pub more work into this, revisit when relevant for
+    // TODO: need to put more work into this, revisit when relevant for
 // product types down the line
 }
 
