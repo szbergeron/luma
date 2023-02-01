@@ -49,33 +49,70 @@ impl AnyExpression {
 
                 let self_node = AnyExpression::Assign(Assign { rhs: rhs_id, lhs: lhs_id });
 
-                let (self_id, self_ref) = within.expressions.push(self_node);
+                let (self_id, _self_ref) = within.expressions.push(self_node);
 
                 self_id
             }
             ExpressionWrapper::BinaryOperation(bo) => {
-                let cst::BinaryOperationExpression { node_info, lhs, rhs, operation } = bo;
+                let cst::BinaryOperationExpression { node_info: _, lhs, rhs, operation } = bo;
 
                 let rhs_id = Self::from_ast(within, *rhs);
                 let lhs_id = Self::from_ast(within, *lhs);
 
                 let opstr = match operation {
-                    cst::BinaryOperation::Multiply => "operation*",
-                    cst::BinaryOperation::Divide => "operation/",
-                    cst::BinaryOperation::Add => "operation+",
-                    cst::BinaryOperation::Subtract => "operation-",
+                    cst::BinaryOperation::Multiply => "operation *",
+                    cst::BinaryOperation::Divide => "operation /",
+                    cst::BinaryOperation::Add => "operation +",
+                    cst::BinaryOperation::Subtract => "operation -",
                 }.intern();
 
                 // for now just have binary expressions be
                 // called on LHS regardless of actual associativity
-                let self_node = AnyExpression::InvokeVirtual(InvokeVirtual { args: vec![rhs_id], on: lhs_id, named: opstr, generics: vec![] });
+                let self_node = AnyExpression::InvokeVirtual(InvokeVirtual { args: vec![lhs_id, rhs_id], on: lhs_id, named: opstr, generics: vec![] });
 
-                let (self_id, self_ref) = within.add(self_node);
+                let (self_id, _self_ref) = within.add(self_node);
 
                 self_id
             }
-            ExpressionWrapper::UnaryOperation(_) => todo!(),
-            ExpressionWrapper::Comparison(_) => todo!(),
+            ExpressionWrapper::UnaryOperation(uo) => {
+                let cst::UnaryOperationExpression { node_info: _, operation, subexpr } = uo;
+
+                let on_id = Self::from_ast(within, *subexpr);
+
+                let opstr = match operation {
+                    cst::UnaryOperation::Negate => "operation u-",
+                    cst::UnaryOperation::Invert => "operation u!",
+                    cst::UnaryOperation::Dereference => "operation u*",
+                    cst::UnaryOperation::Reference => "operation u&",
+                }.intern();
+
+                let self_node = AnyExpression::InvokeVirtual(InvokeVirtual { args: vec![on_id], on: on_id, named: opstr, generics: vec![] });
+
+                let (self_id, _self_ref) = within.add(self_node);
+
+                self_id
+            }
+            ExpressionWrapper::Comparison(c) => {
+                let cst::ComparisonOperationExpression { node_info: _, operation, lhs, rhs } = c;
+
+                let rhs_id = Self::from_ast(within, *rhs);
+                let lhs_id = Self::from_ast(within, *lhs);
+
+                let opstr = match operation {
+                    cst::ComparisonOperation::Equal => "operation ==",
+                    cst::ComparisonOperation::GreaterThan => "operation >",
+                    cst::ComparisonOperation::LessThan => "operation <",
+                    cst::ComparisonOperation::GreaterThanOrEqual => "operation >=",
+                    cst::ComparisonOperation::LessThanOrEqual => "operation <=",
+                    cst::ComparisonOperation::NotEqual => "operation !@=",
+                }.intern();
+
+                let self_node = AnyExpression::InvokeVirtual(InvokeVirtual { args: vec![lhs_id, rhs_id], on: lhs_id, named: opstr, generics: vec![] });
+
+                let (self_id, _self_ref) = within.add(self_node);
+
+                self_id
+            }
             ExpressionWrapper::Cast(_) => todo!(),
             ExpressionWrapper::Literal(_) => todo!(),
             ExpressionWrapper::MemberAccess(_) => todo!(),

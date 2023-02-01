@@ -580,7 +580,7 @@ impl CstNode for BinaryOperationExpression {
 
 #[derive(Clone)]
 pub struct ComparisonOperationExpression {
-    node_info: NodeInfo,
+    pub node_info: NodeInfo,
 
     pub operation: ComparisonOperation,
     //lhs: Box<dyn Expression>,
@@ -781,7 +781,7 @@ pub struct MethodCall {
 
 #[derive(Clone)]
 pub struct UnaryOperationExpression {
-    node_info: NodeInfo,
+    pub node_info: NodeInfo,
 
     pub operation: UnaryOperation,
     pub subexpr: Box<ExpressionWrapper>,
