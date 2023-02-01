@@ -1,10 +1,12 @@
+use std::collections::HashMap;
+
 use crate::{
     avec::AtomicVec,
     cst::{self, ExpressionWrapper, LetComponentIdentifier, TypeReference},
     helper::interner::{IStr, Internable},
 };
 
-use super::types::InstanceConstraint;
+use super::{types::InstanceConstraint, tree::NodeReference};
 
 pub type ExpressionID = crate::avec::AtomicVecIndex;
 
@@ -20,18 +22,6 @@ impl ExpressionContext {
 
 #[derive(Clone, Debug)]
 pub struct VarID(usize);
-
-#[derive(Clone, Debug)]
-pub struct StaticAccess {
-    field: IStr,
-    on: ExpressionID,
-}
-
-#[derive(Clone, Debug)]
-pub struct DynamicAccess {
-    tag: ExpressionID,
-    on: ExpressionID,
-}
 
 #[derive(Clone, Debug)]
 pub enum AnyExpression {
@@ -66,11 +56,28 @@ pub enum AnyExpression {
     ///
     /// I may remove this in favor of a `Call(Access(_)) nest pattern that is
     /// just matched for within the inference engine
-    CombinedInvokeVirtual(InvokeVirtual),
+    //CombinedInvokeVirtual(InvokeVirtual),
 
+    /// A field/method access through the "static" syntax approach,
+    /// where the target field must have been specified in the
+    /// type definition for the type of the base variable
     StaticAccess(StaticAccess),
 
+    /// A field/method access through the "dynamic" syntax approach,
+    /// this poses a barrier obstacle to the inference engine,
+    /// as the target type here requires whole-program inference
     DynamicAccess(DynamicAccess),
+
+    /// A variable, looks up a value and has type equal to the binding
+    Variable(VarID),
+
+    /// Subject to some level of type inference, represents
+    /// only a regular literal such as a str, i#, u#, f#, or ()
+    ///
+    /// Struct literals get their own variant in Composite()
+    Literal(Literal),
+
+    Composite(Composite),
 }
 
 impl AnyExpression {
@@ -406,8 +413,24 @@ pub struct Literal {
 }
 
 #[derive(Clone, Debug)]
-struct VariableReference {
-    name: IStr,
+pub struct StaticAccess {
+    field: IStr,
+    on: ExpressionID,
+}
+
+#[derive(Clone, Debug)]
+pub struct DynamicAccess {
+    tag: ExpressionID,
+    on: ExpressionID,
+}
+
+#[derive(Clone, Debug)]
+pub struct Composite {
+    base_type: NodeReference,
+
+    generics: Vec<TypeReference>,
+
+    fields: HashMap<IStr, ExpressionID>,
 }
 
 #[derive(Clone, Debug)]
