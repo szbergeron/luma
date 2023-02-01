@@ -436,18 +436,13 @@ pub struct Composite {
 #[derive(Clone, Debug)]
 struct Return {
     //meta: MetaData,
-    value: Box<AnyExpression>,
-}
-
-#[derive(Clone, Debug)]
-struct Block {
-    statements: Vec<AnyExpression>,
+    value: ExpressionID,
 }
 
 #[derive(Clone, Debug)]
 struct Break {
     //meta: MetaData,
-    value: AnyExpression,
+    value: ExpressionID,
 }
 
 /// Corresponds to unary `-` operator
