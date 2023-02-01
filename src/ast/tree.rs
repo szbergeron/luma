@@ -256,7 +256,7 @@ impl Node {
                     let name = f.name;
                     //let cst::FunctionDefinition { info, public, name, body, return_type, params } = f;
 
-                    let fd = ast::types::CallableDefinition::from_cst(f);
+                    let fd = ast::types::FunctionDefinition::from_cst(f);
 
                     let inner = NodeUnion::Function(fd);
 
@@ -418,7 +418,7 @@ impl std::fmt::Display for Node {
 #[derive(Debug)]
 pub enum NodeUnion {
     Type(ast::types::StructuralDataDefinition),
-    Function(ast::types::CallableDefinition),
+    Function(ast::types::FunctionDefinition),
     Global(!),
     Empty(),
     //Implementation(Implementation),

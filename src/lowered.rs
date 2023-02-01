@@ -207,7 +207,7 @@ impl DynMem {
 
         let (chunk, has_member, member) = self.checked();
 
-        chunk.push()
+        chunk.push(todo!())
     }
 
     pub fn assign(&self, val: LLVMArg) -> LLVMBlob {

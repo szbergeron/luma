@@ -1,7 +1,7 @@
 use crate::helper::interner::{IStr, Internable};
 
 use super::{
-    quark::{Linear, NoOperation, Operation},
+    //quark::{Linear, NoOperation, Operation},
     types::InstanceConstraint,
 };
 
@@ -18,14 +18,14 @@ impl AnyExpression {
     /// lower returns the
     /// node ref for the "entry" node, is given the
     /// node ref for the "next" node
-    pub fn lower(&self, into: &mut Linear, entry: usize) -> usize {
+    pub fn lower(&self, entry: usize) -> usize {
         match self {
-            AnyExpression::While(a) => a.lower(into),
-            AnyExpression::Compare(a) => a.lower(into),
-            AnyExpression::Convert(a) => a.lower(into),
-            AnyExpression::Assign(a) => a.lower(into),
-            AnyExpression::Branch(a) => a.lower(into),
-            AnyExpression::Binding(a) => a.lower(into),
+            AnyExpression::While(a) => a.lower(todo!()),
+            AnyExpression::Compare(a) => a.lower(todo!()),
+            AnyExpression::Convert(a) => a.lower(todo!()),
+            AnyExpression::Assign(a) => a.lower(todo!()),
+            AnyExpression::Branch(a) => a.lower(todo!()),
+            AnyExpression::Binding(a) => a.lower(todo!()),
         }
     }
 }
@@ -76,11 +76,11 @@ pub struct While {
 }
 
 impl While {
-    pub fn lower(&self, into: &mut Linear, backto: usize) {
-        let begin = Operation::new(
+    pub fn lower(&self, backto: usize) {
+        /*let begin = Operation::new(
             super::quark::OperationInner::Noop(NoOperation {}),
             "loop begin".intern(),
-        );
+        );*/
 
         todo!()
     }
@@ -105,7 +105,7 @@ pub struct BranchArm {
 }
 
 impl Branch {
-    pub fn lower(&self, into: &mut Linear, entry: usize) -> usize {
+    pub fn lower(&self, entry: usize) -> usize {
         todo!()
     }
 }

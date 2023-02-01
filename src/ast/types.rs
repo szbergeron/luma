@@ -316,16 +316,19 @@ use std::mem::swap;
 //use crate::cst::{self, TypeReference}::{self, TypeReference};
 use crate::cst::{self, NodeInfo};
 use crate::helper::interner::IStr;
+use crate::types;
 use dashmap::DashMap;
 use smallvec::SmallVec;
 
 use crate::ast::tree::CtxID;
 
+use super::expressions;
+
 #[derive(Debug)]
 pub struct FieldMember {
     pub name: IStr,
     pub has_type: Option<InstanceConstraint>,
-    pub initialization: Option<Initialization>,
+    pub initialization: Option<expressions::AnyExpression>,
 }
 
 #[derive(Debug)]
@@ -334,7 +337,7 @@ pub struct StructuralDataDefinition {
 }
 
 #[derive(Debug)]
-pub struct CallableDefinition {
+pub struct FunctionDefinition {
     info: cst::NodeInfo,
     name: IStr,
 
@@ -344,7 +347,7 @@ pub struct CallableDefinition {
     implementation: cst::ExpressionWrapper,
 }
 
-impl CallableDefinition {
+impl FunctionDefinition {
     pub fn from_cst(f: cst::FunctionDefinition) -> Self {
         let cst::FunctionDefinition {
             info,

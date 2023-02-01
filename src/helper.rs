@@ -717,3 +717,6 @@ impl<T> InternedRef<T> {
 }
 
 pub enum Never {}
+
+pub enum CompilationError {
+}

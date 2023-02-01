@@ -34,12 +34,6 @@ pub struct Resolution {
     expression_value: Option<ConstValue>,
 }
 
-#[derive(Clone)]
-pub struct TypeError {
-    components: Vec<usize>,
-    complaint: String,
-}
-
 impl Expression {
     /// Internally concurrently awaits a future on the resolved
     /// type of this expression

@@ -1,7 +1,6 @@
 use std::fmt::Debug;
 
 use super::TypeReference;
-use super::TypeReference;
 use super::cst_traits::*;
 
 
@@ -89,6 +88,7 @@ impl IntoCstNode for ExpressionWrapper {
             Self::FunctionCall(e) => e,
             Self::Identifier(e) => e,
             Self::ImplementationModification(e) => e,
+            Self::DynamicMember(e) => e,
         }
     }
 }
@@ -1121,7 +1121,7 @@ pub enum CSTTag {
     Type(TypeReference),
 }
 
-pub struct DynamicMemberAccess {
+pub struct DynamicMemberExpression {
     base: Box<ExpressionWrapper>,
 
     tag: CSTTag,

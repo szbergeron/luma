@@ -66,7 +66,7 @@ pub mod lalrpop_lexer;
 pub mod lex;
 pub mod llvm;
 pub mod lowered;
-pub mod mid_repr;
+//pub mod mid_repr;
 pub mod parse;
 pub mod traits;
 pub mod types;
