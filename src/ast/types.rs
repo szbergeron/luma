@@ -367,7 +367,7 @@ impl FunctionDefinition {
         Self {
             info,
             name,
-            implementation: body.into_ast(),
+            implementation: todo!(),
             return_type,
             parameters,
         }

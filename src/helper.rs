@@ -244,7 +244,7 @@ pub mod interner {
     A(A),
     B(B),
 }*/
-pub type Either<A, B> = Result<A, B>;
+//pub type Either<A, B> = Result<A, B>;
 
 pub enum EitherNone<A, B> {
     A(A),
@@ -648,7 +648,7 @@ impl<T> VecOps for Vec<T> {
         self
     }
 
-    fn merged(self, o: Self) -> Self {
+    fn merged(mut self, mut o: Self) -> Self {
         self.append(&mut o);
 
         self
@@ -719,4 +719,14 @@ impl<T> InternedRef<T> {
 pub enum Never {}
 
 pub enum CompilationError {
+}
+
+pub trait CopyMethod: Copy {
+    fn copied(self) -> Self;
+}
+
+impl<T> CopyMethod for T where T: Copy {
+    fn copied(self) -> Self {
+        self
+    }
 }

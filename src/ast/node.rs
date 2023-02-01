@@ -60,9 +60,9 @@ impl Oracle {
         todo!()
     }
 
-    pub async fn require(&self, unit: usize, binding: VarID, to_be: TypeConstraint) {
+    /*pub async fn require(&self, unit: usize, binding: VarID, to_be: TypeConstraint) {
         todo!()
-    }
+    }*/
 
     pub async fn tag_on(&self, unit: usize, on: VarID, tag: VarID) -> VarID {
         todo!()
@@ -97,9 +97,9 @@ impl Oracle {
         todo!()
     }
 
-    pub async fn query(&self, unit: usize, query: Query) -> Result<Fact, ()> {
+    /*pub async fn query(&self, unit: usize, query: Query) -> Result<Fact, ()> {
         todo!()
-    }
+    }*/
 
     /// Once the current solve context has done everything it
     /// can with the current leased facts, it can block on a future set of facts

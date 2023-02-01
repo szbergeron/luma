@@ -28,7 +28,8 @@
     array_chunks,
     assert_matches,
     exclusive_range_pattern,
-    generic_const_exprs
+    generic_const_exprs,
+    const_trait_impl
 )]
 #![allow(irrefutable_let_patterns)]
 #![allow(dead_code)]

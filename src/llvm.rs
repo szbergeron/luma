@@ -1,7 +1,7 @@
 use std::{assert_matches::debug_assert_matches, fmt::Debug, io::Write};
 
 use crate::{
-    helper::interner::{IStr, Internable, SpurHelper},
+    helper::{interner::{IStr, Internable, SpurHelper}, CopyMethod},
     lowered::LoweredType,
 };
 use futures::never::Never;
@@ -61,7 +61,7 @@ pub type GlobalID = u64;
 
 //const SpaceSpace: usize = 8; // we only allow 8 unique spaces currently
 
-struct Space(usize);
+pub struct Space(usize);
 
 impl Space {
     pub const fn space(i: usize) -> Space {
@@ -91,7 +91,7 @@ impl Instruction {
             write!(w, "  ");
         }
 
-        for a in self.args {
+        for a in self.args.clone() {
             let (ty, l) = a.split();
             write!(w, "{l}:{ty:?}, ");
         }
@@ -276,12 +276,24 @@ pub struct LLVMArg {
 }
 
 #[repr(packed)]
-#[derive(Copy, Clone, Debug)]
-struct Packed<T>
+#[derive(Copy)]
+pub struct Packed<T>
 where
-    T: Debug,
+    T: Debug + Copy + Clone,
 {
     v: T,
+}
+
+impl<T: std::fmt::Debug + Copy + Clone> Clone for Packed<T> {
+    fn clone(&self) -> Self {
+        Self { v: self.v.copied() }
+    }
+}
+
+impl<T: std::fmt::Debug + Copy + Clone> std::fmt::Debug for Packed<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.v.copied().fmt(f)
+    }
 }
 
 #[bitfield]
@@ -386,7 +398,7 @@ impl std::fmt::Display for CMPFlag {
 
 impl std::fmt::Display for VarData {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
+        match *self {
             Self::VarID(Packed { v: iid }) => {
                 write!(f, "%{}", iid.ident())
             }
@@ -545,7 +557,7 @@ impl LLVMArg {
                                                       // deref
         let new_var = LLVMArg::temp(new_type);
 
-        let chunk = LLVMChunk::empty();
+        let mut chunk = LLVMChunk::empty();
 
         chunk.push(Instruction::invoke("load", [new_var, *self]));
 
@@ -555,7 +567,7 @@ impl LLVMArg {
     pub fn bitcast(&self, other: LLVMType) -> LLVMBlob<1> {
         let new_var = Self::temp(other);
 
-        let chunk = LLVMChunk::empty();
+        let mut chunk = LLVMChunk::empty();
 
         chunk.push(Instruction::invoke("bitcast", [new_var, *self]));
 
@@ -568,7 +580,7 @@ impl LLVMArg {
         let pty = self.var_type.referenced();
         let space = Self::temp(pty);
 
-        let chunk = LLVMChunk::empty();
+        let mut chunk = LLVMChunk::empty();
 
         // make room for us on stack
         chunk.push(Instruction::invoke("alloca", [space]));
@@ -586,7 +598,7 @@ impl LLVMArg {
     pub fn stalloc(var_type: LLVMType) -> LLVMBlob<1> {
         let nv = Self::temp(var_type.referenced());
 
-        let chunk = LLVMChunk::empty();
+        let mut chunk = LLVMChunk::empty();
 
         chunk.push(Instruction::invoke("alloca", [nv]));
 
@@ -599,7 +611,7 @@ impl LLVMArg {
     /// self must be an integral type
     #[rustfmt::skip]
     pub fn get_bit(self, bit_index: usize) -> LLVMBlob<3> {
-        let chunk = LLVMChunk::empty();
+        let mut chunk = LLVMChunk::empty();
 
         /*
          * inputs [bit_index, original]
@@ -627,7 +639,7 @@ impl LLVMArg {
     /// self must be an integral type
     #[rustfmt::skip]
     pub fn set_bit(self, bit_index: usize, value: bool) -> LLVMBlob<5> {
-        let chunk = LLVMChunk::empty();
+        let mut chunk = LLVMChunk::empty();
 
         /*
          * inputs [bit_index, original, value]
@@ -689,7 +701,7 @@ impl<const INLINE_INSTRUCTIONS: usize> LLVMChunk<INLINE_INSTRUCTIONS> {
         todo!()
     }
 
-    pub fn then<const N: usize>(&mut self, inst: &str, args: [LLVMArg; N]) {
+    pub fn then<const N: usize>(&mut self, inst: &'static str, args: [LLVMArg; N]) {
         self.push(Instruction::invoke(inst, args));
     }
 
@@ -850,7 +862,7 @@ impl std::fmt::Debug for LLVMType {
         writeln!(
             f,
             "depth {} to inner {}",
-            self.reference_depth, self.inner_type
+            self.reference_depth.copied(), self.inner_type.copied()
         )
     }
 }

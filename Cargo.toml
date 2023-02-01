@@ -48,6 +48,7 @@ smallstr = { version="*", features=["union"] }
 
 modular-bitfield = "0.11.2"
 ifmt = "0.3.3"
+either = "1.8.1"
 
 [profile.dev]
 incremental = true

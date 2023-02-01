@@ -126,7 +126,7 @@ impl CtxID {
 /// Should not be constructed except by Contexts. This
 /// guarantees that no panic will ever occur when calling ::get()
 ///
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct NodeReference {
     node_id: OnceCell<CtxID>,
     within: CtxID,
@@ -304,7 +304,8 @@ impl Node {
 
                             let field = ast::types::FieldMember {
                                 name: has_name,
-                                has_type: ast::types::InstanceConstraint::from_cst(has_type),
+                                has_type: Some(ast::types::InstanceConstraint::from_cst(has_type)),
+                                initialization: todo!(),
                             };
 
                             field

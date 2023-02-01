@@ -484,7 +484,7 @@ impl CstNode for LetExpression {
 
 #[derive(Clone)]
 pub struct AssignmentExpression {
-    node_info: NodeInfo,
+    pub node_info: NodeInfo,
     //lhs: Box<dyn Expression>,
     //rhs: Box<dyn Expression>,
     //pub is_let_expression: bool,
@@ -526,7 +526,7 @@ impl CstNode for AssignmentExpression {
 
 #[derive(Clone)]
 pub struct BinaryOperationExpression {
-    node_info: NodeInfo,
+    pub node_info: NodeInfo,
 
     pub operation: BinaryOperation,
     pub lhs: Box<ExpressionWrapper>,
@@ -1109,6 +1109,7 @@ impl CstNode for ImplementationModificationExpression {
     }
 }
 
+#[derive(Debug, Clone)]
 pub enum CSTTag {
     /// Basic version, a tag can just be a string literal.
     /// All blocks must match type for a given member on a given base type
@@ -1121,10 +1122,17 @@ pub enum CSTTag {
     Type(TypeReference),
 }
 
+#[derive(Debug, Clone)]
 pub struct DynamicMemberExpression {
     base: Box<ExpressionWrapper>,
 
     tag: CSTTag,
+}
+
+impl CstNode for DynamicMemberExpression {
+    fn node_info(&self) -> NodeInfo {
+        todo!()
+    }
 }
 
 pub struct Member {

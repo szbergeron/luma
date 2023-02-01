@@ -10,15 +10,19 @@ use smallvec::SmallVec;
 
 use crate::{
     cst::GenericHandle,
-    helper::{interner::IStr, Either, VecOps, CompilationError},
+    helper::{interner::IStr, VecOps, CompilationError}, avec::{AtomicVec, AtomicVecIndex},
 };
+
+use either::Either;
 
 use super::{
     tree::{CtxID, NodeReference},
     types::{InstanceConstraint, FunctionDefinition},
 };
 
-struct TypeID(usize);
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TypeID(AtomicVecIndex);
+
 
 /// Quark instances are provided a single
 /// function context to try to resolve within,
@@ -46,7 +50,9 @@ pub struct Quark {
 
 impl Quark {
     /// Convert tree form into serial-evaluated sea of nodes (to be translated down to LLVM later)
-    fn build_from(root: FunctionDefinition) -> Quark {}
+    fn build_from(root: FunctionDefinition) -> Quark {
+        todo!()
+    }
 
     /// Entry point to start the augmented Hindley Milner algorithm from a built quark
     fn do_hm(&mut self) {}
@@ -81,7 +87,7 @@ impl Quark {
 
     /// Returns a reference to a blank, new, allocation
     fn alloc_any(&mut self) -> AllocationReference {
-        let id = self.allocations.indexed_insert(Allocation::any());
+        let id = self.allocations.indexed_insert(todo!());
         self.allocations[id].id = id;
 
         AllocationReference(id)
@@ -90,7 +96,7 @@ impl Quark {
     /// returns the ID of the root allocation that is referenced
     pub fn allocation_for(&mut self, ar: AllocationReference) -> usize {
         let owned = self.allocation_references.get(&ar.0).unwrap();
-        let seen = HashSet::new();
+        let mut seen = HashSet::new();
         let mut cur = owned;
 
         loop {
@@ -135,8 +141,8 @@ pub struct Allocation {
     source: Source,
 }
 
-struct FunctionCall {
-    to: CallableReference,
+pub struct FunctionCall {
+    //to: CallableReference, TODO
 
     args: Vec<AllocationReference>,
 
@@ -145,7 +151,7 @@ struct FunctionCall {
     generics: Vec<GenericHandle>,
 }
 
-struct Construction {
+pub struct Construction {
     of: NodeReference,
 
     /// Each `field:value` pair provided
@@ -154,7 +160,7 @@ struct Construction {
     returns: AllocationReference,
 }
 
-struct UnresolvedMethodCall {
+pub struct UnresolvedMethodCall {
     named: IStr,
 
     args: Vec<AllocationReference>,
@@ -215,24 +221,25 @@ pub enum Source {
 impl Allocation {
     /// Returns an allocation with an uninitialized ID
     /// and no constraints
-    pub fn any() -> Self {
+    pub fn todo() {}
+    /*pub fn any(ctx: &TypeContext) -> Self {
         Self {
             id: 0,
             name: None,
             note: None,
 
-            allocation_type: SymbolicType::unknown(),
+            allocation_type: ctx.,
             size: None,
             source: todo!(),
         }
-    }
+    }*/
 }
 
 #[derive(Copy, Clone)]
-struct AllocationReference(usize);
+pub struct AllocationReference(usize);
 
 #[derive(Clone, Copy)]
-struct OwnedAllocationReference {
+pub struct OwnedAllocationReference {
     id: usize,
 
     inner: AllocationReferenceInner,
@@ -240,12 +247,12 @@ struct OwnedAllocationReference {
 
 #[derive(Clone)]
 pub struct TypeError {
-    components: Vec<usize>,
+    components: Vec<TypeID>,
     complaint: String,
 }
 
 #[derive(Clone, Copy)]
-enum AllocationReferenceInner {
+pub enum AllocationReferenceInner {
     /// A direct reference "owns" an
     /// allocation, and is used for binds
     ///
@@ -260,25 +267,28 @@ enum AllocationReferenceInner {
 
 /// The known type of a variable at a point in the code,
 /// but symbolically accounting for generics
-struct SymbolicType {
+#[derive(Clone, Debug)]
+pub struct SymbolicType {
     /// A vec of symbolic types within the context that are being resolved
-    generics: Vec<usize>,
+    generics: Vec<TypeID>,
 
     /// The type that this allocation must provide at this usage site
     typeclass: Option<NodeReference>,
 }
 
-struct ResolvedType {
+#[derive(Clone, Debug)]
+pub struct ResolvedType {
     node: NodeReference,
     generics: Vec<ResolvedType>,
 }
 
 /// No, this has nothing *directly* to do with HKTs,
 /// it's just rust doesn't allow anonymous unions
+#[derive(Clone, Debug)]
 pub enum TypeType {
     /// This type has been unioned with another to
     /// create a new type, that this and the other ID both are the same as
-    Refer(usize),
+    Refer(TypeID),
 
     /// A type that refers to a node and has all
     /// of its generics populated with also resolved types
@@ -296,41 +306,51 @@ pub enum TypeType {
 impl TypeType {}
 
 pub struct Type {
-    pub referees: Vec<usize>,
+    pub referees: Vec<TypeID>,
     pub current: TypeType,
 }
 
 pub struct TypeContext {
-    types: Vec<(usize, Type)>,
+    types: AtomicVec<Type>,
 }
 
 impl TypeContext {
-    pub fn unify(&mut self, a: usize, b: usize) -> usize {
-        let root_1 = self.root(a);
-        let root_2 = self.root(b);
+    pub fn unify(&mut self, a: TypeID, b: TypeID) -> Result<TypeID, TypeError> {
+        let TypeID(root_1) = self.root(a);
+        let TypeID(root_2) = self.root(b);
 
         if root_1 == root_2 {
-            return; // these types are already unioned, they have the same root
+            return Ok(TypeID(root_1)); // these types are already unioned, they have the same root
         }
 
         // we can safely do a get_two, since the types are not
         // the same
 
         //let merged = ar.current.union(&br.current);
-        let merged = self.unify_simple(root_1, root_2);
+        let merged = self.unify_simple(TypeID(root_1), TypeID(root_2))?;
 
         let nt = Type {
-            referees: vec![root_1, root_2],
+            referees: vec![TypeID(root_1), TypeID(root_2)],
             current: merged,
         };
 
-        let nti = self.types.indexed_insert(nt);
+        let (nti, _) = self.types.push(nt);
 
-        let (ar, br) = self.get_two(root_1, root_2);
-        ar.current = TypeType::Refer(nti);
-        br.current = TypeType::Refer(nti);
+        //let (ar, br) = self.get_two(root_1, root_2);
+        let ar = self.types.get_mut(root_1);
+        ar.current = TypeType::Refer(TypeID(nti));
+
+        let br = self.types.get_mut(root_2);
+        br.current = TypeType::Refer(TypeID(nti));
+
+        todo!()
     }
 
+    pub fn new_alloc(&mut self) -> Allocation {
+        todo!()
+    }
+
+    /*
     /// returns, *unordered*, mut refs to two Type vals by ID
     pub fn get_two(&mut self, a: usize, b: usize) -> (&mut Type, &mut Type) {
         let first = a.min(b);
@@ -339,6 +359,7 @@ impl TypeContext {
         let (vf, vs) = self.types.split_at_mut(second);
         return (vf[first], vs[0]);
     }
+    */
 
     /*
     /// Takes two roots (non Refer types) and creates a new type with
@@ -359,37 +380,39 @@ impl TypeContext {
     /// a more expensive, less intuitive, fallback
     ///
     /// This is called with roots, so a and b must be distinct
-    pub fn unify_simple(&mut self, ia: usize, ib: usize) -> Result<TypeType, TypeError> {
-        let ta: &Type = self.types[ia];
-        let tb: &Type = self.types[ib];
+    pub fn unify_simple(&mut self, TypeID(ia): TypeID, TypeID(ib): TypeID) -> Result<TypeType, TypeError> {
+        let ta = self.types.get(ia);
+        let tb = self.types.get(ib);
 
-        match (ta.current, tb.current) {
+        match (&ta.current, &tb.current) {
             (TypeType::Unknown(), TypeType::Unknown()) => Ok(TypeType::Unknown()),
-            (v, TypeType::Unknown()) | (TypeType::Unknown(), v) => Ok(v),
+            (v, TypeType::Unknown()) | (TypeType::Unknown(), v) => Ok(v.clone()),
             (TypeType::Resolved(a), TypeType::Resolved(b)) => {
                 // TODO: check that the two resolved types are the same type, if they've been
                 // resolved but are different then the programmer made a typing error
+                todo!()
             }
             (TypeType::Resolved(r), TypeType::Symbolic(s))
             | (TypeType::Symbolic(s), TypeType::Resolved(r)) => {
                 // TODO: check that the symbolic constraints are compatible with the resolved
                 // constraints
+                todo!()
             }
             (TypeType::Symbolic(a), TypeType::Symbolic(b)) => {
                 // TODO: merge the types, this is the substitution case
                 if a.generics.len() != b.generics.len() {
-                    Err(TypeError { components: vec![ia, ib], complaint: String::from("types could not be unified because the cardinality of their generics was not compatible") })
+                    Err(TypeError { components: vec![TypeID(ia), TypeID(ib)], complaint: String::from("types could not be unified because the cardinality of their generics was not compatible") })
                 } else {
-                    let unified_generics = a
+                    let unified_generics: Vec<(TypeID, TypeID)> = a
                         .generics
                         .iter()
-                        .zip(b.generics.iter())
-                        .map(|(ga, gb)| {
-                            let unioned = self.union(a, b);
+                        .zip(b.generics.iter()).map(|(a, b)| (a.clone(), b.clone())).collect();
 
-                            unioned
-                        })
-                        .collect();
+                    for (ga, gb) in unified_generics {
+                            let unioned = self.unify(ga.clone(), gb.clone());
+                    }
+
+                    todo!()
                 }
             }
             (_, TypeType::Refer(_)) | (TypeType::Refer(_), _) => {
@@ -400,12 +423,12 @@ impl TypeContext {
 
     /// descends this type ID until the type in question
     /// no longer is a Refer(), so a "root" type has been found
-    pub fn root(&self, mut id: usize) -> usize {
-        while let TypeType::Refer(iid) = self.types[id].current {
+    pub fn root(&self, TypeID(mut id): TypeID) -> TypeID {
+        while let TypeType::Refer(TypeID(iid)) = self.types.get(id).current {
             id = iid;
         }
 
-        id
+        TypeID(id)
     }
 
     pub fn register_type(&mut self, t: Type) {}
@@ -419,7 +442,9 @@ impl SymbolicType {
         }
     }
 
-    pub fn union(&self, other: SymbolicType) -> Self {}
+    pub fn union(&self, other: SymbolicType) -> Self {
+        todo!()
+    }
 
     /// At the moment, we don't support inheritance
     /// But we do support deref
@@ -431,7 +456,7 @@ impl SymbolicType {
     /// What we do is we try to find a candidate base that could satisfy the
     /// other bases after some operation(s), and then try to resolve generics on that
     pub fn try_merge(&self, other: SymbolicType) -> Result<SymbolicType, CompilationError> {
-        let mut bases: Vec<_> = other
+        /*let mut bases: Vec<_> = other
             .facts
             .iter()
             .chain(self.facts.iter())
@@ -444,7 +469,9 @@ impl SymbolicType {
             })
             .collect();
 
-        for b in bases {}
+        for b in bases {}*/
+
+        todo!()
     }
 }
 

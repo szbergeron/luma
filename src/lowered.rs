@@ -12,7 +12,7 @@ use crate::{
 
 use std::io::Write;
 
-struct DynamicMemberRepresentation {
+pub struct DynamicMemberRepresentation {
     member_type: LoweredTypeID,
 }
 
@@ -20,7 +20,7 @@ struct DynamicMemberRepresentation {
 /// outputs an LLVMVar in the current context
 
 #[derive(PartialEq, Eq, Hash)]
-struct ConstValue {
+pub struct ConstValue {
     val: usize,
 }
 
@@ -110,7 +110,7 @@ impl LoweredType {
     pub fn bitfield_check(&self, self_ref: LLVMArg, tag: ConstValue) -> Option<LLVMBlob<1>> {
         let bit_index = *self.dynmem_lookup.get(&tag)?;
 
-        let chunk = LLVMChunk::empty();
+        let mut chunk = LLVMChunk::empty();
 
         let btype = self.bitfield_type();
 
@@ -136,7 +136,7 @@ impl LoweredType {
     pub fn bitfield_set(&self, self_ref: LLVMArg, tag: ConstValue, val: bool) -> Option<LLVMChunk<10>> {
         let bit_index = *self.dynmem_lookup.get(&tag)?;
 
-        let chunk = LLVMChunk::empty();
+        let mut chunk = LLVMChunk::empty();
 
         let btype = self.bitfield_type();
 
@@ -155,13 +155,13 @@ impl LoweredType {
     }
 
     pub fn field(&self, self_ref: LLVMArg, name: IStr) -> Option<(LLVMChunk, LVal)> {
-        let chunk = LLVMChunk::empty();
+        let chunk = LLVMChunk::<5>::empty();
 
         todo!()
     }
 
     pub fn dynmem(&self, self_ref: LLVMArg, tag: ConstValue) -> Option<DynMem> {
-        let chunk = LLVMChunk::empty();
+        let chunk = LLVMChunk::<5>::empty();
 
         todo!()
     }
@@ -170,10 +170,10 @@ impl LoweredType {
     ///
     /// inits the provided instance variables with the provided llvmvar vals
     pub fn construct(&self, inputs: Vec<(IStr, LLVMArg)>) -> LLVMBlob<1> {
-        let (chunk, v) = LLVMArg::stalloc(self.as_llvm());
+        let (mut chunk, v) = LLVMArg::stalloc(self.as_llvm());
 
         for (fname, fval) in inputs {
-            let (f, lv) = self.field(v, fname).unwrap();
+            let (mut f, lv) = self.field(v, fname).unwrap();
             let rv = f.blob(lv.to_rval());
 
             let fref = chunk.blob((f, rv));
@@ -191,9 +191,9 @@ impl LoweredType {
 }
 
 #[derive(Clone, Copy)]
-struct LVal(LLVMArg);
+pub struct LVal(LLVMArg);
 
-struct DynMem {
+pub struct DynMem {
     base_type: LoweredTypeID,
     tag: ConstValue,
 }
@@ -205,17 +205,21 @@ impl DynMem {
         let panic_edge = LLVMArg::label();
         let contains_edge = LLVMArg::label();
 
-        let (chunk, has_member, member) = self.checked();
+        let (mut chunk, _has_member, _member) = self.checked();
 
-        chunk.push(todo!())
+        chunk.push(todo!());
+
+        todo!()
     }
 
-    pub fn assign(&self, val: LLVMArg) -> LLVMBlob {
+    pub fn assign(&self, val: LLVMArg) -> LLVMBlob<5> {
+        todo!()
     }
 
     /// First var is an i1 of whether the second var contains
     /// a populated RVal to the target of the DynMem
     pub fn checked(&self) -> (LLVMChunk, LLVMArg, LLVMArg) {
+        todo!()
     }
 }
 

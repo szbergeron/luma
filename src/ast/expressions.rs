@@ -1,20 +1,102 @@
-use crate::helper::interner::{IStr, Internable};
+use crate::{helper::{interner::{IStr, Internable}, VecOps}, cst::{TypeReference, ExpressionWrapper, self}, avec::AtomicVec};
 
 use super::{
     //quark::{Linear, NoOperation, Operation},
     types::InstanceConstraint,
 };
 
+pub type ExpressionID = crate::avec::AtomicVecIndex;
+
+pub struct ExpressionContext {
+    expressions: AtomicVec<AnyExpression>,
+}
+
+impl ExpressionContext {
+    pub fn add(&mut self, expr: AnyExpression) -> (ExpressionID, &AnyExpression) {
+        self.expressions.push(expr)
+    }
+}
+
+#[derive(Clone, Debug)]
 pub enum AnyExpression {
     Assign(Assign),
     Compare(Compare),
     Convert(Convert),
-    While(While),
+    While(Iterate),
     Branch(Branch),
+
+    /// 
     Binding(Binding),
+
+    /// If the target is FQ we know exactly what to call, so we can
+    /// use it directly for inference
+    InvokeConcrete(InvokeConcrete),
+                                    
+    /// If this is a method call or otherwise not fully qualified 
+    /// then we just know the name, and a list of args, and
+    /// can't yet *really* use it for inference
+    InvokeVirtual(InvokeVirtual),
 }
 
 impl AnyExpression {
+    pub fn from_ast(within: &mut ExpressionContext, ast_node: ExpressionWrapper) -> ExpressionID {
+        match ast_node {
+            ExpressionWrapper::Assignment(a) => {
+                let cst::AssignmentExpression { node_info, lhs, rhs } = a;
+
+                let rhs_id = Self::from_ast(within, *rhs);
+                let lhs_id = Self::from_ast(within, *lhs);
+
+                let self_node = AnyExpression::Assign(Assign { rhs: rhs_id, lhs: lhs_id });
+
+                let (self_id, self_ref) = within.expressions.push(self_node);
+
+                self_id
+            }
+            ExpressionWrapper::BinaryOperation(bo) => {
+                let cst::BinaryOperationExpression { node_info, lhs, rhs, operation } = bo;
+
+                let rhs_id = Self::from_ast(within, *rhs);
+                let lhs_id = Self::from_ast(within, *lhs);
+
+                let opstr = match operation {
+                    cst::BinaryOperation::Multiply => "operation*",
+                    cst::BinaryOperation::Divide => "operation/",
+                    cst::BinaryOperation::Add => "operation+",
+                    cst::BinaryOperation::Subtract => "operation-",
+                }.intern();
+
+                // for now just have binary expressions be
+                // called on LHS regardless of actual associativity
+                let self_node = AnyExpression::InvokeVirtual(InvokeVirtual { args: vec![rhs_id], on: lhs_id, named: opstr, generics: vec![] });
+
+                let (self_id, self_ref) = within.add(self_node);
+
+                self_id
+            }
+            ExpressionWrapper::UnaryOperation(_) => todo!(),
+            ExpressionWrapper::Comparison(_) => todo!(),
+            ExpressionWrapper::Cast(_) => todo!(),
+            ExpressionWrapper::Literal(_) => todo!(),
+            ExpressionWrapper::MemberAccess(_) => todo!(),
+            ExpressionWrapper::Statement(_) => todo!(),
+            ExpressionWrapper::Block(_) => todo!(),
+            ExpressionWrapper::IfThenElse(_) => todo!(),
+            ExpressionWrapper::While(_) => todo!(),
+            ExpressionWrapper::LetExpression(_) => todo!(),
+            ExpressionWrapper::Tuple(_) => todo!(),
+            ExpressionWrapper::Return(_) => todo!(),
+            ExpressionWrapper::Wildcard(_) => todo!(),
+            ExpressionWrapper::LLVMLiteral(_) => todo!(),
+            ExpressionWrapper::Identifier(_) => todo!(),
+            ExpressionWrapper::FunctionCall(_) => todo!(),
+            ExpressionWrapper::ImplementationModification(_) => todo!(),
+            ExpressionWrapper::DynamicMember(_) => todo!(),
+        }
+    }
+}
+
+/*impl AnyExpression {
     /// lower returns the
     /// node ref for the "entry" node, is given the
     /// node ref for the "next" node
@@ -26,11 +108,12 @@ impl AnyExpression {
             AnyExpression::Assign(a) => a.lower(todo!()),
             AnyExpression::Branch(a) => a.lower(todo!()),
             AnyExpression::Binding(a) => a.lower(todo!()),
+            AnyExpression::Call(a)
         }
     }
-}
+}*/
 
-/// Describes the type of the expression
+/*/// Describes the type of the expression
 /// as well as the type that it needs to eventually
 /// be
 pub struct TypeInfo {
@@ -40,26 +123,29 @@ pub struct TypeInfo {
 
 pub struct MetaData {
     type_info: TypeInfo,
-}
+}*/
 
+#[derive(Clone, Debug)]
 pub struct Assign {
-    meta: MetaData,
+    //meta: MetaData,
 
-    rhs: Box<AnyExpression>,
-    lhs: Box<AnyExpression>,
+    rhs: ExpressionID,
+    lhs: ExpressionID,
 }
 
+#[derive(Clone, Debug)]
 pub struct Compare {
-    meta: MetaData,
+    //meta: MetaData,
 
-    rhs: Box<AnyExpression>,
-    lhs: Box<AnyExpression>,
+    rhs: ExpressionID,
+    lhs: ExpressionID,
 }
 
+#[derive(Clone, Debug)]
 pub struct Convert {
-    meta: MetaData,
+    //meta: MetaData,
 
-    source: Box<AnyExpression>,
+    source: ExpressionID,
     //target: TypeConstraint,
     /// Indicates that this is an inverred conversion,
     /// which can allow things like deref conversions
@@ -67,15 +153,35 @@ pub struct Convert {
     implicit: bool,
 }
 
-pub struct While {
-    meta: MetaData,
+#[derive(Clone, Debug)]
+pub struct Iterate {
+    //meta: MetaData,
 
-    condition: Box<AnyExpression>,
+    iterator: ExpressionID,
 
-    body: Box<AnyExpression>,
+    body: ExpressionID,
 }
 
-impl While {
+#[derive(Clone, Debug)]
+pub struct InvokeVirtual {
+    pub args: Vec<ExpressionID>,
+    pub on: ExpressionID,
+
+    pub named: IStr,
+
+    pub generics: Vec<TypeReference>,
+}
+
+#[derive(Clone, Debug)]
+pub struct InvokeConcrete {
+    pub args: Vec<ExpressionID>,
+
+    pub named: IStr,
+
+    pub generics: Vec<TypeReference>,
+}
+
+impl Iterate {
     pub fn lower(&self, backto: usize) {
         /*let begin = Operation::new(
             super::quark::OperationInner::Noop(NoOperation {}),
@@ -86,8 +192,9 @@ impl While {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct Branch {
-    meta: MetaData,
+    //meta: MetaData,
 
     /// A sequence, in order, of conditions to be matched (against
     /// the given expression)
@@ -98,6 +205,7 @@ pub struct Branch {
     elements: Vec<BranchArm>,
 }
 
+#[derive(Clone, Debug)]
 pub struct BranchArm {
     pattern: Pattern,
     guard: Option<AnyExpression>,
@@ -110,38 +218,45 @@ impl Branch {
     }
 }
 
+#[derive(Clone, Debug)]
 pub enum Pattern {
     Binding(Binding),
     Literal(Literal),
     Tuple(Vec<Pattern>),
 }
 
+#[derive(Clone, Debug)]
 pub struct Binding {
     name: IStr,
 
     has_type: InstanceConstraint,
 }
 
-struct Literal {
+#[derive(Clone, Debug)]
+pub struct Literal {
     has_type: InstanceConstraint,
 }
 
+#[derive(Clone, Debug)]
 struct VariableReference {
     name: IStr,
 }
 
+#[derive(Clone, Debug)]
 struct Return {
-    meta: MetaData,
+    //meta: MetaData,
 
     value: Box<AnyExpression>,
 }
 
+#[derive(Clone, Debug)]
 struct Block {
     statements: Vec<AnyExpression>,
 }
 
+#[derive(Clone, Debug)]
 struct Break {
-    meta: MetaData,
+    //meta: MetaData,
 
     value: AnyExpression,
 }
@@ -168,7 +283,7 @@ struct Guard {
 
 /// Corresponds to binary `<-` operator
 struct Implement {
-    target: Box<AnyExpression>,
+    target: ExpressionID,
 
     implementation: !,
 

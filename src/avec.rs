@@ -242,7 +242,8 @@ impl<T, const CC: usize, const FCS: usize> AtomicVec<T, CC, FCS> {
         }
     }
 
-    fn get_chunk(&self, idx: usize) -> &Chunk<T> {
+    /// returns a non-null ptr to a chunk
+    fn get_chunk(&self, idx: usize) -> *const Chunk<T> {
         // check first if it was already non-null
         let ptr = self.chunks[idx].load(std::sync::atomic::Ordering::Acquire);
 
@@ -340,7 +341,7 @@ impl<T, const CC: usize, const FCS: usize> AtomicVec<T, CC, FCS> {
         //println!("getting chunk at idx {}", idx);
         let chunk = self.get_chunk(idx);
 
-        self.try_insert_chunk(idx as i32, chunk, val)
+        self.try_insert_chunk(idx as i32, unsafe { chunk.as_ref().unwrap() }, val)
     }
 
     /// Marked unsafe since the &mut T aliases with the
@@ -401,8 +402,25 @@ impl<T, const CC: usize, const FCS: usize> AtomicVec<T, CC, FCS> {
             panic!("Tried to use a token from another AVec on self, this could cause unsoundness!");
         } else {
             let chunk = self.get_chunk(idx.chunk as usize);
+
+            let chunk = unsafe { chunk.as_ref().unwrap() };
             unsafe {
                 let t = chunk.content[idx.idx as usize].assume_init_ref();
+                t
+            }
+        }
+    }
+
+    /// The heart wants what the heart wants, I guess
+    pub fn get_mut(&mut self, idx: AtomicVecIndex) -> &mut T {
+        if idx.self_key != self.self_key {
+            panic!("Tried to use a token from another AVec on self, this could cause unsoundness!");
+        } else {
+            let chunk = self.get_chunk(idx.chunk as usize);
+
+            let chunk = unsafe { (chunk as *mut Chunk<T>).as_mut().unwrap() };
+            unsafe {
+                let t = chunk.content[idx.idx as usize].assume_init_mut();
                 t
             }
         }

@@ -1,18 +1,19 @@
 pub mod tree;
 pub mod types;
-mod expressions;
+pub mod expressions;
 //mod spatial;
 //mod deduction;
 //mod lowering;
 //mod circles;
 //mod types3;
 //mod solver;
-mod node;
+pub mod node;
 //mod quark2;
 //mod tree2;
 //mod types2;
 //pub use crate::types::*;
 
 //still useful:
-mod quark;
+pub mod quark;
+pub mod flat;
 //mod resolve;

@@ -1,6 +1,7 @@
 //use crate::ast;
 use crate::cst::{self, TypeReference};
 use crate::lex::{CodeLocation, ParseResultError, Token};
+use either::Either;
 
 //use crate::helper::lex_wrap::{CodeLocation, ParseResultError};
 
@@ -90,7 +91,7 @@ impl<'lexer> Parser<'lexer> {
                 // see if a type exists, user may specify type anywhere during parsing, but
                 // must be possible to resolve types directly for every binding
                 // without needing to infer
-                Either::A(elements)
+                Either::Left(elements)
             }
             Token::Identifier => {
                 let variable = t.take(Token::Identifier).join()?;
@@ -99,7 +100,7 @@ impl<'lexer> Parser<'lexer> {
                 start = variable.start;
                 end = variable.end;
 
-                Either::B(variable_name)
+                Either::Right(variable_name)
             }
             _ => {
                 unreachable!("expect_next_in forwarded a bad token")
@@ -123,14 +124,14 @@ impl<'lexer> Parser<'lexer> {
         let node_info = NodeInfo::from_indices(start, end);
 
         match content {
-            Either::A(tuple_elements) => {
+            Either::Left(tuple_elements) => {
                 t.success(Box::new(cst::LetComponent::Tuple(cst::LetComponentTuple {
                     elements: tuple_elements,
                     node_info,
                     type_specifier: specified_type,
                 })))
             }
-            Either::B(name) => t.success(Box::new(cst::LetComponent::Identifier(
+            Either::Right(name) => t.success(Box::new(cst::LetComponent::Identifier(
                 cst::LetComponentIdentifier {
                     identifier_string: name,
                     node_info,
