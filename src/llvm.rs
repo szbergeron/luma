@@ -1,7 +1,7 @@
 use std::{assert_matches::debug_assert_matches, fmt::Debug, io::Write};
 
 use crate::{
-    helper::{interner::{IStr, Internable, SpurHelper}, CopyMethod},
+    helper::{interner::{IStr, SpurHelper}, CopyMethod},
     lowered::LoweredType,
 };
 use futures::never::Never;

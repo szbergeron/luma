@@ -1,4 +1,4 @@
-use crate::{helper::{interner::{IStr, Internable}, VecOps}, cst::{TypeReference, ExpressionWrapper, self}, avec::AtomicVec};
+use crate::{helper::interner::{IStr, Internable}, cst::{TypeReference, ExpressionWrapper, self}, avec::AtomicVec};
 
 use super::{
     //quark::{Linear, NoOperation, Operation},

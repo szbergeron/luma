@@ -783,7 +783,7 @@ pub type JoinedResult<V, D = ()> = GuardedResult<V, join::Joined, catch::Caught,
  */
 pub mod schema {
 
-    use std::{convert::Infallible, ops::ControlFlow, collections::VecDeque, backtrace::Backtrace};
+    use std::{convert::Infallible, ops::ControlFlow, collections::VecDeque};
 
     use smallvec::{smallvec, SmallVec};
 

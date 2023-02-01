@@ -1,5 +1,4 @@
 use std::{
-    collections::HashMap,
     error::Error,
     hash::Hash,
     path::{Path, PathBuf},

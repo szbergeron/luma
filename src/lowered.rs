@@ -1,11 +1,11 @@
-use std::{collections::HashMap, fmt::format};
+use std::collections::HashMap;
 
 use smallstr::SmallString;
 
 use crate::{
-    helper::interner::{IStr, Internable},
+    helper::interner::IStr,
     llvm::{
-        CMPFlag, Instruction, LLVMArg, LLVMBlob, LLVMChunk, LLVMFunctionBlock, LLVMPrimitive,
+        LLVMArg, LLVMBlob, LLVMChunk, LLVMFunctionBlock, LLVMPrimitive,
         LLVMType, LoweredTypeID,
     },
 };
@@ -64,7 +64,7 @@ impl LoweredType {
     pub fn encode_type_definition<W: std::io::Write>(&self, w: &mut std::io::BufWriter<W>) {
         let typename = self.encode_type_reference();
 
-        write!(w, "{typename} = type {{ {{}}, ");
+        let _ = write!(w, "{typename} = type {{ {{}}, ");
 
         self.fields
             .iter()
@@ -81,16 +81,16 @@ impl LoweredType {
                 // comma or the field
                 match v {
                     None => {
-                        write!(w, ", ");
+                        let _ = write!(w, ", ");
                     }
                     Some((ty, is_dynmem)) => {
                         // TODO: dynmems require additional bitfield stuff and potential OOLing
-                        write!(w, "{}", ty.resolve(todo!()).encode_type_reference());
+                        let _ = write!(w, "{}", ty.resolve(todo!()).encode_type_reference());
                     }
                 };
             });
 
-        write!(w, "}}");
+        let _ = write!(w, "}}");
     }
 
     // in "powers of 2"

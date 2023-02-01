@@ -1,10 +1,6 @@
 use std::{
-    pin::Pin,
     ptr::NonNull,
-    sync::{
-        atomic::{compiler_fence, AtomicIsize, Ordering},
-        RwLock,
-    },
+    sync::atomic::{compiler_fence, AtomicIsize, Ordering},
 };
 
 use dashmap::DashMap;
@@ -14,18 +10,12 @@ use crate::{
     ast,
     compile::parse_tree::ParseTreeNode,
     cst,
-    cst::expressions::ExpressionWrapper,
-    cst::SyntaxTypeReference,
     helper::interner::{IStr, SpurHelper},
 };
 
 //use super::GenericConstraint;
 
 mod makers {
-    use super::*;
-    use crate::cst;
-    use crate::helper::interner::IStr;
-
     /*pub fn new_struct(
         named: IStr,
         generics: Vec<cst::GenericHandle>,

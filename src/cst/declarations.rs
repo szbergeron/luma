@@ -13,7 +13,7 @@ use super::TypeReference;*/
 
 //use crate::types::FunctionDeclaration;
 use std::fmt::Debug;
-use std::io::Write;
+//use std::io::Write;
 
 
 /*use crate::types::GlobalCtxNode;
@@ -369,7 +369,7 @@ impl CstNode for StaticVariableDeclaration {
     }
 
     fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
-        write!(f, "{} ", if self.public { "pub" } else { "" });
+        let _ = write!(f, "{} ", if self.public { "pub" } else { "" });
         self.expression.as_node().pretty(f, depth);
     }
 }

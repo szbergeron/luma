@@ -316,9 +316,7 @@ use std::mem::swap;
 //use crate::cst::{self, TypeReference}::{self, TypeReference};
 use crate::cst::{self, NodeInfo};
 use crate::helper::interner::IStr;
-use crate::types;
 use dashmap::DashMap;
-use smallvec::SmallVec;
 
 use crate::ast::tree::CtxID;
 

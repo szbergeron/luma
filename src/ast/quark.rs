@@ -1,23 +1,20 @@
 use std::{
     collections::{HashMap, HashSet},
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
+    sync::Arc,
 };
 
-use smallvec::SmallVec;
+
 
 use crate::{
     cst::GenericHandle,
     helper::{interner::IStr, VecOps, CompilationError}, avec::{AtomicVec, AtomicVecIndex},
 };
 
-use either::Either;
+
 
 use super::{
-    tree::{CtxID, NodeReference},
-    types::{InstanceConstraint, FunctionDefinition},
+    tree::NodeReference,
+    types::FunctionDefinition,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]

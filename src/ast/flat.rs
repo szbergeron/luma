@@ -1,4 +1,4 @@
-use crate::{avec::AtomicVec, cst::IntoCstNode};
+use crate::avec::AtomicVec;
 use crate::cst::ExpressionWrapper;
 
 use super::expressions::AnyExpression;

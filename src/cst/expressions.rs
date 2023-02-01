@@ -738,7 +738,7 @@ impl CstNode for MemberAccessExpression {
         //self.scope.as_node().pretty(f, depth);
         //self.on.iter().for_each(|on| on.as_node().pretty(f, depth));
         self.on.as_node().pretty(f, depth);
-        write!(f, ".{}", self.name.resolve());
+        let _ = write!(f, ".{}", self.name.resolve());
         //self.pattern.iter().for_each(|pattern| pattern.as_node().pretty(f, depth));
     }
 
