@@ -77,6 +77,10 @@ pub enum AnyExpression {
     /// Struct literals get their own variant in Composite()
     Literal(Literal),
 
+    /// A composite is pretty much reserved for struct literals,
+    /// though may be used in other situations eventually.
+    ///
+    /// It allows for easier, deeper, inference based on known field types
     Composite(Composite),
 }
 
