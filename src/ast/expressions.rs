@@ -30,29 +30,33 @@ pub enum AnyExpression {
     /// at the current scope
     Block(StringBlock),
 
-    /// a scope gets opened with an expression preceding
-    /// whose bindings and effects are visible once the scope opens.
-    ///
-    /// each time we do a binding, it opens a new scope
-    Scope(Scope),
-
     Assign(Assign),
 
     Convert(Convert),
     While(Iterate),
     Branch(Branch),
 
+    Expire(VarID),
+
+
     ///
     Binding(Binding),
 
     /// If the target is FQ we know exactly what to call, so we can
     /// use it directly for inference
-    InvokeConcrete(InvokeConcrete),
+    InvokeKnown(InvokeKnown),
 
     /// If this is a method call or otherwise not fully qualified
     /// then we just know the name, and a list of args, and
     /// can't yet *really* use it for inference
-    InvokeVirtual(InvokeVirtual),
+    ///
+    /// I may remove this in favor of a `Call(Access(_)) nest pattern that is
+    /// just matched for within the inference engine
+    CombinedInvokeVirtual(InvokeVirtual),
+
+    Access(Access),
+
+    DynamicAccess(DynamicAccess),
 }
 
 impl AnyExpression {
@@ -312,7 +316,7 @@ pub struct InvokeVirtual {
 }
 
 #[derive(Clone, Debug)]
-pub struct InvokeConcrete {
+pub struct InvokeKnown {
     pub args: Vec<ExpressionID>,
 
     pub named: IStr,
