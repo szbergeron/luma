@@ -318,7 +318,7 @@ use crate::cst::{self, NodeInfo};
 use crate::helper::interner::IStr;
 use dashmap::DashMap;
 
-use crate::ast::tree::CtxID;
+use crate::mir::tree::CtxID;
 
 use super::expressions::{self, ExpressionID, ExpressionContext};
 

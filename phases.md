@@ -1,5 +1,3 @@
-1. CST:
-
 CST is (in some form) carried into AST, but is in the first form
 not actually aware of module structure, those links haven't been made
 

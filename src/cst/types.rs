@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::{helper::interner::{IStr, SpurHelper}, ast::types::InstanceConstraint};
+use crate::{helper::interner::{IStr, SpurHelper}, mir::types::InstanceConstraint};
 
 use super::{NodeInfo, CstNode, IntoCstNode, FunctionDefinition};
 

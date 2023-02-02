@@ -1,3 +1,7 @@
+use crate::cst::FunctionDefinition;
+
+use crate::ast as ast;
+
 use std::{
     ptr::NonNull,
     sync::atomic::{compiler_fence, AtomicIsize, Ordering},
@@ -7,7 +11,7 @@ use dashmap::DashMap;
 use once_cell::sync::OnceCell;
 
 use crate::{
-    ast,
+    mir,
     compile::parse_tree::ParseTreeNode,
     cst,
     helper::interner::{IStr, SpurHelper},
