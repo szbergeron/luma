@@ -15,17 +15,54 @@ use crate::cst;
 
 use super::tree::CtxID;
 
+/// A TypeReference encloses an entire constraint,
+/// including any `where` clauses or `+` composition
+/// Each `+` is represented by an entry in `bases`
 #[derive(Debug)]
 pub struct TypeReference {
     bases: Vec<TypeBase>,
 }
 
 #[derive(Debug)]
+pub enum TypeBase {
+    /// 
+    Generic(GenericType),
+
+    Resolved(ResolvedType),
+
+    UnResolved(UnResolvedType),
+}
+
+#[derive(Debug)]
+struct GenericType {
+    /// Gennerics aren't yet plumbed through
+    ni: !,
+}
+
+#[derive(Debug)]
+struct ResolvedType {
+    base: CtxID,
+
+    /// May or may not yet be directly resolved
+    generics: Vec<TypeReference>,
+}
+
+#[derive(Debug)]
+struct UnResolvedType {
+    named: ScopedName,
+
+    generics: Vec<TypeReference>,
+}
+
+/*#[derive(Debug)]
 pub struct TypeBase {
+    /// 
+    is_generic: bool,
+
     refers: NodeReference,
 
     generics: Vec<
-}
+}*/
 
 #[derive(Debug)]
 pub enum NodeReference {
