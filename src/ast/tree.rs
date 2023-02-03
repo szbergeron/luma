@@ -1,10 +1,11 @@
-use crate::cst::FunctionDefinition;
+use crate::avec::AtomicVecIndex;
+use crate::{cst::FunctionDefinition, avec::AtomicVec};
 
 use crate::ast as ast;
 
 use std::{
     ptr::NonNull,
-    sync::atomic::{compiler_fence, AtomicIsize, Ordering},
+    sync::atomic::{compiler_fence, AtomicIsize, Ordering}, num::NonZeroUsize,
 };
 
 use dashmap::DashMap;
@@ -17,34 +18,6 @@ use crate::{
     helper::interner::{IStr, SpurHelper},
 };
 
-//use super::GenericConstraint;
-
-mod makers {
-    /*pub fn new_struct(
-        named: IStr,
-        generics: Vec<cst::GenericHandle>,
-        fields: Vec<FieldMember>,
-    ) -> CtxID {
-        let t = TypeDefinition { fields };
-        let inner = NodeUnion::Type(t);
-
-        let node = Node::new(named, generics, OnceCell::new(), OnceCell::new(), inner);
-
-        node
-
-        //within.add_child(node);
-        //let inner = NodeUnion::
-    }
-
-    pub fn new_namespace(named: IStr, generics: Vec<cst::GenericHandle>) -> CtxID {
-        let inner = NodeUnion::Empty();
-
-        let node = Node::new(named, generics, OnceCell::new(), OnceCell::new(), inner);
-
-        node
-    }*/
-}
-
 /// Designed to be a "global"
 /// interner of sorts for contexts, storing their
 /// handles for the overall tree to be cheap to
@@ -52,7 +25,7 @@ mod makers {
 /// or refcounting
 //#[derive(Default)]
 pub struct Contexts {
-    owning: boxcar::Vec<Node>,
+    owning: AtomicVec<Node>,
 
     by_path: DashMap<Box<[IStr]>, CtxID>,
 }
@@ -60,18 +33,17 @@ pub struct Contexts {
 impl Contexts {
     pub fn new() -> Self {
         Self {
-            owning: boxcar::Vec::new(),
+            owning: AtomicVec::new(),
             by_path: DashMap::new(),
         }
     }
 
     pub fn intern(&self, node: Node) -> CtxID {
-        let index = self.owning.push(node);
+        let (index, _ref) = self.owning.push(node);
         let id = CtxID(index);
 
         self.owning
             .get(index)
-            .unwrap()
             .node_id
             .set(id)
             .expect("User already set id for node");
@@ -86,7 +58,7 @@ impl Contexts {
         self
             .owning
             .get(r.0)
-            .expect("was given an incorrectly constructed CtxID in a NodeReference, source was not Contexts?")
+            //.expect("was given an incorrectly constructed CtxID in a NodeReference, source was not Contexts?")
     }
 
     pub fn instance() -> &'static Contexts {
@@ -101,7 +73,7 @@ impl Contexts {
 }
 
 #[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy, Debug)]
-pub struct CtxID(pub usize);
+pub struct CtxID(pub AtomicVecIndex);
 
 impl CtxID {
     pub fn to_ref(&self) -> &Node {
@@ -248,8 +220,6 @@ impl Node {
                 }
                 TopLevel::Function(f) => {
                     let name = f.name;
-                    //let cst::FunctionDefinition { info, public, name, body, return_type, params } = f;
-
                     let fd = ast::types::FunctionDefinition::from_cst(f);
 
                     let inner = NodeUnion::Function(fd);
