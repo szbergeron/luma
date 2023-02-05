@@ -113,7 +113,7 @@ impl FunctionDefinition {
         Self {
             info,
             name,
-            implementation: todo!(),
+            implementation: *body,
             return_type,
             parameters,
         }

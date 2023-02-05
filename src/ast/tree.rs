@@ -72,8 +72,20 @@ impl Contexts {
     }
 }
 
-#[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy, Debug)]
+#[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy)]
 pub struct CtxID(pub AtomicVecIndex);
+
+impl std::fmt::Debug for CtxID {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.resolve().fmt(f)
+    }
+}
+
+impl CtxID {
+    pub fn resolve(self) -> &'static Node {
+        Contexts::instance().get(&self)
+    }
+}
 
 impl CtxID {
     pub fn to_ref(&self) -> &Node {
@@ -119,7 +131,7 @@ impl NodeReference {
 /// Note for any weak handle: they may *only*
 /// ever be deref'd when self.frozen is true
 ///
-#[derive(Debug)]
+//#[derive(Debug)]
 pub struct Node {
     name: IStr,
 
@@ -128,7 +140,7 @@ pub struct Node {
     //node_id: CtxID,
     generics: Vec<(IStr, SyntacticTypeReference)>,
 
-    children: DashMap<IStr, NodeReference>,
+    children: DashMap<IStr, CtxID>,
 
     /// UNSAFE: no deref is allowed until node
     /// itself is frozen, no modifications
@@ -141,6 +153,21 @@ pub struct Node {
     inner: NodeUnion,
 
     frozen: Fuse,
+}
+
+impl std::fmt::Debug for Node {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Node")
+            .field("name", &self.name)
+            //.field("node_id", &self.node_id.get().unwrap().0)
+            .field("generics", &self.generics)
+            .field("children", &self.children)
+            //.field("parent", &self.parent)
+            //.field("global", &self.global)
+            .field("inner", &self.inner)
+            .field("frozen", &self.frozen)
+            .finish()
+    }
 }
 
 impl Node {
@@ -230,6 +257,8 @@ impl Node {
                         global,
                         inner,
                     );
+
+                    Contexts::instance().get(&node).children.insert(name, child);
                 }
 
                 TopLevel::Impl(i) => {
@@ -285,6 +314,7 @@ impl Node {
                         .children
                         .entry(name)
                         .and_modify(|prior| {
+                            let prior = prior.resolve();
                             let p = prior.node_id.get().unwrap().to_ref();
                             println!("");
                             println!("There was an existing entry! Conflict between:");
@@ -292,11 +322,12 @@ impl Node {
                             println!("{}", child.to_ref());
                             println!("");
                         })
-                        .or_insert(NodeReference {
-                            node_id: child.into(),
-                            within: node,
-                            relative_path: vec![name],
-                        });
+                        .or_insert(child);
+                    /*.or_insert(NodeReference {
+                        node_id: child.into(),
+                        within: node,
+                        relative_path: vec![name],
+                    });*/
                 }
                 _ => todo!(),
             };
@@ -332,6 +363,8 @@ impl Node {
                 } = v;
                 aggregate.append(&mut declarations);
                 //let child = Self::from_outer(v, name, parent.clone(), global.clone());
+            } else {
+                println!("invalid parse node, had no value")
             }
         }
 
@@ -346,14 +379,13 @@ impl Node {
 
         for (cname, child) in children {
             let cid = Self::from_parse(child, cname, s.into(), global.into());
-            s.to_ref().children.insert(
-                cname,
-                NodeReference {
+            s.to_ref().children.insert(cname, cid);
+            /*NodeReference {
                     node_id: cid.into(),
                     within: s,
                     relative_path: vec![cname],
                 },
-            );
+            );*/
         }
 
         s

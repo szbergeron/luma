@@ -49,6 +49,7 @@ smallstr = { version="*", features=["union"] }
 modular-bitfield = "0.11.2"
 ifmt = "0.3.3"
 either = "1.8.1"
+derivative = "2.2.0"
 
 [profile.dev]
 incremental = true
@@ -59,3 +60,4 @@ panic = "abort"
 #[target.aarch64-apple-darwin]
 #linker = "clang"
 #rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+
