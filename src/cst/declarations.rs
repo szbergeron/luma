@@ -429,9 +429,11 @@ pub struct FunctionDefinition {
     pub name: IStr,
 
     pub body: Box<ExpressionWrapper>,
-    pub return_type: cst::SyntaxTypeReference,
+    pub return_type: cst::SyntacticTypeReference,
     //pub params: Vec<(Box<super::ExpressionWrapper>, super::TypeReference)>,
-    pub params: Vec<(IStr, cst::SyntaxTypeReference)>,
+    pub params: Vec<(IStr, cst::SyntacticTypeReference)>,
+
+    pub generics: Vec<(IStr, cst::SyntacticTypeReference)>,
 }
 
 impl CstNode for FunctionDefinition {

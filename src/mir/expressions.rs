@@ -6,7 +6,7 @@ use crate::{
     helper::interner::{IStr, Internable},
 };
 
-use super::{types::InstanceConstraint, tree::NodeReference};
+//use super::{ty, tree::NodeReference};
 
 pub type ExpressionID = crate::avec::AtomicVecIndex;
 
@@ -414,7 +414,7 @@ pub struct Binding {
 
 #[derive(Clone, Debug)]
 pub struct Literal {
-    has_type: InstanceConstraint,
+    has_type: TypeReference,
 }
 
 #[derive(Clone, Debug)]
@@ -431,7 +431,7 @@ pub struct DynamicAccess {
 
 #[derive(Clone, Debug)]
 pub struct Composite {
-    base_type: NodeReference,
+    base_type: TypeReference,
 
     generics: Vec<TypeReference>,
 
@@ -464,7 +464,7 @@ struct Invert {}
 
 struct Guard {
     check: AnyExpression,
-    has: InstanceConstraint,
+    has: TypeReference,
 
     then: AnyExpression,
     otherwise: AnyExpression,

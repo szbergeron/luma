@@ -8,7 +8,7 @@ use std::collections::HashSet;
 
 use std::path::{Path, PathBuf};
 use std::process::{self, abort};
-use crate::{cst, mir};
+use crate::{cst, mir, ast};
 
 //use crate::mid_repr::ScopeContext;
 
@@ -158,7 +158,7 @@ async fn async_launch(args: ArgResult) {
 
     println!("{node:#?}");
 
-    let node = mir::tree::Node::from_parse(node, "global".intern(), None, None);
+    let node = ast::tree::Node::from_parse(node, "global".intern(), None, None);
 
     println!("{:#?}", node.to_ref());
 

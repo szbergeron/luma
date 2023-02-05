@@ -1,6 +1,6 @@
 //use crate::ast::base::IntoAstNode;
 
-use crate::cst::{self, CstNode, IntoCstNode, NodeInfo};
+use crate::cst::{self, CstNode, IntoCstNode, NodeInfo, ScopedName, SyntacticTypeReference};
 
 /*use cst::{
     self, FieldMember, Implementation, ImplementationBody, ImplementationItem, MemberAttributes,
@@ -80,7 +80,7 @@ impl<'lexer> Parser<'lexer> {
     pub fn parse_generic_param_list(
         &mut self,
         t: &TokenProvider,
-    ) -> ParseResult<Vec<cst::GenericHandle>> {
+    ) -> ParseResult<Vec<(IStr, SyntacticTypeReference)>> {
         let mut t = parse_header!(t);
 
         let mut params = Vec::new();
@@ -89,9 +89,15 @@ impl<'lexer> Parser<'lexer> {
             Some(_) => loop {
                 let id = t.take(Token::Identifier).join()?;
 
-                let gh = cst::GenericHandle::new(id.slice);
+                let pair = (
+                    id.slice,
+                    SyntacticTypeReference {
+                        info: NodeInfo::Builtin,
+                        inner: cst::SyntacticTypeReferenceInner::Unconstrained(),
+                    },
+                );
 
-                params.push(gh);
+                params.push(pair);
 
                 match t
                     .take_in(&[Token::Comma, Token::CmpGreaterThan])
@@ -131,8 +137,8 @@ impl<'lexer> Parser<'lexer> {
             match next.token {
                 Token::RBrace => {
                     println!("Got a brace");
-                    break
-                },
+                    break;
+                }
                 Token::Var => {
                     t.lh.backtrack();
                     println!("getting a var");
@@ -299,7 +305,10 @@ impl<'lexer> Parser<'lexer> {
         })
     }*/
 
-    pub fn parse_implementation_block(&mut self, t: &TokenProvider) -> ParseResult<cst::ImplementationDefinition> {
+    pub fn parse_implementation_block(
+        &mut self,
+        t: &TokenProvider,
+    ) -> ParseResult<cst::ImplementationDefinition> {
         let mut t = parse_header!(t);
 
         t.take(Token::Implementation).join()?;
@@ -365,7 +374,10 @@ impl<'lexer> Parser<'lexer> {
 
         let start = t.take(Token::Specification).join()?.start;
 
-        let generics = self.parse_generic_param_list(&t).join_hard(&mut t).catch(&mut t)?;
+        let generics = self
+            .parse_generic_param_list(&t)
+            .join_hard(&mut t)
+            .catch(&mut t)?;
 
         let name = t.take(Token::Identifier).join()?.slice;
 
@@ -376,7 +388,11 @@ impl<'lexer> Parser<'lexer> {
             .hint("Any trait requires an implementation/declaration body")?;
 
         let constraint = if let Some(_) = t.try_take(Token::Colon) {
-            Some(self.parse_type_specifier(&t).join_hard(&mut t).catch(&mut t)?)
+            Some(
+                self.parse_type_specifier(&t)
+                    .join_hard(&mut t)
+                    .catch(&mut t)?,
+            )
         } else {
             None
         };
@@ -568,7 +584,7 @@ impl<'lexer> Parser<'lexer> {
         &mut self,
         t: &TokenProvider,
         terminator: Token,
-    ) -> ParseResult<Vec<cst::SyntaxTypeReference>> {
+    ) -> ParseResult<Vec<cst::SyntacticTypeReference>> {
         let mut t = t.child();
 
         //t.take(Token::CmpLessThan).join()?;
@@ -613,7 +629,10 @@ impl<'lexer> Parser<'lexer> {
     /// Typelist:
     /// | TYPE
     /// | TYPELIST, TYPE
-    pub fn parse_type_specifier(&mut self, t: &TokenProvider) -> ParseResult<cst::SyntaxTypeReference> {
+    pub fn parse_type_specifier(
+        &mut self,
+        t: &TokenProvider,
+    ) -> ParseResult<cst::SyntacticTypeReference> {
         //let mut t = t.child();
         let mut t = parse_header!(t);
 
@@ -624,20 +643,23 @@ impl<'lexer> Parser<'lexer> {
         match t.try_take_in(&[Token::Ampersand, Token::Asterisk, Token::LParen]) {
             None => {
                 //let scope = self.parse_scope(&t).join_hard(&mut t).catch(&mut t)?;
-                let scope = self.parse_scope(&t).join_hard(&mut t).catch(&mut t)?;
+                let mut scope = self.parse_scope(&t).join_hard(&mut t).catch(&mut t)?;
 
                 let typename = t
                     .take(Token::Identifier)
                     .hint("Any scoped type requires a typename to follow the scope")
                     .join()?;
 
+                scope.scope.push(typename.slice);
+
+                let s: ScopedName = ScopedName { scope: scope.scope };
+
                 let end = typename.end;
 
-                let tr = cst::SyntaxTypeReference::new(
-                    scope,
-                    typename.slice,
-                    NodeInfo::from_indices(start, end),
-                );
+                let tr = cst::SyntacticTypeReference {
+                    info: NodeInfo::from_indices(start, end),
+                    inner: cst::SyntacticTypeReferenceInner::Single { name: s },
+                };
 
                 t.success(tr)
             }
@@ -647,7 +669,9 @@ impl<'lexer> Parser<'lexer> {
                     .join_hard(&mut t)
                     .catch(&mut t)?;
 
-                let tr = cst::SyntaxTypeReference::generic_new(
+                let tr = cst::SyntacticTypeReferenceInner::Tuple(list);
+
+                /*let tr = cst::SyntacticTypeReference::generic_new(
                     cst::ScopedNameReference {
                         node_info: NodeInfo::Builtin,
                         scope: Vec::new(),
@@ -656,7 +680,12 @@ impl<'lexer> Parser<'lexer> {
                     "".intern(),
                     NodeInfo::from_indices(tw.start, t.lh.la(-1).unwrap().end),
                     list,
-                );
+                );*/
+
+                let tr = cst::SyntacticTypeReference {
+                    inner: tr,
+                    info: NodeInfo::from_indices(tw.start, t.lh.la(-1).unwrap().end),
+                };
 
                 t.success(tr)
                 //todo!("Need to implement tuple types/type references")

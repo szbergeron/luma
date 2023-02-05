@@ -1,21 +1,23 @@
 use crate::avec::AtomicVecIndex;
-use crate::{cst::FunctionDefinition, avec::AtomicVec};
+use crate::cst::SyntacticTypeReference;
+use crate::{avec::AtomicVec, cst::FunctionDefinition};
 
-use crate::ast as ast;
+use crate::ast;
 
 use std::{
+    num::NonZeroUsize,
     ptr::NonNull,
-    sync::atomic::{compiler_fence, AtomicIsize, Ordering}, num::NonZeroUsize,
+    sync::atomic::{compiler_fence, AtomicIsize, Ordering},
 };
 
 use dashmap::DashMap;
 use once_cell::sync::OnceCell;
 
 use crate::{
-    mir,
     compile::parse_tree::ParseTreeNode,
     cst,
     helper::interner::{IStr, SpurHelper},
+    mir,
 };
 
 /// Designed to be a "global"
@@ -55,10 +57,8 @@ impl Contexts {
     }
 
     pub fn get(&self, r: &CtxID) -> &Node {
-        self
-            .owning
-            .get(r.0)
-            //.expect("was given an incorrectly constructed CtxID in a NodeReference, source was not Contexts?")
+        self.owning.get(r.0)
+        //.expect("was given an incorrectly constructed CtxID in a NodeReference, source was not Contexts?")
     }
 
     pub fn instance() -> &'static Contexts {
@@ -126,7 +126,7 @@ pub struct Node {
     node_id: OnceCell<CtxID>,
 
     //node_id: CtxID,
-    generics: Vec<cst::GenericHandle>,
+    generics: Vec<(IStr, SyntacticTypeReference)>,
 
     children: DashMap<IStr, NodeReference>,
 
@@ -155,12 +155,11 @@ impl Node {
 
     pub fn new(
         name: IStr,
-        generics: Vec<cst::GenericHandle>,
+        generics: Vec<(IStr, SyntacticTypeReference)>,
         parent: Option<CtxID>,
         global: Option<CtxID>,
         inner: NodeUnion,
     ) -> CtxID {
-
         let n = Node {
             node_id: OnceCell::new(),
             name,
@@ -179,7 +178,7 @@ impl Node {
     pub fn from_outer(
         o: cst::OuterScope,
         name: IStr,
-        generics: Vec<cst::GenericHandle>,
+        generics: Vec<(IStr, SyntacticTypeReference)>,
         parent: Option<CtxID>,
         global: Option<CtxID>,
     ) -> CtxID {
@@ -231,8 +230,6 @@ impl Node {
                         global,
                         inner,
                     );
-
-                    //let fd = ast::FunctionDefinition { parameters}
                 }
 
                 TopLevel::Impl(i) => {
@@ -268,7 +265,9 @@ impl Node {
 
                             let field = ast::types::FieldMember {
                                 name: has_name,
-                                has_type: Some(ast::types::InstanceConstraint::from_cst(has_type)),
+                                has_type: Some(ast::types::TypeReference::from_cst(
+                                    has_type, &generics,
+                                )),
                                 initialization: todo!(),
                             };
 

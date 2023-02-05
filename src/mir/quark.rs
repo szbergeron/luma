@@ -7,15 +7,10 @@ use std::{
 
 use crate::{
     cst::GenericHandle,
-    helper::{interner::IStr, VecOps, CompilationError}, avec::{AtomicVec, AtomicVecIndex},
+    helper::{interner::IStr, VecOps, CompilationError}, avec::{AtomicVec, AtomicVecIndex}, ast::{self, tree::CtxID, types::TypeReference},
 };
 
 
-
-use super::{
-    tree::NodeReference,
-    types::FunctionDefinition,
-};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TypeID(AtomicVecIndex);
@@ -47,7 +42,7 @@ pub struct Quark {
 
 impl Quark {
     /// Convert tree form into serial-evaluated sea of nodes (to be translated down to LLVM later)
-    fn build_from(root: FunctionDefinition) -> Quark {
+    fn build_from(root: ast::types::FunctionDefinition) -> Quark {
         todo!()
     }
 
@@ -149,7 +144,7 @@ pub struct FunctionCall {
 }
 
 pub struct Construction {
-    of: NodeReference,
+    of: TypeReference,
 
     /// Each `field:value` pair provided
     inputs: HashMap<IStr, AllocationReference>,
@@ -270,12 +265,12 @@ pub struct SymbolicType {
     generics: Vec<TypeID>,
 
     /// The type that this allocation must provide at this usage site
-    typeclass: Option<NodeReference>,
+    typeclass: Option<TypeReference>,
 }
 
 #[derive(Clone, Debug)]
 pub struct ResolvedType {
-    node: NodeReference,
+    node: CtxID,
     generics: Vec<ResolvedType>,
 }
 

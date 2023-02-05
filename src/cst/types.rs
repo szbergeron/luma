@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::{helper::interner::{IStr, SpurHelper}, mir::types::InstanceConstraint};
+use crate::helper::interner::{IStr, SpurHelper};
 
 use super::{NodeInfo, CstNode, IntoCstNode, FunctionDefinition};
 
@@ -8,7 +8,7 @@ use super::{NodeInfo, CstNode, IntoCstNode, FunctionDefinition};
 pub struct StructDefinition {
     pub info: NodeInfo,
 
-    pub generics: Vec<GenericHandle>,
+    pub generics: Vec<(IStr, SyntacticTypeReference)>,
 
     pub name: IStr,
 
@@ -25,10 +25,10 @@ impl CstNode for StructDefinition {
 pub struct ImplementationDefinition {
     pub info: NodeInfo,
 
-    pub generics: Vec<GenericHandle>,
+    pub generics: Vec<(IStr, SyntacticTypeReference)>,
 
-    pub for_type: Option<SyntaxTypeReference>,
-    pub of_trait: Option<SyntaxTypeReference>,
+    pub for_type: Option<SyntacticTypeReference>,
+    pub of_trait: Option<SyntacticTypeReference>,
 
     pub functions: Vec<FunctionDefinition>,
     pub fields: Vec<Field>,
@@ -44,11 +44,11 @@ impl CstNode for ImplementationDefinition {
 pub struct TraitDefinition {
     pub info: NodeInfo,
 
-    pub generics: Vec<GenericHandle>,
+    pub generics: Vec<(IStr, SyntacticTypeReference)>,
 
     pub name: IStr,
 
-    pub constraint: Option<SyntaxTypeReference>,
+    pub constraint: Option<SyntacticTypeReference>,
 
     pub functions: Vec<FunctionDefinition>,
 }
@@ -74,12 +74,12 @@ impl CstNode for EnumDefinition {
 pub struct Field {
     pub info: NodeInfo,
 
-    pub has_type: SyntaxTypeReference,
+    pub has_type: SyntacticTypeReference,
     pub has_name: IStr,
 }
 
 pub struct GenericParameters {
-    pub params: Vec<GenericHandle>,
+    pub params: Vec<(IStr, SyntacticTypeReference)>,
 }
 
 /// The "T" in Something<T>
@@ -140,7 +140,7 @@ impl IntoCstNode for ScopedNameReference {
     }
 }
 
-#[derive(Debug, PartialEq, Hash)]
+#[derive(Clone, Debug, PartialEq, Hash)]
 pub struct ScopedName {
     pub scope: Vec<IStr>,
 }
@@ -153,12 +153,50 @@ impl ScopedName {
 
 #[derive(Debug, Clone)]
 pub enum TypeReference {
-    Syntax(SyntaxTypeReference),
-    Abstract(InstanceConstraint),
+    Syntax(SyntacticTypeReference),
+    //Abstract(InstanceConstraint),
+}
+
+#[derive(Debug, Clone)]
+pub struct SyntacticTypeReference {
+    pub info: NodeInfo,
+
+    pub inner: SyntacticTypeReferenceInner,
+}
+
+#[derive(Debug, Clone)]
+pub enum SyntacticTypeReferenceInner {
+    /// If a type reference is just a _, then it is
+    /// unconstrained. By default, generics are like this
+    Unconstrained(),
+
+    Tuple(Vec<SyntacticTypeReference>),
+
+    Single { name: ScopedName },
+
+    Generic { label: IStr },
+
+    Parameterized { name: ScopedName, generics: Vec<SyntacticTypeReference> },
+
+    Reference { to: Box<SyntacticTypeReference>, mutable: bool },
+
+    Pointer { to: Box<SyntacticTypeReference>, mutable: bool },
+}
+
+impl CstNode for SyntacticTypeReference {
+    fn node_info(&self) -> NodeInfo {
+        self.info
+    }
+}
+
+impl IntoCstNode for SyntacticTypeReference {
+    fn as_node(&self) -> &dyn CstNode {
+        self
+    }
 }
 
 
-#[derive(Debug, Clone)]
+/*#[derive(Debug, Clone)]
 pub struct SyntaxTypeReference {
     pub info: NodeInfo,
 
@@ -226,4 +264,4 @@ impl IntoCstNode for SyntaxTypeReference {
     fn as_node(&self) -> &dyn CstNode {
         self
     }
-}
+}*/

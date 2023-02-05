@@ -809,7 +809,7 @@ impl<'lexer> Parser<'lexer> {
             if let Some(_colon) = t.try_take(Token::Colon) {
                 todo!("Type constraints not implemented yet")
             } else if let Some(_as) = t.try_take(Token::As) {
-                let typeref: cst::SyntaxTypeReference = self.parse_type_specifier(&t)
+                let typeref: cst::SyntacticTypeReference = self.parse_type_specifier(&t)
                         .join_hard(&mut t)
                         .catch(&mut t)?;
                 let start = lhs
