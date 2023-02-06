@@ -129,26 +129,25 @@ impl NodeReference {
 /// Note for any weak handle: they may *only*
 /// ever be deref'd when self.frozen is true
 ///
-//#[derive(Debug)]
 pub struct Node {
     name: IStr,
 
-    node_id: OnceCell<CtxID>,
+    pub node_id: OnceCell<CtxID>,
 
     //node_id: CtxID,
-    generics: Vec<(IStr, SyntacticTypeReference)>,
+    pub generics: Vec<(IStr, SyntacticTypeReference)>,
 
-    children: DashMap<IStr, CtxID>,
+    pub children: DashMap<IStr, CtxID>,
 
     /// UNSAFE: no deref is allowed until node
     /// itself is frozen, no modifications
     /// of these fields are allowed unless node
     /// is unfrozen and the modification is
     /// guarded by a OneWayBoolGuard
-    parent: Option<CtxID>,
-    global: Option<CtxID>,
+    pub parent: Option<CtxID>,
+    pub global: Option<CtxID>,
 
-    inner: NodeUnion,
+    pub inner: NodeUnion,
 
     frozen: Fuse,
 }
