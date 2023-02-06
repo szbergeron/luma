@@ -7,8 +7,8 @@ use crate::parse::Parser;
 use std::collections::HashSet;
 
 use std::path::{Path, PathBuf};
-use std::process::{self, abort};
-use crate::{cst, mir, ast};
+use std::process;
+use crate::{cst, ast};
 
 //use crate::mid_repr::ScopeContext;
 
@@ -170,7 +170,7 @@ async fn async_launch(args: ArgResult) {
 
     //let root = super::tree::CompilationRoot::initial(error_sender, args).await;
     //TODO
-    abort();
+    //abort();
     //let _root_ctx = root.into_ctx().await;
 }
 

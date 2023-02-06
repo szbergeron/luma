@@ -1,3 +1,7 @@
+use std::sync::RwLock;
+
+//use dashmap::lock::RwLock;
+
 use crate::{
     cst::{ScopedName, SyntacticTypeReference, SyntacticTypeReferenceInner},
     helper::interner::IStr,
@@ -10,9 +14,9 @@ use super::tree::CtxID;
 /// A TypeReference encloses an entire constraint,
 /// including any `where` clauses or `+` composition
 /// Each `+` is represented by an entry in `bases`
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct TypeReference {
-    bases: Vec<TypeBase>,
+    bases: RwLock<Vec<TypeBase>>,
 }
 
 impl TypeReference {
@@ -22,13 +26,19 @@ impl TypeReference {
     ) -> Self {
         match cst.inner {
             SyntacticTypeReferenceInner::Single { name } => Self {
-                bases: vec![TypeBase::UnResolved(UnResolvedType {
+                bases: RwLock::new(vec![TypeBase::UnResolved(UnResolvedType {
                     named: name,
                     generics: vec![],
-                })],
+                })]),
             },
             _ => todo!("only handle simple non-generic types for now"),
         }
+    }
+}
+
+impl Clone for TypeReference {
+    fn clone(&self) -> Self {
+        Self { bases: RwLock::new(self.bases.read().unwrap().clone()) }
     }
 }
 

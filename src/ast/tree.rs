@@ -1,11 +1,10 @@
 use crate::avec::AtomicVecIndex;
 use crate::cst::SyntacticTypeReference;
-use crate::{avec::AtomicVec, cst::FunctionDefinition};
+use crate::avec::AtomicVec;
 
 use crate::ast;
 
 use std::{
-    num::NonZeroUsize,
     ptr::NonNull,
     sync::atomic::{compiler_fence, AtomicIsize, Ordering},
 };
@@ -17,7 +16,6 @@ use crate::{
     compile::parse_tree::ParseTreeNode,
     cst,
     helper::interner::{IStr, SpurHelper},
-    mir,
 };
 
 /// Designed to be a "global"
@@ -297,7 +295,7 @@ impl Node {
                                 has_type: Some(ast::types::TypeReference::from_cst(
                                     has_type, &generics,
                                 )),
-                                initialization: todo!(),
+                                initialization: None, // TODO
                             };
 
                             field

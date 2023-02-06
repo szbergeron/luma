@@ -730,3 +730,13 @@ impl<T> CopyMethod for T where T: Copy {
         self
     }
 }
+
+pub trait SwapWith: Sized {
+    fn swap_with(&mut self, mut new_val: Self) -> Self {
+        std::mem::swap(self, &mut new_val);
+
+        new_val
+    }
+}
+
+impl<T: Sized> SwapWith for T { }

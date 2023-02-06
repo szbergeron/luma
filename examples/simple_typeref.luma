@@ -1,3 +1,13 @@
 fn f(p1: SomeType, p2: OtherType) -> ThirdType {
     1 + 2
 }
+
+struct SomeType {
+    var f1: OtherType,
+}
+
+struct OtherType {
+}
+
+struct ThirdType {
+}
