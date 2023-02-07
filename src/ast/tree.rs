@@ -139,6 +139,8 @@ pub struct Node {
 
     pub children: DashMap<IStr, CtxID>,
 
+    pub public: bool,
+
     /// UNSAFE: no deref is allowed until node
     /// itself is frozen, no modifications
     /// of these fields are allowed unless node

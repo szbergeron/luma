@@ -60,9 +60,10 @@ enum Reply {
     Redirect {
         reply_from: CtxID,
         conversation: usize,
-        symbol: IStr,
         within: CtxID,
-        is_at: CtxID,
+        publish: Publish,
+        //symbol: IStr,
+        //is_at: CtxID,
     },
 
     /// If a symbol is not exported by a node at all, then a NotFound is
@@ -101,7 +102,7 @@ struct Resolver {
     /// (name, Some(Ok(ID))). If we failed to resolve it (the
     /// import that was exported couldn't be resolved) then the entry is
     /// (name, Some(Err()))
-    publishes: HashMap<IStr, Option<Result<CtxID, ImportError>>>,
+    publishes: HashMap<IStr, Option<Result<Publish, ImportError>>>,
 
     waiting_to_answer: HashMap<IStr, Vec<Request>>,
 }
@@ -114,6 +115,15 @@ struct ConversationContext {
     searching_within: CtxID,
 
     public: bool,
+}
+
+#[derive(Clone, Copy)]
+struct Publish {
+    symbol: IStr,
+
+    is_public: bool,
+
+    go_to: CtxID,
 }
 
 impl Resolver {
@@ -230,18 +240,18 @@ impl Resolver {
 
     /// Take a given node and state that it serves as the given alias
     /// when exported
-    async fn publish(&mut self, id: CtxID, alias: IStr) {
+    async fn publish(&mut self, p: Publish) {
         //self.publishes.entry(alias).and_modify(|e| e.map(|i| panic!("duplicate symbol: {e}"))).or_insert(None);
         self.publishes
-            .remove(&alias)
+            .remove(&p.symbol)
             .flatten()
             .map(|v| panic!("already published this same alias"));
 
-        self.publishes.insert(alias, Some(Ok(id)));
+        self.publishes.insert(p.symbol, Some(Ok(p)));
 
         let to_answer = self
             .waiting_to_answer
-            .entry(alias)
+            .entry(p.symbol)
             .or_insert(Vec::new())
             .swap_with(Vec::new());
         let postal = Postal::instance();
@@ -259,9 +269,11 @@ impl Resolver {
                     Reply::Redirect {
                         reply_from: self.self_ctx,
                         conversation,
-                        symbol: alias,
                         within: self.self_ctx,
-                        is_at: id,
+                        publish: p,
+                        //symbol: p.symbol,
+                        //within: self.self_ctx,
+                        //is_at: id,
                     },
                 ),
             }
@@ -269,16 +281,68 @@ impl Resolver {
     }
 
     async fn thread2(&mut self) {
-        // first, export every direct child
-        //
+        // first, export every direct child with their public value
+        for child in self.self_ctx.resolve().children.iter() {
+            // all direct descendent nodes of the current node are
+            // exported here
+            let (&symbol, &ctx_id) = child.pair();
+            let is_public = ctx_id.resolve().public;
+            self.publish(Publish {
+                symbol,
+                is_public,
+                go_to: ctx_id,
+            });
+        }
+
         // then, ask for every use statement, saving a note to publish
         // any marked public
-        //
+        for stmt in vec![todo!()] {
+            let UseDeclaration {
+                node_info,
+                public,
+                scope,
+                alias,
+            } = stmt;
+
+            let convo_id = self.next_convo();
+
+            let cc = ConversationContext {
+                publish_as: alias
+                    .unwrap_or_else(|| *scope.last().expect("empty scope, with no alias")),
+                remaining_scope: scope,
+                searching_within: self.self_ctx,
+                public,
+            };
+
+            self.step_resolve(cc); // ask the question, not waiting for an answer yet
+        }
         // then, ask ourselves/our parent for every reference that
         // we use directly (this handles functions within the same
         // outer module being able to call each other without
         // the super:: qualifier)
-        //
+        match self.self_ctx.resolve().inner {
+            super::tree::NodeUnion::Type(t) => {
+                // we have field types to ask for
+                for field in t.fields {
+                    let typ = field.has_type.expect("all fields must have a typeref");
+
+                    let typ_bases = typ.bases.read().unwrap();
+
+                    for base in typ_bases {
+                    }
+                }
+            }
+            super::tree::NodeUnion::Function(_) => {
+                // we have a return type as well as parameter types
+            }
+            super::tree::NodeUnion::Global(_) => {
+                // we don't support globals yet
+                todo!()
+            }
+            super::tree::NodeUnion::Empty() => {
+                // we're just a module, so we don't have any type references directly
+            }
+        }
         // then, enter the resolver state, stepping each of those
         // ongoing questions until completed
         //
@@ -288,69 +352,6 @@ impl Resolver {
         //
         // at this point, go back to every type reference and give it a resolution
         // based on those results
-    }
-
-    async fn thread(&mut self) {
-        let statements: Vec<UseDeclaration> = Vec::new();
-
-        //let mut may_provide = HashMap::<IStr, Option<Result<CtxID, ImportError>>>::new();
-
-        let self_node = Contexts::instance().get(&self.self_ctx);
-
-        //let mut next_convo: usize = 1;
-
-        let need_resolve = todo!();
-
-        let steps: HashMap<usize, Vec<IStr>> = HashMap::new();
-
-        for child in self.self_ctx.resolve().children.iter() {
-            // all direct descendent nodes of the current node are
-            // exported here
-            self.publish(*child.value(), *child.key());
-        }
-
-        // ask all the questions we have for our imports
-
-        for stmt in statements.into_iter() {
-            let UseDeclaration {
-                node_info,
-                public,
-                scope,
-                alias,
-            } = stmt;
-
-            let symbol_name = alias.unwrap_or(*scope.last().expect("empty scope???"));
-
-            may_provide
-                .insert(symbol_name, None)
-                .map(|v| panic!("duplicate symbol?"));
-
-            let convo = next_convo;
-
-            next_convo += 1;
-
-            if let [first, rest @ ..] = scope.as_slice() {
-            } else {
-                unreachable!()
-            }
-
-            //Postal::instance().send_ask(self.self_ctx, to, request)
-
-            //
-
-            //Postal::instance().send_ask(, to, request)
-        }
-
-        // ask our direct parent for all of the symbols that
-        // we need to have for ourself as a type
-        //
-        // but don't re-export them, we only need them present
-
-        // check whether, with the given symbols in scope, all of the 
-
-        loop {
-            // go through our use statements one-by-one
-        }
     }
 
     /// Makes a note to self that the given CtxID must provide

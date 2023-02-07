@@ -3,7 +3,7 @@ use std::sync::RwLock;
 //use dashmap::lock::RwLock;
 
 use crate::{
-    cst::{ScopedName, SyntacticTypeReference, SyntacticTypeReferenceInner},
+    cst::{ScopedName, SyntacticTypeReference, SyntacticTypeReferenceInner, NodeInfo},
     helper::interner::IStr,
 };
 
@@ -16,7 +16,7 @@ use super::tree::CtxID;
 /// Each `+` is represented by an entry in `bases`
 #[derive(Debug)]
 pub struct TypeReference {
-    bases: RwLock<Vec<TypeBase>>,
+    pub bases: RwLock<Vec<TypeBase>>,
 }
 
 impl TypeReference {
@@ -27,6 +27,7 @@ impl TypeReference {
         match cst.inner {
             SyntacticTypeReferenceInner::Single { name } => Self {
                 bases: RwLock::new(vec![TypeBase::UnResolved(UnResolvedType {
+                    from: cst.info,
                     named: name,
                     generics: vec![],
                 })]),
@@ -59,6 +60,8 @@ pub struct GenericType {
 
 #[derive(Debug, Clone)]
 pub struct ResolvedType {
+    from: NodeInfo,
+
     base: CtxID,
 
     /// May or may not yet be directly resolved
@@ -67,6 +70,8 @@ pub struct ResolvedType {
 
 #[derive(Debug, Clone)]
 pub struct UnResolvedType {
+    from: NodeInfo,
+
     named: ScopedName,
 
     generics: Vec<TypeReference>,
