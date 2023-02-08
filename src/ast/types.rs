@@ -70,6 +70,11 @@ pub struct ResolvedType {
 
 #[derive(Debug, Clone)]
 pub struct UnResolvedType {
+    /// the ID here is only unique within a single module (or, more specifically, a parse unit)
+    /// and serves to allow going back and knowing which one to resolve after
+    /// everything has been published/resolved
+    //id: usize,
+
     from: NodeInfo,
 
     named: ScopedName,

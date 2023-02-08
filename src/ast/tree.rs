@@ -196,6 +196,7 @@ impl Node {
             children: DashMap::new(),
             //implementations_in_scope: RwLock::new(Vec::new()),
             frozen: Fuse::new(),
+            public: todo!(),
         };
 
         Contexts::instance().intern(n)

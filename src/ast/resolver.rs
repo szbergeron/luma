@@ -9,15 +9,17 @@
 
 use std::collections::HashMap;
 
+use uuid::Uuid;
+
 use crate::{
-    cst::UseDeclaration,
+    cst::{ScopedName, UseDeclaration},
     helper::{
         interner::{IStr, Internable, SpurHelper},
         SwapWith,
     },
 };
 
-use super::tree::{Contexts, CtxID};
+use super::tree::CtxID;
 
 struct ResolverWorker {
     /// we are solely responsible
@@ -46,7 +48,7 @@ impl Postal {
 enum Request {
     AskFor {
         reply_to: CtxID,
-        conversation: usize,
+        conversation: Uuid,
         symbol: IStr,
         within: CtxID,
     },
@@ -59,7 +61,7 @@ enum Reply {
     /// Conversation is only unique for the "other end", the starting party
     Redirect {
         reply_from: CtxID,
-        conversation: usize,
+        conversation: Uuid,
         within: CtxID,
         publish: Publish,
         //symbol: IStr,
@@ -70,22 +72,27 @@ enum Reply {
     /// sent back to the asker
     NotFound {
         reply_from: CtxID,
-        conversation: usize,
+        conversation: Uuid,
         symbol: IStr,
         within: CtxID,
         cause: Option<ImportError>,
     },
 }
 
+#[derive(Clone)]
 struct ImportError {
     symbol_name: IStr,
     error_reason: String,
 }
 
+/*struct UnResolvedStub {
+    remaining_scope: Vec<IStr>,
+    original_scope: ScopedName,
+    id: Uuid,
+}*/
+
 struct Resolver {
     self_ctx: CtxID,
-
-    convo_id_gen: usize,
 
     /// When we send out a question, we store the
     /// rest of the scope here that will need to be resolved when we
@@ -93,17 +100,36 @@ struct Resolver {
     ///
     /// When we get a reply, we can reuse the existing
     /// conversation or delete and create a new one
-    waiting_to_resolve: HashMap<usize, Vec<IStr>>,
+    waiting_to_resolve: HashMap<Uuid, ConversationContext>, // keep the convo context with us
+
+    /// when resolving symbols at the end,
+    /// this allows tracking a given ref to the associated publish
+    /// (needed for the various Resolved_ variants)
+    resolved_refs: HashMap<Uuid, Publish>,
+
+    /// Whenever we want to look up a given scoped name,
+    /// we first check if we're already waiting for it.
+    /// If it's already in this map, then we don't query for it.
+    /// If it's not in this map, then we need to put it in
+    /// and ask for the resolution (or start the resolve process)
+    name_to_ref: HashMap<ScopedName, Uuid>,
 
     /// For every symbol that we try to export,
     /// there will be one entry in this hashmap. If we haven't
-    /// yet resolved the export yet, then the entry is (name, None).
-    /// If we have resolved it to something definite, the entry is
-    /// (name, Some(Ok(ID))). If we failed to resolve it (the
+    /// yet resolved the export yet, then the entry is not in the map.
+    /// If we have resolved it to something definite, the entry
+    /// (name, Ok(ID)). If we failed to resolve it (the
     /// import that was exported couldn't be resolved) then the entry is
-    /// (name, Some(Err()))
-    publishes: HashMap<IStr, Option<Result<Publish, ImportError>>>,
+    /// (name, Err())
+    publishes: HashMap<IStr, Result<Publish, ImportError>>,
 
+    /// When we get a question we can't yet answer (it
+    /// relies on us having a symbol that we can export,
+    /// but we haven't yet resolved the import) then we need
+    /// to drop it in here, and start a request for it
+    /// if there was already an entry in this map
+    /// for a symbol, then just add the request to the
+    /// map and don't start a new conversation
     waiting_to_answer: HashMap<IStr, Vec<Request>>,
 }
 
@@ -111,8 +137,11 @@ struct ConversationContext {
     publish_as: IStr,
 
     remaining_scope: Vec<IStr>,
+    original_scope: ScopedName,
 
     searching_within: CtxID,
+
+    for_ref_id: Uuid,
 
     public: bool,
 }
@@ -124,6 +153,8 @@ struct Publish {
     is_public: bool,
 
     go_to: CtxID,
+
+    for_ref_id: Uuid,
 }
 
 impl Resolver {
@@ -131,10 +162,12 @@ impl Resolver {
         todo!()
     }
 
-    fn next_convo(&mut self) -> usize {
-        self.convo_id_gen += 1;
+    fn next_convo(&mut self) -> Uuid {
+        /*self.convo_id_gen += 1;
 
-        self.convo_id_gen
+        self.convo_id_gen*/
+
+        Uuid::new_v4()
     }
 
     /// When we want to step resolving something, we have an idea of where we
@@ -164,17 +197,34 @@ impl Resolver {
                     },
                 );
 
+                //let prior = self.waiting_to_resolve.get(&context.for_ref_id).cloned().
+
+                //self.waiting_to_resolve.entry(context.for_ref_id).or_insert_with(|| panic!("))
+
+                let mut unres = self
+                    .waiting_to_resolve
+                    .get_mut(&context.for_ref_id)
+                    .unwrap();
+
+                unres.remaining_scope = rest.to_vec();
+
                 // now that we've sent the ask, we store back the context for later
-                self.waiting_to_resolve.insert(conversation, rest.to_vec());
+                //self.waiting_to_resolve.insert(conversation, rest.to_vec());
             }
             // if nothing left to resolve, then `within` is the target for the alias
             [] => {
-                if ["super".intern(), "package".intern()].contains(&context.publish_as) {
+                if ["super", "package"].contains(&context.publish_as.resolve()) {
                     panic!("user tried to alias some symbol as 'super' or 'package' (reserved module names)");
                 } else {
                     // ignore `public` modifiers for now, just interpret
                     // everything as exported for the time being
-                    self.publish(context.searching_within, context.publish_as);
+                    //self.publish(context.searching_within, context.publish_as);
+                    self.publish(Publish {
+                        symbol: context.publish_as,
+                        is_public: context.public,
+                        go_to: context.searching_within,
+                        for_ref_id: context.for_ref_id,
+                    }).await;
                 }
             }
         }
@@ -188,34 +238,66 @@ impl Resolver {
                 symbol,
                 within,
             } => {
-                let go_ask = match symbol.resolve() {
-                    "super" => Some(self.self_ctx.resolve().parent.ok_or(ImportError {
-                        symbol_name: "super".intern(),
-                        error_reason: format!("the root of the compilation unit has no 'super'"),
-                    })),
+                let p = match symbol.resolve() {
+                    "super" => Some(
+                        self.self_ctx
+                            .resolve()
+                            .parent
+                            .map(|cid| Publish {
+                                symbol,
+                                is_public: true,
+                                go_to: cid,
+                                for_ref_id: conversation,
+                            })
+                            .ok_or(ImportError {
+                                symbol_name: "super".intern(),
+                                error_reason: format!(
+                                    "the root of the compilation unit has no 'super'"
+                                ),
+                            }),
+                    ),
                     "global" => Some(Ok(self
                         .self_ctx
                         .resolve()
                         .global
+                        .map(|cid| Publish {
+                            symbol,
+                            is_public: true,
+                            go_to: cid,
+                            for_ref_id: conversation,
+                        })
                         .expect("global is unset for a node??"))),
                     _ => {
-                        todo!("requests and children");
                         // if it wasn't a direct child, then we need to wait for our own use
                         // statements for it to resolve
-                        None
+
+                        match self.publishes.get(&symbol) {
+                            None => {
+                                // we will need to go ask someone before we can reply
+                                None
+                            }
+                            Some(p) => {
+                                // we've resolved the symbol within this scope
+                                // at least once before, so we can point them in the right
+                                // direction right now
+                                match p {
+                                    Ok(v) => Some(Ok(*v)),
+                                    Err(e) => Some(Err(e.clone())),
+                                }
+                            }
+                        }
                     }
                 };
 
-                match go_ask {
-                    Some(Ok(id)) => Postal::instance().send_reply(
+                match p {
+                    Some(Ok(val)) => Postal::instance().send_reply(
                         self.self_ctx,
                         reply_to,
                         Reply::Redirect {
                             reply_from: self.self_ctx,
                             conversation,
-                            symbol,
                             within: self.self_ctx,
-                            is_at: id,
+                            publish: todo!(),
                         },
                     ),
                     Some(Err(e)) => Postal::instance().send_reply(
@@ -232,6 +314,13 @@ impl Resolver {
                     None => {
                         // need to save the question for later, since we can't answer
                         // definitively quite yet
+                        let mut need_to_ask = false;
+                        self.waiting_to_answer.entry(symbol).or_insert_with(|| {
+                            need_to_ask = true;
+                            vec![question]
+                        });
+
+                        if need_to_ask {}
                     }
                 }
             }
@@ -244,16 +333,23 @@ impl Resolver {
         //self.publishes.entry(alias).and_modify(|e| e.map(|i| panic!("duplicate symbol: {e}"))).or_insert(None);
         self.publishes
             .remove(&p.symbol)
-            .flatten()
             .map(|v| panic!("already published this same alias"));
 
-        self.publishes.insert(p.symbol, Some(Ok(p)));
+        if !p.for_ref_id.is_nil() {
+            // this should correspond with some resolution we should publish
+            self.resolved_refs.insert(p.for_ref_id, p.clone());
+        }
+
+        // we use publishes as basically a memoization technique
+        // so that we don't have to re-look-up prior queries
+        self.publishes.insert(p.symbol, Ok(p));
 
         let to_answer = self
             .waiting_to_answer
             .entry(p.symbol)
             .or_insert(Vec::new())
-            .swap_with(Vec::new());
+            .swap_with(Vec::new()); // take all the things out of the entry, leave it empty
+
         let postal = Postal::instance();
 
         for request in to_answer {
@@ -291,7 +387,8 @@ impl Resolver {
                 symbol,
                 is_public,
                 go_to: ctx_id,
-            });
+                for_ref_id: todo!(),
+            }).await;
         }
 
         // then, ask for every use statement, saving a note to publish
@@ -312,9 +409,11 @@ impl Resolver {
                 remaining_scope: scope,
                 searching_within: self.self_ctx,
                 public,
+                original_scope: ScopedName { scope: scope.clone() },
+                for_ref_id: convo_id,
             };
 
-            self.step_resolve(cc); // ask the question, not waiting for an answer yet
+            self.step_resolve(cc).await; // ask the question, not waiting for an answer yet
         }
         // then, ask ourselves/our parent for every reference that
         // we use directly (this handles functions within the same
@@ -328,8 +427,7 @@ impl Resolver {
 
                     let typ_bases = typ.bases.read().unwrap();
 
-                    for base in typ_bases {
-                    }
+                    for base in typ_bases.iter() {}
                 }
             }
             super::tree::NodeUnion::Function(_) => {
