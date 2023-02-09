@@ -140,7 +140,7 @@ impl IntoCstNode for ScopedNameReference {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Hash)]
+#[derive(Clone, Debug, PartialEq, Hash, Eq)]
 pub struct ScopedName {
     pub scope: Vec<IStr>,
 }

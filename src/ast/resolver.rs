@@ -182,7 +182,7 @@ impl Resolver {
         //match to_resolve.as_slice()
         match context.remaining_scope.as_slice() {
             [first, rest @ ..] => {
-                let conversation = self.next_convo();
+                let conversation = context.for_ref_id;
 
                 // start by asking the target node (which could be ourself!)
                 // to get back to us with where the import is
@@ -197,35 +197,55 @@ impl Resolver {
                     },
                 );
 
-                //let prior = self.waiting_to_resolve.get(&context.for_ref_id).cloned().
-
-                //self.waiting_to_resolve.entry(context.for_ref_id).or_insert_with(|| panic!("))
-
                 let mut unres = self
                     .waiting_to_resolve
                     .get_mut(&context.for_ref_id)
                     .unwrap();
 
+                // when we hear back, we should continue resolving from [rest],
+                // since we've then resolved symbol `first`
                 unres.remaining_scope = rest.to_vec();
-
-                // now that we've sent the ask, we store back the context for later
-                //self.waiting_to_resolve.insert(conversation, rest.to_vec());
             }
+
             // if nothing left to resolve, then `within` is the target for the alias
             [] => {
                 if ["super", "package"].contains(&context.publish_as.resolve()) {
                     panic!("user tried to alias some symbol as 'super' or 'package' (reserved module names)");
                 } else {
-                    // ignore `public` modifiers for now, just interpret
-                    // everything as exported for the time being
-                    //self.publish(context.searching_within, context.publish_as);
                     self.publish(Publish {
                         symbol: context.publish_as,
                         is_public: context.public,
                         go_to: context.searching_within,
                         for_ref_id: context.for_ref_id,
-                    }).await;
+                    })
+                    .await;
                 }
+            }
+        }
+    }
+
+    async fn start_resolve(&mut self, scoped: ScopedName) {
+        match self.name_to_ref.get(&scoped) {
+            Some(prior) => {
+                // already looking up for this scope
+            }
+            None => {
+                // not already looking up, so need to string together the
+                // refs and generate a UUID and start the request
+                let id = self.next_convo();
+
+                self.name_to_ref.insert(scoped.clone(), id);
+
+                let cc = ConversationContext {
+                    publish_as: todo!(),
+                    remaining_scope: todo!(),
+                    original_scope: todo!(),
+                    searching_within: todo!(),
+                    for_ref_id: todo!(),
+                    public: todo!(),
+                };
+
+                self.waiting_to_resolve.insert(id, cc);
             }
         }
     }
@@ -270,7 +290,8 @@ impl Resolver {
                     _ => {
                         // if it wasn't a direct child, then we need to wait for our own use
                         // statements for it to resolve
-
+                        //
+                        // those may have already resolved, so we check now
                         match self.publishes.get(&symbol) {
                             None => {
                                 // we will need to go ask someone before we can reply
@@ -280,6 +301,9 @@ impl Resolver {
                                 // we've resolved the symbol within this scope
                                 // at least once before, so we can point them in the right
                                 // direction right now
+                                //
+                                // either we resolved a use already, or we have a
+                                // direct child by that name
                                 match p {
                                     Ok(v) => Some(Ok(*v)),
                                     Err(e) => Some(Err(e.clone())),
@@ -330,7 +354,6 @@ impl Resolver {
     /// Take a given node and state that it serves as the given alias
     /// when exported
     async fn publish(&mut self, p: Publish) {
-        //self.publishes.entry(alias).and_modify(|e| e.map(|i| panic!("duplicate symbol: {e}"))).or_insert(None);
         self.publishes
             .remove(&p.symbol)
             .map(|v| panic!("already published this same alias"));
@@ -367,13 +390,13 @@ impl Resolver {
                         conversation,
                         within: self.self_ctx,
                         publish: p,
-                        //symbol: p.symbol,
-                        //within: self.self_ctx,
-                        //is_at: id,
                     },
                 ),
             }
         }
+    }
+
+    async fn save_resolve(&mut self, id: Uuid, resolves_to: CtxID) {
     }
 
     async fn thread2(&mut self) {
@@ -388,7 +411,8 @@ impl Resolver {
                 is_public,
                 go_to: ctx_id,
                 for_ref_id: todo!(),
-            }).await;
+            })
+            .await;
         }
 
         // then, ask for every use statement, saving a note to publish
@@ -409,7 +433,9 @@ impl Resolver {
                 remaining_scope: scope,
                 searching_within: self.self_ctx,
                 public,
-                original_scope: ScopedName { scope: scope.clone() },
+                original_scope: ScopedName {
+                    scope: scope.clone(),
+                },
                 for_ref_id: convo_id,
             };
 
