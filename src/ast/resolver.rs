@@ -7,7 +7,7 @@
 //! we can add a watchdog that checks if everyone is sleeping
 //! for a significant period of time
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::{Arc, atomic::AtomicUsize}};
 
 use futures::future::join_all;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
@@ -72,24 +72,49 @@ impl ResolverWorker {
 enum Message {
     Request(Request),
     Reply(Reply),
+    Exit(),
 }
 
 /// A PostalWorker handles sending messages between Resolvers :)
 struct Postal {
     senders: HashMap<CtxID, tokio::sync::mpsc::UnboundedSender<Message>>,
+    exited: AtomicUsize,
 }
 
 impl Postal {
     fn new(senders: HashMap<CtxID, UnboundedSender<Message>>) -> Self {
-        Self { senders }
+        Self { senders, exited: AtomicUsize::new(0) }
     }
 
     pub async fn send_reply(&self, from: CtxID, to: CtxID, reply: Reply) {
-        self.senders.get(&to).unwrap().send(Message::Reply(reply)).unwrap();
+        self.senders
+            .get(&to)
+            .unwrap()
+            .send(Message::Reply(reply))
+            .unwrap();
     }
 
     pub async fn send_ask(&self, from: CtxID, to: CtxID, request: Request) {
-        self.senders.get(&to).unwrap().send(Message::Request(request)).unwrap();
+        self.senders
+            .get(&to)
+            .unwrap()
+            .send(Message::Request(request))
+            .unwrap();
+    }
+
+    pub fn sign_out(&self, id: CtxID) {
+        println!("{id:?} signs out");
+        let new_v = self.exited.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+
+        println!("new signed-in count is {new_v}");
+
+        if new_v == self.senders.len() {
+            println!("exiting everyone");
+            // everyone has signed out
+            for sender in self.senders.values() {
+                sender.send(Message::Exit()).unwrap();
+            }
+        }
     }
 
     /*pub async fn wait_next(&self) -> Option<Message> {
@@ -190,8 +215,11 @@ pub struct Resolver {
 
     /// Lets us hear messages from other nodes
     listen: UnboundedReceiver<Message>,
+
+    signed_out: bool,
 }
 
+#[derive(Debug, Clone)]
 struct ConversationContext {
     /// If this is None, then we aren't publishing this symbol in any way
     publish_as: Option<IStr>,
@@ -206,6 +234,8 @@ struct ConversationContext {
     public: bool,
 }
 
+//impl std::fmt::Debug for ConversationContext {
+
 #[derive(Debug, Clone, Copy)]
 struct Publish {
     symbol: Option<IStr>,
@@ -216,6 +246,17 @@ struct Publish {
 
     for_ref_id: Uuid,
 }
+
+/*impl std::fmt::Debug for Publish {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Publish")
+            .field("symbol", &self.symbol)
+            .field("is_public", &self.is_public)
+            .field("go_to", &self.go_to.0)
+            .field("for_ref_id", &self.for_ref_id)
+            .finish()
+    }
+}*/
 
 impl Resolver {
     fn for_node(
@@ -232,6 +273,7 @@ impl Resolver {
             waiting_to_answer: HashMap::new(),
             postal: with_postal,
             listen,
+            signed_out: false,
         }
     }
 
@@ -251,80 +293,87 @@ impl Resolver {
     /// `within` is the node we've been searching for the whole time. In that example,
     /// it will be node 'b'. At that point, we apply whatever alias we were instructed to
     /// and then publish the symbol
-    async fn step_resolve(&mut self, context: ConversationContext) {
-        match context.remaining_scope.as_slice() {
+    async fn step_resolve(&mut self, conversation: Uuid) {
+        let context_ref = self.waiting_to_resolve.get_mut(&conversation).unwrap();
+        println!("Steps resolve of {context_ref:?}");
+        match context_ref.remaining_scope.clone().as_slice() {
             [first, rest @ ..] => {
-                let conversation = context.for_ref_id;
+                println!("stepping conversation {conversation}");
 
                 // start by asking the target node (which could be ourself!)
                 // to get back to us with where the import is
                 self.postal
                     .send_ask(
                         self.self_ctx,
-                        context.searching_within,
+                        context_ref.searching_within,
                         Request::AskFor {
                             reply_to: self.self_ctx,
                             conversation,
                             symbol: *first,
-                            within: context.searching_within,
+                            within: context_ref.searching_within,
                         },
                     )
                     .await;
 
-                let mut unres = self
-                    .waiting_to_resolve
-                    .get_mut(&context.for_ref_id)
-                    .unwrap();
-
                 // when we hear back, we should continue resolving from [rest],
                 // since we've then resolved symbol `first`
-                unres.remaining_scope = rest.to_vec();
+                context_ref.remaining_scope = rest.to_vec();
             }
 
             // if nothing left to resolve, then `within` is the target for the alias
             [] => {
+                println!("stepped, and the scope was empty");
                 if ["super", "package"]
-                    .contains(&context.publish_as.unwrap_or("".intern()).resolve())
+                    .contains(&context_ref.publish_as.unwrap_or("".intern()).resolve())
                 {
                     panic!("user tried to alias some symbol as 'super' or 'package' (reserved module names)");
                 } else {
-                    self.publish(Publish {
-                        symbol: context.publish_as,
-                        is_public: context.public,
-                        go_to: context.searching_within,
-                        for_ref_id: context.for_ref_id,
-                    })
-                    .await;
+                    let p = Publish {
+                        symbol: context_ref.publish_as,
+                        is_public: context_ref.public,
+                        go_to: context_ref.searching_within,
+                        for_ref_id: context_ref.for_ref_id,
+                    };
+                    self.publish(p).await;
                 }
             }
         }
     }
 
-    async fn start_resolve(&mut self, scoped: ScopedName) {
+    /*async fn start_resolve(&mut self, scoped: ScopedName) {
+        println!("Starts resolve {scoped:?}");
         match self.name_to_ref.get(&scoped) {
             Some(prior) => {
                 // already looking up for this scope
+                println!("already looked up for this scope, prior is {prior}");
             }
             None => {
                 // not already looking up, so need to string together the
                 // refs and generate a UUID and start the request
                 let id = self.next_convo();
 
+                println!("adds using convo id {id}");
+
                 self.name_to_ref.insert(scoped.clone(), id);
 
                 let cc = ConversationContext {
-                    publish_as: todo!(),
-                    remaining_scope: todo!(),
-                    original_scope: todo!(),
-                    searching_within: todo!(),
-                    for_ref_id: todo!(),
-                    public: todo!(),
+                    publish_as: None, // this isn't an import
+                    remaining_scope: r.named.clone().scope,
+                    original_scope: r.named.clone(),
+                    // we search within parent here because we're a typeref within
+                    // a Type, which implicitly looks for things within the parent
+                    // scope unless we *explicitly* use the Self qualifier
+                    searching_within: self.self_ctx.resolve().parent.unwrap(),
+                    for_ref_id: convo_id,
+                    public: false,
                 };
 
                 self.waiting_to_resolve.insert(id, cc);
+
+                self.step_resolve(cc).await;
             }
         }
-    }
+    }*/
 
     async fn handle_question(&mut self, question: Request) {
         match question {
@@ -399,7 +448,7 @@ impl Resolver {
                                     reply_from: self.self_ctx,
                                     conversation,
                                     within: self.self_ctx,
-                                    publish: todo!(),
+                                    publish: val,
                                 },
                             )
                             .await
@@ -438,6 +487,7 @@ impl Resolver {
     /// Take a given node and state that it serves as the given alias
     /// when exported
     async fn publish(&mut self, p: Publish) {
+        println!("publishes {p:?}");
         self.publishes
             .remove(&p.symbol.unwrap_or("".intern())) // use the "" null symbol here
             .map(|v| panic!("already published this same alias"));
@@ -446,6 +496,10 @@ impl Resolver {
             // this should correspond with some resolution we should publish
             self.resolved_refs.insert(p.for_ref_id, p.clone());
         }
+
+        self.waiting_to_resolve.remove(&p.for_ref_id); // no longer waiting to resolve it
+
+        println!("we now have {} unresolved refs", self.waiting_to_resolve.len());
 
         if let Some(symbol) = p.symbol {
             // we use publishes as basically a memoization technique
@@ -530,7 +584,14 @@ impl Resolver {
                 for_ref_id: convo_id,
             };
 
-            self.step_resolve(cc).await; // ask the question, not waiting for an answer yet
+            self.waiting_to_resolve.insert(convo_id, cc);
+
+            /*self.start_resolve(ScopedName {
+                scope: scope.clone(),
+            })
+            .await;*/
+
+            self.step_resolve(convo_id).await; // ask the question, not waiting for an answer yet
         }
         // then, ask ourselves/our parent for every reference that
         // we use directly (this handles functions within the same
@@ -557,26 +618,45 @@ impl Resolver {
                             crate::ast::types::TypeBase::UnResolved(r) => {
                                 assert!(r.generics.is_empty()); // we don't yet handle generics
 
-                                let convo_id = self.next_convo();
+                                /*let convo_id = self.next_convo();
 
-                                let convo_id = *self
-                                    .name_to_ref
-                                    .entry(r.named.clone())
-                                    .or_insert(convo_id);
+                                if self.name_to_ref.contains_key(&r.named) {
+                                    // do nothing, already going to resolve this ref
+                                } else {
+                                    self.start_resolve(r.named.clone()).await;
+                                }*/
 
-                                let cc = ConversationContext {
-                                    publish_as: None, // this isn't an import
-                                    remaining_scope: r.named.clone().scope,
-                                    original_scope: r.named.clone(),
-                                    // we search within parent here because we're a typeref within
-                                    // a Type, which implicitly looks for things within the parent
-                                    // scope unless we *explicitly* use the Self qualifier
-                                    searching_within: self.self_ctx.resolve().parent.unwrap(),
-                                    for_ref_id: convo_id,
-                                    public: false,
+                                match self.name_to_ref.contains_key(&r.named) {
+                                    true => {
+                                        // do nothing, already gonna resolve it
+                                    }
+                                    false => {
+                                        let convo_id = self.next_convo();
+
+                                        let cc = ConversationContext {
+                                            publish_as: None, // this isn't an import
+                                            remaining_scope: r.named.clone().scope,
+                                            original_scope: r.named.clone(),
+                                            // we search within parent here because we're a typeref within
+                                            // a Type, which implicitly looks for things within the parent
+                                            // scope unless we *explicitly* use the Self qualifier
+                                            searching_within: self
+                                                .self_ctx
+                                                .resolve()
+                                                .parent
+                                                .unwrap(),
+                                            for_ref_id: convo_id,
+                                            public: false,
+                                        };
+
+                                        self.name_to_ref.insert(r.named.clone(), convo_id);
+                                        self.waiting_to_resolve.insert(convo_id, cc.clone());
+
+                                        self.step_resolve(convo_id).await;
+                                    }
                                 };
 
-                                self.step_resolve(cc).await;
+                                //self.start_resolve(r.named.clone()).await;
                             }
                         }
                     }
@@ -601,9 +681,43 @@ impl Resolver {
         // or completed with an import error
         while let Some(v) = self.listen.recv().await {
             match v {
-                Message::Request(_) => todo!(),
-                Message::Reply(_) => todo!(),
+                Message::Request(r) => {
+                    self.handle_question(r).await;
+                }
+                Message::Reply(r) => match r {
+                    Reply::Redirect {
+                        reply_from,
+                        conversation,
+                        within,
+                        publish,
+                    } => {
+                        let c = self.waiting_to_resolve.get_mut(&conversation).unwrap();
+
+                        if let [_, rest @ ..] = c.remaining_scope.as_slice() {
+                            c.remaining_scope = rest.to_vec();
+                        }
+
+                        c.searching_within = within;
+
+                        self.step_resolve(conversation).await;
+                    }
+                    Reply::NotFound {
+                        reply_from,
+                        conversation,
+                        symbol,
+                        within,
+                        cause,
+                    } => todo!(),
+                },
+                Message::Exit() => break,
             }
+
+            if self.waiting_to_resolve.len() == 0 && !self.signed_out {
+                self.signed_out = true;
+                self.postal.sign_out(self.self_ctx);
+            }
+
+            println!("goes back to waiting for messages... self ctx is {:?}", self.self_ctx);
         }
         // at this point, go back to every type reference and give it a resolution
         // based on those results
