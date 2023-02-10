@@ -178,6 +178,7 @@ impl<'lexer> Parser<'lexer> {
             fields,
             name,
             generics,
+            public: true, // TODO: parse public/private on structs
         })
     }
 

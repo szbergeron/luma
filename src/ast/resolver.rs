@@ -32,13 +32,23 @@ struct ResolverWorker {
     //waiting_questions: HashMap<>
 }
 
+enum Message {
+    Request(Request),
+    Reply(Reply),
+}
+
 /// A PostalWorker handles sending messages between Resolvers :)
-struct Postal {}
+struct Postal {
+}
 
 impl Postal {
-    pub fn send_reply(&self, from: CtxID, to: CtxID, reply: Reply) {}
+    pub async fn send_reply(&self, from: CtxID, to: CtxID, reply: Reply) {}
 
-    pub fn send_ask(&self, from: CtxID, to: CtxID, request: Request) {}
+    pub async fn send_ask(&self, from: CtxID, to: CtxID, request: Request) {}
+
+    pub async fn wait_next(&self) -> Option<Message> {
+        todo!()
+    }
 
     pub fn instance() -> &'static Postal {
         todo!()
@@ -54,6 +64,7 @@ enum Request {
     },
 }
 
+
 enum Reply {
     /// If a symbol is exported by a node, then it must itself
     /// be a node, and this says what node it was found at
@@ -64,8 +75,6 @@ enum Reply {
         conversation: Uuid,
         within: CtxID,
         publish: Publish,
-        //symbol: IStr,
-        //is_at: CtxID,
     },
 
     /// If a symbol is not exported by a node at all, then a NotFound is
@@ -84,12 +93,6 @@ struct ImportError {
     symbol_name: IStr,
     error_reason: String,
 }
-
-/*struct UnResolvedStub {
-    remaining_scope: Vec<IStr>,
-    original_scope: ScopedName,
-    id: Uuid,
-}*/
 
 struct Resolver {
     self_ctx: CtxID,
@@ -179,7 +182,6 @@ impl Resolver {
     /// it will be node 'b'. At that point, we apply whatever alias we were instructed to
     /// and then publish the symbol
     async fn step_resolve(&mut self, context: ConversationContext) {
-        //match to_resolve.as_slice()
         match context.remaining_scope.as_slice() {
             [first, rest @ ..] => {
                 let conversation = context.for_ref_id;
@@ -195,7 +197,7 @@ impl Resolver {
                         symbol: *first,
                         within: context.searching_within,
                     },
-                );
+                ).await;
 
                 let mut unres = self
                     .waiting_to_resolve
@@ -323,7 +325,7 @@ impl Resolver {
                             within: self.self_ctx,
                             publish: todo!(),
                         },
-                    ),
+                    ).await,
                     Some(Err(e)) => Postal::instance().send_reply(
                         self.self_ctx,
                         reply_to,
@@ -334,7 +336,7 @@ impl Resolver {
                             within: self.self_ctx,
                             cause: Some(e),
                         },
-                    ),
+                    ).await,
                     None => {
                         // need to save the question for later, since we can't answer
                         // definitively quite yet
@@ -391,7 +393,7 @@ impl Resolver {
                         within: self.self_ctx,
                         publish: p,
                     },
-                ),
+                ).await,
             }
         }
     }
@@ -453,7 +455,8 @@ impl Resolver {
 
                     let typ_bases = typ.bases.read().unwrap();
 
-                    for base in typ_bases.iter() {}
+                    for base in typ_bases.iter() {
+                    }
                 }
             }
             super::tree::NodeUnion::Function(_) => {
@@ -473,9 +476,24 @@ impl Resolver {
         // eventually, if there are no loops, we will reach
         // a closed state where all requests have either been resolved,
         // or completed with an import error
-        //
+        while let Some(v) = Postal::instance().wait_next().await {
+            match v {
+                Message::Request(_) => todo!(),
+                Message::Reply(_) => todo!(),
+            }
+        }
         // at this point, go back to every type reference and give it a resolution
         // based on those results
+
+        match self.self_ctx.resolve().inner {
+            super::tree::NodeUnion::Type(t) => {
+                // things
+                todo!()
+            }
+            super::tree::NodeUnion::Function(_) => todo!(),
+            super::tree::NodeUnion::Global(_) => todo!(),
+            super::tree::NodeUnion::Empty() => todo!(),
+        }
     }
 
     /// Makes a note to self that the given CtxID must provide

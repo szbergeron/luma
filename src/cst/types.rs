@@ -8,6 +8,8 @@ use super::{NodeInfo, CstNode, IntoCstNode, FunctionDefinition};
 pub struct StructDefinition {
     pub info: NodeInfo,
 
+    pub public: bool,
+
     pub generics: Vec<(IStr, SyntacticTypeReference)>,
 
     pub name: IStr,

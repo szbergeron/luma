@@ -56,6 +56,9 @@ uuid = { version="*", features=["v4"] }
 incremental = true
 panic = "abort"
 
+[profile.release]
+lto = true
+
 [build-dependencies]
 
 #[target.aarch64-apple-darwin]

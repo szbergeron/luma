@@ -185,6 +185,7 @@ impl Node {
         parent: Option<CtxID>,
         global: Option<CtxID>,
         inner: NodeUnion,
+        public: bool,
     ) -> CtxID {
         let n = Node {
             node_id: OnceCell::new(),
@@ -196,7 +197,7 @@ impl Node {
             children: DashMap::new(),
             //implementations_in_scope: RwLock::new(Vec::new()),
             frozen: Fuse::new(),
-            public: todo!(),
+            public,
         };
 
         Contexts::instance().intern(n)
@@ -208,6 +209,7 @@ impl Node {
         generics: Vec<(IStr, SyntacticTypeReference)>,
         parent: Option<CtxID>,
         global: Option<CtxID>,
+        public: bool,
     ) -> CtxID {
         let cst::OuterScope {
             node_info,
@@ -217,7 +219,7 @@ impl Node {
         //let parent = parent.map(|e| OnceCell::with_value(e)).unwrap_or(OnceCell::new());
         //let global = global.map(|e| OnceCell::with_value(e)).unwrap_or(OnceCell::new());
 
-        let node = Self::new(name, generics, parent, global.clone(), NodeUnion::Empty());
+        let node = Self::new(name, generics, parent, global.clone(), NodeUnion::Empty(), public);
 
         // iterate through decls and put as children here
         for decl in declarations {
@@ -238,6 +240,7 @@ impl Node {
                         vec![], // TODO
                         node.into(),
                         global.clone(),
+                        n.public
                     );
 
                     node.to_ref()
@@ -246,6 +249,7 @@ impl Node {
                 }
                 TopLevel::Function(f) => {
                     let name = f.name;
+                    let public = f.public;
                     let fd = ast::types::FunctionDefinition::from_cst(f);
 
                     let inner = NodeUnion::Function(fd);
@@ -256,6 +260,7 @@ impl Node {
                         Some(node),
                         global,
                         inner,
+                        public
                     );
 
                     Contexts::instance().get(&node).children.insert(name, child);
@@ -281,6 +286,7 @@ impl Node {
                         generics,
                         name,
                         fields,
+                        public,
                     } = s;
 
                     let fields = fields
@@ -308,7 +314,7 @@ impl Node {
 
                     let inner = NodeUnion::Type(td);
 
-                    let child = Self::new(name, generics, Some(node), global, inner);
+                    let child = Self::new(name, generics, Some(node), global, inner, public);
 
                     node.to_ref()
                         .children
@@ -370,7 +376,11 @@ impl Node {
 
         let aggregate = cst::OuterScope::new(cst::NodeInfo::Builtin, aggregate);
 
-        let s = Self::from_outer(aggregate, name, vec![], parent.clone(), global.clone());
+        let s = Self::from_outer(aggregate, name, vec![], parent.clone(), global.clone(), true); // TODO:
+                                                                                                 // public
+                                                                                                 // markers
+                                                                                                 // for
+                                                                                                 // nodes
 
         let global = match global {
             Some(v) => Some(v),
