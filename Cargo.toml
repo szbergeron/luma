@@ -1,5 +1,5 @@
 [package]
-name = "rsharp"
+name = "luma"
 version = "0.1.0"
 authors = ["Sawyer Bergeron <sawyerbergeron@gmail.com>"]
 edition = "2021"
