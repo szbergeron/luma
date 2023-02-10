@@ -7,9 +7,10 @@
 //! we can add a watchdog that checks if everyone is sleeping
 //! for a significant period of time
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use futures::future::join_all;
+use tokio::sync::mpsc::{UnboundedSender, UnboundedReceiver};
 use uuid::Uuid;
 
 use crate::{
@@ -43,11 +44,22 @@ impl ResolverWorker {
     /// consumes self to hopefully
     /// avoid accidental re-resolving of things
     pub async fn resolve(self) {
+        let mut senders = HashMap::new();
+        let mut receivers = HashMap::new();
+
+        for c in self.domain.iter() {
+            let (send, recv) = tokio::sync::mpsc::unbounded_channel();
+            senders.insert(*c, send);
+            receivers.insert(*c, recv);
+        }
+
+        let postal = Arc::new(Postal::new(senders));
+
         let mut v: Vec<Resolver> = self
             .domain
             .into_iter()
             .map(|cid| {
-                let resolver = Resolver::for_node(cid);
+                let resolver = Resolver::for_node(cid, postal.clone(), receivers.remove(&cid).unwrap());
                 resolver
             })
             .collect();
@@ -62,9 +74,16 @@ enum Message {
 }
 
 /// A PostalWorker handles sending messages between Resolvers :)
-struct Postal {}
+struct Postal {
+    //mailboxes: DashMap<CtxID, &'static >
+    senders: HashMap<CtxID, tokio::sync::mpsc::UnboundedSender<Message>>,
+}
 
 impl Postal {
+    fn new(senders: HashMap<CtxID, UnboundedSender<Message>>) -> Self {
+        Self { senders }
+    }
+
     pub async fn send_reply(&self, from: CtxID, to: CtxID, reply: Reply) {
         todo!()
     }
@@ -77,9 +96,12 @@ impl Postal {
         todo!()
     }
 
-    pub fn instance() -> &'static Postal {
-        todo!()
-    }
+    /*pub fn instance() -> &'static Postal {
+        lazy_static! {
+            static ref S: Postal = Postal::new();
+        }
+        &S
+    }*/
 }
 
 enum Request {
@@ -146,7 +168,7 @@ pub struct Resolver {
     /// For every symbol that we try to export,
     /// there will be one entry in this hashmap. If we haven't
     /// yet resolved the export yet, then the entry is not in the map.
-    /// If we have resolved it to something definite, the entry
+    /// If we have resolved it to something definite, the entrArcy
     /// (name, Ok(ID)). If we failed to resolve it (the
     /// import that was exported couldn't be resolved) then the entry is
     /// (name, Err())
@@ -160,6 +182,12 @@ pub struct Resolver {
     /// for a symbol, then just add the request to the
     /// map and don't start a new conversation
     waiting_to_answer: HashMap<IStr, Vec<Request>>,
+
+    /// Allows us to send messages to other nodes
+    postal: Arc<Postal>,
+
+    /// Lets us hear messages from other nodes
+    listen: UnboundedReceiver<Message>,
 }
 
 struct ConversationContext {
@@ -187,7 +215,7 @@ struct Publish {
 }
 
 impl Resolver {
-    fn for_node(root: CtxID) -> Self {
+    fn for_node(root: CtxID, with_postal: Arc<Postal>, listen: tokio::sync::mpsc::UnboundedReceiver<Message>) -> Self {
         Self {
             self_ctx: root,
             waiting_to_resolve: HashMap::new(),
@@ -195,6 +223,8 @@ impl Resolver {
             name_to_ref: HashMap::new(),
             publishes: HashMap::new(),
             waiting_to_answer: HashMap::new(),
+            postal: with_postal,
+            listen,
         }
     }
 
@@ -221,7 +251,7 @@ impl Resolver {
 
                 // start by asking the target node (which could be ourself!)
                 // to get back to us with where the import is
-                Postal::instance()
+                self.postal
                     .send_ask(
                         self.self_ctx,
                         context.searching_within,
@@ -352,7 +382,7 @@ impl Resolver {
 
                 match p {
                     Some(Ok(val)) => {
-                        Postal::instance()
+                        self.postal
                             .send_reply(
                                 self.self_ctx,
                                 reply_to,
@@ -366,7 +396,7 @@ impl Resolver {
                             .await
                     }
                     Some(Err(e)) => {
-                        Postal::instance()
+                        self.postal
                             .send_reply(
                                 self.self_ctx,
                                 reply_to,
@@ -418,7 +448,7 @@ impl Resolver {
             .or_insert(Vec::new())
             .swap_with(Vec::new()); // take all the things out of the entry, leave it empty
 
-        let postal = Postal::instance();
+        let postal = &self.postal;
 
         for request in to_answer {
             match request {
@@ -458,7 +488,8 @@ impl Resolver {
                 symbol,
                 is_public,
                 go_to: ctx_id,
-                for_ref_id: Uuid::nil(),
+                for_ref_id: Uuid::nil(), // this has no prior conversation, we don't need to hear
+                                         // about any resolution, so we provide nil here
             })
             .await;
         }
@@ -501,7 +532,9 @@ impl Resolver {
 
                     let typ_bases = typ.bases.read().unwrap();
 
-                    for base in typ_bases.iter() {}
+                    for base in typ_bases.iter() {
+                        todo!("need to deal with type base");
+                    }
                 }
             }
             super::tree::NodeUnion::Function(_) => {
@@ -521,7 +554,7 @@ impl Resolver {
         // eventually, if there are no loops, we will reach
         // a closed state where all requests have either been resolved,
         // or completed with an import error
-        while let Some(v) = Postal::instance().wait_next().await {
+        while let Some(v) = self.postal.wait_next().await {
             match v {
                 Message::Request(_) => todo!(),
                 Message::Reply(_) => todo!(),
@@ -533,7 +566,7 @@ impl Resolver {
         match self.self_ctx.resolve().inner {
             super::tree::NodeUnion::Type(t) => {
                 // things
-                todo!()
+                todo!("need to fix types now that we know what they should be")
             }
             super::tree::NodeUnion::Function(_) => todo!(),
             super::tree::NodeUnion::Global(_) => todo!(),
