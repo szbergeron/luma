@@ -73,6 +73,8 @@ enum Message {
     Request(Request),
     Reply(Reply),
     Exit(),
+    /// A heartbeat message to check node status
+    CheckIn(),
 }
 
 /// A PostalWorker handles sending messages between Resolvers :)
@@ -709,6 +711,8 @@ impl Resolver {
                         cause,
                     } => todo!(),
                 },
+                Message::CheckIn() => {
+                }
                 Message::Exit() => break,
             }
 
