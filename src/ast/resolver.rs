@@ -10,7 +10,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use futures::future::join_all;
-use tokio::sync::mpsc::{UnboundedSender, UnboundedReceiver};
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use uuid::Uuid;
 
 use crate::{
@@ -31,7 +31,6 @@ pub struct ResolverWorker {
     /// don't trample over each other, and so that
     /// when they "talk" to each other it is at a logical boundary at a parent spot in the tree
     domain: Vec<CtxID>,
-    //waiting_questions: HashMap<>
 }
 
 impl ResolverWorker {
@@ -59,7 +58,8 @@ impl ResolverWorker {
             .domain
             .into_iter()
             .map(|cid| {
-                let resolver = Resolver::for_node(cid, postal.clone(), receivers.remove(&cid).unwrap());
+                let resolver =
+                    Resolver::for_node(cid, postal.clone(), receivers.remove(&cid).unwrap());
                 resolver
             })
             .collect();
@@ -68,6 +68,7 @@ impl ResolverWorker {
     }
 }
 
+#[derive(Debug)]
 enum Message {
     Request(Request),
     Reply(Reply),
@@ -75,7 +76,6 @@ enum Message {
 
 /// A PostalWorker handles sending messages between Resolvers :)
 struct Postal {
-    //mailboxes: DashMap<CtxID, &'static >
     senders: HashMap<CtxID, tokio::sync::mpsc::UnboundedSender<Message>>,
 }
 
@@ -85,16 +85,16 @@ impl Postal {
     }
 
     pub async fn send_reply(&self, from: CtxID, to: CtxID, reply: Reply) {
-        todo!()
+        self.senders.get(&to).unwrap().send(Message::Reply(reply)).unwrap();
     }
 
     pub async fn send_ask(&self, from: CtxID, to: CtxID, request: Request) {
-        todo!()
+        self.senders.get(&to).unwrap().send(Message::Request(request)).unwrap();
     }
 
-    pub async fn wait_next(&self) -> Option<Message> {
-        todo!()
-    }
+    /*pub async fn wait_next(&self) -> Option<Message> {
+
+    }*/
 
     /*pub fn instance() -> &'static Postal {
         lazy_static! {
@@ -104,6 +104,7 @@ impl Postal {
     }*/
 }
 
+#[derive(Debug, Clone, Copy)]
 enum Request {
     AskFor {
         reply_to: CtxID,
@@ -113,6 +114,7 @@ enum Request {
     },
 }
 
+#[derive(Debug, Clone)]
 enum Reply {
     /// If a symbol is exported by a node, then it must itself
     /// be a node, and this says what node it was found at
@@ -136,7 +138,7 @@ enum Reply {
     },
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct ImportError {
     symbol_name: IStr,
     error_reason: String,
@@ -191,7 +193,8 @@ pub struct Resolver {
 }
 
 struct ConversationContext {
-    publish_as: IStr,
+    /// If this is None, then we aren't publishing this symbol in any way
+    publish_as: Option<IStr>,
 
     remaining_scope: Vec<IStr>,
     original_scope: ScopedName,
@@ -203,9 +206,9 @@ struct ConversationContext {
     public: bool,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 struct Publish {
-    symbol: IStr,
+    symbol: Option<IStr>,
 
     is_public: bool,
 
@@ -215,7 +218,11 @@ struct Publish {
 }
 
 impl Resolver {
-    fn for_node(root: CtxID, with_postal: Arc<Postal>, listen: tokio::sync::mpsc::UnboundedReceiver<Message>) -> Self {
+    fn for_node(
+        root: CtxID,
+        with_postal: Arc<Postal>,
+        listen: tokio::sync::mpsc::UnboundedReceiver<Message>,
+    ) -> Self {
         Self {
             self_ctx: root,
             waiting_to_resolve: HashMap::new(),
@@ -228,7 +235,7 @@ impl Resolver {
         }
     }
 
-    fn next_convo(&mut self) -> Uuid {
+    fn next_convo(&self) -> Uuid {
         /*self.convo_id_gen += 1;
 
         self.convo_id_gen*/
@@ -276,7 +283,9 @@ impl Resolver {
 
             // if nothing left to resolve, then `within` is the target for the alias
             [] => {
-                if ["super", "package"].contains(&context.publish_as.resolve()) {
+                if ["super", "package"]
+                    .contains(&context.publish_as.unwrap_or("".intern()).resolve())
+                {
                     panic!("user tried to alias some symbol as 'super' or 'package' (reserved module names)");
                 } else {
                     self.publish(Publish {
@@ -331,7 +340,7 @@ impl Resolver {
                             .resolve()
                             .parent
                             .map(|cid| Publish {
-                                symbol,
+                                symbol: Some(symbol),
                                 is_public: true,
                                 go_to: cid,
                                 for_ref_id: conversation,
@@ -348,7 +357,7 @@ impl Resolver {
                         .resolve()
                         .global
                         .map(|cid| Publish {
-                            symbol,
+                            symbol: Some(symbol),
                             is_public: true,
                             go_to: cid,
                             for_ref_id: conversation,
@@ -430,7 +439,7 @@ impl Resolver {
     /// when exported
     async fn publish(&mut self, p: Publish) {
         self.publishes
-            .remove(&p.symbol)
+            .remove(&p.symbol.unwrap_or("".intern())) // use the "" null symbol here
             .map(|v| panic!("already published this same alias"));
 
         if !p.for_ref_id.is_nil() {
@@ -438,38 +447,40 @@ impl Resolver {
             self.resolved_refs.insert(p.for_ref_id, p.clone());
         }
 
-        // we use publishes as basically a memoization technique
-        // so that we don't have to re-look-up prior queries
-        self.publishes.insert(p.symbol, Ok(p));
+        if let Some(symbol) = p.symbol {
+            // we use publishes as basically a memoization technique
+            // so that we don't have to re-look-up prior queries
+            self.publishes.insert(symbol, Ok(p));
 
-        let to_answer = self
-            .waiting_to_answer
-            .entry(p.symbol)
-            .or_insert(Vec::new())
-            .swap_with(Vec::new()); // take all the things out of the entry, leave it empty
+            let to_answer = self
+                .waiting_to_answer
+                .entry(symbol)
+                .or_insert(Vec::new())
+                .swap_with(Vec::new()); // take all the things out of the entry, leave it empty
 
-        let postal = &self.postal;
+            let postal = &self.postal;
 
-        for request in to_answer {
-            match request {
-                Request::AskFor {
-                    conversation,
-                    symbol,
-                    within,
-                    reply_to,
-                } => {
-                    postal
-                        .send_reply(
-                            self.self_ctx,
-                            reply_to,
-                            Reply::Redirect {
-                                reply_from: self.self_ctx,
-                                conversation,
-                                within: self.self_ctx,
-                                publish: p,
-                            },
-                        )
-                        .await
+            for request in to_answer {
+                match request {
+                    Request::AskFor {
+                        conversation,
+                        symbol,
+                        within,
+                        reply_to,
+                    } => {
+                        postal
+                            .send_reply(
+                                self.self_ctx,
+                                reply_to,
+                                Reply::Redirect {
+                                    reply_from: self.self_ctx,
+                                    conversation,
+                                    within: self.self_ctx,
+                                    publish: p,
+                                },
+                            )
+                            .await
+                    }
                 }
             }
         }
@@ -485,7 +496,7 @@ impl Resolver {
             let (&symbol, &ctx_id) = child.pair();
             let is_public = ctx_id.resolve().public;
             self.publish(Publish {
-                symbol,
+                symbol: Some(symbol),
                 is_public,
                 go_to: ctx_id,
                 for_ref_id: Uuid::nil(), // this has no prior conversation, we don't need to hear
@@ -496,7 +507,7 @@ impl Resolver {
 
         // then, ask for every use statement, saving a note to publish
         // any marked public
-        for stmt in vec![todo!()] {
+        for stmt in self.self_ctx.resolve().use_statements.clone() {
             let UseDeclaration {
                 node_info,
                 public,
@@ -507,9 +518,10 @@ impl Resolver {
             let convo_id = self.next_convo();
 
             let cc = ConversationContext {
-                publish_as: alias
-                    .unwrap_or_else(|| *scope.last().expect("empty scope, with no alias")),
-                remaining_scope: scope,
+                publish_as: Some(
+                    alias.unwrap_or_else(|| *scope.last().expect("empty scope, with no alias")),
+                ),
+                remaining_scope: scope.clone(),
                 searching_within: self.self_ctx,
                 public,
                 original_scope: ScopedName {
@@ -524,16 +536,49 @@ impl Resolver {
         // we use directly (this handles functions within the same
         // outer module being able to call each other without
         // the super:: qualifier)
-        match self.self_ctx.resolve().inner {
+        match &self.self_ctx.resolve().inner {
             super::tree::NodeUnion::Type(t) => {
                 // we have field types to ask for
-                for field in t.fields {
+                for field in t.fields.clone() {
                     let typ = field.has_type.expect("all fields must have a typeref");
 
                     let typ_bases = typ.bases.read().unwrap();
 
                     for base in typ_bases.iter() {
-                        todo!("need to deal with type base");
+                        //todo!("need to deal with type base");
+
+                        match base {
+                            crate::ast::types::TypeBase::Generic(_) => {
+                                todo!("we don't yet handle generics")
+                            }
+                            crate::ast::types::TypeBase::Resolved(_) => todo!(
+                                "we shouldn't be trying to handle an already resolved typeref"
+                            ),
+                            crate::ast::types::TypeBase::UnResolved(r) => {
+                                assert!(r.generics.is_empty()); // we don't yet handle generics
+
+                                let convo_id = self.next_convo();
+
+                                let convo_id = *self
+                                    .name_to_ref
+                                    .entry(r.named.clone())
+                                    .or_insert(convo_id);
+
+                                let cc = ConversationContext {
+                                    publish_as: None, // this isn't an import
+                                    remaining_scope: r.named.clone().scope,
+                                    original_scope: r.named.clone(),
+                                    // we search within parent here because we're a typeref within
+                                    // a Type, which implicitly looks for things within the parent
+                                    // scope unless we *explicitly* use the Self qualifier
+                                    searching_within: self.self_ctx.resolve().parent.unwrap(),
+                                    for_ref_id: convo_id,
+                                    public: false,
+                                };
+
+                                self.step_resolve(cc).await;
+                            }
+                        }
                     }
                 }
             }
@@ -554,7 +599,7 @@ impl Resolver {
         // eventually, if there are no loops, we will reach
         // a closed state where all requests have either been resolved,
         // or completed with an import error
-        while let Some(v) = self.postal.wait_next().await {
+        while let Some(v) = self.listen.recv().await {
             match v {
                 Message::Request(_) => todo!(),
                 Message::Reply(_) => todo!(),
@@ -563,7 +608,7 @@ impl Resolver {
         // at this point, go back to every type reference and give it a resolution
         // based on those results
 
-        match self.self_ctx.resolve().inner {
+        match &self.self_ctx.resolve().inner {
             super::tree::NodeUnion::Type(t) => {
                 // things
                 todo!("need to fix types now that we know what they should be")

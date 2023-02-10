@@ -297,7 +297,7 @@ impl AstNode for TypeDefinition {
     }
 }*/
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct UseDeclaration {
     pub node_info: NodeInfo,
 

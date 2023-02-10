@@ -1,5 +1,5 @@
-use crate::avec::AtomicVecIndex;
-use crate::cst::SyntacticTypeReference;
+use crate::{avec::AtomicVecIndex, cst::UseDeclaration};
+use crate::cst::{SyntacticTypeReference, TopLevel};
 use crate::avec::AtomicVec;
 
 use crate::ast;
@@ -160,6 +160,8 @@ pub struct Node {
 
     pub inner: NodeUnion,
 
+    pub use_statements: Vec<UseDeclaration>,
+
     frozen: Fuse,
 }
 
@@ -195,6 +197,7 @@ impl Node {
         global: Option<CtxID>,
         inner: NodeUnion,
         public: bool,
+        use_statements: Vec<UseDeclaration>,
     ) -> CtxID {
         let n = Node {
             node_id: OnceCell::new(),
@@ -207,6 +210,7 @@ impl Node {
             //implementations_in_scope: RwLock::new(Vec::new()),
             frozen: Fuse::new(),
             public,
+            use_statements
         };
 
         Contexts::instance().intern(n)
@@ -227,13 +231,21 @@ impl Node {
 
         //let parent = parent.map(|e| OnceCell::with_value(e)).unwrap_or(OnceCell::new());
         //let global = global.map(|e| OnceCell::with_value(e)).unwrap_or(OnceCell::new());
+        // pre-collect use decls
 
-        let node = Self::new(name, generics, parent, global.clone(), NodeUnion::Empty(), public);
+        let mut use_decls = Vec::new();
+        for decl in declarations.iter() {
+            if let TopLevel::UseDeclaration(u) = decl {
+                use_decls.push(u.clone());
+            }
+        }
+
+
+        let node = Self::new(name, generics, parent, global.clone(), NodeUnion::Empty(), public, use_decls);
 
         // iterate through decls and put as children here
         for decl in declarations {
             println!("Got a decl: {decl:?}");
-            use cst::TopLevel;
             match decl {
                 TopLevel::Namespace(n) => {
                     let cst::NamespaceDefinition {
@@ -269,7 +281,8 @@ impl Node {
                         Some(node),
                         global,
                         inner,
-                        public
+                        public,
+                        vec![],
                     );
 
                     Contexts::instance().get(&node).children.insert(name, child);
@@ -323,7 +336,7 @@ impl Node {
 
                     let inner = NodeUnion::Type(td);
 
-                    let child = Self::new(name, generics, Some(node), global, inner, public);
+                    let child = Self::new(name, generics, Some(node), global, inner, public, vec![]);
 
                     node.to_ref()
                         .children

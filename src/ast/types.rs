@@ -75,20 +75,20 @@ pub struct UnResolvedType {
     /// everything has been published/resolved
     //id: usize,
 
-    from: NodeInfo,
+    pub from: NodeInfo,
 
-    named: ScopedName,
+    pub named: ScopedName,
 
-    generics: Vec<TypeReference>,
+    pub generics: Vec<TypeReference>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum NodeReference {
     Unresolved(ScopedName),
     Resolved(CtxID),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FieldMember {
     pub name: IStr,
     pub has_type: Option<TypeReference>,
