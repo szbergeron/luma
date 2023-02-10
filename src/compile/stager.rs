@@ -1,3 +1,5 @@
+use crate::ast::resolver::ResolverWorker;
+use crate::ast::tree::Contexts;
 use crate::compile::parse_tree::ParseTreeNode;
 //use crate::ast;
 
@@ -161,6 +163,11 @@ async fn async_launch(args: ArgResult) {
     let node = ast::tree::Node::from_parse(node, "global".intern(), None, None);
 
     println!("{:#?}", node.to_ref());
+
+    let ids = Contexts::instance().get_ids();
+
+    ResolverWorker::new(ids).resolve().await; // fix types up
+
 
     //let node = node.into_ast();
 

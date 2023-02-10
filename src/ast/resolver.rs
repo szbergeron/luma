@@ -9,6 +9,7 @@
 
 use std::collections::HashMap;
 
+use futures::future::join_all;
 use uuid::Uuid;
 
 use crate::{
@@ -21,7 +22,7 @@ use crate::{
 
 use super::tree::CtxID;
 
-struct ResolverWorker {
+pub struct ResolverWorker {
     /// we are solely responsible
     /// for dealing with the nodes within our domain.
     ///
@@ -32,19 +33,45 @@ struct ResolverWorker {
     //waiting_questions: HashMap<>
 }
 
+impl ResolverWorker {
+    /// takes a domain of unresolved contexts and
+    /// starts resolvers for them
+    pub fn new(domain: Vec<CtxID>) -> Self {
+        Self { domain }
+    }
+
+    /// consumes self to hopefully
+    /// avoid accidental re-resolving of things
+    pub async fn resolve(self) {
+        let mut v: Vec<Resolver> = self
+            .domain
+            .into_iter()
+            .map(|cid| {
+                let resolver = Resolver::for_node(cid);
+                resolver
+            })
+            .collect();
+
+        join_all(v.iter_mut().map(|r| r.thread2())).await;
+    }
+}
+
 enum Message {
     Request(Request),
     Reply(Reply),
 }
 
 /// A PostalWorker handles sending messages between Resolvers :)
-struct Postal {
-}
+struct Postal {}
 
 impl Postal {
-    pub async fn send_reply(&self, from: CtxID, to: CtxID, reply: Reply) {}
+    pub async fn send_reply(&self, from: CtxID, to: CtxID, reply: Reply) {
+        todo!()
+    }
 
-    pub async fn send_ask(&self, from: CtxID, to: CtxID, request: Request) {}
+    pub async fn send_ask(&self, from: CtxID, to: CtxID, request: Request) {
+        todo!()
+    }
 
     pub async fn wait_next(&self) -> Option<Message> {
         todo!()
@@ -63,7 +90,6 @@ enum Request {
         within: CtxID,
     },
 }
-
 
 enum Reply {
     /// If a symbol is exported by a node, then it must itself
@@ -94,7 +120,7 @@ struct ImportError {
     error_reason: String,
 }
 
-struct Resolver {
+pub struct Resolver {
     self_ctx: CtxID,
 
     /// When we send out a question, we store the
@@ -162,7 +188,14 @@ struct Publish {
 
 impl Resolver {
     fn for_node(root: CtxID) -> Self {
-        todo!()
+        Self {
+            self_ctx: root,
+            waiting_to_resolve: HashMap::new(),
+            resolved_refs: HashMap::new(),
+            name_to_ref: HashMap::new(),
+            publishes: HashMap::new(),
+            waiting_to_answer: HashMap::new(),
+        }
     }
 
     fn next_convo(&mut self) -> Uuid {
@@ -188,16 +221,18 @@ impl Resolver {
 
                 // start by asking the target node (which could be ourself!)
                 // to get back to us with where the import is
-                Postal::instance().send_ask(
-                    self.self_ctx,
-                    context.searching_within,
-                    Request::AskFor {
-                        reply_to: self.self_ctx,
-                        conversation,
-                        symbol: *first,
-                        within: context.searching_within,
-                    },
-                ).await;
+                Postal::instance()
+                    .send_ask(
+                        self.self_ctx,
+                        context.searching_within,
+                        Request::AskFor {
+                            reply_to: self.self_ctx,
+                            conversation,
+                            symbol: *first,
+                            within: context.searching_within,
+                        },
+                    )
+                    .await;
 
                 let mut unres = self
                     .waiting_to_resolve
@@ -316,27 +351,35 @@ impl Resolver {
                 };
 
                 match p {
-                    Some(Ok(val)) => Postal::instance().send_reply(
-                        self.self_ctx,
-                        reply_to,
-                        Reply::Redirect {
-                            reply_from: self.self_ctx,
-                            conversation,
-                            within: self.self_ctx,
-                            publish: todo!(),
-                        },
-                    ).await,
-                    Some(Err(e)) => Postal::instance().send_reply(
-                        self.self_ctx,
-                        reply_to,
-                        Reply::NotFound {
-                            reply_from: self.self_ctx,
-                            conversation,
-                            symbol,
-                            within: self.self_ctx,
-                            cause: Some(e),
-                        },
-                    ).await,
+                    Some(Ok(val)) => {
+                        Postal::instance()
+                            .send_reply(
+                                self.self_ctx,
+                                reply_to,
+                                Reply::Redirect {
+                                    reply_from: self.self_ctx,
+                                    conversation,
+                                    within: self.self_ctx,
+                                    publish: todo!(),
+                                },
+                            )
+                            .await
+                    }
+                    Some(Err(e)) => {
+                        Postal::instance()
+                            .send_reply(
+                                self.self_ctx,
+                                reply_to,
+                                Reply::NotFound {
+                                    reply_from: self.self_ctx,
+                                    conversation,
+                                    symbol,
+                                    within: self.self_ctx,
+                                    cause: Some(e),
+                                },
+                            )
+                            .await
+                    }
                     None => {
                         // need to save the question for later, since we can't answer
                         // definitively quite yet
@@ -384,22 +427,25 @@ impl Resolver {
                     symbol,
                     within,
                     reply_to,
-                } => postal.send_reply(
-                    self.self_ctx,
-                    reply_to,
-                    Reply::Redirect {
-                        reply_from: self.self_ctx,
-                        conversation,
-                        within: self.self_ctx,
-                        publish: p,
-                    },
-                ).await,
+                } => {
+                    postal
+                        .send_reply(
+                            self.self_ctx,
+                            reply_to,
+                            Reply::Redirect {
+                                reply_from: self.self_ctx,
+                                conversation,
+                                within: self.self_ctx,
+                                publish: p,
+                            },
+                        )
+                        .await
+                }
             }
         }
     }
 
-    async fn save_resolve(&mut self, id: Uuid, resolves_to: CtxID) {
-    }
+    async fn save_resolve(&mut self, id: Uuid, resolves_to: CtxID) {}
 
     async fn thread2(&mut self) {
         // first, export every direct child with their public value
@@ -412,7 +458,7 @@ impl Resolver {
                 symbol,
                 is_public,
                 go_to: ctx_id,
-                for_ref_id: todo!(),
+                for_ref_id: Uuid::nil(),
             })
             .await;
         }
@@ -455,8 +501,7 @@ impl Resolver {
 
                     let typ_bases = typ.bases.read().unwrap();
 
-                    for base in typ_bases.iter() {
-                    }
+                    for base in typ_bases.iter() {}
                 }
             }
             super::tree::NodeUnion::Function(_) => {

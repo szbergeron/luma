@@ -6,7 +6,7 @@ use crate::ast;
 
 use std::{
     ptr::NonNull,
-    sync::atomic::{compiler_fence, AtomicIsize, Ordering},
+    sync::{atomic::{compiler_fence, AtomicIsize, Ordering}, Mutex},
 };
 
 use dashmap::DashMap;
@@ -27,6 +27,8 @@ use crate::{
 pub struct Contexts {
     owning: AtomicVec<Node>,
 
+    node_ids: Mutex<Vec<CtxID>>,
+
     by_path: DashMap<Box<[IStr]>, CtxID>,
 }
 
@@ -35,6 +37,7 @@ impl Contexts {
         Self {
             owning: AtomicVec::new(),
             by_path: DashMap::new(),
+            node_ids: Mutex::new(Vec::new()),
         }
     }
 
@@ -48,10 +51,16 @@ impl Contexts {
             .set(id)
             .expect("User already set id for node");
 
+        self.node_ids.lock().unwrap().push(id);
+
         id
 
         // TODO: need to add by_path for lookups, will require
         // nodes to know their path
+    }
+
+    pub fn get_ids(&self) -> Vec<CtxID> {
+        self.node_ids.lock().unwrap().clone()
     }
 
     pub fn get(&self, r: &CtxID) -> &Node {
