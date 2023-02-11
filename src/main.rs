@@ -44,6 +44,8 @@ extern crate static_assertions;
 #[macro_use]
 extern crate lazy_static;
 
+use console_subscriber;
+
 //#[macro_use]
 //extern crate ouroboros;
 
@@ -78,6 +80,7 @@ pub mod types;
 //pub mod bump_interner;
 
 fn main() {
+    console_subscriber::init();
     let args: Vec<String> = env::args().collect();
     println!("Args: {:?}", args);
     let sliced: Vec<&str> = args.iter().map(|s| &s[..]).collect();

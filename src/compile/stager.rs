@@ -193,6 +193,7 @@ pub fn launch(args: &[&str]) {
 
     let tokio_rt = Builder::new_multi_thread()
         .worker_threads(thread_count)
+        .enable_all()
         .build()
         .expect("Couldn't initialize an async worker pool, bad args?");
 

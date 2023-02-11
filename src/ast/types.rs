@@ -60,12 +60,12 @@ pub struct GenericType {
 
 #[derive(Debug, Clone)]
 pub struct ResolvedType {
-    from: NodeInfo,
+    pub from: NodeInfo,
 
-    base: CtxID,
+    pub base: CtxID,
 
     /// May or may not yet be directly resolved
-    generics: Vec<TypeReference>,
+    pub generics: Vec<TypeReference>,
 }
 
 #[derive(Debug, Clone)]
@@ -102,13 +102,13 @@ pub struct StructuralDataDefinition {
 
 #[derive(Debug)]
 pub struct FunctionDefinition {
-    info: cst::NodeInfo,
-    name: IStr,
+    pub info: cst::NodeInfo,
+    pub name: IStr,
 
-    parameters: Vec<(IStr, TypeReference)>,
-    return_type: TypeReference,
+    pub parameters: Vec<(IStr, TypeReference)>,
+    pub return_type: TypeReference,
 
-    implementation: cst::expressions::ExpressionWrapper,
+    pub implementation: cst::expressions::ExpressionWrapper,
 }
 
 impl FunctionDefinition {

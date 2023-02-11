@@ -7,7 +7,11 @@
 //! we can add a watchdog that checks if everyone is sleeping
 //! for a significant period of time
 
-use std::{collections::HashMap, sync::{Arc, atomic::AtomicUsize}};
+use std::{
+    collections::HashMap,
+    sync::{atomic::AtomicUsize, Arc},
+    time::Duration,
+};
 
 use futures::future::join_all;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
@@ -21,7 +25,10 @@ use crate::{
     },
 };
 
-use super::tree::CtxID;
+use super::{
+    tree::CtxID,
+    types::{ResolvedType, TypeBase, TypeReference},
+};
 
 pub struct ResolverWorker {
     /// we are solely responsible
@@ -64,6 +71,10 @@ impl ResolverWorker {
             })
             .collect();
 
+        println!("about to start watchdog");
+        tokio::spawn(Watchdog::new(postal.clone()).run());
+        println!("started watchdog");
+
         join_all(v.iter_mut().map(|r| r.thread2())).await;
     }
 }
@@ -77,6 +88,24 @@ enum Message {
     CheckIn(),
 }
 
+struct Watchdog {
+    postal: Arc<Postal>,
+}
+
+impl Watchdog {
+    pub fn new(p: Arc<Postal>) -> Self {
+        Self { postal: p }
+    }
+
+    pub async fn run(self) {
+        println!("about to send heartbeat");
+        while self.postal.send_heartbeat() {
+            println!("sent heartbeat");
+            tokio::time::sleep(Duration::from_millis(500)).await;
+        }
+    }
+}
+
 /// A PostalWorker handles sending messages between Resolvers :)
 struct Postal {
     senders: HashMap<CtxID, tokio::sync::mpsc::UnboundedSender<Message>>,
@@ -85,7 +114,10 @@ struct Postal {
 
 impl Postal {
     fn new(senders: HashMap<CtxID, UnboundedSender<Message>>) -> Self {
-        Self { senders, exited: AtomicUsize::new(0) }
+        Self {
+            senders,
+            exited: AtomicUsize::new(0),
+        }
     }
 
     pub async fn send_reply(&self, from: CtxID, to: CtxID, reply: Reply) {
@@ -106,7 +138,10 @@ impl Postal {
 
     pub fn sign_out(&self, id: CtxID) {
         println!("{id:?} signs out");
-        let new_v = self.exited.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+        let new_v = self
+            .exited
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+            + 1;
 
         println!("new signed-in count is {new_v}");
 
@@ -119,16 +154,23 @@ impl Postal {
         }
     }
 
-    /*pub async fn wait_next(&self) -> Option<Message> {
+    pub fn exited(&self) -> bool {
+        self.exited.load(std::sync::atomic::Ordering::SeqCst) == self.senders.len()
+    }
 
-    }*/
+    /// returns true if heartbeat was sent successfully,
+    /// false if everyone has exited
+    pub fn send_heartbeat(&self) -> bool {
+        if self.exited() {
+            false
+        } else {
+            for sender in self.senders.values() {
+                let _ = sender.send(Message::CheckIn());
+            }
 
-    /*pub fn instance() -> &'static Postal {
-        lazy_static! {
-            static ref S: Postal = Postal::new();
+            true
         }
-        &S
-    }*/
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -236,8 +278,6 @@ struct ConversationContext {
     public: bool,
 }
 
-//impl std::fmt::Debug for ConversationContext {
-
 #[derive(Debug, Clone, Copy)]
 struct Publish {
     symbol: Option<IStr>,
@@ -248,17 +288,6 @@ struct Publish {
 
     for_ref_id: Uuid,
 }
-
-/*impl std::fmt::Debug for Publish {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Publish")
-            .field("symbol", &self.symbol)
-            .field("is_public", &self.is_public)
-            .field("go_to", &self.go_to.0)
-            .field("for_ref_id", &self.for_ref_id)
-            .finish()
-    }
-}*/
 
 impl Resolver {
     fn for_node(
@@ -280,10 +309,6 @@ impl Resolver {
     }
 
     fn next_convo(&self) -> Uuid {
-        /*self.convo_id_gen += 1;
-
-        self.convo_id_gen*/
-
         Uuid::new_v4()
     }
 
@@ -501,7 +526,10 @@ impl Resolver {
 
         self.waiting_to_resolve.remove(&p.for_ref_id); // no longer waiting to resolve it
 
-        println!("we now have {} unresolved refs", self.waiting_to_resolve.len());
+        println!(
+            "we now have {} unresolved refs",
+            self.waiting_to_resolve.len()
+        );
 
         if let Some(symbol) = p.symbol {
             // we use publishes as basically a memoization technique
@@ -543,6 +571,50 @@ impl Resolver {
     }
 
     async fn save_resolve(&mut self, id: Uuid, resolves_to: CtxID) {}
+
+    async fn start_resolve(&mut self, tb: &TypeReference) {
+        let typ_bases = tb.bases.read().unwrap();
+
+        for base in typ_bases.iter() {
+            match base {
+                crate::ast::types::TypeBase::Generic(_) => {
+                    todo!("we don't yet handle generics")
+                }
+                crate::ast::types::TypeBase::Resolved(_) => {
+                    todo!("we shouldn't be trying to handle an already resolved typeref")
+                }
+                crate::ast::types::TypeBase::UnResolved(r) => {
+                    assert!(r.generics.is_empty()); // we don't yet handle generics
+
+                    match self.name_to_ref.contains_key(&r.named) {
+                        true => {
+                            // do nothing, already gonna resolve it
+                        }
+                        false => {
+                            let convo_id = self.next_convo();
+
+                            let cc = ConversationContext {
+                                publish_as: None, // this isn't an import
+                                remaining_scope: r.named.clone().scope,
+                                original_scope: r.named.clone(),
+                                // we search within parent here because we're a typeref within
+                                // a Type, which implicitly looks for things within the parent
+                                // scope unless we *explicitly* use the Self qualifier
+                                searching_within: self.self_ctx.resolve().parent.unwrap(),
+                                for_ref_id: convo_id,
+                                public: false,
+                            };
+
+                            self.name_to_ref.insert(r.named.clone(), convo_id);
+                            self.waiting_to_resolve.insert(convo_id, cc.clone());
+
+                            self.step_resolve(convo_id).await;
+                        }
+                    };
+                }
+            }
+        }
+    }
 
     async fn thread2(&mut self) {
         // first, export every direct child with their public value
@@ -588,11 +660,6 @@ impl Resolver {
 
             self.waiting_to_resolve.insert(convo_id, cc);
 
-            /*self.start_resolve(ScopedName {
-                scope: scope.clone(),
-            })
-            .await;*/
-
             self.step_resolve(convo_id).await; // ask the question, not waiting for an answer yet
         }
         // then, ask ourselves/our parent for every reference that
@@ -605,67 +672,17 @@ impl Resolver {
                 for field in t.fields.clone() {
                     let typ = field.has_type.expect("all fields must have a typeref");
 
-                    let typ_bases = typ.bases.read().unwrap();
-
-                    for base in typ_bases.iter() {
-                        //todo!("need to deal with type base");
-
-                        match base {
-                            crate::ast::types::TypeBase::Generic(_) => {
-                                todo!("we don't yet handle generics")
-                            }
-                            crate::ast::types::TypeBase::Resolved(_) => todo!(
-                                "we shouldn't be trying to handle an already resolved typeref"
-                            ),
-                            crate::ast::types::TypeBase::UnResolved(r) => {
-                                assert!(r.generics.is_empty()); // we don't yet handle generics
-
-                                /*let convo_id = self.next_convo();
-
-                                if self.name_to_ref.contains_key(&r.named) {
-                                    // do nothing, already going to resolve this ref
-                                } else {
-                                    self.start_resolve(r.named.clone()).await;
-                                }*/
-
-                                match self.name_to_ref.contains_key(&r.named) {
-                                    true => {
-                                        // do nothing, already gonna resolve it
-                                    }
-                                    false => {
-                                        let convo_id = self.next_convo();
-
-                                        let cc = ConversationContext {
-                                            publish_as: None, // this isn't an import
-                                            remaining_scope: r.named.clone().scope,
-                                            original_scope: r.named.clone(),
-                                            // we search within parent here because we're a typeref within
-                                            // a Type, which implicitly looks for things within the parent
-                                            // scope unless we *explicitly* use the Self qualifier
-                                            searching_within: self
-                                                .self_ctx
-                                                .resolve()
-                                                .parent
-                                                .unwrap(),
-                                            for_ref_id: convo_id,
-                                            public: false,
-                                        };
-
-                                        self.name_to_ref.insert(r.named.clone(), convo_id);
-                                        self.waiting_to_resolve.insert(convo_id, cc.clone());
-
-                                        self.step_resolve(convo_id).await;
-                                    }
-                                };
-
-                                //self.start_resolve(r.named.clone()).await;
-                            }
-                        }
-                    }
+                    self.start_resolve(&typ).await;
                 }
             }
-            super::tree::NodeUnion::Function(_) => {
+            super::tree::NodeUnion::Function(f) => {
                 // we have a return type as well as parameter types
+
+                for (_, tr) in f.parameters.iter() {
+                    self.start_resolve(&tr).await;
+                }
+
+                self.start_resolve(&f.return_type).await;
             }
             super::tree::NodeUnion::Global(_) => {
                 // we don't support globals yet
@@ -712,6 +729,7 @@ impl Resolver {
                     } => todo!(),
                 },
                 Message::CheckIn() => {
+                    println!("got checkin for self {:?}", self.self_ctx);
                 }
                 Message::Exit() => break,
             }
@@ -721,7 +739,10 @@ impl Resolver {
                 self.postal.sign_out(self.self_ctx);
             }
 
-            println!("goes back to waiting for messages... self ctx is {:?}", self.self_ctx);
+            println!(
+                "goes back to waiting for messages... self ctx is {:?}",
+                self.self_ctx
+            );
         }
         // at this point, go back to every type reference and give it a resolution
         // based on those results
@@ -729,11 +750,58 @@ impl Resolver {
         match &self.self_ctx.resolve().inner {
             super::tree::NodeUnion::Type(t) => {
                 // things
-                todo!("need to fix types now that we know what they should be")
+                //todo!("need to fix types now that we know what they should be")
+                for field in t.fields.iter() {
+                    let ty = field.has_type.as_ref().unwrap();
+
+                    self.finish_resolve(ty);
+                }
             }
-            super::tree::NodeUnion::Function(_) => todo!(),
+            super::tree::NodeUnion::Function(f) => {
+                for (_, tr) in f.parameters.iter() {
+                    self.finish_resolve(tr)
+                }
+
+                self.finish_resolve(&f.return_type);
+            }
             super::tree::NodeUnion::Global(_) => todo!(),
-            super::tree::NodeUnion::Empty() => todo!(),
+            super::tree::NodeUnion::Empty() => {
+                // to nothing here for now
+            }
+        }
+    }
+
+    fn finish_resolve(&mut self, tr: &TypeReference) {
+        for base in tr.bases.write().unwrap().iter_mut() {
+            let resolved = self.base_to_resolved(base);
+
+                        println!("Resolves ref {:?} into ref {:?}", base, resolved);
+
+                        *base = resolved
+        }
+    }
+
+    fn base_to_resolved(&mut self, base: &TypeBase) -> TypeBase {
+        match base {
+            super::types::TypeBase::Generic(_) => todo!("no generics yet"),
+            super::types::TypeBase::Resolved(_r) => todo!("these shouldn't be resolved yet"),
+            super::types::TypeBase::UnResolved(u) => {
+                assert!(u.generics.len() == 0);
+
+                let scope = u.named.clone();
+
+                let id = self.name_to_ref.get(&scope).unwrap();
+
+                let published = self.resolved_refs.get(id).unwrap();
+
+                let goes_to = published.go_to;
+
+                TypeBase::Resolved(ResolvedType {
+                    from: u.from,
+                    base: goes_to,
+                    generics: vec![],
+                })
+            }
         }
     }
 
