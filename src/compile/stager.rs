@@ -142,31 +142,42 @@ fn args_to_roles(args: &ArgResult) -> Vec<FileRole> {
 }
 
 async fn async_launch(args: ArgResult) {
-    //let (error_sender, _error_reciever) = crossbeam::unbounded();
-
     let files: FileRegistry = Default::default();
 
     let roles = args_to_roles(&args);
 
-    //let root = PreParseTreeNode::new(&files);
-
     println!("Building node");
     
+    // build the initial module tree based on file locations
     let node = crate::compile::preparse_tree::from_roots(&files, roles);
 
     println!("Built node");
 
+    // parse the files (parallel!)
     let node = ParseTreeNode::from_preparse(node, vec![], &args.flags).await;
 
     println!("{node:#?}");
 
-    let node = ast::tree::Node::from_parse(node, "global".intern(), None, None);
+    // convert CST to initial AST
+    let ast_root = ast::tree::Node::from_parse(node, "global".intern(), None, None);
 
-    println!("{:#?}", node.to_ref());
+    println!("{:#?}", ast_root.to_ref());
 
     let ids = Contexts::instance().get_ids();
 
+    // use AST to resolve type references/import statements
+    // at least at a syntactic level (no code analysis, but we do drop
+    // down into code to resolve scoped names)
     ResolverWorker::new(ids).resolve().await; // fix types up
+
+    // convert AST to MIR
+
+    // do type inference directly on MIR, save inferred solutions aside
+
+    // now that we have combined MIR and type solutions (plus fields),
+    //
+
+
 
 
     //let node = node.into_ast();

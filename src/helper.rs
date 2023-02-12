@@ -7,6 +7,8 @@ use std::ops::ControlFlow;
 
 use std::sync::{Arc, RwLock};
 
+use smallvec::SmallVec;
+
 
 
 pub mod interner {
@@ -667,6 +669,28 @@ impl<T> VecOps for Vec<T> {
         let index = self.len();
         self.push(val);
         index
+    }
+}
+
+impl<const N: usize, T> VecOps for SmallVec<[T; N]> {
+    type Item = T;
+
+    fn appended(self, i: Self::Item) -> Self {
+        self.push(i);
+
+        self
+    }
+
+    fn merged(self, o: Self) -> Self {
+        todo!()
+    }
+
+    fn appended_opt(self, i: Option<Self::Item>) -> Self {
+        todo!()
+    }
+
+    fn indexed_insert(&mut self, val: Self::Item) -> usize {
+        todo!()
     }
 }
 

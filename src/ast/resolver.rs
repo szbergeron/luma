@@ -18,7 +18,7 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use uuid::Uuid;
 
 use crate::{
-    cst::{ScopedName, UseDeclaration},
+    cst::{ScopedName, UseDeclaration, ExpressionWrapper},
     helper::{
         interner::{IStr, Internable, SpurHelper},
         SwapWith,
@@ -683,6 +683,33 @@ impl Resolver {
                 }
 
                 self.start_resolve(&f.return_type).await;
+
+                // start resolving any of the typerefs inside the core expression
+
+                fn rec_traverse(s: &mut Resolver, root: &ExpressionWrapper) {
+                    match root {
+                        ExpressionWrapper::Cast(c) => {
+                            s.start_resolve(c.typeref.as_ref());
+                        }
+                        ExpressionWrapper::Literal(_) => todo!(),
+                        ExpressionWrapper::MemberAccess(_) => todo!(),
+                        ExpressionWrapper::Statement(_) => todo!(),
+                        ExpressionWrapper::Block(_) => todo!(),
+                        ExpressionWrapper::IfThenElse(_) => todo!(),
+                        ExpressionWrapper::While(_) => todo!(),
+                        ExpressionWrapper::LetExpression(_) => todo!(),
+                        ExpressionWrapper::Tuple(_) => todo!(),
+                        ExpressionWrapper::Return(_) => todo!(),
+                        ExpressionWrapper::Wildcard(_) => todo!(),
+                        ExpressionWrapper::LLVMLiteral(_) => todo!(),
+                        ExpressionWrapper::Identifier(_) => todo!(),
+                        ExpressionWrapper::FunctionCall(_) => todo!(),
+                        ExpressionWrapper::ImplementationModification(_) => todo!(),
+                        ExpressionWrapper::DynamicMember(_) => todo!(),
+                    }
+                }
+
+                rec_traverse(self, &f.implementation);
             }
             super::tree::NodeUnion::Global(_) => {
                 // we don't support globals yet

@@ -1,9 +1,12 @@
 use std::fmt::Debug;
 
-use super::TypeReference;
+use smallvec::smallvec;
+use smallvec::SmallVec;
+
 use super::cst_traits::*;
+use super::TypeReference;
 
-
+use crate::helper::VecOps;
 /*use super::base::*;
 use super::outer::*;
 use super::ImplementationBody;
@@ -63,6 +66,33 @@ impl ExpressionWrapper {
         let node_info = NodeInfo::from_token(&input);
 
         WildcardExpression::new_expr(node_info)
+    }
+
+    pub fn children(&self) -> SmallVec<[&ExpressionWrapper; 3]> {
+        match self {
+            ExpressionWrapper::Assignment(e) => smallvec![&*e.lhs, &*e.rhs],
+            ExpressionWrapper::BinaryOperation(e) => smallvec![&*e.lhs, &*e.rhs],
+            ExpressionWrapper::UnaryOperation(e) => smallvec![&*e.subexpr],
+            ExpressionWrapper::Comparison(e) => smallvec![&*e.lhs, &*e.rhs],
+            ExpressionWrapper::Cast(e) => smallvec![&*e.subexpr],
+            ExpressionWrapper::Literal(e) => smallvec![],
+            ExpressionWrapper::MemberAccess(e) => smallvec![&*e.on],
+            ExpressionWrapper::Statement(e) => smallvec![&*e.subexpr],
+            ExpressionWrapper::Block(e) => e.contents.iter().map(|e| e.as_ref()).collect(),
+            ExpressionWrapper::IfThenElse(e) => {
+                smallvec![e.if_exp.as_ref(), e.then_exp.as_ref(), e.else_exp.as_ref()]
+            }
+            ExpressionWrapper::While(e) => smallvec![e.if_exp.as_ref(), e.then_exp.as_ref()],
+            ExpressionWrapper::LetExpression(e) => smallvec![e.expression.as_ref()],
+            ExpressionWrapper::Tuple(e) => e.expressions.iter().map(|e| e.as_ref()).collect(),
+            ExpressionWrapper::Return(e) => smallvec![e.subexpr.as_ref()],
+            ExpressionWrapper::Wildcard(e) => smallvec![],
+            ExpressionWrapper::LLVMLiteral(e) => todo!(),
+            ExpressionWrapper::Identifier(e) => smallvec![],
+            ExpressionWrapper::FunctionCall(e) => e.args.children().appended(e.function.as_ref()),
+            ExpressionWrapper::ImplementationModification(_) => todo!(),
+            ExpressionWrapper::DynamicMember(_) => todo!(),
+        }
     }
 }
 
@@ -362,7 +392,7 @@ pub struct LetExpression {
 #[derive(Debug, Clone)]
 pub struct LetComponentScopedDestructure {
     // TODO: need to put more work into this, revisit when relevant for
-// product types down the line
+    // product types down the line
 }
 
 #[derive(Debug, Clone)]
@@ -391,7 +421,6 @@ pub enum LetComponent {
     Identifier(LetComponentIdentifier),
     Discard(NodeInfo),
 }
-
 
 /*impl CstNode for LetExpression {
     fn node_info(&self) -> NodeInfo {
@@ -751,7 +780,7 @@ impl CstNode for MemberAccessExpression {
 pub struct FunctionCall {
     pub node_info: NodeInfo,
     pub function: Box<ExpressionWrapper>,
-    pub args: Box<Tuple>,
+    pub args: Box<ExpressionWrapper>,
 }
 
 impl CstNode for FunctionCall {
@@ -1077,7 +1106,7 @@ impl LiteralExpression {
             _ => {
                 println!("No literal handler for {tw:?}");
                 todo!()
-            },
+            }
         };
 
         Box::new(ExpressionWrapper::Literal(LiteralExpression {
@@ -1099,7 +1128,6 @@ pub struct ImplementationModificationExpression {
 
     pub modifying: Box<ExpressionWrapper>,
     //pub traits: Vec<super::TypeReference>,
-
     pub impl_block: Box<super::ImplementationDefinition>,
 }
 
@@ -1149,6 +1177,5 @@ pub struct Member {
 /// fields within a `struct {}` block
 pub struct Initializer {
     //tag: Option<IStr>,
-
     members: Vec<Member>,
 }

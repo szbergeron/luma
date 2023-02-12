@@ -373,17 +373,13 @@ impl<'lexer> Parser<'lexer> {
 
                 let ni = NodeInfo::from_indices(start, end);
 
-                if let cst::ExpressionWrapper::Tuple(tup) = *call_tuple {
-                    let fc = cst::FunctionCall {
-                        function: on,
-                        args: Box::new(tup),
-                        node_info: ni,
-                    };
+                let fc = cst::FunctionCall {
+                    function: on,
+                    args: call_tuple,
+                    node_info: ni,
+                };
 
-                    t.success((true, box cst::ExpressionWrapper::FunctionCall(fc)))
-                } else {
-                    unreachable!()
-                }
+                t.success((true, box cst::ExpressionWrapper::FunctionCall(fc)))
             }
             Token::Dot => {
                 // doing a member access
@@ -668,7 +664,8 @@ impl<'lexer> Parser<'lexer> {
                     let e = self
                         .parse_expr(&t)
                         .join_hard(&mut t)
-                        .catch(&mut t).handle_here()?;
+                        .catch(&mut t)
+                        .handle_here()?;
 
                     let (v, mut _es, _s) = e.update_solution(&t).open();
 
@@ -715,15 +712,15 @@ impl<'lexer> Parser<'lexer> {
         //let t1 = t.sync().la(0).map_err(|e| CorrectionBubblingError::from_fatal_error(e))?;
         let t1 = t.la(0).join_hard(&mut t).catch(&mut t)?;
         /*let t1 = t
-            .take_in(&[
-                Token::LBracket,
-                Token::LBrace,
-                Token::If,
-                Token::InteriorBuiltin,
-                Token::While,
-                Token::Let,
-            ])
-            .join()?;*/
+        .take_in(&[
+            Token::LBracket,
+            Token::LBrace,
+            Token::If,
+            Token::InteriorBuiltin,
+            Token::While,
+            Token::Let,
+        ])
+        .join()?;*/
         let mut lhs = match t1.token {
             Token::LBracket => {
                 let r = self
@@ -809,16 +806,21 @@ impl<'lexer> Parser<'lexer> {
             if let Some(_colon) = t.try_take(Token::Colon) {
                 todo!("Type constraints not implemented yet")
             } else if let Some(_as) = t.try_take(Token::As) {
-                let typeref: cst::SyntacticTypeReference = self.parse_type_specifier(&t)
-                        .join_hard(&mut t)
-                        .catch(&mut t)?;
+                let typeref: cst::SyntacticTypeReference = self
+                    .parse_type_specifier(&t)
+                    .join_hard(&mut t)
+                    .catch(&mut t)?;
                 let start = lhs
                     .as_node()
                     .start()
                     .expect("parsed lhs did not have a start");
                 let end = typeref.end().expect("parsed typeref did not have an end");
                 let node_info = NodeInfo::from_indices(start, end);
-                lhs = cst::CastExpression::new_expr(node_info, lhs, box TypeReference::Syntax(typeref));
+                lhs = cst::CastExpression::new_expr(
+                    node_info,
+                    lhs,
+                    box TypeReference::Syntax(typeref),
+                );
                 continue;
             } else if let Some(_arrow) = t.try_take(Token::ThinArrowLeft) {
                 println!("Parsing implementation expression");
