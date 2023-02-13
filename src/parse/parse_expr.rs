@@ -71,10 +71,10 @@ impl<'lexer> Parser<'lexer> {
                     match t.try_take(Token::Comma) {
                         None => break,
 
-                        // consequence of this is that trailing comma is discarded
+                        // consequence of this is& that trailing comma is discarded
                         // arity of tuple is not increased in this case, but
                         // these semantics make sense to me
-                        //
+                        //&
                         //
                         // TODO: revisit if trailing comma within tuple should
                         // signify increased arity, or if type should
@@ -116,7 +116,7 @@ impl<'lexer> Parser<'lexer> {
                     .join_hard(&mut t)
                     .catch(&mut t)?;
                 r.end().map(|loc| end = loc);
-                Some(box TypeReference::Syntax(r))
+                Some(box TypeReference::Syntactic(r.intern()))
             }
             None => None,
         };
@@ -555,7 +555,7 @@ impl<'lexer> Parser<'lexer> {
                 .parse_type_specifier(&t)
                 .join_hard(&mut t)
                 .catch(&mut t)?;
-            Some((TypeReference::Syntax(tr), name.slice))
+            Some((TypeReference::Syntactic(tr.intern()), name.slice))
         } else {
             None
         };
@@ -819,7 +819,7 @@ impl<'lexer> Parser<'lexer> {
                 lhs = cst::CastExpression::new_expr(
                     node_info,
                     lhs,
-                    box TypeReference::Syntax(typeref),
+                    box TypeReference::Syntactic(typeref.intern()),
                 );
                 continue;
             } else if let Some(_arrow) = t.try_take(Token::ThinArrowLeft) {

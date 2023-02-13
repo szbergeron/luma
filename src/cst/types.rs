@@ -1,6 +1,8 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{atomic::{AtomicUsize, Ordering}, Mutex};
 
-use crate::helper::interner::{IStr, SpurHelper};
+use dashmap::{DashMap, mapref::one::Ref};
+
+use crate::{helper::interner::{IStr, SpurHelper}, ast::{self, types::{AbstractTypeReferenceRef, AbstractTypeReference}}, avec::AtomicVec};
 
 use super::{NodeInfo, CstNode, IntoCstNode, FunctionDefinition};
 
@@ -10,7 +12,7 @@ pub struct StructDefinition {
 
     pub public: bool,
 
-    pub generics: Vec<(IStr, SyntacticTypeReference)>,
+    pub generics: Vec<(IStr, SyntacticTypeReferenceRef)>,
 
     pub name: IStr,
 
@@ -27,10 +29,10 @@ impl CstNode for StructDefinition {
 pub struct ImplementationDefinition {
     pub info: NodeInfo,
 
-    pub generics: Vec<(IStr, SyntacticTypeReference)>,
+    pub generics: Vec<(IStr, SyntacticTypeReferenceRef)>,
 
-    pub for_type: Option<SyntacticTypeReference>,
-    pub of_trait: Option<SyntacticTypeReference>,
+    pub for_type: Option<SyntacticTypeReferenceRef>,
+    pub of_trait: Option<SyntacticTypeReferenceRef>,
 
     pub functions: Vec<FunctionDefinition>,
     pub fields: Vec<Field>,
@@ -46,11 +48,11 @@ impl CstNode for ImplementationDefinition {
 pub struct TraitDefinition {
     pub info: NodeInfo,
 
-    pub generics: Vec<(IStr, SyntacticTypeReference)>,
+    pub generics: Vec<(IStr, SyntacticTypeReferenceRef)>,
 
     pub name: IStr,
 
-    pub constraint: Option<SyntacticTypeReference>,
+    pub constraint: Option<SyntacticTypeReferenceRef>,
 
     pub functions: Vec<FunctionDefinition>,
 }
@@ -76,12 +78,12 @@ impl CstNode for EnumDefinition {
 pub struct Field {
     pub info: NodeInfo,
 
-    pub has_type: SyntacticTypeReference,
+    pub has_type: SyntacticTypeReferenceRef,
     pub has_name: IStr,
 }
 
 pub struct GenericParameters {
-    pub params: Vec<(IStr, SyntacticTypeReference)>,
+    pub params: Vec<(IStr, SyntacticTypeReferenceRef)>,
 }
 
 /// The "T" in Something<T>
@@ -155,18 +157,62 @@ impl ScopedName {
 
 #[derive(Debug, Clone)]
 pub enum TypeReference {
-    Syntax(SyntacticTypeReference),
-    //Abstract(InstanceConstraint),
+    Syntactic(SyntacticTypeReferenceRef),
+
+    // Includes both what it is resolved to now and what it was resolved from first
+    Abstract(AbstractTypeReferenceRef, SyntacticTypeReferenceRef),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+pub struct SyntacticTypeReferenceRef(uuid::Uuid);
+
+impl SyntacticTypeReferenceRef {
+    pub fn new_nil() -> Self {
+        Self(uuid::Uuid::nil())
+    }
+
+    pub fn new_rand() -> Self {
+        Self(uuid::Uuid::new_v4())
+    }
+
+    pub fn resolve(self) -> Option<dashmap::mapref::one::Ref<'static, Self, SyntacticTypeReference>> {
+        SYNTACTIC_FROM_REF.get(&self)
+    }
+
+    pub fn to_abstract(self, within_generic_context: &[IStr]) -> AbstractTypeReferenceRef {
+        AbstractTypeReference::from_cst(self, within_generic_context).intern()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SyntacticTypeReference {
+    pub id: SyntacticTypeReferenceRef,
+
     pub info: NodeInfo,
 
     pub inner: SyntacticTypeReferenceInner,
 }
 
-#[derive(Debug, Clone)]
+impl SyntacticTypeReference {
+    pub fn intern(self) -> SyntacticTypeReferenceRef {
+        self.id = SyntacticTypeReferenceRef::new_nil();
+
+        let ent = SYNTACTIC_TO_REF.entry(self.clone()).or_insert(SyntacticTypeReferenceRef::new_rand());
+
+        SYNTACTIC_FROM_REF.entry(*ent.value()).or_insert(self);
+
+        // now we drop the original entry, ent, which clears the locking behavior
+
+        *ent.value()
+    }
+}
+
+lazy_static! {
+    static ref SYNTACTIC_TO_REF: DashMap<SyntacticTypeReference, SyntacticTypeReferenceRef> = DashMap::new();
+    static ref SYNTACTIC_FROM_REF: DashMap<SyntacticTypeReferenceRef, SyntacticTypeReference> = DashMap::new();
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum SyntacticTypeReferenceInner {
     /// If a type reference is just a _, then it is
     /// unconstrained. By default, generics are like this

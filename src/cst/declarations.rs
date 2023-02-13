@@ -429,11 +429,11 @@ pub struct FunctionDefinition {
     pub name: IStr,
 
     pub body: Box<ExpressionWrapper>,
-    pub return_type: cst::SyntacticTypeReference,
+    pub return_type: cst::SyntacticTypeReferenceRef,
     //pub params: Vec<(Box<super::ExpressionWrapper>, super::TypeReference)>,
-    pub params: Vec<(IStr, cst::SyntacticTypeReference)>,
+    pub params: Vec<(IStr, cst::SyntacticTypeReferenceRef)>,
 
-    pub generics: Vec<(IStr, cst::SyntacticTypeReference)>,
+    pub generics: Vec<(IStr, cst::SyntacticTypeReferenceRef)>,
 }
 
 impl CstNode for FunctionDefinition {
@@ -441,11 +441,11 @@ impl CstNode for FunctionDefinition {
         let _ = write!(f, "fn {} (", self.name.resolve(),);
         for p in self.params.iter() {
             let _ = write!(f, "{}:", p.0.resolve());
-            p.1.pretty(f, depth + 1);
+            p.1.resolve().unwrap().pretty(f, depth + 1);
             let _ = write!(f, ", ");
         }
         let _ = write!(f, ") -> ");
-        self.return_type.pretty(f, depth + 1);
+        self.return_type.resolve().unwrap().pretty(f, depth + 1);
         let _ = write!(f, " ");
         //let _ =
         //let _ = writeln!(f, " {{");

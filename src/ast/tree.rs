@@ -1,12 +1,16 @@
-use crate::{avec::AtomicVecIndex, cst::UseDeclaration};
-use crate::cst::{SyntacticTypeReference, TopLevel};
 use crate::avec::AtomicVec;
+use crate::cst::{SyntacticTypeReference, SyntacticTypeReferenceRef, TopLevel, TypeReference};
+use crate::{avec::AtomicVecIndex, cst::UseDeclaration};
+use itertools::Itertools;
 
 use crate::ast;
 
 use std::{
     ptr::NonNull,
-    sync::{atomic::{compiler_fence, AtomicIsize, Ordering}, Mutex},
+    sync::{
+        atomic::{compiler_fence, AtomicIsize, Ordering},
+        Mutex,
+    },
 };
 
 use dashmap::DashMap;
@@ -144,7 +148,7 @@ pub struct Node {
     pub node_id: OnceCell<CtxID>,
 
     //node_id: CtxID,
-    pub generics: Vec<(IStr, SyntacticTypeReference)>,
+    pub generics: Vec<(IStr, TypeReference)>,
 
     pub children: DashMap<IStr, CtxID>,
 
@@ -158,7 +162,7 @@ pub struct Node {
     pub parent: Option<CtxID>,
     pub global: Option<CtxID>,
 
-    pub inner: NodeUnion,
+    pub inner: Mutex<NodeUnion>,
 
     pub use_statements: Vec<UseDeclaration>,
 
@@ -192,25 +196,30 @@ impl Node {
 
     pub fn new(
         name: IStr,
-        generics: Vec<(IStr, SyntacticTypeReference)>,
+        generics: Vec<(IStr, SyntacticTypeReferenceRef)>,
         parent: Option<CtxID>,
         global: Option<CtxID>,
         inner: NodeUnion,
         public: bool,
         use_statements: Vec<UseDeclaration>,
     ) -> CtxID {
+        let generic_strings = generics.iter().map(|(name, ty)| *name).collect_vec();
+        let generics = generics
+            .into_iter()
+            .map(|(name, ty)| (name, TypeReference::Abstract(ty.to_abstract(generic_strings.as_slice()), ty)))
+            .collect_vec();
         let n = Node {
             node_id: OnceCell::new(),
             name,
             generics,
             parent,
             global,
-            inner,
+            inner: Mutex::new(inner),
             children: DashMap::new(),
             //implementations_in_scope: RwLock::new(Vec::new()),
             frozen: Fuse::new(),
             public,
-            use_statements
+            use_statements,
         };
 
         Contexts::instance().intern(n)
@@ -219,7 +228,7 @@ impl Node {
     pub fn from_outer(
         o: cst::OuterScope,
         name: IStr,
-        generics: Vec<(IStr, SyntacticTypeReference)>,
+        generics: Vec<(IStr, SyntacticTypeReferenceRef)>,
         parent: Option<CtxID>,
         global: Option<CtxID>,
         public: bool,
@@ -240,8 +249,15 @@ impl Node {
             }
         }
 
-
-        let node = Self::new(name, generics, parent, global.clone(), NodeUnion::Empty(), public, use_decls);
+        let node = Self::new(
+            name,
+            generics,
+            parent,
+            global.clone(),
+            NodeUnion::Empty(),
+            public,
+            use_decls,
+        );
 
         // iterate through decls and put as children here
         for decl in declarations {
@@ -261,7 +277,7 @@ impl Node {
                         vec![], // TODO
                         node.into(),
                         global.clone(),
-                        n.public
+                        n.public,
                     );
 
                     node.to_ref()
@@ -311,6 +327,8 @@ impl Node {
                         public,
                     } = s;
 
+                    let generics_strings = generics.iter().map(|(name, _ty)| *name).collect_vec();
+
                     let fields = fields
                         .into_iter()
                         .map(|field| {
@@ -322,9 +340,7 @@ impl Node {
 
                             let field = ast::types::FieldMember {
                                 name: has_name,
-                                has_type: Some(ast::types::TypeReference::from_cst(
-                                    has_type, &generics,
-                                )),
+                                has_type: Some(has_type.to_abstract(generics_strings.as_slice())),
                                 initialization: None, // TODO
                             };
 
@@ -336,7 +352,8 @@ impl Node {
 
                     let inner = NodeUnion::Type(td);
 
-                    let child = Self::new(name, generics, Some(node), global, inner, public, vec![]);
+                    let child =
+                        Self::new(name, generics, Some(node), global, inner, public, vec![]);
 
                     node.to_ref()
                         .children
@@ -398,11 +415,18 @@ impl Node {
 
         let aggregate = cst::OuterScope::new(cst::NodeInfo::Builtin, aggregate);
 
-        let s = Self::from_outer(aggregate, name, vec![], parent.clone(), global.clone(), true); // TODO:
-                                                                                                 // public
-                                                                                                 // markers
-                                                                                                 // for
-                                                                                                 // nodes
+        let s = Self::from_outer(
+            aggregate,
+            name,
+            vec![],
+            parent.clone(),
+            global.clone(),
+            true,
+        ); // TODO:
+           // public
+           // markers
+           // for
+           // nodes
 
         let global = match global {
             Some(v) => Some(v),
@@ -426,7 +450,7 @@ impl Node {
 
 impl std::fmt::Display for Node {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.inner {
+        match &*self.inner.lock().unwrap() {
             NodeUnion::Type(td) => {
                 writeln!(
                     f,

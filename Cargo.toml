@@ -52,6 +52,7 @@ either = "1.8.1"
 
 uuid = { version="*", features=["v4"] }
 console-subscriber = "0.1.8"
+itertools = "0.10.5"
 
 [profile.dev]
 incremental = true

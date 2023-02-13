@@ -94,6 +94,45 @@ impl ExpressionWrapper {
             ExpressionWrapper::DynamicMember(_) => todo!(),
         }
     }
+
+    pub fn children_mut(&mut self) -> SmallVec<[&mut ExpressionWrapper; 3]> {
+        match self {
+            ExpressionWrapper::Assignment(e) => smallvec![e.lhs.as_mut(), e.rhs.as_mut()],
+            ExpressionWrapper::BinaryOperation(e) => smallvec![e.lhs.as_mut(), e.rhs.as_mut()],
+            ExpressionWrapper::UnaryOperation(e) => smallvec![e.subexpr.as_mut()],
+            ExpressionWrapper::Comparison(e) => smallvec![e.lhs.as_mut(), e.rhs.as_mut()],
+            ExpressionWrapper::Cast(e) => smallvec![e.subexpr.as_mut()],
+            ExpressionWrapper::Literal(e) => smallvec![],
+            ExpressionWrapper::MemberAccess(e) => smallvec![e.on.as_mut()],
+            ExpressionWrapper::Statement(e) => smallvec![e.subexpr.as_mut()],
+            ExpressionWrapper::Block(e) => e.contents.iter().map(|e| e.as_mut()).collect(),
+            ExpressionWrapper::IfThenElse(e) => {
+                smallvec![e.if_exp.as_mut(), e.then_exp.as_mut(), e.else_exp.as_mut()]
+            }
+            ExpressionWrapper::While(e) => smallvec![e.if_exp.as_mut(), e.then_exp.as_mut()],
+            ExpressionWrapper::LetExpression(e) => smallvec![e.expression.as_mut()],
+            ExpressionWrapper::Tuple(e) => e.expressions.iter().map(|e| e.as_mut()).collect(),
+            ExpressionWrapper::Return(e) => smallvec![e.subexpr.as_mut()],
+            ExpressionWrapper::Wildcard(e) => smallvec![],
+            ExpressionWrapper::LLVMLiteral(e) => todo!(),
+            ExpressionWrapper::Identifier(e) => smallvec![],
+            ExpressionWrapper::FunctionCall(e) => e.args.children_mut().appended(e.function.as_mut()),
+            ExpressionWrapper::ImplementationModification(_) => todo!(),
+            ExpressionWrapper::DynamicMember(_) => todo!(),
+        }
+    }
+
+    /*pub fn to_abstractly_typed(&mut self, generics: &[IStr]) {
+        match self {
+            Self::Cast(e) => {
+                e.typeref.tr_to_abstractly_typed(generics);
+                e.subexpr.to_abstractly_typed(generics);
+            },
+            Self::FunctionCall(fc) => {
+            },
+            other => other.to_abstractly_typed(generics)
+        }
+    }*/
 }
 
 impl IntoCstNode for ExpressionWrapper {

@@ -7,7 +7,7 @@ use std::{
 
 use crate::{
     cst::GenericHandle,
-    helper::{interner::IStr, VecOps, CompilationError}, avec::{AtomicVec, AtomicVecIndex}, ast::{self, tree::CtxID, types::TypeReference},
+    helper::{interner::IStr, VecOps, CompilationError}, avec::{AtomicVec, AtomicVecIndex}, ast::{self, tree::CtxID, types::AbstractTypeReference},
 };
 
 
@@ -144,7 +144,7 @@ pub struct FunctionCall {
 }
 
 pub struct Construction {
-    of: TypeReference,
+    of: AbstractTypeReference,
 
     /// Each `field:value` pair provided
     inputs: HashMap<IStr, AllocationReference>,
@@ -265,7 +265,7 @@ pub struct SymbolicType {
     generics: Vec<TypeID>,
 
     /// The type that this allocation must provide at this usage site
-    typeclass: Option<TypeReference>,
+    typeclass: Option<AbstractTypeReference>,
 }
 
 #[derive(Clone, Debug)]

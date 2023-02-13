@@ -7,6 +7,7 @@
 //! we can add a watchdog that checks if everyone is sleeping
 //! for a significant period of time
 
+use itertools::Itertools;
 use std::{
     collections::HashMap,
     sync::{atomic::AtomicUsize, Arc},
@@ -18,7 +19,7 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use uuid::Uuid;
 
 use crate::{
-    cst::{ScopedName, UseDeclaration, ExpressionWrapper},
+    cst::{ExpressionWrapper, ScopedName, UseDeclaration},
     helper::{
         interner::{IStr, Internable, SpurHelper},
         SwapWith,
@@ -27,7 +28,7 @@ use crate::{
 
 use super::{
     tree::CtxID,
-    types::{ResolvedType, TypeBase, TypeReference},
+    types::{AbstractTypeReference, AbstractTypeReferenceRef, ResolvedType, TypeBase},
 };
 
 pub struct ResolverWorker {
@@ -572,7 +573,9 @@ impl Resolver {
 
     async fn save_resolve(&mut self, id: Uuid, resolves_to: CtxID) {}
 
-    async fn start_resolve(&mut self, tb: &TypeReference) {
+    async fn start_resolve(&mut self, tb: &AbstractTypeReferenceRef) {
+        let tb = tb.resolve().unwrap();
+        let tb = tb.value();
         let typ_bases = tb.bases.read().unwrap();
 
         for base in typ_bases.iter() {
@@ -666,7 +669,8 @@ impl Resolver {
         // we use directly (this handles functions within the same
         // outer module being able to call each other without
         // the super:: qualifier)
-        match &self.self_ctx.resolve().inner {
+        let node = self.self_ctx.resolve();
+        match &*node.inner.lock().unwrap() {
             super::tree::NodeUnion::Type(t) => {
                 // we have field types to ask for
                 for field in t.fields.clone() {
@@ -686,10 +690,10 @@ impl Resolver {
 
                 // start resolving any of the typerefs inside the core expression
 
-                fn rec_traverse(s: &mut Resolver, root: &ExpressionWrapper) {
+                fn rec_traverse(s: &mut Resolver, root: &ExpressionWrapper, generics: &[IStr]) {
                     match root {
                         ExpressionWrapper::Cast(c) => {
-                            s.start_resolve(c.typeref.as_ref());
+                            s.start_resolve(c.typeref.to_abstract(generics).as_ref());
                         }
                         ExpressionWrapper::Literal(_) => todo!(),
                         ExpressionWrapper::MemberAccess(_) => todo!(),
@@ -709,7 +713,15 @@ impl Resolver {
                     }
                 }
 
-                rec_traverse(self, &f.implementation);
+                rec_traverse(
+                    self,
+                    &f.implementation,
+                    node.generics
+                        .iter()
+                        .map(|(s, _)| *s)
+                        .collect_vec()
+                        .as_slice(),
+                );
             }
             super::tree::NodeUnion::Global(_) => {
                 // we don't support globals yet
@@ -774,22 +786,22 @@ impl Resolver {
         // at this point, go back to every type reference and give it a resolution
         // based on those results
 
-        match &self.self_ctx.resolve().inner {
+        match &mut *self.self_ctx.resolve().inner.lock().unwrap() {
             super::tree::NodeUnion::Type(t) => {
                 // things
                 //todo!("need to fix types now that we know what they should be")
-                for field in t.fields.iter() {
-                    let ty = field.has_type.as_ref().unwrap();
+                for field in t.fields.iter_mut() {
+                    let ty = field.has_type.as_mut().unwrap();
 
                     self.finish_resolve(ty);
                 }
             }
             super::tree::NodeUnion::Function(f) => {
-                for (_, tr) in f.parameters.iter() {
+                for (_, tr) in f.parameters.iter_mut() {
                     self.finish_resolve(tr)
                 }
 
-                self.finish_resolve(&f.return_type);
+                self.finish_resolve(&mut f.return_type);
             }
             super::tree::NodeUnion::Global(_) => todo!(),
             super::tree::NodeUnion::Empty() => {
@@ -798,13 +810,13 @@ impl Resolver {
         }
     }
 
-    fn finish_resolve(&mut self, tr: &TypeReference) {
+    fn finish_resolve(&mut self, tr: &mut AbstractTypeReferenceRef) {
         for base in tr.bases.write().unwrap().iter_mut() {
             let resolved = self.base_to_resolved(base);
 
-                        println!("Resolves ref {:?} into ref {:?}", base, resolved);
+            println!("Resolves ref {:?} into ref {:?}", base, resolved);
 
-                        *base = resolved
+            *base = resolved
         }
     }
 

@@ -1,6 +1,9 @@
 //use crate::ast::base::IntoAstNode;
 
-use crate::cst::{self, CstNode, IntoCstNode, NodeInfo, ScopedName, SyntacticTypeReference};
+use crate::cst::{
+    self, CstNode, IntoCstNode, NodeInfo, ScopedName, SyntacticTypeReference,
+    SyntacticTypeReferenceRef,
+};
 
 /*use cst::{
     self, FieldMember, Implementation, ImplementationBody, ImplementationItem, MemberAttributes,
@@ -72,7 +75,7 @@ impl<'lexer> Parser<'lexer> {
 
         t.success(cst::Field {
             info,
-            has_type,
+            has_type: has_type.intern(),
             has_name: name.slice,
         })
     }
@@ -80,7 +83,7 @@ impl<'lexer> Parser<'lexer> {
     pub fn parse_generic_param_list(
         &mut self,
         t: &TokenProvider,
-    ) -> ParseResult<Vec<(IStr, SyntacticTypeReference)>> {
+    ) -> ParseResult<Vec<(IStr, SyntacticTypeReferenceRef)>> {
         let mut t = parse_header!(t);
 
         let mut params = Vec::new();
@@ -92,9 +95,10 @@ impl<'lexer> Parser<'lexer> {
                 let pair = (
                     id.slice,
                     SyntacticTypeReference {
+                        id: SyntacticTypeReferenceRef::new_nil(),
                         info: NodeInfo::Builtin,
                         inner: cst::SyntacticTypeReferenceInner::Unconstrained(),
-                    },
+                    }.intern(),
                 );
 
                 params.push(pair);
@@ -362,8 +366,8 @@ impl<'lexer> Parser<'lexer> {
 
         t.success(cst::ImplementationDefinition {
             info: NodeInfo::from_indices(start, end),
-            for_type: Some(impl_for),
-            of_trait: impl_of,
+            for_type: Some(impl_for.intern()),
+            of_trait: impl_of.map(|i| i.intern()),
             fields,
             functions,
             generics,
@@ -405,7 +409,7 @@ impl<'lexer> Parser<'lexer> {
             generics,
             name,
             functions,
-            constraint,
+            constraint: constraint.map(|i| i.intern()),
         })
     }
 
@@ -658,6 +662,7 @@ impl<'lexer> Parser<'lexer> {
                 let end = typename.end;
 
                 let tr = cst::SyntacticTypeReference {
+                    id: SyntacticTypeReferenceRef::new_nil(),
                     info: NodeInfo::from_indices(start, end),
                     inner: cst::SyntacticTypeReferenceInner::Single { name: s },
                 };
@@ -684,6 +689,7 @@ impl<'lexer> Parser<'lexer> {
                 );*/
 
                 let tr = cst::SyntacticTypeReference {
+                    id: SyntacticTypeReferenceRef::new_nil(),
                     inner: tr,
                     info: NodeInfo::from_indices(tw.start, t.lh.la(-1).unwrap().end),
                 };

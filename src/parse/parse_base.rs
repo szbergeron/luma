@@ -440,18 +440,18 @@ impl<'lexer> Parser<'lexer> {
     pub fn parse_function_param_list(
         &mut self,
         t: &TokenProvider,
-    ) -> ParseResult<Vec<(IStr, cst::SyntacticTypeReference)>> {
+    ) -> ParseResult<Vec<(IStr, cst::SyntacticTypeReferenceRef)>> {
         //let mut t = t.child();
         let mut t = parse_header!(t);
 
-        let mut rvec: Vec<(IStr, cst::SyntacticTypeReference)> = Vec::new();
+        let mut rvec: Vec<(IStr, cst::SyntacticTypeReferenceRef)> = Vec::new();
 
         while let Some(i) = t.try_take(Token::Identifier) {
             t.take(Token::Colon).join()?;
             let tr = self
                 .parse_type_specifier(&t)
                 .join_hard(&mut t)
-                .catch(&mut t)?;
+                .catch(&mut t)?.intern();
 
             let r = (i.slice, tr);
 
@@ -488,7 +488,7 @@ impl<'lexer> Parser<'lexer> {
         let return_type = self
             .parse_type_specifier(&t)
             .join_hard(&mut t)
-            .catch(&mut t)?;
+            .catch(&mut t)?.intern();
 
         let body = self.parse_expr(&t).join_hard(&mut t).catch(&mut t)?;
 
