@@ -45,60 +45,13 @@ impl AbstractTypeReference {
         }
     }
 
-    /*pub fn intern(self) -> AbstractTypeReferenceRef {
-        self.id = AbstractTypeReferenceRef::new_nil();
-
-        let ent = SYNTACTIC_TO_REF.entry(self.clone()).or_insert(AbstractTypeReferenceRef::new_rand());
-
-        SYNTACTIC_FROM_REF.entry(*ent.value()).or_insert(self);
-
-        // now we drop the original entry, ent, which clears the locking behavior
-
-        *ent.value()
-    }*/
 }
-
-/*#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
-pub struct AbstractTypeReferenceRef(uuid::Uuid);
-
-impl AbstractTypeReferenceRef {
-    pub fn new_nil() -> Self {
-        Self(uuid::Uuid::nil())
-    }
-
-    pub fn new_rand() -> Self {
-        Self(uuid::Uuid::new_v4())
-    }
-
-    pub fn resolve(self) -> Option<dashmap::mapref::one::Ref<'static, Self, AbstractTypeReference>> {
-        SYNTACTIC_FROM_REF.get(&self)
-    }
-}
-
-lazy_static! {
-    static ref SYNTACTIC_TO_REF: DashMap<AbstractTypeReference, AbstractTypeReferenceRef> = DashMap::new();
-    static ref SYNTACTIC_FROM_REF: DashMap<AbstractTypeReferenceRef, AbstractTypeReference> = DashMap::new();
-}*/
 
 impl Clone for AbstractTypeReference {
     fn clone(&self) -> Self {
         Self { bases: RwLock::new(self.bases.read().unwrap().clone()) }
     }
 }
-
-/*impl std::hash::Hash for AbstractTypeReference {
-    fn hash<H: ~const std::hash::Hasher>(&self, state: &mut H) {
-        self.bases.read().unwrap().hash(state);
-    }
-}
-
-impl std::cmp::PartialEq for AbstractTypeReference {
-    fn eq(&self, other: &Self) -> bool {
-        self.bases.read().unwrap().eq(&*other.bases.read().unwrap())
-    }
-}
-
-impl std::cmp::Eq for AbstractTypeReference {}*/
 
 #[derive(Debug, Clone)]
 pub enum TypeBase {

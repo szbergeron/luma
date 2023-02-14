@@ -809,6 +809,34 @@ impl Resolver {
                 }
 
                 self.finish_resolve(&mut f.return_type);
+
+                fn rec_traverse(s: &mut Resolver, root: &mut ExpressionWrapper, generics: &[IStr]) {
+                    match root {
+                        ExpressionWrapper::Cast(c) => {
+                            //s.start_resolve(c.typeref.to_abstract(generics).as_ref());
+                            s.finish_resolve(&mut c.typeref);
+                        }
+                        ExpressionWrapper::LetExpression(le) => {
+                            s.finish_resolve(&mut le.constrained_to);
+                        }
+                        ExpressionWrapper::FunctionCall(_) => todo!(),
+                        other => {
+                            for child in other.children_mut() {
+                                rec_traverse(s, child, generics);
+                            }
+                        }
+                    }
+                }
+
+                rec_traverse(
+                    self,
+                    &mut f.implementation,
+                    node.generics
+                        .iter()
+                        .map(|(s, _)| *s)
+                        .collect_vec()
+                        .as_slice(),
+                );
             }
             super::tree::NodeUnion::Global(_) => todo!(),
             super::tree::NodeUnion::Empty() => {
