@@ -1,8 +1,8 @@
-use std::sync::{atomic::{AtomicUsize, Ordering}, Mutex};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
-use dashmap::{DashMap, mapref::one::Ref};
+use dashmap::DashMap;
 
-use crate::{helper::interner::{IStr, SpurHelper}, ast::{self, types::{AbstractTypeReferenceRef, AbstractTypeReference}}, avec::AtomicVec};
+use crate::{helper::interner::{IStr, SpurHelper}, ast::types::AbstractTypeReference};
 
 use super::{NodeInfo, CstNode, IntoCstNode, FunctionDefinition};
 
@@ -160,7 +160,7 @@ pub enum TypeReference {
     Syntactic(SyntacticTypeReferenceRef),
 
     // Includes both what it is resolved to now and what it was resolved from first
-    Abstract(AbstractTypeReferenceRef, SyntacticTypeReferenceRef),
+    Abstract(Box<AbstractTypeReference>, SyntacticTypeReferenceRef),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
@@ -179,8 +179,12 @@ impl SyntacticTypeReferenceRef {
         SYNTACTIC_FROM_REF.get(&self)
     }
 
-    pub fn to_abstract(self, within_generic_context: &[IStr]) -> AbstractTypeReferenceRef {
-        AbstractTypeReference::from_cst(self, within_generic_context).intern()
+    pub fn resolve_mut(self) -> Option<dashmap::mapref::one::RefMut<'static, Self, SyntacticTypeReference>> {
+        SYNTACTIC_FROM_REF.get_mut(&self)
+    }
+
+    pub fn to_abstract(self, within_generic_context: &[IStr]) -> AbstractTypeReference {
+        AbstractTypeReference::from_cst(self, within_generic_context)
     }
 }
 
@@ -194,7 +198,7 @@ pub struct SyntacticTypeReference {
 }
 
 impl SyntacticTypeReference {
-    pub fn intern(self) -> SyntacticTypeReferenceRef {
+    pub fn intern(mut self) -> SyntacticTypeReferenceRef {
         self.id = SyntacticTypeReferenceRef::new_nil();
 
         let ent = SYNTACTIC_TO_REF.entry(self.clone()).or_insert(SyntacticTypeReferenceRef::new_rand());

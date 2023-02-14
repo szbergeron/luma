@@ -675,7 +675,7 @@ impl<T> VecOps for Vec<T> {
 impl<const N: usize, T> VecOps for SmallVec<[T; N]> {
     type Item = T;
 
-    fn appended(self, i: Self::Item) -> Self {
+    fn appended(mut self, i: Self::Item) -> Self {
         self.push(i);
 
         self

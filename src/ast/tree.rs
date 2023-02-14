@@ -1,5 +1,5 @@
 use crate::avec::AtomicVec;
-use crate::cst::{SyntacticTypeReference, SyntacticTypeReferenceRef, TopLevel, TypeReference};
+use crate::cst::{SyntacticTypeReferenceRef, TopLevel, TypeReference};
 use crate::{avec::AtomicVecIndex, cst::UseDeclaration};
 use itertools::Itertools;
 
@@ -203,10 +203,9 @@ impl Node {
         public: bool,
         use_statements: Vec<UseDeclaration>,
     ) -> CtxID {
-        let generic_strings = generics.iter().map(|(name, ty)| *name).collect_vec();
         let generics = generics
             .into_iter()
-            .map(|(name, ty)| (name, TypeReference::Abstract(ty.to_abstract(generic_strings.as_slice()), ty)))
+            .map(|(name, ty)| (name, TypeReference::Syntactic(ty)))
             .collect_vec();
         let n = Node {
             node_id: OnceCell::new(),
@@ -327,8 +326,6 @@ impl Node {
                         public,
                     } = s;
 
-                    let generics_strings = generics.iter().map(|(name, _ty)| *name).collect_vec();
-
                     let fields = fields
                         .into_iter()
                         .map(|field| {
@@ -340,7 +337,7 @@ impl Node {
 
                             let field = ast::types::FieldMember {
                                 name: has_name,
-                                has_type: Some(has_type.to_abstract(generics_strings.as_slice())),
+                                has_type: Some(TypeReference::Syntactic(has_type)),
                                 initialization: None, // TODO
                             };
 

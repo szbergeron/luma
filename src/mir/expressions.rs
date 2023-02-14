@@ -201,6 +201,7 @@ impl AnyExpression {
                     node_info,
                     box primary_component,
                     box expression,
+                    constrained_to,
                 } = le;
 
                 let from_exp_id = Self::from_ast(within, expression);

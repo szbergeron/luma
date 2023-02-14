@@ -105,13 +105,13 @@ impl ExpressionWrapper {
             ExpressionWrapper::Literal(e) => smallvec![],
             ExpressionWrapper::MemberAccess(e) => smallvec![e.on.as_mut()],
             ExpressionWrapper::Statement(e) => smallvec![e.subexpr.as_mut()],
-            ExpressionWrapper::Block(e) => e.contents.iter().map(|e| e.as_mut()).collect(),
+            ExpressionWrapper::Block(e) => e.contents.iter_mut().map(|e| e.as_mut()).collect(),
             ExpressionWrapper::IfThenElse(e) => {
                 smallvec![e.if_exp.as_mut(), e.then_exp.as_mut(), e.else_exp.as_mut()]
             }
             ExpressionWrapper::While(e) => smallvec![e.if_exp.as_mut(), e.then_exp.as_mut()],
             ExpressionWrapper::LetExpression(e) => smallvec![e.expression.as_mut()],
-            ExpressionWrapper::Tuple(e) => e.expressions.iter().map(|e| e.as_mut()).collect(),
+            ExpressionWrapper::Tuple(e) => e.expressions.iter_mut().map(|e| e.as_mut()).collect(),
             ExpressionWrapper::Return(e) => smallvec![e.subexpr.as_mut()],
             ExpressionWrapper::Wildcard(e) => smallvec![],
             ExpressionWrapper::LLVMLiteral(e) => todo!(),
@@ -424,6 +424,8 @@ pub struct LetExpression {
     pub node_info: NodeInfo,
 
     pub primary_component: Box<LetComponent>,
+
+    pub constrained_to: TypeReference,
 
     pub expression: Box<ExpressionWrapper>,
 }

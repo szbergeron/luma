@@ -8,6 +8,7 @@
 //! for a significant period of time
 
 use itertools::Itertools;
+//use core::slice::SlicePattern;
 use std::{
     collections::HashMap,
     sync::{atomic::AtomicUsize, Arc},
@@ -19,7 +20,7 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use uuid::Uuid;
 
 use crate::{
-    cst::{ExpressionWrapper, ScopedName, UseDeclaration},
+    cst::{ExpressionWrapper, ScopedName, UseDeclaration, TypeReference},
     helper::{
         interner::{IStr, Internable, SpurHelper},
         SwapWith,
@@ -28,7 +29,7 @@ use crate::{
 
 use super::{
     tree::CtxID,
-    types::{AbstractTypeReference, AbstractTypeReferenceRef, ResolvedType, TypeBase},
+    types::{AbstractTypeReference, ResolvedType, TypeBase},
 };
 
 pub struct ResolverWorker {
@@ -121,7 +122,7 @@ impl Postal {
         }
     }
 
-    pub async fn send_reply(&self, from: CtxID, to: CtxID, reply: Reply) {
+    pub fn send_reply(&self, from: CtxID, to: CtxID, reply: Reply) {
         self.senders
             .get(&to)
             .unwrap()
@@ -129,7 +130,7 @@ impl Postal {
             .unwrap();
     }
 
-    pub async fn send_ask(&self, from: CtxID, to: CtxID, request: Request) {
+    pub fn send_ask(&self, from: CtxID, to: CtxID, request: Request) {
         self.senders
             .get(&to)
             .unwrap()
@@ -321,7 +322,7 @@ impl Resolver {
     /// `within` is the node we've been searching for the whole time. In that example,
     /// it will be node 'b'. At that point, we apply whatever alias we were instructed to
     /// and then publish the symbol
-    async fn step_resolve(&mut self, conversation: Uuid) {
+    fn step_resolve(&mut self, conversation: Uuid) {
         let context_ref = self.waiting_to_resolve.get_mut(&conversation).unwrap();
         println!("Steps resolve of {context_ref:?}");
         match context_ref.remaining_scope.clone().as_slice() {
@@ -340,8 +341,7 @@ impl Resolver {
                             symbol: *first,
                             within: context_ref.searching_within,
                         },
-                    )
-                    .await;
+                    );
 
                 // when we hear back, we should continue resolving from [rest],
                 // since we've then resolved symbol `first`
@@ -362,7 +362,7 @@ impl Resolver {
                         go_to: context_ref.searching_within,
                         for_ref_id: context_ref.for_ref_id,
                     };
-                    self.publish(p).await;
+                    self.publish(p);
                 }
             }
         }
@@ -479,7 +479,6 @@ impl Resolver {
                                     publish: val,
                                 },
                             )
-                            .await
                     }
                     Some(Err(e)) => {
                         self.postal
@@ -494,7 +493,6 @@ impl Resolver {
                                     cause: Some(e),
                                 },
                             )
-                            .await
                     }
                     None => {
                         // need to save the question for later, since we can't answer
@@ -514,7 +512,7 @@ impl Resolver {
 
     /// Take a given node and state that it serves as the given alias
     /// when exported
-    async fn publish(&mut self, p: Publish) {
+    fn publish(&mut self, p: Publish) {
         println!("publishes {p:?}");
         self.publishes
             .remove(&p.symbol.unwrap_or("".intern())) // use the "" null symbol here
@@ -564,7 +562,6 @@ impl Resolver {
                                     publish: p,
                                 },
                             )
-                            .await
                     }
                 }
             }
@@ -573,10 +570,25 @@ impl Resolver {
 
     async fn save_resolve(&mut self, id: Uuid, resolves_to: CtxID) {}
 
-    async fn start_resolve(&mut self, tb: &AbstractTypeReferenceRef) {
-        let tb = tb.resolve().unwrap();
-        let tb = tb.value();
-        let typ_bases = tb.bases.read().unwrap();
+    fn start_resolve(&mut self, tb: &mut TypeReference) {
+        let abstrakt: &mut AbstractTypeReference = match tb {
+            TypeReference::Syntactic(s) => {
+                let generic_args = self.self_ctx.resolve().generics.iter().map(|(name, _tr)| *name).collect_vec();
+                let abstrakt = s.to_abstract(generic_args.as_slice());
+
+                *tb = TypeReference::Abstract(box abstrakt, *s);
+
+                match tb {
+                    TypeReference::Abstract(a, s) => a,
+                    _ => unreachable!(),
+                }
+            }
+            TypeReference::Abstract(a, s) => {
+                panic!("this shouldn't have already been made abstract yet, that was our job!")
+            }
+        };
+
+        let typ_bases = abstrakt.bases.read().unwrap();
 
         for base in typ_bases.iter() {
             match base {
@@ -584,7 +596,8 @@ impl Resolver {
                     todo!("we don't yet handle generics")
                 }
                 crate::ast::types::TypeBase::Resolved(_) => {
-                    todo!("we shouldn't be trying to handle an already resolved typeref")
+                    //todo!("we shouldn't be trying to handle an already resolved typeref")
+                    // do nothing here, since maybe someone else resolved it?
                 }
                 crate::ast::types::TypeBase::UnResolved(r) => {
                     assert!(r.generics.is_empty()); // we don't yet handle generics
@@ -611,7 +624,7 @@ impl Resolver {
                             self.name_to_ref.insert(r.named.clone(), convo_id);
                             self.waiting_to_resolve.insert(convo_id, cc.clone());
 
-                            self.step_resolve(convo_id).await;
+                            self.step_resolve(convo_id);
                         }
                     };
                 }
@@ -632,8 +645,7 @@ impl Resolver {
                 go_to: ctx_id,
                 for_ref_id: Uuid::nil(), // this has no prior conversation, we don't need to hear
                                          // about any resolution, so we provide nil here
-            })
-            .await;
+            });
         }
 
         // then, ask for every use statement, saving a note to publish
@@ -663,59 +675,54 @@ impl Resolver {
 
             self.waiting_to_resolve.insert(convo_id, cc);
 
-            self.step_resolve(convo_id).await; // ask the question, not waiting for an answer yet
+            self.step_resolve(convo_id); // ask the question, not waiting for an answer yet
         }
         // then, ask ourselves/our parent for every reference that
         // we use directly (this handles functions within the same
         // outer module being able to call each other without
         // the super:: qualifier)
         let node = self.self_ctx.resolve();
-        match &*node.inner.lock().unwrap() {
+        match &mut *node.inner.lock().unwrap() {
             super::tree::NodeUnion::Type(t) => {
                 // we have field types to ask for
-                for field in t.fields.clone() {
-                    let typ = field.has_type.expect("all fields must have a typeref");
+                for field in t.fields.iter_mut() {
+                    let mut typ = field.has_type.as_mut().expect("all fields must have a typeref");
 
-                    self.start_resolve(&typ).await;
+                    self.start_resolve(&mut typ);
                 }
             }
             super::tree::NodeUnion::Function(f) => {
                 // we have a return type as well as parameter types
 
-                for (_, tr) in f.parameters.iter() {
-                    self.start_resolve(&tr).await;
+                for pair in f.parameters.iter_mut() {
+                    self.start_resolve(&mut pair.1);
                 }
 
-                self.start_resolve(&f.return_type).await;
+                self.start_resolve(&mut f.return_type);
 
                 // start resolving any of the typerefs inside the core expression
 
-                fn rec_traverse(s: &mut Resolver, root: &ExpressionWrapper, generics: &[IStr]) {
+                fn rec_traverse(s: &mut Resolver, root: &mut ExpressionWrapper, generics: &[IStr]) {
                     match root {
                         ExpressionWrapper::Cast(c) => {
-                            s.start_resolve(c.typeref.to_abstract(generics).as_ref());
+                            //s.start_resolve(c.typeref.to_abstract(generics).as_ref());
+                            s.start_resolve(&mut c.typeref);
                         }
-                        ExpressionWrapper::Literal(_) => todo!(),
-                        ExpressionWrapper::MemberAccess(_) => todo!(),
-                        ExpressionWrapper::Statement(_) => todo!(),
-                        ExpressionWrapper::Block(_) => todo!(),
-                        ExpressionWrapper::IfThenElse(_) => todo!(),
-                        ExpressionWrapper::While(_) => todo!(),
-                        ExpressionWrapper::LetExpression(_) => todo!(),
-                        ExpressionWrapper::Tuple(_) => todo!(),
-                        ExpressionWrapper::Return(_) => todo!(),
-                        ExpressionWrapper::Wildcard(_) => todo!(),
-                        ExpressionWrapper::LLVMLiteral(_) => todo!(),
-                        ExpressionWrapper::Identifier(_) => todo!(),
+                        ExpressionWrapper::LetExpression(le) => {
+                            s.start_resolve(&mut le.constrained_to);
+                        }
                         ExpressionWrapper::FunctionCall(_) => todo!(),
-                        ExpressionWrapper::ImplementationModification(_) => todo!(),
-                        ExpressionWrapper::DynamicMember(_) => todo!(),
+                        other => {
+                            for child in other.children_mut() {
+                                rec_traverse(s, child, generics);
+                            }
+                        }
                     }
                 }
 
                 rec_traverse(
                     self,
-                    &f.implementation,
+                    &mut f.implementation,
                     node.generics
                         .iter()
                         .map(|(s, _)| *s)
@@ -757,7 +764,7 @@ impl Resolver {
 
                         c.searching_within = within;
 
-                        self.step_resolve(conversation).await;
+                        self.step_resolve(conversation);
                     }
                     Reply::NotFound {
                         reply_from,
@@ -810,7 +817,13 @@ impl Resolver {
         }
     }
 
-    fn finish_resolve(&mut self, tr: &mut AbstractTypeReferenceRef) {
+    fn finish_resolve(&mut self, tr: &mut TypeReference) {
+        let tr = if let TypeReference::Abstract(a, s) = tr {
+            a
+        } else {
+            unreachable!()
+        };
+
         for base in tr.bases.write().unwrap().iter_mut() {
             let resolved = self.base_to_resolved(base);
 
@@ -823,7 +836,7 @@ impl Resolver {
     fn base_to_resolved(&mut self, base: &TypeBase) -> TypeBase {
         match base {
             super::types::TypeBase::Generic(_) => todo!("no generics yet"),
-            super::types::TypeBase::Resolved(_r) => todo!("these shouldn't be resolved yet"),
+            super::types::TypeBase::Resolved(r) => super::types::TypeBase::Resolved(r.clone()),
             super::types::TypeBase::UnResolved(u) => {
                 assert!(u.generics.len() == 0);
 

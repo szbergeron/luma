@@ -3,7 +3,7 @@ use std::sync::RwLock;
 //use dashmap::lock::RwLock;
 
 use crate::{
-    cst::{ScopedName, SyntacticTypeReference, SyntacticTypeReferenceInner, NodeInfo, SyntacticTypeReferenceRef},
+    cst::{ScopedName, SyntacticTypeReferenceInner, NodeInfo, SyntacticTypeReferenceRef, TypeReference},
     helper::interner::IStr,
 };
 
@@ -13,7 +13,7 @@ use super::tree::CtxID;
 
 //use itertoo
 
-use dashmap::DashMap;
+
 use itertools::Itertools;
 
 /// A TypeReference encloses an entire constraint,
@@ -21,7 +21,7 @@ use itertools::Itertools;
 /// Each `+` is represented by an entry in `bases`
 #[derive(Debug)]
 pub struct AbstractTypeReference {
-    pub id: AbstractTypeReferenceRef,
+    //pub id: AbstractTypeReferenceRef,
 
     pub bases: RwLock<Vec<TypeBase>>,
 }
@@ -32,12 +32,12 @@ impl AbstractTypeReference {
         within_generic_context: &[IStr],
     ) -> Self {
         let cst = cst.resolve().unwrap();
-        match cst.inner {
+        match &cst.inner {
             SyntacticTypeReferenceInner::Single { name } => Self {
-                id: AbstractTypeReferenceRef::new_nil(),
+                //id: AbstractTypeReferenceRef::new_nil(),
                 bases: RwLock::new(vec![TypeBase::UnResolved(UnResolvedType {
                     from: cst.info,
-                    named: name,
+                    named: name.clone(),
                     generics: vec![],
                 })]),
             },
@@ -45,7 +45,7 @@ impl AbstractTypeReference {
         }
     }
 
-    pub fn intern(self) -> AbstractTypeReferenceRef {
+    /*pub fn intern(self) -> AbstractTypeReferenceRef {
         self.id = AbstractTypeReferenceRef::new_nil();
 
         let ent = SYNTACTIC_TO_REF.entry(self.clone()).or_insert(AbstractTypeReferenceRef::new_rand());
@@ -55,10 +55,10 @@ impl AbstractTypeReference {
         // now we drop the original entry, ent, which clears the locking behavior
 
         *ent.value()
-    }
+    }*/
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+/*#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub struct AbstractTypeReferenceRef(uuid::Uuid);
 
 impl AbstractTypeReferenceRef {
@@ -78,15 +78,15 @@ impl AbstractTypeReferenceRef {
 lazy_static! {
     static ref SYNTACTIC_TO_REF: DashMap<AbstractTypeReference, AbstractTypeReferenceRef> = DashMap::new();
     static ref SYNTACTIC_FROM_REF: DashMap<AbstractTypeReferenceRef, AbstractTypeReference> = DashMap::new();
-}
+}*/
 
 impl Clone for AbstractTypeReference {
     fn clone(&self) -> Self {
-        Self { id: self.id, bases: RwLock::new(self.bases.read().unwrap().clone()) }
+        Self { bases: RwLock::new(self.bases.read().unwrap().clone()) }
     }
 }
 
-impl std::hash::Hash for AbstractTypeReference {
+/*impl std::hash::Hash for AbstractTypeReference {
     fn hash<H: ~const std::hash::Hasher>(&self, state: &mut H) {
         self.bases.read().unwrap().hash(state);
     }
@@ -98,9 +98,9 @@ impl std::cmp::PartialEq for AbstractTypeReference {
     }
 }
 
-impl std::cmp::Eq for AbstractTypeReference {}
+impl std::cmp::Eq for AbstractTypeReference {}*/
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
 pub enum TypeBase {
     Generic(GenericType),
 
@@ -109,23 +109,23 @@ pub enum TypeBase {
     UnResolved(UnResolvedType),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
 pub struct GenericType {
     /// Gennerics aren't yet plumbed through
     ni: !,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
 pub struct ResolvedType {
     pub from: NodeInfo,
 
     pub base: CtxID,
 
     /// May or may not yet be directly resolved
-    pub generics: Vec<AbstractTypeReference>,
+    pub generics: Vec<TypeReference>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
 pub struct UnResolvedType {
     /// the ID here is only unique within a single module (or, more specifically, a parse unit)
     /// and serves to allow going back and knowing which one to resolve after
@@ -136,7 +136,7 @@ pub struct UnResolvedType {
 
     pub named: ScopedName,
 
-    pub generics: Vec<AbstractTypeReferenceRef>,
+    pub generics: Vec<TypeReference>,
 }
 
 #[derive(Debug, Clone)]
@@ -148,7 +148,7 @@ pub enum NodeReference {
 #[derive(Debug, Clone)]
 pub struct FieldMember {
     pub name: IStr,
-    pub has_type: Option<AbstractTypeReferenceRef>,
+    pub has_type: Option<TypeReference>,
     pub initialization: Option<cst::expressions::ExpressionWrapper>,
 }
 
@@ -162,8 +162,8 @@ pub struct FunctionDefinition {
     pub info: cst::NodeInfo,
     pub name: IStr,
 
-    pub parameters: Vec<(IStr, AbstractTypeReferenceRef)>,
-    pub return_type: AbstractTypeReferenceRef,
+    pub parameters: Vec<(IStr, TypeReference)>,
+    pub return_type: TypeReference,
 
     pub implementation: cst::expressions::ExpressionWrapper,
 }
@@ -174,7 +174,7 @@ impl FunctionDefinition {
             info,
             public,
             name,
-            mut body,
+            body,
             return_type,
             params,
             generics,
@@ -182,11 +182,13 @@ impl FunctionDefinition {
 
         let generic_names = generics.iter().map(|(name, ty)| *name).collect_vec();
 
-        let return_type = AbstractTypeReference::from_cst(return_type, generic_names.as_slice()).intern();
+        //let return_type = AbstractTypeReference::from_cst(return_type, generic_names.as_slice());
+        let return_type = TypeReference::Syntactic(return_type);
 
         let parameters = params
             .into_iter()
-            .map(|(name, tr)| (name, AbstractTypeReference::from_cst(tr, generic_names.as_slice()).intern()))
+            //.map(|(name, tr)| (name, AbstractTypeReference::from_cst(tr, generic_names.as_slice())))
+            .map(|(name, ty)| (name, TypeReference::Syntactic(ty)))
             .collect();
 
         //[1, 2].into_iter().coll
@@ -204,8 +206,8 @@ impl FunctionDefinition {
 }
 
 pub struct StructDefinition {
-    generics: Vec<(IStr, AbstractTypeReference)>,
+    generics: Vec<(IStr, TypeReference)>,
     name: IStr,
 
-    fields: Vec<(IStr, AbstractTypeReference)>,
+    fields: Vec<(IStr, TypeReference)>,
 }

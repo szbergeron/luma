@@ -162,6 +162,7 @@ impl<'lexer> Parser<'lexer> {
             node_info: NodeInfo::from_indices(start, end),
             primary_component: binding,
             expression: expr,
+            constrained_to: todo!(),
         };
 
         //todo!("Let expression parsing not yet complete")
