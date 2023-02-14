@@ -1,8 +1,10 @@
 use std::collections::HashMap;
 
+use itertools::Itertools;
+
 use crate::{
     avec::AtomicVec,
-    cst::{self, ExpressionWrapper, LetComponentIdentifier, TypeReference},
+    cst::{self, ExpressionWrapper, LetComponentIdentifier, TypeReference, IfThenElseExpression},
     helper::interner::{IStr, Internable},
 };
 
@@ -244,12 +246,30 @@ impl AnyExpression {
 
                 self_id
             }
+            ExpressionWrapper::IfThenElse(ite) => {
+                let IfThenElseExpression { box if_exp, box then_exp, box else_exp, .. } = ite;
+
+                let branch_on = AnyExpression::from_ast(within, if_exp);
+
+                let branch_yes = BranchArm { pattern: Pattern::Literal(Literal::TRUE()), guard: None, body: AnyExpression::from_ast(within, then_exp) };
+
+                let branch_no = BranchArm { pattern: Pattern::Literal(Literal::FALSE()), guard: None, body: AnyExpression::from_ast(within, else_exp) };
+
+                let branch = Branch { branch_on, elements: vec![branch_yes, branch_no] };
+
+                within.add(AnyExpression::Branch(branch)).0
+            }
+            ExpressionWrapper::Block(b) => {
+                let items = b.contents.into_iter().map(|box e| AnyExpression::from_ast(within, e)).collect_vec();
+
+                let ae = AnyExpression::Block(StringBlock { expressions: items });
+
+                within.add(ae).0
+            }
             ExpressionWrapper::Cast(_) => todo!(),
             ExpressionWrapper::Literal(_) => todo!(),
             ExpressionWrapper::MemberAccess(_) => todo!(),
             ExpressionWrapper::Statement(_) => todo!(),
-            ExpressionWrapper::Block(_) => todo!(),
-            ExpressionWrapper::IfThenElse(_) => todo!(),
             ExpressionWrapper::While(_) => todo!(),
             ExpressionWrapper::Tuple(_) => todo!(),
             ExpressionWrapper::Return(_) => todo!(),
@@ -377,6 +397,7 @@ impl Iterate {
 #[derive(Clone, Debug)]
 pub struct Branch {
     //meta: MetaData,
+    branch_on: ExpressionID,
     /// A sequence, in order, of conditions to be matched (against
     /// the given expression)
     /// If a condition evaluates to true, the associated expression
@@ -389,8 +410,8 @@ pub struct Branch {
 #[derive(Clone, Debug)]
 pub struct BranchArm {
     pattern: Pattern,
-    guard: Option<AnyExpression>,
-    body: AnyExpression,
+    guard: Option<ExpressionID>,
+    body: ExpressionID,
 }
 
 impl Branch {
@@ -416,6 +437,16 @@ pub struct Binding {
 #[derive(Clone, Debug)]
 pub struct Literal {
     has_type: TypeReference,
+}
+
+impl Literal {
+    pub fn TRUE() -> Self {
+        todo!()
+    }
+
+    pub fn FALSE() -> Self {
+        todo!()
+    }
 }
 
 #[derive(Clone, Debug)]

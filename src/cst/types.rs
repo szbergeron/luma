@@ -1,6 +1,7 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use dashmap::DashMap;
+use smallvec::{SmallVec, smallvec};
 
 use crate::{helper::interner::{IStr, SpurHelper}, ast::types::AbstractTypeReference};
 
@@ -146,12 +147,16 @@ impl IntoCstNode for ScopedNameReference {
 
 #[derive(Clone, Debug, PartialEq, Hash, Eq)]
 pub struct ScopedName {
-    pub scope: Vec<IStr>,
+    pub scope: SmallVec<[IStr; 3]>,
 }
 
 impl ScopedName {
-    pub fn new(s: Vec<IStr>) -> ScopedName {
-        ScopedName { scope: s }
+    pub fn new<S>(s: S) -> ScopedName where S: Into<SmallVec<[IStr; 3]>> {
+        ScopedName { scope: s.into() }
+    }
+
+    pub fn from_one(s: IStr) -> ScopedName {
+        ScopedName { scope: smallvec![s] }
     }
 }
 

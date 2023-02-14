@@ -8,6 +8,7 @@
 //! for a significant period of time
 
 use itertools::Itertools;
+use smallvec::SmallVec;
 //use core::slice::SlicePattern;
 use std::{
     collections::HashMap,
@@ -20,7 +21,7 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use uuid::Uuid;
 
 use crate::{
-    cst::{ExpressionWrapper, ScopedName, UseDeclaration, TypeReference},
+    cst::{ExpressionWrapper, ScopedName, TypeReference, UseDeclaration},
     helper::{
         interner::{IStr, Internable, SpurHelper},
         SwapWith,
@@ -77,7 +78,7 @@ impl ResolverWorker {
         tokio::spawn(Watchdog::new(postal.clone()).run());
         println!("started watchdog");
 
-        join_all(v.iter_mut().map(|r| r.thread2())).await;
+        join_all(v.iter_mut().map(|r| r.thread())).await;
     }
 }
 
@@ -270,7 +271,7 @@ struct ConversationContext {
     /// If this is None, then we aren't publishing this symbol in any way
     publish_as: Option<IStr>,
 
-    remaining_scope: Vec<IStr>,
+    remaining_scope: SmallVec<[IStr; 3]>,
     original_scope: ScopedName,
 
     searching_within: CtxID,
@@ -331,21 +332,20 @@ impl Resolver {
 
                 // start by asking the target node (which could be ourself!)
                 // to get back to us with where the import is
-                self.postal
-                    .send_ask(
-                        self.self_ctx,
-                        context_ref.searching_within,
-                        Request::AskFor {
-                            reply_to: self.self_ctx,
-                            conversation,
-                            symbol: *first,
-                            within: context_ref.searching_within,
-                        },
-                    );
+                self.postal.send_ask(
+                    self.self_ctx,
+                    context_ref.searching_within,
+                    Request::AskFor {
+                        reply_to: self.self_ctx,
+                        conversation,
+                        symbol: *first,
+                        within: context_ref.searching_within,
+                    },
+                );
 
                 // when we hear back, we should continue resolving from [rest],
                 // since we've then resolved symbol `first`
-                context_ref.remaining_scope = rest.to_vec();
+                context_ref.remaining_scope = rest.to_vec().into();
             }
 
             // if nothing left to resolve, then `within` is the target for the alias
@@ -467,33 +467,27 @@ impl Resolver {
                 };
 
                 match p {
-                    Some(Ok(val)) => {
-                        self.postal
-                            .send_reply(
-                                self.self_ctx,
-                                reply_to,
-                                Reply::Redirect {
-                                    reply_from: self.self_ctx,
-                                    conversation,
-                                    within: self.self_ctx,
-                                    publish: val,
-                                },
-                            )
-                    }
-                    Some(Err(e)) => {
-                        self.postal
-                            .send_reply(
-                                self.self_ctx,
-                                reply_to,
-                                Reply::NotFound {
-                                    reply_from: self.self_ctx,
-                                    conversation,
-                                    symbol,
-                                    within: self.self_ctx,
-                                    cause: Some(e),
-                                },
-                            )
-                    }
+                    Some(Ok(val)) => self.postal.send_reply(
+                        self.self_ctx,
+                        reply_to,
+                        Reply::Redirect {
+                            reply_from: self.self_ctx,
+                            conversation,
+                            within: self.self_ctx,
+                            publish: val,
+                        },
+                    ),
+                    Some(Err(e)) => self.postal.send_reply(
+                        self.self_ctx,
+                        reply_to,
+                        Reply::NotFound {
+                            reply_from: self.self_ctx,
+                            conversation,
+                            symbol,
+                            within: self.self_ctx,
+                            cause: Some(e),
+                        },
+                    ),
                     None => {
                         // need to save the question for later, since we can't answer
                         // definitively quite yet
@@ -550,30 +544,31 @@ impl Resolver {
                         symbol,
                         within,
                         reply_to,
-                    } => {
-                        postal
-                            .send_reply(
-                                self.self_ctx,
-                                reply_to,
-                                Reply::Redirect {
-                                    reply_from: self.self_ctx,
-                                    conversation,
-                                    within: self.self_ctx,
-                                    publish: p,
-                                },
-                            )
-                    }
+                    } => postal.send_reply(
+                        self.self_ctx,
+                        reply_to,
+                        Reply::Redirect {
+                            reply_from: self.self_ctx,
+                            conversation,
+                            within: self.self_ctx,
+                            publish: p,
+                        },
+                    ),
                 }
             }
         }
     }
 
-    async fn save_resolve(&mut self, id: Uuid, resolves_to: CtxID) {}
-
-    fn start_resolve(&mut self, tb: &mut TypeReference) {
+    fn start_resolve_typeref(&mut self, tb: &mut TypeReference) {
         let abstrakt: &mut AbstractTypeReference = match tb {
             TypeReference::Syntactic(s) => {
-                let generic_args = self.self_ctx.resolve().generics.iter().map(|(name, _tr)| *name).collect_vec();
+                let generic_args = self
+                    .self_ctx
+                    .resolve()
+                    .generics
+                    .iter()
+                    .map(|(name, _tr)| *name)
+                    .collect_vec();
                 let abstrakt = s.to_abstract(generic_args.as_slice());
 
                 *tb = TypeReference::Abstract(box abstrakt, *s);
@@ -602,37 +597,41 @@ impl Resolver {
                 crate::ast::types::TypeBase::UnResolved(r) => {
                     assert!(r.generics.is_empty()); // we don't yet handle generics
 
-                    match self.name_to_ref.contains_key(&r.named) {
-                        true => {
-                            // do nothing, already gonna resolve it
-                        }
-                        false => {
-                            let convo_id = self.next_convo();
-
-                            let cc = ConversationContext {
-                                publish_as: None, // this isn't an import
-                                remaining_scope: r.named.clone().scope,
-                                original_scope: r.named.clone(),
-                                // we search within parent here because we're a typeref within
-                                // a Type, which implicitly looks for things within the parent
-                                // scope unless we *explicitly* use the Self qualifier
-                                searching_within: self.self_ctx.resolve().parent.unwrap(),
-                                for_ref_id: convo_id,
-                                public: false,
-                            };
-
-                            self.name_to_ref.insert(r.named.clone(), convo_id);
-                            self.waiting_to_resolve.insert(convo_id, cc.clone());
-
-                            self.step_resolve(convo_id);
-                        }
-                    };
+                    self.start_resolve_symref(r.named.clone());
                 }
             }
         }
     }
 
-    async fn thread2(&mut self) {
+    fn start_resolve_symref(&mut self, nr: ScopedName) {
+        match self.name_to_ref.contains_key(&nr) {
+            true => {
+                // do nothing, already gonna resolve it
+            }
+            false => {
+                let convo_id = self.next_convo();
+
+                let cc = ConversationContext {
+                    publish_as: None, // this isn't an import
+                    remaining_scope: nr.clone().scope,
+                    original_scope: nr.clone(),
+                    // we search within parent here because we're a typeref within
+                    // a Type, which implicitly looks for things within the parent
+                    // scope unless we *explicitly* use the Self qualifier
+                    searching_within: self.self_ctx.resolve().parent.unwrap(),
+                    for_ref_id: convo_id,
+                    public: false,
+                };
+
+                self.name_to_ref.insert(nr, convo_id);
+                self.waiting_to_resolve.insert(convo_id, cc.clone());
+
+                self.step_resolve(convo_id);
+            }
+        };
+    }
+
+    async fn thread(&mut self) {
         // first, export every direct child with their public value
         for child in self.self_ctx.resolve().children.iter() {
             // all direct descendent nodes of the current node are
@@ -662,13 +661,13 @@ impl Resolver {
 
             let cc = ConversationContext {
                 publish_as: Some(
-                    alias.unwrap_or_else(|| *scope.last().expect("empty scope, with no alias")),
+                    alias.unwrap_or_else(|| *scope.scope.last().expect("empty scope, with no alias")),
                 ),
-                remaining_scope: scope.clone(),
+                remaining_scope: scope.clone().scope,
                 searching_within: self.self_ctx,
                 public,
                 original_scope: ScopedName {
-                    scope: scope.clone(),
+                    scope: scope.clone().scope,
                 },
                 for_ref_id: convo_id,
             };
@@ -686,19 +685,22 @@ impl Resolver {
             super::tree::NodeUnion::Type(t) => {
                 // we have field types to ask for
                 for field in t.fields.iter_mut() {
-                    let mut typ = field.has_type.as_mut().expect("all fields must have a typeref");
+                    let mut typ = field
+                        .has_type
+                        .as_mut()
+                        .expect("all fields must have a typeref");
 
-                    self.start_resolve(&mut typ);
+                    self.start_resolve_typeref(&mut typ);
                 }
             }
             super::tree::NodeUnion::Function(f) => {
                 // we have a return type as well as parameter types
 
                 for pair in f.parameters.iter_mut() {
-                    self.start_resolve(&mut pair.1);
+                    self.start_resolve_typeref(&mut pair.1);
                 }
 
-                self.start_resolve(&mut f.return_type);
+                self.start_resolve_typeref(&mut f.return_type);
 
                 // start resolving any of the typerefs inside the core expression
 
@@ -706,10 +708,10 @@ impl Resolver {
                     match root {
                         ExpressionWrapper::Cast(c) => {
                             //s.start_resolve(c.typeref.to_abstract(generics).as_ref());
-                            s.start_resolve(&mut c.typeref);
+                            s.start_resolve_typeref(&mut c.typeref);
                         }
                         ExpressionWrapper::LetExpression(le) => {
-                            s.start_resolve(&mut le.constrained_to);
+                            s.start_resolve_typeref(&mut le.constrained_to);
                         }
                         ExpressionWrapper::FunctionCall(_) => todo!(),
                         other => {
@@ -759,7 +761,7 @@ impl Resolver {
                         let c = self.waiting_to_resolve.get_mut(&conversation).unwrap();
 
                         if let [_, rest @ ..] = c.remaining_scope.as_slice() {
-                            c.remaining_scope = rest.to_vec();
+                            c.remaining_scope = rest.to_vec().into();
                         }
 
                         c.searching_within = within;
@@ -800,24 +802,24 @@ impl Resolver {
                 for field in t.fields.iter_mut() {
                     let ty = field.has_type.as_mut().unwrap();
 
-                    self.finish_resolve(ty);
+                    self.finish_resolve_typeref(ty);
                 }
             }
             super::tree::NodeUnion::Function(f) => {
                 for (_, tr) in f.parameters.iter_mut() {
-                    self.finish_resolve(tr)
+                    self.finish_resolve_typeref(tr)
                 }
 
-                self.finish_resolve(&mut f.return_type);
+                self.finish_resolve_typeref(&mut f.return_type);
 
                 fn rec_traverse(s: &mut Resolver, root: &mut ExpressionWrapper, generics: &[IStr]) {
                     match root {
                         ExpressionWrapper::Cast(c) => {
                             //s.start_resolve(c.typeref.to_abstract(generics).as_ref());
-                            s.finish_resolve(&mut c.typeref);
+                            s.finish_resolve_typeref(&mut c.typeref);
                         }
                         ExpressionWrapper::LetExpression(le) => {
-                            s.finish_resolve(&mut le.constrained_to);
+                            s.finish_resolve_typeref(&mut le.constrained_to);
                         }
                         ExpressionWrapper::FunctionCall(_) => todo!(),
                         other => {
@@ -845,7 +847,7 @@ impl Resolver {
         }
     }
 
-    fn finish_resolve(&mut self, tr: &mut TypeReference) {
+    fn finish_resolve_typeref(&mut self, tr: &mut TypeReference) {
         let tr = if let TypeReference::Abstract(a, s) = tr {
             a
         } else {

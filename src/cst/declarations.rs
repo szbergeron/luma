@@ -1,4 +1,4 @@
-use super::expressions::ExpressionWrapper;
+use super::{expressions::ExpressionWrapper, ScopedName};
 
 use crate::cst as cst;
 
@@ -303,7 +303,7 @@ pub struct UseDeclaration {
 
     pub public: bool,
 
-    pub scope: Vec<IStr>,
+    pub scope: ScopedName,
 
     pub alias: Option<IStr>,
 }
@@ -326,9 +326,9 @@ impl CstNode for UseDeclaration {
     fn pretty(&self, f: &mut dyn std::fmt::Write, _depth: usize) {
         //let uses: Vec<&'static str> = self.scope.iter().map(|ss| ss.resolve()).collect();
 
-        let first = self.scope[0].resolve(); // a valid `use` statement always has at least a first string
+        let first = self.scope.scope[0].resolve(); // a valid `use` statement always has at least a first string
 
-        let mut ui = self.scope.iter();
+        let mut ui = self.scope.scope.iter();
         ui.next();
 
         let uses =

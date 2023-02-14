@@ -3,6 +3,7 @@ use std::fmt::Debug;
 use smallvec::smallvec;
 use smallvec::SmallVec;
 
+use super::ScopedName;
 use super::cst_traits::*;
 use super::TypeReference;
 
@@ -313,11 +314,11 @@ impl CstNode for WhileExpression {
 
 #[derive(Clone)]
 pub struct IfThenElseExpression {
-    node_info: NodeInfo,
+    pub node_info: NodeInfo,
 
-    if_exp: Box<ExpressionWrapper>,
-    then_exp: Box<ExpressionWrapper>,
-    else_exp: Box<ExpressionWrapper>,
+    pub if_exp: Box<ExpressionWrapper>,
+    pub then_exp: Box<ExpressionWrapper>,
+    pub else_exp: Box<ExpressionWrapper>,
 }
 
 impl IfThenElseExpression {
@@ -1040,7 +1041,7 @@ pub struct IdentifierExpression {
 
     //pub name: &'a str,
     //pub context: Box<ScopedName>,
-    ident: IStr,
+    ident: ScopedName, // allows including additional scope info
     //pub node_type: Option<types::TypeReference>,
     //pub span: Span,
 }
@@ -1048,7 +1049,7 @@ pub struct IdentifierExpression {
 impl IdentifierExpression {
     pub fn from_token(tw: TokenWrapper) -> ExpressionWrapper {
         ExpressionWrapper::Identifier(Self {
-            ident: tw.slice,
+            ident: ScopedName::from_one(tw.slice),
             node_info: NodeInfo::from_token(&tw),
         })
     }
@@ -1056,7 +1057,7 @@ impl IdentifierExpression {
 
 impl std::fmt::Debug for IdentifierExpression {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        write!(f, "IdentifierExpression('{}')", self.ident.resolve())
+        write!(f, "IdentifierExpression('{:?}')", self.ident)
     }
 }
 

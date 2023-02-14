@@ -657,7 +657,7 @@ impl<'lexer> Parser<'lexer> {
 
                 scope.scope.push(typename.slice);
 
-                let s: ScopedName = ScopedName { scope: scope.scope };
+                let s: ScopedName = ScopedName::new(scope.scope);
 
                 let end = typename.end;
 

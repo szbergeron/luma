@@ -3,7 +3,7 @@
 //use crate::ast::{StaticVariableDeclaration, TopLevel};
 use crate::cst::cst_traits::NodeInfo;
 //use crate::cst::declarations::{OuterScope, TopLevel, Namespace, TypeReference, FunctionDefinition};
-use crate::cst;
+use crate::cst::{self, ScopedName};
 use crate::lex::{ParseResultError, Token};
 
 //use crate::helper::lex_wrap::LookaheadStream;
@@ -551,6 +551,8 @@ impl<'lexer> Parser<'lexer> {
         let end = t.take(Token::Semicolon).join()?.end; // don't need to directly bubble, since this individual statement is recoverable
 
         let node_info = NodeInfo::from_indices(start, end);
+
+        let scope = ScopedName::new(scope);
 
         t.success(cst::UseDeclaration {
             public: false,
