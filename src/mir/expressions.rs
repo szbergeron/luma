@@ -4,7 +4,10 @@ use itertools::Itertools;
 
 use crate::{
     avec::AtomicVec,
-    cst::{self, ExpressionWrapper, LetComponentIdentifier, TypeReference, IfThenElseExpression},
+    cst::{
+        self, CastExpression, ExpressionWrapper, IfThenElseExpression, LetComponentIdentifier,
+        TypeReference, MemberAccessExpression,
+    },
     helper::interner::{IStr, Internable},
 };
 
@@ -130,13 +133,8 @@ impl AnyExpression {
 
                 // for now just have binary expressions be
                 // called on LHS regardless of actual associativity
-                let self_id = AnyExpression::make_call(
-                    within,
-                    lhs_id,
-                    opstr,
-                    vec![lhs_id, rhs_id],
-                    vec![],
-                );
+                let self_id =
+                    AnyExpression::make_call(within, lhs_id, opstr, vec![lhs_id, rhs_id], vec![]);
 
                 //let (self_id, _self_ref) = within.add(self_node);
 
@@ -186,13 +184,8 @@ impl AnyExpression {
                 }
                 .intern();
 
-                let self_id = AnyExpression::make_call(
-                    within,
-                    lhs_id,
-                    opstr,
-                    vec![lhs_id, rhs_id],
-                    vec![],
-                );
+                let self_id =
+                    AnyExpression::make_call(within, lhs_id, opstr, vec![lhs_id, rhs_id], vec![]);
 
                 //let (self_id, _self_ref) = within.add(self_node);
 
@@ -247,28 +240,67 @@ impl AnyExpression {
                 self_id
             }
             ExpressionWrapper::IfThenElse(ite) => {
-                let IfThenElseExpression { box if_exp, box then_exp, box else_exp, .. } = ite;
+                let IfThenElseExpression {
+                    box if_exp,
+                    box then_exp,
+                    box else_exp,
+                    ..
+                } = ite;
 
                 let branch_on = AnyExpression::from_ast(within, if_exp);
 
-                let branch_yes = BranchArm { pattern: Pattern::Literal(Literal::TRUE()), guard: None, body: AnyExpression::from_ast(within, then_exp) };
+                let branch_yes = BranchArm {
+                    pattern: Pattern::Literal(Literal::TRUE()),
+                    guard: None,
+                    body: AnyExpression::from_ast(within, then_exp),
+                };
 
-                let branch_no = BranchArm { pattern: Pattern::Literal(Literal::FALSE()), guard: None, body: AnyExpression::from_ast(within, else_exp) };
+                let branch_no = BranchArm {
+                    pattern: Pattern::Literal(Literal::FALSE()),
+                    guard: None,
+                    body: AnyExpression::from_ast(within, else_exp),
+                };
 
-                let branch = Branch { branch_on, elements: vec![branch_yes, branch_no] };
+                let branch = Branch {
+                    branch_on,
+                    elements: vec![branch_yes, branch_no],
+                };
 
                 within.add(AnyExpression::Branch(branch)).0
             }
             ExpressionWrapper::Block(b) => {
-                let items = b.contents.into_iter().map(|box e| AnyExpression::from_ast(within, e)).collect_vec();
+                let items = b
+                    .contents
+                    .into_iter()
+                    .map(|box e| AnyExpression::from_ast(within, e))
+                    .collect_vec();
 
                 let ae = AnyExpression::Block(StringBlock { expressions: items });
 
                 within.add(ae).0
             }
-            ExpressionWrapper::Cast(_) => todo!(),
+            ExpressionWrapper::Cast(c) => {
+                let CastExpression {
+                    box subexpr,
+                    box typeref,
+                    ..
+                } = c;
+                within
+                    .add(AnyExpression::Convert(Convert {
+                        source: AnyExpression::from_ast(within, subexpr),
+                        target: typeref,
+                        implicit: todo!(),
+                    }))
+                    .0
+            }
+            ExpressionWrapper::MemberAccess(ma) => {
+                let MemberAccessExpression { node_info, box on, name } = ma;
+
+                let sa = StaticAccess { field: name, on: AnyExpression::from_ast(within, on) };
+
+                within.add(AnyExpression::StaticAccess(sa)).0
+            }
             ExpressionWrapper::Literal(_) => todo!(),
-            ExpressionWrapper::MemberAccess(_) => todo!(),
             ExpressionWrapper::Statement(_) => todo!(),
             ExpressionWrapper::While(_) => todo!(),
             ExpressionWrapper::Tuple(_) => todo!(),
@@ -349,7 +381,7 @@ pub struct Compare {
 pub struct Convert {
     //meta: MetaData,
     source: ExpressionID,
-    //target: TypeConstraint,
+    target: TypeReference,
     /// Indicates that this is an inverred conversion,
     /// which can allow things like deref conversions
     /// and the like, but not more involved conversions
