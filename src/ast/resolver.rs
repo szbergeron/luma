@@ -631,7 +631,7 @@ impl Resolver {
         };
     }
 
-    async fn thread(&mut self) {
+    pub async fn thread(&mut self) {
         // first, export every direct child with their public value
         for child in self.self_ctx.resolve().children.iter() {
             // all direct descendent nodes of the current node are
