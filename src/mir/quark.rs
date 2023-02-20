@@ -41,6 +41,9 @@ pub struct Quark {
 }
 
 impl Quark {
+    pub async fn thread(self) {
+    }
+
     /// Convert tree form into serial-evaluated sea of nodes (to be translated down to LLVM later)
     fn build_from(root: ast::types::FunctionDefinition) -> Quark {
         todo!()

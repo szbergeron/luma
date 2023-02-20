@@ -64,7 +64,7 @@ impl ResolverWorker {
 
         let postal = Arc::new(Postal::new(senders));
 
-        let mut v: Vec<Resolver> = self
+        let v: Vec<Resolver> = self
             .domain
             .into_iter()
             .map(|cid| {
@@ -78,7 +78,7 @@ impl ResolverWorker {
         tokio::spawn(Watchdog::new(postal.clone()).run());
         println!("started watchdog");
 
-        join_all(v.iter_mut().map(|r| r.thread())).await;
+        join_all(v.into_iter().map(|r| r.thread())).await;
     }
 }
 
@@ -631,7 +631,7 @@ impl Resolver {
         };
     }
 
-    pub async fn thread(&mut self) {
+    pub async fn thread(mut self) {
         // first, export every direct child with their public value
         for child in self.self_ctx.resolve().children.iter() {
             // all direct descendent nodes of the current node are
@@ -723,7 +723,7 @@ impl Resolver {
                 }
 
                 rec_traverse(
-                    self,
+                    &mut self,
                     &mut f.implementation,
                     node.generics
                         .iter()
@@ -831,7 +831,7 @@ impl Resolver {
                 }
 
                 rec_traverse(
-                    self,
+                    &mut self,
                     &mut f.implementation,
                     node.generics
                         .iter()
