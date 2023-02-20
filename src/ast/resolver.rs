@@ -25,7 +25,7 @@ use crate::{
     helper::{
         interner::{IStr, Internable, SpurHelper},
         SwapWith,
-    },
+    }, compile::per_module::{self, Earpiece},
 };
 
 use super::{
@@ -83,7 +83,7 @@ impl ResolverWorker {
 }
 
 #[derive(Debug)]
-enum Message {
+pub enum Message {
     Request(Request),
     Reply(Reply),
     Exit(),
@@ -91,93 +91,8 @@ enum Message {
     CheckIn(),
 }
 
-struct Watchdog {
-    postal: Arc<Postal>,
-}
-
-impl Watchdog {
-    pub fn new(p: Arc<Postal>) -> Self {
-        Self { postal: p }
-    }
-
-    pub async fn run(self) {
-        println!("about to send heartbeat");
-        while self.postal.send_heartbeat() {
-            println!("sent heartbeat");
-            tokio::time::sleep(Duration::from_millis(500)).await;
-        }
-    }
-}
-
-/// A PostalWorker handles sending messages between Resolvers :)
-struct Postal {
-    senders: HashMap<CtxID, tokio::sync::mpsc::UnboundedSender<Message>>,
-    exited: AtomicUsize,
-}
-
-impl Postal {
-    fn new(senders: HashMap<CtxID, UnboundedSender<Message>>) -> Self {
-        Self {
-            senders,
-            exited: AtomicUsize::new(0),
-        }
-    }
-
-    pub fn send_reply(&self, from: CtxID, to: CtxID, reply: Reply) {
-        self.senders
-            .get(&to)
-            .unwrap()
-            .send(Message::Reply(reply))
-            .unwrap();
-    }
-
-    pub fn send_ask(&self, from: CtxID, to: CtxID, request: Request) {
-        self.senders
-            .get(&to)
-            .unwrap()
-            .send(Message::Request(request))
-            .unwrap();
-    }
-
-    pub fn sign_out(&self, id: CtxID) {
-        println!("{id:?} signs out");
-        let new_v = self
-            .exited
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
-            + 1;
-
-        println!("new signed-in count is {new_v}");
-
-        if new_v == self.senders.len() {
-            println!("exiting everyone");
-            // everyone has signed out
-            for sender in self.senders.values() {
-                sender.send(Message::Exit()).unwrap();
-            }
-        }
-    }
-
-    pub fn exited(&self) -> bool {
-        self.exited.load(std::sync::atomic::Ordering::SeqCst) == self.senders.len()
-    }
-
-    /// returns true if heartbeat was sent successfully,
-    /// false if everyone has exited
-    pub fn send_heartbeat(&self) -> bool {
-        if self.exited() {
-            false
-        } else {
-            for sender in self.senders.values() {
-                let _ = sender.send(Message::CheckIn());
-            }
-
-            true
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy)]
-enum Request {
+pub enum Request {
     AskFor {
         reply_to: CtxID,
         conversation: Uuid,
@@ -187,7 +102,7 @@ enum Request {
 }
 
 #[derive(Debug, Clone)]
-enum Reply {
+pub enum Reply {
     /// If a symbol is exported by a node, then it must itself
     /// be a node, and this says what node it was found at
     ///
@@ -258,10 +173,12 @@ pub struct Resolver {
     waiting_to_answer: HashMap<IStr, Vec<Request>>,
 
     /// Allows us to send messages to other nodes
-    postal: Arc<Postal>,
+    //postal: Arc<Postal>,
 
     /// Lets us hear messages from other nodes
-    listen: UnboundedReceiver<Message>,
+    //listen: UnboundedReceiver<Message>,
+
+    earpiece: Earpiece,
 
     signed_out: bool,
 }
@@ -293,10 +210,11 @@ struct Publish {
 }
 
 impl Resolver {
-    fn for_node(
+    pub fn for_node(
         root: CtxID,
-        with_postal: Arc<Postal>,
-        listen: tokio::sync::mpsc::UnboundedReceiver<Message>,
+        //with_postal: Arc<Postal>,
+        //listen: tokio::sync::mpsc::UnboundedReceiver<Message>,
+        e: Earpiece
     ) -> Self {
         Self {
             self_ctx: root,
@@ -305,9 +223,10 @@ impl Resolver {
             name_to_ref: HashMap::new(),
             publishes: HashMap::new(),
             waiting_to_answer: HashMap::new(),
-            postal: with_postal,
-            listen,
+            //postal: with_postal,
+            //listen,
             signed_out: false,
+            earpiece: e,
         }
     }
 
@@ -332,7 +251,7 @@ impl Resolver {
 
                 // start by asking the target node (which could be ourself!)
                 // to get back to us with where the import is
-                self.postal.send_ask(
+                self.earpiece.send_ask(
                     self.self_ctx,
                     context_ref.searching_within,
                     Request::AskFor {
@@ -746,7 +665,7 @@ impl Resolver {
         // eventually, if there are no loops, we will reach
         // a closed state where all requests have either been resolved,
         // or completed with an import error
-        while let Some(v) = self.listen.recv().await {
+        while let Ok(v) = self.earpiece.wait().await {
             match v {
                 Message::Request(r) => {
                     self.handle_question(r).await;

@@ -452,6 +452,14 @@ pub struct AtomicVecIndex {
     self_key: usize, // used to verify that this index came from the vec it is trying to index into
 }
 
+impl AtomicVecIndex {
+    /// Yields an "invalid" index that will panic on index op for
+    /// any atomicvec
+    pub fn nil() -> Self {
+        Self { chunk: -1, idx: -1, self_key: usize::MAX }
+    }
+}
+
 impl Display for AtomicVecIndex {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Index({}, {})", self.chunk, self.idx)

@@ -7,7 +7,7 @@ use std::{
 
 use crate::{
     cst::GenericHandle,
-    helper::{interner::IStr, VecOps, CompilationError}, avec::{AtomicVec, AtomicVecIndex}, ast::{self, tree::CtxID, types::AbstractTypeReference},
+    helper::{interner::IStr, VecOps, CompilationError}, avec::{AtomicVec, AtomicVecIndex}, ast::{self, tree::CtxID, types::AbstractTypeReference}, compile::per_module::Earpiece,
 };
 
 
@@ -41,6 +41,10 @@ pub struct Quark {
 }
 
 impl Quark {
+    pub fn for_node(node_id: CtxID, earpiece: Earpiece) -> Self {
+        todo!()
+    }
+
     pub async fn thread(self) {
     }
 

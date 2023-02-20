@@ -81,6 +81,7 @@ pub mod types;
 
 fn main() {
     console_subscriber::init();
+    tracing_subscriber::fmt::init();
     let args: Vec<String> = env::args().collect();
     println!("Args: {:?}", args);
     let sliced: Vec<&str> = args.iter().map(|s| &s[..]).collect();

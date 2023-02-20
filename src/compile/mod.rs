@@ -4,7 +4,7 @@ pub mod preparse_tree;
 pub mod parse_tree;
 
 pub mod file_tree;
-mod per_module;
+pub mod per_module;
 //mod per_module;
 
 pub use stager::*;
