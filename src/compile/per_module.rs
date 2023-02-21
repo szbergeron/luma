@@ -4,6 +4,7 @@ use tokio::{
     sync::mpsc::{UnboundedReceiver, UnboundedSender},
     task::LocalSet,
 };
+use uuid::Uuid;
 //use std::collec
 use std::{
     collections::HashMap,
@@ -135,8 +136,8 @@ impl Postal {
                         node: *ctxid,
                         service: Service::Broadcast(),
                     },
-                    from: Destination::narrator(),
-                    reply_to: Destination::narrator(),
+                    from: Destination::nil(),
+                    reply_to: Destination::nil(),
                     content: Content::Control(todo!()),
                 });
             }
@@ -159,8 +160,8 @@ impl Postal {
                         node: ctxid,
                         service: Service::Broadcast(),
                     },
-                    from: Destination::narrator(),
-                    reply_to: Destination::narrator(),
+                    from: Destination::nil(),
+                    reply_to: Destination::nil(),
                     content: Content::Control(ControlMessage::CheckIn()),
                 });
             }
@@ -318,6 +319,9 @@ pub struct Message {
 
     reply_to: Destination,
 
+    /// States what message chain this is part of
+    conversation: Uuid,
+
     content: Content,
 }
 
@@ -383,11 +387,15 @@ pub struct Destination {
 impl Destination {
     /// Yields a destination that seems to come from "nowhere",
     /// corresponds to injecting a message from outside the system
-    pub fn narrator() -> Self {
+    pub fn nil() -> Self {
         Self {
             node: CtxID(AtomicVecIndex::nil()),
             service: Service::Broadcast(),
         }
+    }
+
+    pub fn resolver(node: CtxID) -> Self {
+        Self { node, service: Service::Resolver() }
     }
 }
 

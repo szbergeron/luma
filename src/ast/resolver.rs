@@ -25,7 +25,7 @@ use crate::{
     helper::{
         interner::{IStr, Internable, SpurHelper},
         SwapWith,
-    }, compile::per_module::{self, Earpiece},
+    }, compile::per_module::{self, Earpiece, Destination, Content, NameResolutionMessage},
 };
 
 use super::{
@@ -251,7 +251,14 @@ impl Resolver {
 
                 // start by asking the target node (which could be ourself!)
                 // to get back to us with where the import is
-                self.earpiece.send_ask(
+                self.earpiece.send(per_module::Message {
+                    to: Destination::resolver(context_ref.searching_within),
+                    from: Destination::resolver(self.self_ctx),
+                    reply_to: Destination::nil(),
+                    content: Content::NameResolution(NameResolutionMessage::DoYouHave(*first)),
+                });
+
+                /*self.earpiece.send_ask(
                     self.self_ctx,
                     context_ref.searching_within,
                     Request::AskFor {
@@ -260,7 +267,7 @@ impl Resolver {
                         symbol: *first,
                         within: context_ref.searching_within,
                     },
-                );
+                );*/
 
                 // when we hear back, we should continue resolving from [rest],
                 // since we've then resolved symbol `first`
@@ -321,6 +328,25 @@ impl Resolver {
             }
         }
     }*/
+
+    async fn handle_message(&mut self, question: NameResolutionMessage) {
+        match question {
+            NameResolutionMessage::WhatIs(sn) => {
+                // start breaking down the name into components, save the incremental conversation
+                // bits as we go
+
+                // create a conversation matching the initial request
+                let cid = Uuid::new_v4();
+
+
+            }
+            NameResolutionMessage::DoYouHave(_) => todo!(),
+            NameResolutionMessage::IDontHave(_) => todo!(),
+            NameResolutionMessage::ItIsAt(_, _) => todo!(),
+            NameResolutionMessage::RefersTo(_, _) => todo!(),
+            NameResolutionMessage::HasNoResolution(_) => todo!(),
+        }
+    }
 
     async fn handle_question(&mut self, question: Request) {
         match question {
