@@ -13,7 +13,7 @@ use std::{
 };
 
 use crate::{
-    ast::{resolver::Resolver, tree::CtxID},
+    ast::{resolver::Resolver, tree::CtxID, resolver2::NameResolutionMessage},
     avec::AtomicVecIndex,
     cst::ScopedName,
     helper::interner::IStr,
@@ -137,8 +137,9 @@ impl Postal {
                         service: Service::Broadcast(),
                     },
                     from: Destination::nil(),
-                    reply_to: Destination::nil(),
+                    send_reply_to: Destination::nil(),
                     content: Content::Control(todo!()),
+                    conversation: Uuid::new_v4(),
                 });
             }
         }
@@ -161,8 +162,9 @@ impl Postal {
                         service: Service::Broadcast(),
                     },
                     from: Destination::nil(),
-                    reply_to: Destination::nil(),
+                    send_reply_to: Destination::nil(),
                     content: Content::Control(ControlMessage::CheckIn()),
+                    conversation: Uuid::new_v4(),
                 });
             }
 
@@ -314,10 +316,14 @@ impl Router {
 
 #[derive(Debug, Clone)]
 pub struct Message {
+    /// The intended recipient of this message
     to: Destination,
+
+    /// The originator of this message
     from: Destination,
 
-    reply_to: Destination,
+    /// Where a reply to this message should be directed to
+    send_reply_to: Destination,
 
     /// States what message chain this is part of
     conversation: Uuid,
@@ -339,32 +345,6 @@ pub enum Content {
 #[derive(Debug, Clone)]
 pub enum AnnounceMessage {
     PhaseComplete(Service, Phase),
-}
-
-#[derive(Debug, Clone)]
-pub enum NameResolutionMessage {
-    /// Ask the given node, within the context of
-    /// its own location in the module tree, what
-    /// node the given ScopedName refers to
-    WhatIs(ScopedName),
-
-    /// Asks if a node has a given symbol as a direct refer
-    DoYouHave(IStr),
-
-    /// A reply to a DoYouHave saying we don't
-    IDontHave(IStr),
-
-    /// A reply to a DoYouHave that says that symbol is at the given CtxID
-    ItIsAt(IStr, CtxID),
-
-    /// Says that the given ScopedName refers
-    /// to the given CtxID
-    RefersTo(ScopedName, CtxID),
-
-    /// An announcement/reply from a node stating that
-    /// the given ScopedName does not resolve given self
-    /// as a root
-    HasNoResolution(ScopedName),
 }
 
 /// How Quarks qtalk to each other :P

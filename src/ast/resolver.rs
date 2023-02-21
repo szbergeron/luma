@@ -200,13 +200,11 @@ struct ConversationContext {
 
 #[derive(Debug, Clone, Copy)]
 struct Publish {
-    symbol: Option<IStr>,
+    symbol: IStr,
 
     is_public: bool,
 
     go_to: CtxID,
-
-    for_ref_id: Uuid,
 }
 
 impl Resolver {
