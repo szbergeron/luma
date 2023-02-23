@@ -317,18 +317,18 @@ impl Router {
 #[derive(Debug, Clone)]
 pub struct Message {
     /// The intended recipient of this message
-    to: Destination,
+    pub to: Destination,
 
     /// The originator of this message
-    from: Destination,
+    pub from: Destination,
 
     /// Where a reply to this message should be directed to
-    send_reply_to: Destination,
+    pub send_reply_to: Destination,
 
     /// States what message chain this is part of
-    conversation: Uuid,
+    pub conversation: Uuid,
 
-    content: Content,
+    pub content: Content,
 }
 
 #[derive(Debug, Clone)]
