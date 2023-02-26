@@ -71,6 +71,7 @@ pub struct Resolver {
     /// Conversations that have closed (we issue a term signal,
     /// or get one from the other end) can be removed from here
     //conversations: HashMap<Uuid, Conversation>,
+
     resolutions: HashMap<(IStr, CtxID), Result<Resolution, ImportError>>,
 
     /// The list of conversations that
@@ -82,11 +83,6 @@ pub struct Resolver {
     /// couldn't find the given symbol
     waiting_for_resolution: HashMap<(IStr, CtxID), Vec<ConversationState>>,
 
-    //was_asked_for_symbols: HashMap<IStr, Vec<Uuid>>,
-
-    //was_asked_for_composites: HashMap<ScopedName, Vec<Uuid>>,
-
-    //has_children: HashMap<IStr, Resolution>,
     /// The context that we are handling resolution in the context of
     for_ctx: CtxID,
 
