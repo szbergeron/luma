@@ -47,23 +47,7 @@ impl Expression {
             mine = Some((s, r.clone()));
 
             r
-        });
-
-        let mut receiver = if let Some((ms, mr)) = mine && mr.same_channel(r) {
-            // This unsafe is sound since we never
-            // dealloc the expression slice until 
-            // all computations are complete
-            let sptr: &'static Self = unsafe { std::mem::transmute(&self) };
-
-            // we own the computation :) so now we need to spawn the work
-            tokio::spawn(async move {
-                //let self = std::mem::transmute(self);
-
-                let res = sptr.solve().await;
-
-                // steal the sender
-                ms.send(Some(res));
-            });
+        })
 
             mr
 
