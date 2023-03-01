@@ -1,4 +1,4 @@
-use crate::ast::resolver::ResolverWorker;
+//use crate::ast::resolver::ResolverWorker;
 use crate::ast::tree::Contexts;
 use crate::compile::parse_tree::ParseTreeNode;
 //use crate::ast;
@@ -168,7 +168,8 @@ async fn async_launch(args: ArgResult) {
     // use AST to resolve type references/import statements
     // at least at a syntactic level (no code analysis, but we do drop
     // down into code to resolve scoped names)
-    ResolverWorker::new(ids).resolve().await; // fix types up
+    //ResolverWorker::new(ids).resolve().await; // fix types up
+    todo!("spawn all the network stuff");
 
     // convert AST to MIR
 

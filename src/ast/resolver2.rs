@@ -1,7 +1,12 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    cell::RefCell,
+    collections::{HashMap, HashSet},
+};
 
-use futures_intrusive::channel::{LocalOneshotChannel, LocalOneshotBroadcastChannel};
+use async_executor::LocalExecutor;
+use futures_intrusive::channel::{LocalOneshotBroadcastChannel, LocalOneshotChannel};
 use smallvec::ToSmallVec;
+use tokio::task::LocalSet;
 use uuid::Uuid;
 
 use crate::{
@@ -99,7 +104,7 @@ struct Conversation {
     frames: Vec<ConversationFrame>,
 }
 
-pub struct Resolver {
+pub struct ResInner {
     /// All of the ongoing conversations
     /// that this resolver is handling
     ///
@@ -116,10 +121,13 @@ pub struct Resolver {
     /// then we should tell everyone in this list we
     /// couldn't find the given symbol
     //waiting_for_resolution: HashMap<(IStr, CtxID), Vec<ConversationState>>,
+    resolutions:
+        HashMap<(IStr, CtxID), LocalOneshotBroadcastChannel<Result<SimpleResolution, ImportError>>>,
 
-    resolutions: HashMap<(IStr, CtxID), LocalOneshotBroadcastChannel<Result<SimpleResolution, ImportError>>>,
-
-    composite_resolutions: HashMap<(ScopedName, CtxID), LocalOneshotBroadcastChannel<Result<CompositeResolution, ImportError>>>,
+    composite_resolutions: HashMap<
+        (ScopedName, CtxID),
+        LocalOneshotBroadcastChannel<Result<CompositeResolution, ImportError>>,
+    >,
 
     conversations: HashMap<Uuid, LocalOneshotChannel<Message>>,
 
@@ -130,51 +138,87 @@ pub struct Resolver {
     aliases: HashMap<ScopedName, IStr>,
 
     /// The context that we are handling resolution in the context of
-    for_ctx: CtxID,
-
     earpiece: Earpiece,
 }
 
+impl ResInner {}
+
+pub struct Resolver {
+    inner: RefCell<ResInner>,
+
+    for_ctx: CtxID,
+}
+
 impl Resolver {
-    async fn do_use(&mut self, ud: UseDeclaration) {
+    fn with_inner<'a, F, T>(&'a self, f: F) -> T
+    where
+        F: FnOnce(&'a mut ResInner) -> T,
+    {
+        todo!()
+    }
+
+    async fn do_use(&self, ud: UseDeclaration) {
         let resolution = self.do_composite(ud.scope, self.for_ctx);
     }
 
-    async fn do_composite(&mut self, composite: ScopedName, within: CtxID) -> Result<SimpleResolution, ImportError> {
+    async fn do_composite(
+        &self,
+        composite: ScopedName,
+        within: CtxID,
+    ) -> Result<SimpleResolution, ImportError> {
         let mut cur_within = within;
         for elem in composite.scope {
             let res = self.do_single(elem, cur_within).await;
 
             match res {
-                Ok(v) => {
-                }
+                Ok(v) => {}
+                Err(e) => {}
             }
         }
 
         todo!()
     }
 
-    async fn do_single(&mut self, single: IStr, within: CtxID) -> Result<SimpleResolution, ImportError> {
+    async fn do_single(
+        &self,
+        single: IStr,
+        within: CtxID,
+    ) -> Result<SimpleResolution, ImportError> {
         let conversation = Uuid::new_v4();
 
         let mut message_to_send: Option<Message> = None;
 
-        let recv = self.resolutions.entry((single, within)).or_insert_with(|| {
-            // need to send a message and have it waiting for resolve
-            // it's going to be our job to complete it after this
-            todo!()
+        let recv = self.with_inner(|inner| {
+            let recv = inner
+                .resolutions
+                .entry((single, within))
+                .or_insert_with(|| {
+                    // need to send a message and have it waiting for resolve
+                    // it's going to be our job to complete it after this
+                    todo!()
 
-            // if there was already something in there, then we recv it and return
-            // that existing resolution immediately
-        }).receive();
+                    // if there was already something in there, then we recv it and return
+                    // that existing resolution immediately
+                })
+                .receive();
+
+            recv
+        });
 
         // send message if we need to, and await it
         // once we get back, complete the oneshot with it
         if let Some(v) = message_to_send {
-            self.earpiece.send(v);
-            self.conversations.entry(conversation).or_insert(LocalOneshotChannel::new()).receive().await;
+            self.with_inner(|inner| inner.earpiece.send(v));
+
+            self.with_inner(|inner| {
+                inner
+                    .conversations
+                    .entry(conversation)
+                    .or_insert(LocalOneshotChannel::new())
+                    .receive()
+            })
+            .await;
         }
-        
 
         let val = recv.await;
 
@@ -208,13 +252,15 @@ impl Resolver {
     }*/
 
     fn loopback(&mut self, nr: NameResolutionMessage, conversation: Option<Uuid>) {
-        self.earpiece.send(Message {
-            to: self.as_dest(),
-            from: self.as_dest(),
-            send_reply_to: self.as_dest(),
-            conversation: conversation.unwrap_or(Uuid::new_v4()),
-            content: Content::NameResolution(nr),
-        })
+        self.with_inner(|inner| {
+            inner.earpiece.send(Message {
+                to: self.as_dest(),
+                from: self.as_dest(),
+                send_reply_to: self.as_dest(),
+                conversation: conversation.unwrap_or(Uuid::new_v4()),
+                content: Content::NameResolution(nr),
+            })
+        });
     }
 
     pub fn as_dest(&self) -> Destination {
@@ -224,230 +270,25 @@ impl Resolver {
         }
     }
 
-    pub fn publish_children(&mut self) {
-        for (name, child) in self.for_ctx.resolve().children {
-            // just treat children all as public for now
-            self.signal_resolved(
-                (name, self.for_ctx),
-                Ok(SimpleResolution {
-                    is_public: child.resolve().public,
-                    is_at: child,
-                }),
-            );
+    /// 'static here isn't actually static, only long enough that we stop executing
+    /// the localset for the futures spawned by self
+    pub async unsafe fn thread(&'static self) {}
+
+    pub unsafe fn install<'a>(&'a self, into: &mut LocalSet) {
+        let as_static: &'static Self = std::mem::transmute(self);
+        //let into = LocalExecutor::njew();
+
+        for ud in self.for_ctx.resolve().use_statements.clone().into_iter() {
+            let fut = async { as_static.do_use(ud).await; };
+
+            let _task = into.spawn_local(fut);
         }
+
+        //into
     }
 
-    pub fn iter_use_stmts(&mut self) {
-        for ud in self.for_ctx.resolve().use_statements.iter() {
-            self.loopback(todo!(), todo!());
-        }
-    }
-
-    pub fn handle_message(&mut self, msg: Message) {
-        match msg.content {
-            Content::Control(_) => todo!(),
-            Content::Announce(_) => todo!(),
-            Content::Quark(_) => todo!(),
-            Content::NameResolution(nr) => match nr {
-                NameResolutionMessage::WhatIs {
-                    composite_symbol,
-                    given_root,
-                } => {
-                    self.waiting_for_resolution.insert(
-                        (composite_symbol.scope[0], given_root),
-                        vec![ConversationState {
-                            reply_to: msg.send_reply_to,
-                            conversation: msg.conversation,
-                            inner: ConversationStateInner::Composite(CompositeState {
-                                full_scope: composite_symbol,
-                                resolved_elements: 0,
-                                current_symbol: composite_symbol.scope[0],
-                                currently_within: self.for_ctx,
-                                originally_within: self.for_ctx,
-                            }),
-                        }],
-                    );
-
-                    self.loopback(
-                        NameResolutionMessage::DoYouHave {
-                            symbol: composite_symbol.scope[0],
-                            within: self.for_ctx,
-                        },
-                        Some(msg.conversation),
-                    )
-                }
-                NameResolutionMessage::DoYouHave { symbol, within } => {
-                    self.waiting_for_resolution
-                        .entry((symbol, within))
-                        .or_insert(Vec::new())
-                        .push(ConversationState {
-                            reply_to: msg.send_reply_to,
-                            conversation: msg.conversation,
-                            inner: ConversationStateInner::Single(SingleState { symbol, within }),
-                        });
-
-                    if let Some(v) = self.resolutions.get(&(symbol, within)) {
-                        self.signal_resolved((symbol, within), v.clone());
-                    } else {
-                        // we're still waiting for this symbol to (maybe) populate locally
-                    }
-                }
-                NameResolutionMessage::IDontHave { symbol, within } => {
-                    self.signal_resolved(
-                        (symbol, within),
-                        Err(ImportError {
-                            symbol_name: symbol,
-                            from_ctx: msg.from.node,
-                            error_reason: format!("could not import the symbol"),
-                        }),
-                    );
-                }
-                NameResolutionMessage::ItIsAt {
-                    symbol,
-                    within,
-                    is_at,
-                    is_public,
-                } => {
-                    self.signal_resolved((symbol, within), Ok(SimpleResolution { is_public, is_at }));
-                }
-                NameResolutionMessage::RefersTo {
-                    composite_symbol,
-                    is_at,
-                    given_root,
-                } => {
-                    todo!() // this wouldn't really come back to us specifically,
-                            // but would be sent to other things
-                }
-                NameResolutionMessage::HasNoResolution {
-                    composite_symbol,
-                    longest_prefix,
-                    prefix_ends_at,
-                    given_root,
-                } => {
-                    todo!() // we don't really ask ourselves this one,
-                            // that's something others ask us
-                }
-                NameResolutionMessage::CausesCircularImport { v } => {
-                    todo!()
-                }
-            },
-        }
-    }
-
-    pub fn signal_resolved(
-        &mut self,
-        (symbol, within): (IStr, CtxID),
-        to: Result<SimpleResolution, ImportError>,
-    ) {
-        for val in self
-            .waiting_for_resolution
-            .remove(&(symbol, within))
-            .unwrap_or(Vec::new())
-        {
-            match val.inner {
-                ConversationStateInner::Composite(c) => {
-                    match to {
-                        Ok(resolution) => {
-                            // either step the composite,
-                            // or maybe we've finished it
-                            // so we can send a message saying so
-                            assert!(c.full_scope.scope[c.resolved_elements] == symbol);
-
-                            c.resolved_elements += 1;
-
-                            if c.resolved_elements == c.full_scope.scope.len() {
-                                // we've fully resolved it, and can send the message and throw away
-                                // the conversation
-                                let msg = NameResolutionMessage::RefersTo {
-                                    composite_symbol: c.full_scope,
-                                    is_at: resolution.is_at,
-                                    given_root: c.originally_within,
-                                };
-
-                                let msg = Message {
-                                    to: val.reply_to,
-                                    from: self.as_dest(),
-                                    send_reply_to: Destination::nil(),
-                                    conversation: val.conversation,
-                                    content: Content::NameResolution(msg),
-                                };
-
-                                self.earpiece.send(msg);
-                            } else {
-                                // need to continue stepping the resolution
-
-                                let cstates = self
-                                    .waiting_for_resolution
-                                    .entry((
-                                        c.full_scope.scope[c.resolved_elements - 1],
-                                        resolution.is_at,
-                                    ))
-                                    .or_insert(Vec::new());
-
-                                c.currently_within = resolution.is_at;
-                                c.current_symbol = symbol;
-
-                                cstates.push(ConversationState {
-                                    reply_to: val.reply_to,
-                                    conversation: val.conversation,
-                                    inner: ConversationStateInner::Composite(c),
-                                });
-                            }
-                        }
-                        Err(ie) => {
-                            // import error, so we immediately send back
-                            // an IE
-                            let prefix = c.full_scope.scope[0..c.resolved_elements].to_smallvec();
-
-                            let msg = NameResolutionMessage::HasNoResolution {
-                                composite_symbol: c.full_scope,
-                                longest_prefix: ScopedName { scope: prefix },
-                                prefix_ends_at: c.currently_within,
-                                given_root: c.originally_within,
-                            };
-
-                            self.earpiece.send(Message {
-                                to: val.reply_to,
-                                from: self.as_dest(),
-
-                                // we don't expect further
-                                // communication
-                                send_reply_to: Destination::nil(),
-                                conversation: val.conversation,
-                                content: Content::NameResolution(msg),
-                            });
-                        }
-                    }
-                }
-                ConversationStateInner::Single(s) => {
-                    let msg = match to {
-                        Ok(v) => {
-                            let msg = NameResolutionMessage::ItIsAt {
-                                symbol,
-                                is_at: v.is_at,
-                                is_public: v.is_public,
-                                within,
-                            };
-                            msg
-                        }
-                        Err(ie) => {
-                            let msg = NameResolutionMessage::IDontHave { symbol, within };
-                            msg
-                        }
-                    };
-
-                    let msg = Message {
-                        content: Content::NameResolution(msg),
-                        to: val.reply_to,
-                        from: self.as_dest(),
-                        send_reply_to: Destination::nil(),
-                        conversation: val.conversation,
-                    };
-
-                    self.earpiece.send(msg); // forget about the convo from here, it's done
-                }
-            }
-        }
+    pub fn for_node(node: CtxID, ep: Earpiece) -> Self {
+        todo!()
     }
 }
 
@@ -497,11 +338,16 @@ struct CompositeState {
 }
 
 impl CompositeResolver {
-    pub fn handle_resolve(&mut self, symbol: IStr, within: CtxID, resolution: Option<SimpleResolution>) {
+    pub fn handle_resolve(
+        &mut self,
+        symbol: IStr,
+        within: CtxID,
+        resolution: Option<SimpleResolution>,
+    ) {
         match self.next_symbol_for.remove(&(within, symbol)) {
             Some(v) => {
                 for sn in v {
-                    self.resolve_with(sn, resolution);
+                    self.resolve_with(sn, resolution.clone());
                 }
             }
             None => {
@@ -511,7 +357,7 @@ impl CompositeResolver {
         }
     }
 
-    pub fn resolve_with(&mut self, current: CompositeState, resolution: Option<SimpleResolution>) {
+    fn resolve_with(&mut self, current: CompositeState, resolution: Option<SimpleResolution>) {
         match resolution {
             Some(v) => {
                 //

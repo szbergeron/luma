@@ -1,3 +1,4 @@
+use async_executor::LocalExecutor;
 use futures::future::join_all;
 use local_channel::mpsc::{Receiver as LocalReceiver, Sender as LocalSender};
 use tokio::{
@@ -13,7 +14,7 @@ use std::{
 };
 
 use crate::{
-    ast::{resolver::Resolver, tree::CtxID, resolver2::NameResolutionMessage},
+    ast::{tree::CtxID, resolver2::NameResolutionMessage, resolver2::Resolver, executor::Executor},
     avec::AtomicVecIndex,
     cst::ScopedName,
     helper::interner::IStr,
@@ -129,7 +130,7 @@ impl Postal {
         if new_v == self.senders.len() {
             println!("exiting everyone");
             // everyone has signed out
-            for (ctxid, sender) in self.senders.iter_mut() {
+            for (ctxid, sender) in self.senders.iter() {
                 //sender.send(Message::Exit()).unwrap();
                 sender.send(Message {
                     to: Destination {
@@ -155,7 +156,7 @@ impl Postal {
         if self.exited() {
             false
         } else {
-            for (&ctxid, sender) in self.senders.iter_mut() {
+            for (&ctxid, sender) in self.senders.iter() {
                 let _ = sender.send(Message {
                     to: Destination {
                         node: ctxid,
@@ -192,7 +193,8 @@ impl Group {
         }
     }
     pub async fn start(self) {
-        let local = LocalSet::new();
+        //let local = LocalExecutor::new();
+        let exe = unsafe { Executor::new() };
 
         let (res_s, res_r) = local_channel::mpsc::channel();
         let (qk_s, qk_r) = local_channel::mpsc::channel();
@@ -218,13 +220,14 @@ impl Group {
             self.for_node,
         );
 
-        local.spawn_local(resolver.thread());
-        local.spawn_local(quark.thread());
-        local.spawn_local(router.thread());
+        unsafe {
+            //exe.install(resolver.thread());
 
-        local.spawn_local(bridge.thread());
+            exe.install(quark.thread());
+            exe.install(router.thread());
 
-        local.await
+            exe.install(bridge.thread());
+        }
     }
 
     /*pub fn send(&self, msg: &Message) {}
