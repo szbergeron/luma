@@ -5,6 +5,8 @@ use std::{
 
 
 
+use tracing::{warn, info};
+
 use crate::{
     cst::GenericHandle,
     helper::{interner::IStr, VecOps, CompilationError}, avec::{AtomicVec, AtomicVecIndex}, ast::{self, tree::CtxID, types::AbstractTypeReference}, compile::per_module::Earpiece,
@@ -38,14 +40,30 @@ pub struct Quark {
 
     variables: Vec<(IStr, AllocationReference)>,
     frames: Vec<usize>,
+
+    earpiece: Earpiece,
 }
 
 impl Quark {
     pub fn for_node(node_id: CtxID, earpiece: Earpiece) -> Self {
-        todo!()
+        warn!("quark is being improperly initialized to make things happy");
+
+        Self {
+            type_args: Vec::new(),
+            allocations: Vec::new(),
+            allocation_references: HashMap::new(),
+            variables: Vec::new(),
+            frames: Vec::new(),
+            earpiece,
+        }
     }
 
-    pub async fn thread(self) {
+    pub async fn thread(mut self) {
+        info!("starts quark thread");
+
+        while let Ok(v) = self.earpiece.wait().await {
+            info!("Quark got a message");
+        }
     }
 
     /// Convert tree form into serial-evaluated sea of nodes (to be translated down to LLVM later)

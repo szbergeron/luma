@@ -1,3 +1,5 @@
+use tracing::info;
+
 #[allow(non_upper_case_globals)]
 //use crate::ast;
 //use crate::ast::{StaticVariableDeclaration, TopLevel};
@@ -224,6 +226,7 @@ impl<'lexer> Parser<'lexer> {
                 .token
             {
                 Token::Module => {
+                    t.lh.backtrack();
                     //todo!("modules");
                     let mut ns = self.parse_namespace(&t).join_hard(&mut t).catch(&mut t)?;
                     ns.set_public(public);
@@ -264,7 +267,8 @@ impl<'lexer> Parser<'lexer> {
                 }
 
                 Token::Use => {
-                    todo!();
+                    info!("got a use statement, maybe not right?");
+                    t.lh.backtrack();
                     let ud = self
                         .parse_use_declaration(&t)
                         .join_hard(&mut t)
@@ -356,6 +360,7 @@ impl<'lexer> Parser<'lexer> {
         println!("Pulling entry");
 
         let pu = self.entry(&t, false).join_hard(&mut t).catch(&mut t)?;
+
         t.take(Token::RBrace).join()?;
 
         let end = self.lex.la(-1).map_or(CodeLocation::Builtin, |tw| tw.end);
@@ -516,7 +521,7 @@ impl<'lexer> Parser<'lexer> {
 
         let mut scope = Vec::new();
 
-        let tw= t.take_in(&[Token::Identifier, Token::Global, Token::Super])
+        let tw= t.take(Token::Identifier)
             .hint("Use statements should only start with an identifier or the 'global' or 'super' keywords").join()?;
 
         //let tw = self.lex.next()?;

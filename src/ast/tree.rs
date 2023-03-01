@@ -2,6 +2,7 @@ use crate::avec::AtomicVec;
 use crate::cst::{SyntacticTypeReferenceRef, TopLevel, TypeReference};
 use crate::{avec::AtomicVecIndex, cst::UseDeclaration};
 use itertools::Itertools;
+use tracing::info;
 
 use crate::ast;
 
@@ -370,6 +371,10 @@ impl Node {
                         within: node,
                         relative_path: vec![name],
                     });*/
+                }
+                TopLevel::UseDeclaration(ud) => {
+                    // just pass here, already added them
+                    info!("ignoring use decl since already added");
                 }
                 _ => todo!(),
             };

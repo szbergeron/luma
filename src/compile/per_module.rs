@@ -5,6 +5,7 @@ use tokio::{
     sync::mpsc::{UnboundedReceiver, UnboundedSender},
     task::LocalSet,
 };
+use tracing::{info, warn};
 use uuid::Uuid;
 //use std::collec
 use std::{
@@ -37,6 +38,8 @@ impl CompilationUnit {
     }
 
     pub async fn launch(self) {
+        info!("launching CompilationUnit across domain {:?}", self.domain);
+
         let mut senders = HashMap::new();
         let mut receivers = HashMap::new();
 
@@ -52,6 +55,7 @@ impl CompilationUnit {
             .domain
             .into_iter()
             .map(|cid| {
+                info!("creates a group with cid {cid:?}");
                 let group = Group::new(receivers.remove(&cid).unwrap(), cid, postal.clone());
 
                 group
@@ -62,7 +66,10 @@ impl CompilationUnit {
         tokio::spawn(Watchdog::new(postal.clone()).run());
         println!("started watchdog");
 
-        join_all(v.into_iter().map(|r| r.start())).await;
+        join_all(v.into_iter().map(|r| {
+            info!("going to start cid group {:?}", r.for_node);
+            r.start()
+        })).await;
     }
 }
 
@@ -132,7 +139,7 @@ impl Postal {
             // everyone has signed out
             for (ctxid, sender) in self.senders.iter() {
                 //sender.send(Message::Exit()).unwrap();
-                sender.send(Message {
+                let _ = sender.send(Message {
                     to: Destination {
                         node: *ctxid,
                         service: Service::Broadcast(),
@@ -153,6 +160,8 @@ impl Postal {
     /// returns true if heartbeat was sent successfully,
     /// false if everyone has exited
     pub fn send_heartbeat(&self) -> bool {
+        return  true; // just for now
+
         if self.exited() {
             false
         } else {
@@ -192,13 +201,18 @@ impl Group {
             with_postal,
         }
     }
-    pub async fn start(self) {
-        //let local = LocalExecutor::new();
+    pub async fn start(mut self) {
+        info!("starts group for node {:?}", self.for_node);
+        // this is only allowed because the things that *aren't* send
+        // in these futures actually don't care so long as
+        // the entire group of them is moved at a time
         let exe = unsafe { Executor::new() };
 
         let (res_s, res_r) = local_channel::mpsc::channel();
         let (qk_s, qk_r) = local_channel::mpsc::channel();
         let (rtr_s, rtr_r) = local_channel::mpsc::channel();
+
+        let (send_out_s, mut send_out_r) = lockfree::channel::spsc::create();
         //let (br_s, br_r) = local_channel::mpsc::channel();
         let resolver = Resolver::for_node(
             self.for_node,
@@ -208,7 +222,7 @@ impl Group {
             self.for_node,
             Earpiece::new(rtr_s.clone(), qk_r, self.for_node),
         );
-        let bridge = Bridge::new(self.listen_to, rtr_s.clone());
+        //let bridge = Bridge::new(self.listen_to, rtr_s.clone());
         let router = Router::new(
             rtr_r,
             vec![
@@ -216,17 +230,63 @@ impl Group {
                 (Service::Quark(), qk_s),
                 (Service::Router(), rtr_s.clone()),
             ],
-            self.with_postal,
+            send_out_s,
+            //self.with_postal,
+            //
             self.for_node,
         );
 
         unsafe {
-            //exe.install(resolver.thread());
+            info!("installing resolver uses into exe");
+            resolver.install(&exe);
+            info!("installed resolver uses into exe");
+            
+            // it doesn't truly live for static, but it lives long enough that the executor itself
+            // is dropped before resolver is, and we've awaited all the futures so they are allowed
+            // to drop then
+            let sref = &resolver as *const Resolver;
+            let sref = sref.as_ref().unwrap();
+
+            exe.install(sref.thread());
 
             exe.install(quark.thread());
             exe.install(router.thread());
 
-            exe.install(bridge.thread());
+            //exe.install(bridge.thread());
+
+            // we don't use Bridge anymore, since doing the bridge
+            // operation actually requires knowing about the executor
+            loop {
+                info!("doing a step loop");
+                // we want to wait until everything internal stabilizes,
+                // and then only step one external message at a time
+                let stepped_any = exe.until_stable(); // not async since it is, itself, an executor
+
+                // now everything is sleeping, so long as the
+                // services are well behaved (we have to assume they are!),
+                // the only thing that could possibly wake any of them up is a message from outside
+
+                // so, wait for a message from outside, and potentially yield
+                // to other nodes
+
+                info!("finished stepping, until_stable returned true");
+
+                // make sure we send out any messages waiting to go out
+                // rely on this to not be a blocking channel
+                info!("sending out all outgoing messages");
+                while let Ok(m) = send_out_r.recv() {
+                    self.with_postal.send(m);
+                }
+
+                info!("sent all outgoing messages");
+
+                match self.listen_to.recv().await {
+                    Some(m) => {
+                        rtr_s.send(m).expect("couldn't push into rtr?");
+                    }
+                    None => todo!(),
+                }
+            }
         }
     }
 
@@ -257,15 +317,15 @@ impl Bridge {
 pub struct Router {
     listen_to: LocalReceiver<Message>,
     send_on: Vec<(Service, LocalSender<Message>)>,
-    send_out: Arc<Postal>,
+    send_out: lockfree::channel::spsc::Sender<Message>,
     for_node: CtxID,
 }
 
 impl Router {
     pub fn new(
-        mut listen_to: LocalReceiver<Message>,
-        mut send_on: Vec<(Service, LocalSender<Message>)>,
-        send_out: Arc<Postal>,
+        listen_to: LocalReceiver<Message>,
+        send_on: Vec<(Service, LocalSender<Message>)>,
+        send_out: lockfree::channel::spsc::Sender<Message>,
         for_node: CtxID,
     ) -> Self {
         Self {
@@ -277,21 +337,23 @@ impl Router {
     }
 
     pub async fn thread(mut self) {
+        info!("starting router thread");
         while let Some(v) = self.listen_to.recv().await {
+            warn!("router got a message");
             if v.to.node == self.for_node {
+                warn!("got message for local, message is {v:?}");
                 // the message is for a local service
                 match v.to.service {
                     Service::Broadcast() => {
+                        info!("it was a broadcast message");
                         for (serv, send) in self.send_on.iter_mut() {
-                            if v.from
-                                == (Destination {
-                                    service: *serv,
-                                    ..v.to
-                                })
+                            if *serv == Service::Router()
                             {
                                 // don't send a broadcast right back to the thing that sent it
+                                info!("avoiding sending to self");
                                 continue;
                             } else {
+                                info!("sends to dest {:?}", v.from);
                                 let _ = send.send(v.clone());
                             }
                         }
@@ -311,7 +373,8 @@ impl Router {
                 }
             } else {
                 // message is going out to another node
-                self.send_out.send(v);
+                warn!("sending message {v:?} out from router");
+                self.send_out.send(v).expect("couldn't send out from router");
             }
         }
     }

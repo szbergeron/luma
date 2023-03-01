@@ -15,11 +15,11 @@ pub enum Token {
     #[token("use")]
     Use,
 
-    #[token("global")]
-    Global,
+    //#[token("global")]
+    //Global,
 
-    #[token("super")]
-    Super,
+    //#[token("super")]
+    //Super,
 
     //#[token("private")]
     //Private,

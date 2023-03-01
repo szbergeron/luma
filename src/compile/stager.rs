@@ -3,6 +3,7 @@ use crate::ast::tree::Contexts;
 use crate::compile::parse_tree::ParseTreeNode;
 //use crate::ast;
 
+use crate::compile::per_module::CompilationUnit;
 use crate::lex::{LookaheadHandle, TokenStream, ErrorSet};
 use crate::parse::schema::TokenProvider;
 use crate::parse::Parser;
@@ -169,7 +170,10 @@ async fn async_launch(args: ArgResult) {
     // at least at a syntactic level (no code analysis, but we do drop
     // down into code to resolve scoped names)
     //ResolverWorker::new(ids).resolve().await; // fix types up
-    todo!("spawn all the network stuff");
+    let cu = CompilationUnit::new(ids);
+
+    cu.launch().await;
+    //todo!("spawn all the network stuff");
 
     // convert AST to MIR
 

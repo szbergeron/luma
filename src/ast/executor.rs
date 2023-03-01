@@ -10,6 +10,7 @@ use futures::{
     future::{BoxFuture, FutureExt, LocalBoxFuture},
     task::{waker_ref, ArcWake},
 };
+use tracing::{info, debug};
 use std::{
     future::Future,
     sync::mpsc::{sync_channel, Receiver, SyncSender},
@@ -118,9 +119,19 @@ impl Executor {
         }
     }
 
-    pub fn until_stable(&self) {
+    /// Runs all of the inner futures until all return Pending() and none
+    /// have awoken during the last iter
+    ///
+    /// Returns true if we stepped any futures, false if no futures were queued
+    pub fn until_stable(&self) -> bool {
+        let mut stepped_any = false;
+
         while let Some(next_id) = unsafe { self.queue.as_ref().get().as_mut().unwrap().pop_front() }
         {
+            info!("stepping by id {next_id}");
+
+            stepped_any = true;
+
             let mref = unsafe {
                 self.futures
                     .get()
@@ -146,7 +157,11 @@ impl Executor {
             let waker = unsafe { std::task::Waker::from_raw(rawwaker) };
 
             let mut context = Context::from_waker(&waker);
+
+
+            debug!("starts poll for {next_id}");
             let res = mref.poll_unpin(&mut context);
+            debug!("finishes poll for {next_id}");
 
             match res {
                 std::task::Poll::Ready(()) => {
@@ -159,5 +174,7 @@ impl Executor {
                 }
             }
         }
+
+        stepped_any
     }
 }

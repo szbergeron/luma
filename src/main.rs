@@ -80,7 +80,7 @@ pub mod types;
 //pub mod bump_interner;
 
 fn main() {
-    console_subscriber::init();
+    //console_subscriber::init();
     tracing_subscriber::fmt::init();
     let args: Vec<String> = env::args().collect();
     println!("Args: {:?}", args);

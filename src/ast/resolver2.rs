@@ -1,21 +1,23 @@
 use std::{
-    cell::RefCell,
+    cell::{RefCell, UnsafeCell},
     collections::{HashMap, HashSet},
+    pin::Pin,
 };
 
 use async_executor::LocalExecutor;
-use futures_intrusive::channel::{LocalOneshotBroadcastChannel, LocalOneshotChannel};
+use futures_intrusive::channel::{LocalOneshotBroadcastChannel, LocalOneshotChannel, GenericOneshotBroadcastChannel};
 use smallvec::ToSmallVec;
 use tokio::task::LocalSet;
+use tracing::{info, warn};
 use uuid::Uuid;
 
 use crate::{
-    compile::per_module::{Content, Destination, Earpiece, Message},
+    compile::per_module::{Content, Destination, Earpiece, Message, Service},
     cst::{ScopedName, UseDeclaration},
-    helper::interner::IStr,
+    helper::interner::{IStr, Internable},
 };
 
-use super::tree::CtxID;
+use super::{executor::Executor, tree::CtxID};
 
 #[derive(Debug, Clone)]
 pub enum NameResolutionMessage {
@@ -121,44 +123,103 @@ pub struct ResInner {
     /// then we should tell everyone in this list we
     /// couldn't find the given symbol
     //waiting_for_resolution: HashMap<(IStr, CtxID), Vec<ConversationState>>,
-    resolutions:
-        HashMap<(IStr, CtxID), LocalOneshotBroadcastChannel<Result<SimpleResolution, ImportError>>>,
+    resolutions: HashMap<
+        (IStr, CtxID),
+        *mut LocalOneshotBroadcastChannel<Result<SimpleResolution, ImportError>>,
+    >,
 
     composite_resolutions: HashMap<
         (ScopedName, CtxID),
-        LocalOneshotBroadcastChannel<Result<CompositeResolution, ImportError>>,
+        *mut LocalOneshotBroadcastChannel<Result<CompositeResolution, ImportError>>,
     >,
 
-    conversations: HashMap<Uuid, LocalOneshotChannel<Message>>,
+    conversations: HashMap<Uuid, *mut LocalOneshotChannel<Message>>,
 
     /// If an alias exists within this map at the time of publishing,
     /// then the entry should be removed from this map and the symbol
     /// should instead be published locally as the name matching the
     /// value of the entry
     aliases: HashMap<ScopedName, IStr>,
-
-    /// The context that we are handling resolution in the context of
-    earpiece: Earpiece,
 }
 
 impl ResInner {}
 
 pub struct Resolver {
     inner: RefCell<ResInner>,
+    earpiece: UnsafeCell<Earpiece>,
 
+    /// The context that we are handling resolution in the context of
     for_ctx: CtxID,
 }
 
 impl Resolver {
-    fn with_inner<'a, F, T>(&'a self, f: F) -> T
+    /// Returns true if we created a new conversation, false if it already existed
+    fn conversation_open(&self, conversation: Uuid) -> bool {
+        let mut r = true;
+        self.inner
+            .borrow_mut()
+            .conversations
+            .entry(conversation)
+            .or_insert_with(|| {
+                r = false;
+                Box::leak(Box::new(LocalOneshotChannel::new())) as *mut LocalOneshotChannel<_>
+            });
+
+        r
+    }
+
+    /// need to make very *very* sure that the conversation
+    /// we're closing isn't one being actively awaited
+    unsafe fn conversation_close(&self, conversation: Uuid) {
+        match self.inner.borrow_mut().conversations.remove(&conversation) {
+            Some(v) => unsafe { std::mem::drop(Box::from_raw(v)) },
+            None => warn!("tried to remove conversation by id {conversation} which did not exist"),
+        }
+    }
+
+    /// Before we wait, make sure nothing is going to delete this conversation
+    /// while we're awaiting
+    ///
+    /// The thing awaiting should be the same future that eventually deletes
+    async unsafe fn conversation_wait_reply(&self, conversation: Uuid) -> Option<Message> {
+        let conv = *self
+            .inner
+            .borrow_mut()
+            .conversations
+            .get(&conversation)
+            .expect("tried to wait on a conversation that didn't yet exist");
+
+        // we then drop the borrow, keep the ptr
+
+        conv.as_ref().unwrap().receive().await
+    }
+
+    /// returns true if successfully pushed the message,
+    fn conversation_notify_reply(&self, cnversation: Uuid, message: Message) -> bool {
+        let conv = *self
+            .inner
+            .borrow_mut()
+            .conversations
+            .get(&cnversation)
+            .expect("tried to send to a conversation that no longer exists");
+
+        unsafe { conv.as_ref().unwrap().send(message) }.is_ok()
+    }
+
+    fn with_inner<F, T>(&self, f: F) -> T
     where
-        F: FnOnce(&'a mut ResInner) -> T,
+        F: FnOnce(&mut ResInner) -> T,
     {
-        todo!()
+        let mut b = self.inner.borrow_mut();
+
+        f(&mut *b)
+        //f(self.inner.borrow_mut())
     }
 
     async fn do_use(&self, ud: UseDeclaration) {
-        let resolution = self.do_composite(ud.scope, self.for_ctx);
+        warn!("start resolving use: {ud:?}");
+
+        let resolution = self.do_composite(ud.scope, self.for_ctx).await;
     }
 
     async fn do_composite(
@@ -168,6 +229,7 @@ impl Resolver {
     ) -> Result<SimpleResolution, ImportError> {
         let mut cur_within = within;
         for elem in composite.scope {
+            info!("checking for elem {elem} within {cur_within:?} in composite res");
             let res = self.do_single(elem, cur_within).await;
 
             match res {
@@ -184,23 +246,55 @@ impl Resolver {
         single: IStr,
         within: CtxID,
     ) -> Result<SimpleResolution, ImportError> {
-        let conversation = Uuid::new_v4();
-
+        warn!("do_single is looking for {single} within {within:?}");
         let mut message_to_send: Option<Message> = None;
 
-        let recv = self.with_inner(|inner| {
-            let recv = inner
-                .resolutions
-                .entry((single, within))
-                .or_insert_with(|| {
-                    // need to send a message and have it waiting for resolve
-                    // it's going to be our job to complete it after this
-                    todo!()
+        let conversation = Uuid::new_v4();
 
-                    // if there was already something in there, then we recv it and return
-                    // that existing resolution immediately
-                })
-                .receive();
+        let recv = self.with_inner(|inner| {
+            let recv = unsafe {
+                inner
+                    .resolutions
+                    .entry((single, within))
+                    .or_insert_with(|| {
+                        // need to send a message and have it waiting for resolve
+                        // it's going to be our job to complete it after this
+                        Box::leak(Box::new(LocalOneshotBroadcastChannel::new()))
+                            as *mut LocalOneshotBroadcastChannel<_>
+
+                        // if there was already something in there, then we recv it and return
+                        // that existing resolution immediately
+                    })
+                    .as_mut()
+                    .unwrap()
+                    .receive()
+            };
+
+            // if we'd be asking ourself, then we shouldn't send a message, just wait for a
+            // resolution. This is the "base case"
+            if within == self.for_ctx {
+                // just do nothing
+            } else {
+                // we're asking someone else and just keeping a
+                // cache, so we need to start a convo
+
+                // we needed to create the entry, so we're the ones who have to ask
+                let m = Message {
+                    to: Destination {
+                        node: within,
+                        service: Service::Resolver(),
+                    },
+                    from: self.as_dest(),
+                    send_reply_to: self.as_dest(),
+                    conversation,
+                    content: Content::NameResolution(NameResolutionMessage::DoYouHave {
+                        symbol: single,
+                        within,
+                    }),
+                };
+
+                message_to_send = Some(m);
+            }
 
             recv
         });
@@ -208,21 +302,55 @@ impl Resolver {
         // send message if we need to, and await it
         // once we get back, complete the oneshot with it
         if let Some(v) = message_to_send {
-            self.with_inner(|inner| inner.earpiece.send(v));
+            self.conversation_open(conversation);
 
-            self.with_inner(|inner| {
-                inner
-                    .conversations
-                    .entry(conversation)
-                    .or_insert(LocalOneshotChannel::new())
-                    .receive()
-            })
-            .await;
+            unsafe {
+                self.earpiece.get().as_mut().unwrap().send(v);
+            }
+            warn!("sent a message to our earpiece");
+            //self.conversation_notify_reply(conversation, v);
+
+            let resp = unsafe { self.conversation_wait_reply(conversation).await };
+
+            let resp = resp.expect("we asked, so we should get a response damnit");
+
+            if let Content::NameResolution(nr) = resp.content {
+                match nr {
+                    NameResolutionMessage::IDontHave { symbol, within } => {
+                        todo!("didn't find it, they didn't have the symbol");
+                    }
+                    NameResolutionMessage::ItIsAt {
+                        symbol,
+                        within,
+                        is_at,
+                        is_public,
+                    } => {
+                        todo!("I found it!");
+                    }
+                    nr => {
+                        tracing::error!(
+                            "got some other kind of nr in response to a single nr request: {nr:?}"
+                        );
+                    }
+                }
+            } else {
+                tracing::error!("we got something other than an NR in response to an NR ask");
+            }
+
+            unsafe {
+                self.conversation_close(conversation);
+            }
         }
 
         let val = recv.await;
 
-        val.expect("channel was dropped or closed while we needed something")
+        // need to delete the conversation channel
+
+        let val = val.expect("channel was dropped or closed while we needed something");
+
+        warn!("got val from simple of {val:?}");
+
+        val
     }
 
     /*fn step_conversation(&mut self, id: Uuid) {
@@ -252,15 +380,15 @@ impl Resolver {
     }*/
 
     fn loopback(&mut self, nr: NameResolutionMessage, conversation: Option<Uuid>) {
-        self.with_inner(|inner| {
-            inner.earpiece.send(Message {
+        unsafe {
+            self.earpiece.get().as_mut().unwrap().send(Message {
                 to: self.as_dest(),
                 from: self.as_dest(),
                 send_reply_to: self.as_dest(),
                 conversation: conversation.unwrap_or(Uuid::new_v4()),
                 content: Content::NameResolution(nr),
-            })
-        });
+            });
+        }
     }
 
     pub fn as_dest(&self) -> Destination {
@@ -272,23 +400,77 @@ impl Resolver {
 
     /// 'static here isn't actually static, only long enough that we stop executing
     /// the localset for the futures spawned by self
-    pub async unsafe fn thread(&'static self) {}
+    pub async unsafe fn thread(&self) {
+        info!("starts thread for resolver");
+        while let Ok(v) = self.earpiece.get().as_mut().unwrap().wait().await {
+            warn!("got a message: {v:?}");
 
-    pub unsafe fn install<'a>(&'a self, into: &mut LocalSet) {
+            match v.content {
+                Content::NameResolution(nr) => match nr {
+                    _ => todo!("nothin...")
+                },
+                _ => todo!("don't have others yet"),
+            }
+        }
+        //self.with_inner(|inner| inner.earpiece.wait().await);
+    }
+
+    pub unsafe fn install<'a>(&'a self, into: &Executor) {
+        info!("hit install for resolver {:?}", self.for_ctx);
         let as_static: &'static Self = std::mem::transmute(self);
         //let into = LocalExecutor::njew();
 
-        for ud in self.for_ctx.resolve().use_statements.clone().into_iter() {
-            let fut = async { as_static.do_use(ud).await; };
+        let nref = self.for_ctx.resolve();
 
-            let _task = into.spawn_local(fut);
+        // make all the resolutions for local symbols happen
+        for child in nref.children.iter() {
+            let (symbol, is_at) = child.pair();
+            let is_public = is_at.resolve().public;
+
+            self.announce_have(*symbol, *is_at, is_public);
         }
+
+        if let Some(parent) = nref.parent {
+            self.announce_have("super".intern(), parent, true);
+        }
+
+        if let Some(global) = nref.global {
+            self.announce_have("global".intern(), global, true);
+        }
+
+
+
+        for ud in self.for_ctx.resolve().use_statements.clone().into_iter() {
+            info!("starting resolve of ud {ud:?}");
+            let fut = async {
+                as_static.do_use(ud).await;
+            };
+
+            let _task = into.install(fut);
+        }
+
 
         //into
     }
 
+    pub unsafe fn announce_have(&self, symbol: IStr, is_at: CtxID, is_public: bool) {
+        //warn!("node {:?} is saying we have symbol {symbol} at {is_at:?}", self.for_ctx);
+        self.inner.borrow_mut().resolutions.entry((symbol, is_at)).or_insert_with(|| {
+            Box::leak(Box::new(LocalOneshotBroadcastChannel::new())) as *mut LocalOneshotBroadcastChannel<_>
+        }).as_mut().unwrap().send(Ok(SimpleResolution { is_public, symbol, is_at })).expect("couldn't push resolution");
+    }
+
     pub fn for_node(node: CtxID, ep: Earpiece) -> Self {
-        todo!()
+        Self {
+            inner: RefCell::new(ResInner {
+                resolutions: HashMap::new(),
+                composite_resolutions: HashMap::new(),
+                conversations: HashMap::new(),
+                aliases: HashMap::new(),
+            }),
+            for_ctx: node,
+            earpiece: UnsafeCell::new(ep),
+        }
     }
 }
 

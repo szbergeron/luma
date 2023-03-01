@@ -11,3 +11,9 @@ struct OtherType {
 
 struct ThirdType {
 }
+
+//use super::Blah;
+
+mod M {
+    use super::f;
+}
