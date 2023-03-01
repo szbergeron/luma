@@ -14,6 +14,6 @@ struct ThirdType {
 
 //use super::Blah;
 
-mod M {
+/*mod M {
     use super::f;
-}
+}*/

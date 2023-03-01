@@ -207,6 +207,7 @@ impl Group {
         // in these futures actually don't care so long as
         // the entire group of them is moved at a time
         let exe = unsafe { Executor::new() };
+        let exer = unsafe { (&exe as *const Executor).as_ref().unwrap() };
 
         let (res_s, res_r) = local_channel::mpsc::channel();
         let (qk_s, qk_r) = local_channel::mpsc::channel();
@@ -216,6 +217,7 @@ impl Group {
         //let (br_s, br_r) = local_channel::mpsc::channel();
         let resolver = Resolver::for_node(
             self.for_node,
+            exer,
             Earpiece::new(rtr_s.clone(), res_r, self.for_node),
         );
         let quark = Quark::for_node(

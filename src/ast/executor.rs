@@ -128,7 +128,7 @@ impl Executor {
 
         while let Some(next_id) = unsafe { self.queue.as_ref().get().as_mut().unwrap().pop_front() }
         {
-            info!("stepping by id {next_id}");
+            //info!("stepping by id {next_id}");
 
             stepped_any = true;
 
@@ -159,9 +159,9 @@ impl Executor {
             let mut context = Context::from_waker(&waker);
 
 
-            debug!("starts poll for {next_id}");
+            //debug!("starts poll for {next_id}");
             let res = mref.poll_unpin(&mut context);
-            debug!("finishes poll for {next_id}");
+            //debug!("finishes poll for {next_id}");
 
             match res {
                 std::task::Poll::Ready(()) => {

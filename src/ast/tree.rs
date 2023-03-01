@@ -84,14 +84,16 @@ impl Contexts {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy)]
+#[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy)]
 pub struct CtxID(pub AtomicVecIndex);
 
-/*impl std::fmt::Debug for CtxID {
+impl std::fmt::Debug for CtxID {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.resolve().fmt(f)
+        f.write_fmt( format_args!("{}", self.0))
+        //self.0::<as std::fmt::Display>::fmt(f)
+        //self.resolve().fmt(f)
     }
-}*/
+}
 
 impl CtxID {
     pub fn resolve(self) -> &'static Node {

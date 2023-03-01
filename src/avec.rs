@@ -462,6 +462,6 @@ impl AtomicVecIndex {
 
 impl Display for AtomicVecIndex {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Index({}, {})", self.chunk, self.idx)
+        write!(f, "AVI({}, {})", self.chunk, self.idx)
     }
 }

@@ -148,6 +148,8 @@ pub struct Resolver {
     inner: RefCell<ResInner>,
     earpiece: UnsafeCell<Earpiece>,
 
+    executor: &'static Executor,
+
     /// The context that we are handling resolution in the context of
     for_ctx: CtxID,
 }
@@ -454,13 +456,13 @@ impl Resolver {
     }
 
     pub unsafe fn announce_have(&self, symbol: IStr, is_at: CtxID, is_public: bool) {
-        //warn!("node {:?} is saying we have symbol {symbol} at {is_at:?}", self.for_ctx);
+        info!("node {:?} is saying we have symbol {symbol} at {is_at:?}", self.for_ctx);
         self.inner.borrow_mut().resolutions.entry((symbol, is_at)).or_insert_with(|| {
             Box::leak(Box::new(LocalOneshotBroadcastChannel::new())) as *mut LocalOneshotBroadcastChannel<_>
         }).as_mut().unwrap().send(Ok(SimpleResolution { is_public, symbol, is_at })).expect("couldn't push resolution");
     }
 
-    pub fn for_node(node: CtxID, ep: Earpiece) -> Self {
+    pub fn for_node(node: CtxID, use_executor: &'static Executor, ep: Earpiece) -> Self {
         Self {
             inner: RefCell::new(ResInner {
                 resolutions: HashMap::new(),
@@ -469,6 +471,7 @@ impl Resolver {
                 aliases: HashMap::new(),
             }),
             for_ctx: node,
+            executor: use_executor,
             earpiece: UnsafeCell::new(ep),
         }
     }

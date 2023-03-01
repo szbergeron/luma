@@ -42,6 +42,8 @@ pub struct Quark {
     frames: Vec<usize>,
 
     earpiece: Earpiece,
+
+    node_id: CtxID,
 }
 
 impl Quark {
@@ -55,11 +57,22 @@ impl Quark {
             variables: Vec::new(),
             frames: Vec::new(),
             earpiece,
+            node_id,
         }
     }
 
     pub async fn thread(mut self) {
         info!("starts quark thread");
+
+        match &*self.node_id.resolve().inner.lock().unwrap() {
+            ast::tree::NodeUnion::Function(f) => {
+                //
+            }
+            _ => {
+                // we don't do anything in the other cases, we only make sense in the case of being
+                // a function
+            }
+        }
 
         while let Ok(v) = self.earpiece.wait().await {
             info!("Quark got a message");
