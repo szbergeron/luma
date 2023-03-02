@@ -34,6 +34,7 @@ pub struct MyWaker {
 
 impl Wake for MyWaker {
     fn wake(self: Arc<Self>) {
+        info!("wake for task {}", self.id);
         unsafe { self.queue.get().as_mut().unwrap().push_back(self.id) }
     }
 
@@ -83,7 +84,7 @@ impl MyWaker {
 
 pub struct Executor {
     queue: Pin<Arc<UnsafeCell<VecDeque<Uuid>>>>,
-    futures: UnsafeCell<HashMap<Uuid, Task<'static>>>,
+    futures: UnsafeCell<HashMap<Uuid, (Task<'static>, String)>>,
 }
 
 impl Executor {
@@ -92,7 +93,9 @@ impl Executor {
     /// poll() is called from, otherwise very bad things happen
     ///
     /// This may also only ever be called from within a single thread
-    pub unsafe fn install(&self, future: impl Future<Output = ()> + 'static) {
+    pub unsafe fn install<IS: Into<String>>(&self, future: impl Future<Output = ()> + 'static, named: IS) {
+        let named: String = named.into();
+
         let future = future.boxed_local();
         let tid = Uuid::new_v4();
 
@@ -101,7 +104,8 @@ impl Executor {
             //id: tid,
         };
 
-        self.futures.get().as_mut().unwrap().insert(tid, task);
+        info!("installing task with id {tid} named '{named}'");
+        self.futures.get().as_mut().unwrap().insert(tid, (task, named));
 
         unsafe {
             self.queue.as_ref().get().as_mut().unwrap().push_back(tid);
@@ -132,12 +136,19 @@ impl Executor {
 
             stepped_any = true;
 
+            let mut named = String::new();
+
             let mref = unsafe {
                 self.futures
                     .get()
                     .as_mut()
                     .unwrap()
                     .get_mut(&next_id)
+                    .map(|(t, n)| {
+                        //info!("going to poll task named '{n}', id'd {next_id}");
+                        named = n.clone();
+                        t
+                    })
                     .unwrap()
                     .future
                     .get()
@@ -158,9 +169,9 @@ impl Executor {
 
             let mut context = Context::from_waker(&waker);
 
-            //debug!("starts poll for {next_id}");
+            debug!("starts poll for {next_id} named '{named}'");
             let res = mref.poll_unpin(&mut context);
-            //debug!("finishes poll for {next_id}");
+            debug!("finishes poll for {next_id} named '{named}', it yielded back to us");
 
             match res {
                 std::task::Poll::Ready(()) => {

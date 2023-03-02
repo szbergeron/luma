@@ -236,9 +236,11 @@ impl Resolver {
             info!("checking for elem {elem} within {cur_within:?} in composite res");
             let res = self.do_single(elem, cur_within).await;
 
+            info!("got back a result from do_single");
+
             match res {
                 Ok(v) => {
-                    info!("got a resolution for a single");
+                    tracing::warn!("got a resolution for a single");
                     cur_within = v.is_at;
                 }
                 Err(e) => {}
@@ -419,52 +421,62 @@ impl Resolver {
             warn!("got a message: {v:#?}");
 
             match v.content {
-                Content::NameResolution(nr) => match nr {
-                    NameResolutionMessage::WhatIs {
-                        composite_symbol,
-                        given_root,
-                    } => {
-                        unsafe {
-                            self.executor.install(async move {
-                                let _ = self.do_composite(composite_symbol, given_root).await;
-                                todo!("the dog caught the car");
-                            })
-                        };
-                    }
-                    NameResolutionMessage::DoYouHave { symbol, within } => unsafe {
-                        self.executor.install(async move {
-                            warn!("received a doyouhave for {symbol} within {within:?}");
-                            let res = self.do_single(symbol, within).await;
-                            let content = match res {
-                                Ok(SimpleResolution {
-                                    is_public,
-                                    symbol,
-                                    is_at,
-                                }) => NameResolutionMessage::ItIsAt {
-                                    symbol,
-                                    within,
-                                    is_at,
-                                    is_public,
-                                },
-                                Err(e) => todo!("handle import errors"),
+                Content::NameResolution(nr) => {
+                    match nr {
+                        NameResolutionMessage::WhatIs {
+                            composite_symbol,
+                            given_root,
+                        } => {
+                            unsafe {
+                                let named = format!("do_composite task looking for {composite_symbol:?} given root {given_root:?}");
+                                self.executor.install(
+                                    async move {
+                                        let _ =
+                                            self.do_composite(composite_symbol, given_root).await;
+                                        todo!("the dog caught the car");
+                                    },
+                                    named,
+                                )
                             };
+                        }
+                        NameResolutionMessage::DoYouHave { symbol, within } => unsafe {
+                            self.executor.install(async move {
+                                warn!("received a doyouhave for {symbol} within {within:?}");
+                                let res = self.do_single(symbol, within).await;
+                                let content = match res {
+                                    Ok(SimpleResolution {
+                                        is_public,
+                                        symbol,
+                                        is_at,
+                                    }) => NameResolutionMessage::ItIsAt {
+                                        symbol,
+                                        within,
+                                        is_at,
+                                        is_public,
+                                    },
+                                    Err(e) => todo!("handle import errors"),
+                                };
 
-                            warn!("resolved a doyouhave for {symbol} which resolved to {res:?}");
+                                warn!("resolved a doyouhave for {symbol} which resolved to {res:?}");
 
-                            self.earpiece.get().as_mut().unwrap().send(Message {
-                                to: v.send_reply_to,
-                                from: self.as_dest(),
-                                send_reply_to: Destination::nil(),
-                                conversation: v.conversation,
-                                content: Content::NameResolution(content),
-                            })
-                        })
-                    },
-                    NameResolutionMessage::ItIsAt { symbol, within, is_at, is_public } => {
-                        self.announce_resolution(symbol, is_at, within, is_public)
+                                self.earpiece.get().as_mut().unwrap().send(Message {
+                                    to: v.send_reply_to,
+                                    from: self.as_dest(),
+                                    send_reply_to: Destination::nil(),
+                                    conversation: v.conversation,
+                                    content: Content::NameResolution(content),
+                                })
+                            }, format!("do_single task looking for {symbol} within {within:?}"))
+                        },
+                        NameResolutionMessage::ItIsAt {
+                            symbol,
+                            within,
+                            is_at,
+                            is_public,
+                        } => self.announce_resolution(symbol, is_at, within, is_public),
+                        _ => todo!("NI"),
                     }
-                    _ => todo!("NI"),
-                },
+                }
                 _ => todo!("don't have others yet"),
             }
         }
@@ -495,20 +507,31 @@ impl Resolver {
         }
 
         for ud in self.for_ctx.resolve().use_statements.clone().into_iter() {
+            let named = format!(
+                "do_use task that uses UD {ud:?} within node {:?}",
+                self.for_ctx
+            );
+
             info!("starting resolve of ud {ud:?}");
             let fut = async {
                 as_static.do_use(ud).await;
             };
 
-            let _task = into.install(fut);
+            let _task = into.install(fut, named);
         }
 
         //into
     }
 
-    pub unsafe fn announce_resolution(&self, symbol: IStr, is_at: CtxID, within: CtxID, is_public: bool) {
+    pub unsafe fn announce_resolution(
+        &self,
+        symbol: IStr,
+        is_at: CtxID,
+        within: CtxID,
+        is_public: bool,
+    ) {
         info!(
-            "node {:?} is saying we have symbol {symbol} at {is_at:?}",
+            "node {:?} is saying we have resolved, entry is ({symbol}, {within:?}) with val {is_at:?}",
             self.for_ctx
         );
         self.inner
@@ -528,6 +551,8 @@ impl Resolver {
                 is_at,
             }))
             .expect("couldn't push resolution");
+
+        info!("sent the resolution");
     }
 
     pub fn for_node(node: CtxID, use_executor: &'static Executor, ep: Earpiece) -> Self {

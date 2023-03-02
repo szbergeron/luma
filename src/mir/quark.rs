@@ -172,6 +172,7 @@ impl Quark {
                 self.step_resolve(convo_id);
             }
         };*/
+        warn!("Quark starts resolving {nr:?} within {:?}", self.node_id);
         self.earpiece.send(Message {
             to: Destination::resolver(self.node_id),
             from: self.as_dest(),

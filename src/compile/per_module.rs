@@ -264,12 +264,12 @@ impl Group {
             let eref = &exe as *const Executor;
             let eref = eref.as_ref().unwrap();
 
-            exe.install(sref.thread());
+            exe.install(sref.thread(), format!("resolver for node {:?}", self.for_node));
 
-            exe.install(quark.thread(eref));
-            exe.install(oracle.thread(eref));
+            exe.install(quark.thread(eref), format!("quark for node {:?}", self.for_node));
+            exe.install(oracle.thread(eref), format!("oracle for node {:?}", self.for_node));
 
-            exe.install(router.thread());
+            exe.install(router.thread(), format!("router for node {:?}", self.for_node));
 
             //exe.install(bridge.thread());
 
