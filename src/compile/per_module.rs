@@ -123,7 +123,11 @@ impl Postal {
     }*/
 
     pub fn send(&self, msg: Message) {
-        todo!()
+        self.senders
+            .get(&msg.to.node)
+            .expect("tried to send something to a nil dest")
+            .send(msg)
+            .expect("couldn't send a message through postal")
     }
 
     pub fn sign_out(&self, id: CtxID) {
@@ -241,7 +245,10 @@ impl Group {
             self.for_node,
         );
 
-        let oracle = Transponster::for_node(self.for_node, Earpiece::new(rtr_s.clone(), ocl_r, self.for_node));
+        let oracle = Transponster::for_node(
+            self.for_node,
+            Earpiece::new(rtr_s.clone(), ocl_r, self.for_node),
+        );
 
         unsafe {
             info!("installing resolver uses into exe");
@@ -353,7 +360,7 @@ impl Router {
         while let Some(v) = self.listen_to.recv().await {
             warn!("router got a message");
             if v.to.node == self.for_node {
-                warn!("got message for local, message is {v:?}");
+                warn!("got message for local, message is {v:#?}");
                 // the message is for a local service
                 match v.to.service {
                     Service::Broadcast() => {

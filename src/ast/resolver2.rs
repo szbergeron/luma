@@ -237,7 +237,10 @@ impl Resolver {
             let res = self.do_single(elem, cur_within).await;
 
             match res {
-                Ok(v) => {}
+                Ok(v) => {
+                    info!("got a resolution for a single");
+                    cur_within = v.is_at;
+                }
                 Err(e) => {}
             }
         }
@@ -256,11 +259,17 @@ impl Resolver {
         let conversation = Uuid::new_v4();
 
         let recv = self.with_inner(|inner| {
+            for ((name, within), gbc) in inner.resolutions.iter() {
+                warn!("current symbol: {name} within {within:?}");
+            };
+
             let recv = unsafe {
                 inner
                     .resolutions
                     .entry((single, within))
                     .or_insert_with(|| {
+                        warn!("we're the first to wait for the symbol, symbol is {single}, within is {within:?}, we are {:?}",
+                              self.for_ctx);
                         // need to send a message and have it waiting for resolve
                         // it's going to be our job to complete it after this
                         Box::leak(Box::new(LocalOneshotBroadcastChannel::new()))
@@ -404,14 +413,57 @@ impl Resolver {
 
     /// 'static here isn't actually static, only long enough that we stop executing
     /// the localset for the futures spawned by self
-    pub async unsafe fn thread(&self) {
+    pub async unsafe fn thread(&'static self) {
         info!("starts thread for resolver");
         while let Ok(v) = self.earpiece.get().as_mut().unwrap().wait().await {
-            warn!("got a message: {v:?}");
+            warn!("got a message: {v:#?}");
 
             match v.content {
                 Content::NameResolution(nr) => match nr {
-                    _ => todo!("nothin..."),
+                    NameResolutionMessage::WhatIs {
+                        composite_symbol,
+                        given_root,
+                    } => {
+                        unsafe {
+                            self.executor.install(async move {
+                                let _ = self.do_composite(composite_symbol, given_root).await;
+                                todo!("the dog caught the car");
+                            })
+                        };
+                    }
+                    NameResolutionMessage::DoYouHave { symbol, within } => unsafe {
+                        self.executor.install(async move {
+                            warn!("received a doyouhave for {symbol} within {within:?}");
+                            let res = self.do_single(symbol, within).await;
+                            let content = match res {
+                                Ok(SimpleResolution {
+                                    is_public,
+                                    symbol,
+                                    is_at,
+                                }) => NameResolutionMessage::ItIsAt {
+                                    symbol,
+                                    within,
+                                    is_at,
+                                    is_public,
+                                },
+                                Err(e) => todo!("handle import errors"),
+                            };
+
+                            warn!("resolved a doyouhave for {symbol} which resolved to {res:?}");
+
+                            self.earpiece.get().as_mut().unwrap().send(Message {
+                                to: v.send_reply_to,
+                                from: self.as_dest(),
+                                send_reply_to: Destination::nil(),
+                                conversation: v.conversation,
+                                content: Content::NameResolution(content),
+                            })
+                        })
+                    },
+                    NameResolutionMessage::ItIsAt { symbol, within, is_at, is_public } => {
+                        self.announce_resolution(symbol, is_at, within, is_public)
+                    }
+                    _ => todo!("NI"),
                 },
                 _ => todo!("don't have others yet"),
             }
@@ -431,15 +483,15 @@ impl Resolver {
             let (symbol, is_at) = child.pair();
             let is_public = is_at.resolve().public;
 
-            self.announce_have(*symbol, *is_at, is_public);
+            self.announce_resolution(*symbol, *is_at, self.for_ctx, is_public);
         }
 
         if let Some(parent) = nref.parent {
-            self.announce_have("super".intern(), parent, true);
+            self.announce_resolution("super".intern(), parent, self.for_ctx, true);
         }
 
         if let Some(global) = nref.global {
-            self.announce_have("global".intern(), global, true);
+            self.announce_resolution("global".intern(), global, self.for_ctx, true);
         }
 
         for ud in self.for_ctx.resolve().use_statements.clone().into_iter() {
@@ -454,7 +506,7 @@ impl Resolver {
         //into
     }
 
-    pub unsafe fn announce_have(&self, symbol: IStr, is_at: CtxID, is_public: bool) {
+    pub unsafe fn announce_resolution(&self, symbol: IStr, is_at: CtxID, within: CtxID, is_public: bool) {
         info!(
             "node {:?} is saying we have symbol {symbol} at {is_at:?}",
             self.for_ctx
@@ -462,8 +514,9 @@ impl Resolver {
         self.inner
             .borrow_mut()
             .resolutions
-            .entry((symbol, is_at))
+            .entry((symbol, within))
             .or_insert_with(|| {
+                warn!("announced that we have {symbol} at {is_at:?}, pushing the box");
                 Box::leak(Box::new(LocalOneshotBroadcastChannel::new()))
                     as *mut LocalOneshotBroadcastChannel<_>
             })
