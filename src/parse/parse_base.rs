@@ -38,16 +38,18 @@ impl<'lexer> Parser<'lexer> {
                 break; // no decs left in file
             }
 
-            let tw = t.take_in(&[
-                        Token::RBrace,
-                        Token::Module,
-                        Token::Function,
-                        Token::Struct,
-                        Token::Use,
-                        Token::DExpression,
-                        Token::Implementation,
-                        Token::Specification,
-                ]).join()?;
+            let tw = t
+                .take_in(&[
+                    Token::RBrace,
+                    Token::Module,
+                    Token::Function,
+                    Token::Struct,
+                    Token::Use,
+                    Token::DExpression,
+                    Token::Implementation,
+                    Token::Specification,
+                ])
+                .join()?;
 
             println!("Entry: got a tw {:?}", tw);
             match tw.token {
@@ -57,13 +59,17 @@ impl<'lexer> Parser<'lexer> {
                         println!("Ending entry since found }}");
                     } else {
                         //
-                        let e = ParseResultError::UnexpectedToken(t.sync().la(0).unwrap(), vec![], Some("Found trailing input at end of file"));
+                        let e = ParseResultError::UnexpectedToken(
+                            t.sync().la(0).unwrap(),
+                            vec![],
+                            Some("Found trailing input at end of file"),
+                        );
                         println!("{e:?}");
                         t.add_error(e);
                         //panic!();
                     }
                     break;
-                },
+                }
                 _ => {
                     t.lh.backtrack();
 
@@ -260,7 +266,8 @@ impl<'lexer> Parser<'lexer> {
 
                 Token::Specification => {
                     t.lh.backtrack();
-                    let v = self.parse_specification(&t)
+                    let v = self
+                        .parse_specification(&t)
                         .join_hard(&mut t)
                         .catch(&mut t)?;
                     cst::TopLevel::Trait(v)
@@ -456,7 +463,8 @@ impl<'lexer> Parser<'lexer> {
             let tr = self
                 .parse_type_specifier(&t)
                 .join_hard(&mut t)
-                .catch(&mut t)?.intern();
+                .catch(&mut t)?
+                .intern();
 
             let r = (i.slice, tr);
 
@@ -493,7 +501,8 @@ impl<'lexer> Parser<'lexer> {
         let return_type = self
             .parse_type_specifier(&t)
             .join_hard(&mut t)
-            .catch(&mut t)?.intern();
+            .catch(&mut t)?
+            .intern();
 
         let body = self.parse_expr(&t).join_hard(&mut t).catch(&mut t)?;
 
@@ -509,7 +518,7 @@ impl<'lexer> Parser<'lexer> {
             return_type,
             name: function_name.slice,
             public: false,
-            generics: vec![]
+            generics: vec![],
         })
     }
 

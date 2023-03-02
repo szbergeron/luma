@@ -36,12 +36,10 @@ impl Oracle {
         todo!()
     }
 
-    pub fn add_fact(&mut self, fact: Fact) {
-    }
+    pub fn add_fact(&mut self, fact: Fact) {}
 
     /// The "single thread" that steps the phases
-    pub async fn solver(&self) {
-    }
+    pub async fn solver(&self) {}
 
     /// This is used when we declare a variable with a given name,
     /// we get back a unique handle
@@ -74,8 +72,7 @@ impl Oracle {
         todo!()
     }
 
-    pub async fn has_method(&self, unit: usize, on: VarID, args: Vec<VarID>) {
-    }
+    pub async fn has_method(&self, unit: usize, on: VarID, args: Vec<VarID>) {}
 
     /// If we know a full schema we can say that some var
     /// has it, this happens when we do like an assignment

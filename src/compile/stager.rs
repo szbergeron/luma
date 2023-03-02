@@ -4,21 +4,18 @@ use crate::compile::parse_tree::ParseTreeNode;
 //use crate::ast;
 
 use crate::compile::per_module::CompilationUnit;
-use crate::lex::{LookaheadHandle, TokenStream, ErrorSet};
+use crate::lex::{ErrorSet, LookaheadHandle, TokenStream};
 use crate::parse::schema::TokenProvider;
 use crate::parse::Parser;
 use std::collections::HashSet;
 
+use crate::{ast, cst};
 use std::path::{Path, PathBuf};
 use std::process;
-use crate::{cst, ast};
 
 //use crate::mid_repr::ScopeContext;
 
-
 //use crate::ast::*;
-
-
 
 use crate::helper::interner::*;
 use tokio::runtime::*;
@@ -27,7 +24,6 @@ use tokio::runtime::*;
 
 use super::file_tree::{FileHandle, FileRegistry, FileRole, SourceFile, SpecFile};
 use super::preparse_tree::PreParseTreeNode;
-
 
 #[allow(unused_variables, dead_code)]
 pub fn parse_source_file<'file>(
@@ -79,7 +75,6 @@ pub fn parse_source_file<'file>(
         println!("Not printing errors");
     }
 
-
     match &v {
         Some(punit) => {
             if cflags.dump_tree {
@@ -129,15 +124,25 @@ pub struct CFlags {
 fn args_to_roles(args: &ArgResult) -> Vec<FileRole> {
     let mut roles = Vec::new();
 
-    args.source_input.iter().map(|p| {
-        let f = FileRole::Source(SourceFile { location: p.clone() });
-        f
-    }).for_each(|e| roles.push(e));
+    args.source_input
+        .iter()
+        .map(|p| {
+            let f = FileRole::Source(SourceFile {
+                location: p.clone(),
+            });
+            f
+        })
+        .for_each(|e| roles.push(e));
 
-    args.spec_input.iter().map(|p| {
-        let f = FileRole::Spec(SpecFile { location: p.clone() });
-        f
-    }).for_each(|e| roles.push(e));
+    args.spec_input
+        .iter()
+        .map(|p| {
+            let f = FileRole::Spec(SpecFile {
+                location: p.clone(),
+            });
+            f
+        })
+        .for_each(|e| roles.push(e));
 
     roles
 }
@@ -148,7 +153,7 @@ async fn async_launch(args: ArgResult) {
     let roles = args_to_roles(&args);
 
     println!("Building node");
-    
+
     // build the initial module tree based on file locations
     let node = crate::compile::preparse_tree::from_roots(&files, roles);
 
@@ -181,9 +186,6 @@ async fn async_launch(args: ArgResult) {
 
     // now that we have combined MIR and type solutions (plus fields),
     //
-
-
-
 
     //let node = node.into_ast();
 
@@ -266,7 +268,7 @@ fn parse_args(args: &[&str]) -> Result<ArgResult, &'static str> {
                 match state {
                     State::ExpectNothing => {
                         println!("Unexpected arg {other} was provided");
-                    },
+                    }
                     State::ExpectOutput | State::ExpectSourceInput | State::ExpectSpecInput => {
                         // should be a file or directory in this case
                         let path = Path::new(other);
@@ -312,8 +314,7 @@ fn parse_args(args: &[&str]) -> Result<ArgResult, &'static str> {
     })
 }
 
-pub fn parse<'a>(n: PreParseTreeNode<'a>) {
-}
+pub fn parse<'a>(n: PreParseTreeNode<'a>) {}
 
 /*
 pub fn prepass<'a>(p: &Arc<ScopeContext>) {

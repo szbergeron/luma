@@ -59,8 +59,6 @@ use console_subscriber;
 
 use std::env;
 
-pub mod mir; // just until we fix lowering, reduce error count
-pub mod lir;
 pub mod ast;
 pub mod avec;
 pub mod build_expr;
@@ -71,8 +69,10 @@ pub mod encode;
 pub mod helper;
 pub mod lalrpop_lexer;
 pub mod lex;
+pub mod lir;
 pub mod llvm;
 pub mod lowered;
+pub mod mir; // just until we fix lowering, reduce error count
 //pub mod mid_repr;
 pub mod parse;
 pub mod traits;

@@ -5,7 +5,9 @@ use std::{
 };
 
 use async_executor::LocalExecutor;
-use futures_intrusive::channel::{LocalOneshotBroadcastChannel, LocalOneshotChannel, GenericOneshotBroadcastChannel};
+use futures_intrusive::channel::{
+    GenericOneshotBroadcastChannel, LocalOneshotBroadcastChannel, LocalOneshotChannel,
+};
 use smallvec::ToSmallVec;
 use tokio::task::LocalSet;
 use tracing::{info, warn};
@@ -409,7 +411,7 @@ impl Resolver {
 
             match v.content {
                 Content::NameResolution(nr) => match nr {
-                    _ => todo!("nothin...")
+                    _ => todo!("nothin..."),
                 },
                 _ => todo!("don't have others yet"),
             }
@@ -440,8 +442,6 @@ impl Resolver {
             self.announce_have("global".intern(), global, true);
         }
 
-
-
         for ud in self.for_ctx.resolve().use_statements.clone().into_iter() {
             info!("starting resolve of ud {ud:?}");
             let fut = async {
@@ -451,15 +451,30 @@ impl Resolver {
             let _task = into.install(fut);
         }
 
-
         //into
     }
 
     pub unsafe fn announce_have(&self, symbol: IStr, is_at: CtxID, is_public: bool) {
-        info!("node {:?} is saying we have symbol {symbol} at {is_at:?}", self.for_ctx);
-        self.inner.borrow_mut().resolutions.entry((symbol, is_at)).or_insert_with(|| {
-            Box::leak(Box::new(LocalOneshotBroadcastChannel::new())) as *mut LocalOneshotBroadcastChannel<_>
-        }).as_mut().unwrap().send(Ok(SimpleResolution { is_public, symbol, is_at })).expect("couldn't push resolution");
+        info!(
+            "node {:?} is saying we have symbol {symbol} at {is_at:?}",
+            self.for_ctx
+        );
+        self.inner
+            .borrow_mut()
+            .resolutions
+            .entry((symbol, is_at))
+            .or_insert_with(|| {
+                Box::leak(Box::new(LocalOneshotBroadcastChannel::new()))
+                    as *mut LocalOneshotBroadcastChannel<_>
+            })
+            .as_mut()
+            .unwrap()
+            .send(Ok(SimpleResolution {
+                is_public,
+                symbol,
+                is_at,
+            }))
+            .expect("couldn't push resolution");
     }
 
     pub fn for_node(node: CtxID, use_executor: &'static Executor, ep: Earpiece) -> Self {

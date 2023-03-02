@@ -10,7 +10,6 @@ use futures::{
     future::{BoxFuture, FutureExt, LocalBoxFuture},
     task::{waker_ref, ArcWake},
 };
-use tracing::{info, debug};
 use std::{
     future::Future,
     sync::mpsc::{sync_channel, Receiver, SyncSender},
@@ -18,6 +17,7 @@ use std::{
     task::Context,
     time::Duration,
 };
+use tracing::{debug, info};
 
 use uuid::Uuid;
 
@@ -157,7 +157,6 @@ impl Executor {
             let waker = unsafe { std::task::Waker::from_raw(rawwaker) };
 
             let mut context = Context::from_waker(&waker);
-
 
             //debug!("starts poll for {next_id}");
             let res = mref.poll_unpin(&mut context);

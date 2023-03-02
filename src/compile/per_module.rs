@@ -15,7 +15,7 @@ use std::{
 };
 
 use crate::{
-    ast::{tree::CtxID, resolver2::NameResolutionMessage, resolver2::Resolver, executor::Executor},
+    ast::{executor::Executor, resolver2::NameResolutionMessage, resolver2::Resolver, tree::CtxID},
     avec::AtomicVecIndex,
     cst::ScopedName,
     helper::interner::IStr,
@@ -69,7 +69,8 @@ impl CompilationUnit {
         join_all(v.into_iter().map(|r| {
             info!("going to start cid group {:?}", r.for_node);
             r.start()
-        })).await;
+        }))
+        .await;
     }
 }
 
@@ -160,7 +161,7 @@ impl Postal {
     /// returns true if heartbeat was sent successfully,
     /// false if everyone has exited
     pub fn send_heartbeat(&self) -> bool {
-        return  true; // just for now
+        return true; // just for now
 
         if self.exited() {
             false
@@ -211,6 +212,7 @@ impl Group {
 
         let (res_s, res_r) = local_channel::mpsc::channel();
         let (qk_s, qk_r) = local_channel::mpsc::channel();
+        let (ocl_s, ocl_r) = local_channel::mpsc::channel();
         let (rtr_s, rtr_r) = local_channel::mpsc::channel();
 
         let (send_out_s, mut send_out_r) = lockfree::channel::spsc::create();
@@ -229,6 +231,7 @@ impl Group {
             rtr_r,
             vec![
                 (Service::Resolver(), res_s),
+                (Service::Oracle(), ocl_s),
                 (Service::Quark(), qk_s),
                 (Service::Router(), rtr_s.clone()),
             ],
@@ -242,7 +245,7 @@ impl Group {
             info!("installing resolver uses into exe");
             resolver.install(&exe);
             info!("installed resolver uses into exe");
-            
+
             // it doesn't truly live for static, but it lives long enough that the executor itself
             // is dropped before resolver is, and we've awaited all the futures so they are allowed
             // to drop then
@@ -349,8 +352,7 @@ impl Router {
                     Service::Broadcast() => {
                         info!("it was a broadcast message");
                         for (serv, send) in self.send_on.iter_mut() {
-                            if *serv == Service::Router()
-                            {
+                            if *serv == Service::Router() {
                                 // don't send a broadcast right back to the thing that sent it
                                 info!("avoiding sending to self");
                                 continue;
@@ -376,7 +378,9 @@ impl Router {
             } else {
                 // message is going out to another node
                 warn!("sending message {v:?} out from router");
-                self.send_out.send(v).expect("couldn't send out from router");
+                self.send_out
+                    .send(v)
+                    .expect("couldn't send out from router");
             }
         }
     }
@@ -423,6 +427,13 @@ pub enum Photon {}
 pub enum ControlMessage {
     /// Analogue for a heartbeat message
     CheckIn(),
+
+    /// A reply from a node where the service is inactive,
+    /// so no reply can be expected
+    ///
+    /// Can be used to indicate that, say, the type of a field was asked of
+    /// a
+    CanNotReply(),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -443,7 +454,10 @@ impl Destination {
     }
 
     pub fn resolver(node: CtxID) -> Self {
-        Self { node, service: Service::Resolver() }
+        Self {
+            node,
+            service: Service::Resolver(),
+        }
     }
 }
 
@@ -484,6 +498,7 @@ pub enum Service {
     Resolver(),
     Quark(),
     Router(),
+    Oracle(),
 
     /// A message specifically for the controller on a node,
     /// used for things like upward phase announcements

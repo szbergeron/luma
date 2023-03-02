@@ -3,20 +3,18 @@ use std::{
     sync::Arc,
 };
 
-
-
-use tracing::{warn, info};
+use tracing::{info, warn};
 
 use crate::{
+    ast::{self, tree::CtxID, types::AbstractTypeReference},
+    avec::{AtomicVec, AtomicVecIndex},
+    compile::per_module::Earpiece,
     cst::GenericHandle,
-    helper::{interner::IStr, VecOps, CompilationError}, avec::{AtomicVec, AtomicVecIndex}, ast::{self, tree::CtxID, types::AbstractTypeReference}, compile::per_module::Earpiece,
+    helper::{interner::IStr, CompilationError, VecOps},
 };
-
-
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TypeID(AtomicVecIndex);
-
 
 /// Quark instances are provided a single
 /// function context to try to resolve within,
@@ -173,7 +171,6 @@ pub struct Allocation {
 
 pub struct FunctionCall {
     //to: CallableReference, TODO
-
     args: Vec<AllocationReference>,
 
     returns: AllocationReference,
@@ -410,7 +407,11 @@ impl TypeContext {
     /// a more expensive, less intuitive, fallback
     ///
     /// This is called with roots, so a and b must be distinct
-    pub fn unify_simple(&mut self, TypeID(ia): TypeID, TypeID(ib): TypeID) -> Result<TypeType, TypeError> {
+    pub fn unify_simple(
+        &mut self,
+        TypeID(ia): TypeID,
+        TypeID(ib): TypeID,
+    ) -> Result<TypeType, TypeError> {
         let ta = self.types.get(ia);
         let tb = self.types.get(ib);
 
@@ -436,10 +437,12 @@ impl TypeContext {
                     let unified_generics: Vec<(TypeID, TypeID)> = a
                         .generics
                         .iter()
-                        .zip(b.generics.iter()).map(|(a, b)| (a.clone(), b.clone())).collect();
+                        .zip(b.generics.iter())
+                        .map(|(a, b)| (a.clone(), b.clone()))
+                        .collect();
 
                     for (ga, gb) in unified_generics {
-                            let unioned = self.unify(ga.clone(), gb.clone());
+                        let unioned = self.unify(ga.clone(), gb.clone());
                     }
 
                     todo!()
