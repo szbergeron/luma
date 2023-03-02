@@ -1,4 +1,4 @@
-use crate::helper::interner::IStr;
+use crate::{helper::interner::IStr, ast::tree::CtxID, compile::per_module::Earpiece};
 
 struct GlobalContext {
     //
@@ -26,11 +26,17 @@ pub enum Fact {
 }
 
 /// The "gives cryptic advice" kind not the "80% lawyers" kind
-struct Oracle {
+pub struct Oracle {
     units: Vec<usize>,
 }
 
 impl Oracle {
+    pub fn for_node(node_id: CtxID, earpiece: Earpiece) {
+    }
+
+    pub fn thread(self) {
+    }
+
     /// Tell the Oracle the full set of units to wait for
     pub fn init(&mut self, units: Vec<usize>) {
         todo!()
@@ -126,7 +132,7 @@ impl Oracle {
     }
 }
 
-enum EmptyReason {}
+pub enum EmptyReason {}
 
 /*
  * fn corge<T>(f: T) -> Baz<T> {

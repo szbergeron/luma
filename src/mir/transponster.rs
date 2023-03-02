@@ -1,3 +1,7 @@
+use tracing::warn;
+
+use crate::{ast::{tree::CtxID, executor::Executor}, compile::per_module::Earpiece};
+
 /// Yes, it's a reference, and no, it's not a good one
 ///
 /// This handles the work of doing inference on dynamic fields
@@ -27,8 +31,16 @@
 /// where we may group types and pull roots concurrently
 /// even if there is a specific root that could provide
 /// information for dependents
-struct Transponster {
+pub struct Transponster {
 }
 
 impl Transponster {
+    pub fn for_node(node_id: CtxID, earpiece: Earpiece) -> Self {
+        Self {}
+    }
+
+    pub async fn thread(self, executor: &'static Executor) {
+        warn!("starting transponster");
+    }
+
 }

@@ -6,10 +6,10 @@ use std::{
 use tracing::{info, warn};
 
 use crate::{
-    ast::{self, tree::CtxID, types::AbstractTypeReference},
+    ast::{self, tree::CtxID, types::AbstractTypeReference, executor::Executor},
     avec::{AtomicVec, AtomicVecIndex},
-    compile::per_module::Earpiece,
-    cst::GenericHandle,
+    compile::per_module::{Earpiece, Message, Destination, Service, Content, ControlMessage},
+    cst::{GenericHandle, TypeReference},
     helper::{interner::IStr, CompilationError, VecOps},
 };
 
@@ -59,21 +59,40 @@ impl Quark {
         }
     }
 
-    pub async fn thread(mut self) {
+    pub async fn thread(mut self, executor: &'static Executor) {
         info!("starts quark thread");
 
         match &*self.node_id.resolve().inner.lock().unwrap() {
             ast::tree::NodeUnion::Function(f) => {
-                //
+                warn!("quark for a function starts up");
+                self.entry(f).await
             }
             _ => {
                 // we don't do anything in the other cases, we only make sense in the case of being
                 // a function
+                warn!("quark for node {:?} is shutting down, as it is not a function", self.node_id);
+
+                while let Ok(v) = self.earpiece.wait().await {
+                    info!("Quark got a message");
+
+                    self.earpiece.send(Message {
+                        to: v.send_reply_to,
+                        send_reply_to: Destination::nil(),
+                        from: Destination { node: self.node_id, service: Service::Quark() },
+                        conversation: v.conversation,
+                        content: Content::Control(ControlMessage::CanNotReply())
+                    });
+                }
             }
         }
+    }
 
-        while let Ok(v) = self.earpiece.wait().await {
-            info!("Quark got a message");
+    pub fn start_resolve_typeref(&mut self, tr: &TypeReference) {
+    }
+
+    pub async fn entry(mut self, f: &crate::ast::types::FunctionDefinition) {
+        for (name, tr) in f.parameters.iter() {
+            self.start_resolve_typeref(tr);
         }
     }
 

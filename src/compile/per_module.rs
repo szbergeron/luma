@@ -19,7 +19,7 @@ use crate::{
     avec::AtomicVecIndex,
     cst::ScopedName,
     helper::interner::IStr,
-    mir::quark::Quark,
+    mir::{quark::Quark, transponster::Transponster},
 };
 
 pub struct CompilationUnit {
@@ -241,6 +241,8 @@ impl Group {
             self.for_node,
         );
 
+        let oracle = Transponster::for_node(self.for_node, Earpiece::new(rtr_s.clone(), ocl_r, self.for_node));
+
         unsafe {
             info!("installing resolver uses into exe");
             resolver.install(&exe);
@@ -252,9 +254,14 @@ impl Group {
             let sref = &resolver as *const Resolver;
             let sref = sref.as_ref().unwrap();
 
+            let eref = &exe as *const Executor;
+            let eref = eref.as_ref().unwrap();
+
             exe.install(sref.thread());
 
-            exe.install(quark.thread());
+            exe.install(quark.thread(eref));
+            exe.install(oracle.thread(eref));
+
             exe.install(router.thread());
 
             //exe.install(bridge.thread());
@@ -465,7 +472,7 @@ pub struct Earpiece {
     listen: local_channel::mpsc::Receiver<Message>,
 
     //shout: Arc<Postal>,
-    whisper: local_channel::mpsc::Sender<Message>,
+    talk: local_channel::mpsc::Sender<Message>,
 
     within: CtxID,
 }
@@ -477,7 +484,7 @@ impl Earpiece {
         } else {
             self.shout.send(message);
         }*/
-        let _ = self.whisper.send(message);
+        let _ = self.talk.send(message);
     }
 
     pub async fn wait(&mut self) -> Result<Message, ()> {
@@ -487,7 +494,7 @@ impl Earpiece {
     pub fn new(send: LocalSender<Message>, recv: LocalReceiver<Message>, within: CtxID) -> Self {
         Self {
             listen: recv,
-            whisper: send,
+            talk: send,
             within,
         }
     }
