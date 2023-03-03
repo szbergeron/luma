@@ -1,8 +1,10 @@
 use std::{
     cell::UnsafeCell,
     collections::{HashMap, VecDeque},
+    marker::PhantomData,
     mem::ManuallyDrop,
     pin::Pin,
+    rc::Rc,
     task::{RawWaker, RawWakerVTable, Wake},
 };
 
@@ -20,6 +22,8 @@ use std::{
 use tracing::{debug, info};
 
 use uuid::Uuid;
+
+use crate::helper::SwapWith;
 
 pub struct Task<'a> {
     //id: Uuid,
@@ -93,7 +97,11 @@ impl Executor {
     /// poll() is called from, otherwise very bad things happen
     ///
     /// This may also only ever be called from within a single thread
-    pub unsafe fn install<IS: Into<String>>(&self, future: impl Future<Output = ()> + 'static, named: IS) {
+    pub unsafe fn install<IS: Into<String>>(
+        &self,
+        future: impl Future<Output = ()> + 'static,
+        named: IS,
+    ) {
         let named: String = named.into();
 
         let future = future.boxed_local();
@@ -105,7 +113,11 @@ impl Executor {
         };
 
         info!("installing task with id {tid} named '{named}'");
-        self.futures.get().as_mut().unwrap().insert(tid, (task, named));
+        self.futures
+            .get()
+            .as_mut()
+            .unwrap()
+            .insert(tid, (task, named));
 
         unsafe {
             self.queue.as_ref().get().as_mut().unwrap().push_back(tid);
@@ -187,4 +199,77 @@ impl Executor {
 
         stepped_any
     }
+}
+
+pub struct UnsafeAsyncCompletableFuture<T: Clone> {
+    _phantom: PhantomData<T>,
+    refers: std::rc::Rc<UnsafeAsyncCompletable<T>>,
+}
+
+impl<T: Clone> Future for UnsafeAsyncCompletableFuture<T> {
+    type Output = T;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> std::task::Poll<Self::Output> {
+        unsafe {
+            match self.refers.value.get().as_ref().unwrap() {
+                Some(v) => std::task::Poll::Ready(v.clone()),
+                None => {
+                    let waker = cx.waker().clone();
+
+                    self.refers.waiters.get().as_mut().unwrap().push(waker);
+
+                    std::task::Poll::Pending
+                }
+            }
+        }
+    }
+}
+
+pub struct UnsafeAsyncCompletable<T: Clone> {
+    value: UnsafeCell<Option<T>>,
+    waiters: UnsafeCell<Vec<std::task::Waker>>,
+}
+
+impl<T: Clone> UnsafeAsyncCompletable<T> {
+    pub unsafe fn complete(&self, val: T) -> Result<(), SendError> {
+        let mref = self.value.get().as_mut().expect("unsafecell being dumb");
+
+        if mref.is_some() {
+            return Err(SendError::AlreadyCompleted());
+        }
+
+        *mref = Some(val);
+
+        for waker in self
+            .waiters
+            .get()
+            .as_mut()
+            .expect("unsafecell being dumb")
+            .swap_with(Vec::new())
+            .into_iter()
+        {
+            waker.wake();
+        }
+
+        Ok(())
+    }
+
+    pub unsafe fn wait(self: Rc<Self>) -> UnsafeAsyncCompletableFuture<T> {
+        UnsafeAsyncCompletableFuture {
+            _phantom: PhantomData::default(),
+            refers: self.clone(),
+        }
+    }
+
+    pub unsafe fn new() -> Rc<Self> {
+        Rc::new(Self {
+            value: UnsafeCell::new(None),
+            waiters: UnsafeCell::new(Vec::new()),
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum SendError {
+    AlreadyCompleted(),
 }

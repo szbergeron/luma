@@ -1,7 +1,10 @@
 use std::{
     cell::{RefCell, UnsafeCell},
     collections::{HashMap, HashSet},
+    fmt::format,
     pin::Pin,
+    rc::Rc,
+    sync::atomic::AtomicUsize,
 };
 
 use async_executor::LocalExecutor;
@@ -19,7 +22,10 @@ use crate::{
     helper::interner::{IStr, Internable},
 };
 
-use super::{executor::Executor, tree::CtxID};
+use super::{
+    executor::{Executor, UnsafeAsyncCompletable},
+    tree::CtxID,
+};
 
 #[derive(Debug, Clone)]
 pub enum NameResolutionMessage {
@@ -125,10 +131,8 @@ pub struct ResInner {
     /// then we should tell everyone in this list we
     /// couldn't find the given symbol
     //waiting_for_resolution: HashMap<(IStr, CtxID), Vec<ConversationState>>,
-    resolutions: HashMap<
-        (IStr, CtxID),
-        *mut LocalOneshotBroadcastChannel<Result<SimpleResolution, ImportError>>,
-    >,
+    resolutions:
+        HashMap<(IStr, CtxID), Rc<UnsafeAsyncCompletable<Result<SimpleResolution, ImportError>>>>,
 
     // for now, we're not gonna try to complicate things
     // further by caching both
@@ -139,13 +143,18 @@ pub struct ResInner {
         (ScopedName, CtxID),
         *mut LocalOneshotBroadcastChannel<Result<CompositeResolution, ImportError>>,
     >,*/
-    conversations: HashMap<Uuid, *mut LocalOneshotChannel<Message>>,
+    conversations: HashMap<Uuid, Rc<UnsafeAsyncCompletable<Message>>>,
 
     /// If an alias exists within this map at the time of publishing,
     /// then the entry should be removed from this map and the symbol
     /// should instead be published locally as the name matching the
     /// value of the entry
     aliases: HashMap<ScopedName, IStr>,
+
+    /// When we fuse this node (freeze its imports),
+    /// we can know for certain that everything that will
+    /// be exported will be by-name in this vec
+    fused_exports: Option<Vec<IStr>>,
 }
 
 impl ResInner {}
@@ -170,7 +179,8 @@ impl Resolver {
             .entry(conversation)
             .or_insert_with(|| {
                 r = false;
-                Box::leak(Box::new(LocalOneshotChannel::new())) as *mut LocalOneshotChannel<_>
+                unsafe { UnsafeAsyncCompletable::new() }
+                //Box::leak(Box::new(LocalOneshotChannel::new())) as *mut LocalOneshotChannel<_>
             });
 
         r
@@ -180,7 +190,7 @@ impl Resolver {
     /// we're closing isn't one being actively awaited
     unsafe fn conversation_close(&self, conversation: Uuid) {
         match self.inner.borrow_mut().conversations.remove(&conversation) {
-            Some(v) => unsafe { std::mem::drop(Box::from_raw(v)) },
+            Some(v) => { /* just drop v */ }
             None => warn!("tried to remove conversation by id {conversation} which did not exist"),
         }
     }
@@ -190,28 +200,30 @@ impl Resolver {
     ///
     /// The thing awaiting should be the same future that eventually deletes
     async unsafe fn conversation_wait_reply(&self, conversation: Uuid) -> Option<Message> {
-        let conv = *self
+        let conv = self
             .inner
             .borrow_mut()
             .conversations
             .get(&conversation)
-            .expect("tried to wait on a conversation that didn't yet exist");
+            .expect("tried to wait on a conversation that didn't yet exist")
+            .clone();
 
         // we then drop the borrow, keep the ptr
 
-        conv.as_ref().unwrap().receive().await
+        Some(conv.wait().await)
     }
 
     /// returns true if successfully pushed the message,
     fn conversation_notify_reply(&self, cnversation: Uuid, message: Message) -> bool {
-        let conv = *self
+        let conv = self
             .inner
             .borrow_mut()
             .conversations
             .get(&cnversation)
-            .expect("tried to send to a conversation that no longer exists");
+            .expect("tried to send to a conversation that no longer exists")
+            .clone();
 
-        unsafe { conv.as_ref().unwrap().send(message) }.is_ok()
+        unsafe { conv.complete(message) }.is_ok()
     }
 
     fn with_inner<F, T>(&self, f: F) -> T
@@ -227,7 +239,21 @@ impl Resolver {
     async fn do_use(&self, ud: UseDeclaration) {
         warn!("start resolving use: {ud:?}");
 
+        let last = ud
+            .scope
+            .scope
+            .last()
+            .expect("there was no last symbol in a use statement");
+        let alias = ud.alias.unwrap_or(*last);
+
         let resolution = self.do_composite(ud.scope, self.for_ctx).await;
+
+        match resolution {
+            Ok(res) => unsafe {
+                self.announce_resolution(alias, res.is_at, self.for_ctx, res.is_public)
+            },
+            Err(ie) => {}
+        }
     }
 
     async fn do_composite(
@@ -289,21 +315,24 @@ impl Resolver {
                               self.for_ctx);
                         // need to send a message and have it waiting for resolve
                         // it's going to be our job to complete it after this
-                        Box::leak(Box::new(LocalOneshotBroadcastChannel::new()))
-                            as *mut LocalOneshotBroadcastChannel<_>
+                        //Box::leak(Box::new(LocalOneshotBroadcastChannel::new()))
+                        //    as *mut LocalOneshotBroadcastChannel<_>
+                        UnsafeAsyncCompletable::new()
 
                         // if there was already something in there, then we recv it and return
                         // that existing resolution immediately
                     })
-                    .as_mut()
-                    .unwrap()
-                    .receive()
+                    .clone()
+                    .wait()
             };
 
             // if we'd be asking ourself, then we shouldn't send a message, just wait for a
             // resolution. This is the "base case"
             if within == self.for_ctx {
-                // just do nothing
+                // we're expecting the symbol at some point, since we
+                // passed the fused_exports check, but
+                // we're still waiting for it to be resolved, so just
+                // leave it for now
             } else {
                 // we're asking someone else and just keeping a
                 // cache, so we need to start a convo
@@ -377,7 +406,7 @@ impl Resolver {
 
         // need to delete the conversation channel
 
-        let val = val.expect("channel was dropped or closed while we needed something");
+        //let val = val.expect("channel was dropped or closed while we needed something");
 
         warn!("got val from simple of {val:?}");
 
@@ -454,7 +483,11 @@ impl Resolver {
                                             Ok(r) => NameResolutionMessage::RefersTo {
                                                 composite_symbol: r.name, is_at: r.is_at, given_root },
                                             Err(e) => NameResolutionMessage::HasNoResolution {
-                                                composite_symbol: todo!(), longest_prefix: todo!(), prefix_ends_at: todo!(), given_root: todo!() }
+                                                composite_symbol: todo!(),
+                                                longest_prefix: todo!(),
+                                                prefix_ends_at: todo!(),
+                                                given_root: todo!()
+                                            }
                                         };
 
                                         let msg = Message {
@@ -543,21 +576,69 @@ impl Resolver {
             self.announce_resolution("global".intern(), global, self.for_ctx, true);
         }
 
+        let remaining_use_statements = Rc::new(AtomicUsize::new(
+            self.for_ctx.resolve().use_statements.len(),
+        ));
+
         for ud in self.for_ctx.resolve().use_statements.clone().into_iter() {
             let named = format!(
                 "do_use task that uses UD {ud:?} within node {:?}",
                 self.for_ctx
             );
 
+            let remaining_use_statements = remaining_use_statements.clone();
+
             info!("starting resolve of ud {ud:?}");
-            let fut = async {
+            let fut = async move {
                 as_static.do_use(ud).await;
+
+                let remaining =
+                    remaining_use_statements.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+
+                if remaining == 0 {
+                    as_static.fuse();
+                }
             };
 
             let _task = into.install(fut, named);
         }
 
+        if remaining_use_statements.load(std::sync::atomic::Ordering::Relaxed) == 0 {
+            // if there were no use statements, we just do this now
+            as_static.fuse();
+        }
+
         //into
+    }
+
+    /// we've resolved every use statement, any symbols looking for things within
+    /// "us" will never be resolved any more
+    fn fuse(&self) {
+        self.with_inner(|inner| {
+            for ((symname, within), res) in inner.resolutions.iter() {
+                if *within == self.for_ctx {
+                    // well, :shrug:
+                    let r = unsafe {
+                        res.complete(Err(ImportError {
+                            symbol_name: *symname,
+                            from_ctx: *within,
+                            error_reason: format!(
+                                "all use statements were completed without this symbol appearing",
+                            ),
+                        }))
+                    };
+
+                    match r {
+                        Ok(v) => {
+                            warn!("we gave up on resolving {symname} because all use statements finished and it wasn't found");
+                        }
+                        Err(e) => {
+                            info!("use statements were resolved and no unresolved symbols remained");
+                        }
+                    }
+                }
+            }
+        });
     }
 
     pub unsafe fn announce_resolution(
@@ -577,12 +658,11 @@ impl Resolver {
             .entry((symbol, within))
             .or_insert_with(|| {
                 warn!("announced that we have {symbol} at {is_at:?}, pushing the box");
-                Box::leak(Box::new(LocalOneshotBroadcastChannel::new()))
-                    as *mut LocalOneshotBroadcastChannel<_>
+                //Box::leak(Box::new(LocalOneshotBroadcastChannel::new()))
+                //as *mut LocalOneshotBroadcastChannel<_>
+                UnsafeAsyncCompletable::new()
             })
-            .as_mut()
-            .unwrap()
-            .send(Ok(SimpleResolution {
+            .complete(Ok(SimpleResolution {
                 is_public,
                 symbol,
                 is_at,
@@ -592,6 +672,16 @@ impl Resolver {
         info!("sent the resolution");
     }
 
+    pub unsafe fn announce_failure(&self, symbol: IStr, within: CtxID, ie: ImportError) {
+        self.inner
+            .borrow_mut()
+            .resolutions
+            .entry((symbol, within))
+            .or_insert_with(|| UnsafeAsyncCompletable::new())
+            .complete(Err(ie))
+            .expect("couldn't push an import failure");
+    }
+
     pub fn for_node(node: CtxID, use_executor: &'static Executor, ep: Earpiece) -> Self {
         Self {
             inner: RefCell::new(ResInner {
@@ -599,6 +689,7 @@ impl Resolver {
                 //composite_resolutions: HashMap::new(),
                 conversations: HashMap::new(),
                 aliases: HashMap::new(),
+                fused_exports: None,
             }),
             for_ctx: node,
             executor: use_executor,
@@ -608,7 +699,7 @@ impl Resolver {
 }
 
 #[derive(Clone, Debug)]
-struct ImportError {
+pub struct ImportError {
     symbol_name: IStr,
     from_ctx: CtxID,
     error_reason: String,

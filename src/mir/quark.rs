@@ -10,7 +10,7 @@ use uuid::Uuid;
 use crate::{
     ast::{
         self, executor::Executor, resolver2::NameResolutionMessage, tree::CtxID,
-        types::AbstractTypeReference,
+        types::{AbstractTypeReference, FunctionDefinition},
     },
     avec::{AtomicVec, AtomicVecIndex},
     compile::per_module::{Content, ControlMessage, Destination, Earpiece, Message, Service},
@@ -74,7 +74,9 @@ impl Quark {
         match &mut *self.node_id.resolve().inner.lock().unwrap() {
             ast::tree::NodeUnion::Function(f) => {
                 warn!("quark for a function starts up");
-                self.entry(f).await
+                self.entry(f).await;
+
+                //self.thread_stage_2(f).await;
             }
             _ => {
                 // we don't do anything in the other cases, we only make sense in the case of being
@@ -188,6 +190,18 @@ impl Quark {
     pub async fn entry(mut self, f: &mut crate::ast::types::FunctionDefinition) {
         for (name, tr) in f.parameters.iter_mut() {
             self.start_resolve_typeref(tr);
+        }
+
+        self.start_resolve_typeref(&mut f.return_type);
+
+        // start walking the function tree now? or do later?
+
+        self.thread_stage_2(f).await;
+    }
+
+    pub async fn thread_stage_2(mut self, f: &mut FunctionDefinition) {
+        while let Ok(v) = self.earpiece.wait().await {
+            info!("quark got a message");
         }
     }
 
@@ -627,6 +641,9 @@ enum TypeReferenceBacking {
     Real(AbsoluteTypeReference),
     Indirect(IndirectTypeReference),
 }*/
+
+struct NameResolverContext {
+}
 
 /// An initialization is a branch point for type inference
 ///
