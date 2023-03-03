@@ -130,11 +130,15 @@ pub struct ResInner {
         *mut LocalOneshotBroadcastChannel<Result<SimpleResolution, ImportError>>,
     >,
 
-    composite_resolutions: HashMap<
+    // for now, we're not gonna try to complicate things
+    // further by caching both
+    //
+    // just cache one and then have the do_single calls be
+    // cheap and cached
+    /*composite_resolutions: HashMap<
         (ScopedName, CtxID),
         *mut LocalOneshotBroadcastChannel<Result<CompositeResolution, ImportError>>,
-    >,
-
+    >,*/
     conversations: HashMap<Uuid, *mut LocalOneshotChannel<Message>>,
 
     /// If an alias exists within this map at the time of publishing,
@@ -230,9 +234,11 @@ impl Resolver {
         &self,
         composite: ScopedName,
         within: CtxID,
-    ) -> Result<SimpleResolution, ImportError> {
+    ) -> Result<CompositeResolution, ImportError> {
         let mut cur_within = within;
-        for elem in composite.scope {
+        let mut public = true;
+
+        for (index, elem) in composite.clone().scope.into_iter().enumerate() {
             info!("checking for elem {elem} within {cur_within:?} in composite res");
             let res = self.do_single(elem, cur_within).await;
 
@@ -242,12 +248,21 @@ impl Resolver {
                 Ok(v) => {
                     tracing::warn!("got a resolution for a single");
                     cur_within = v.is_at;
+                    public = v.is_public;
                 }
-                Err(e) => {}
+                Err(e) => {
+                    return Err(ImportError { symbol_name: elem, from_ctx: cur_within, error_reason: format!("failed to import symbol from within composite, was at position {index} within composite") })
+                }
             }
         }
 
-        todo!()
+        warn!("finishes a composite resolution!");
+
+        Ok(CompositeResolution {
+            is_public: public,
+            name: composite,
+            is_at: cur_within,
+        })
     }
 
     async fn do_single(
@@ -339,9 +354,10 @@ impl Resolver {
                         within,
                         is_at,
                         is_public,
-                    } => {
-                        todo!("I found it!");
-                    }
+                    } => unsafe {
+                        info!("finishes a resolution");
+                        self.announce_resolution(symbol, is_at, within, is_public);
+                    },
                     nr => {
                         tracing::error!(
                             "got some other kind of nr in response to a single nr request: {nr:?}"
@@ -431,9 +447,25 @@ impl Resolver {
                                 let named = format!("do_composite task looking for {composite_symbol:?} given root {given_root:?}");
                                 self.executor.install(
                                     async move {
-                                        let _ =
+                                        let res =
                                             self.do_composite(composite_symbol, given_root).await;
-                                        todo!("the dog caught the car");
+
+                                        let content = match res {
+                                            Ok(r) => NameResolutionMessage::RefersTo {
+                                                composite_symbol: r.name, is_at: r.is_at, given_root },
+                                            Err(e) => NameResolutionMessage::HasNoResolution {
+                                                composite_symbol: todo!(), longest_prefix: todo!(), prefix_ends_at: todo!(), given_root: todo!() }
+                                        };
+
+                                        let msg = Message {
+                                            to: v.send_reply_to,
+                                            from: self.as_dest(),
+                                            send_reply_to: Destination::nil(),
+                                            conversation: v.conversation,
+                                            content: Content::NameResolution(content),
+                                        };
+
+                                        self.earpiece.get().as_mut().unwrap().send(msg);
                                     },
                                     named,
                                 )
@@ -564,7 +596,7 @@ impl Resolver {
         Self {
             inner: RefCell::new(ResInner {
                 resolutions: HashMap::new(),
-                composite_resolutions: HashMap::new(),
+                //composite_resolutions: HashMap::new(),
                 conversations: HashMap::new(),
                 aliases: HashMap::new(),
             }),
