@@ -468,13 +468,18 @@ impl Resolver {
                                 })
                             }, format!("do_single task looking for {symbol} within {within:?}"))
                         },
-                        NameResolutionMessage::ItIsAt {
+                        other => {
+                            if self.inner.borrow().conversations.contains_key(&v.conversation) {
+                                self.conversation_notify_reply(v.conversation, Message { content: Content::NameResolution(other), ..v });
+                            }
+                        }
+                        /*NameResolutionMessage::ItIsAt {
                             symbol,
                             within,
                             is_at,
                             is_public,
-                        } => self.announce_resolution(symbol, is_at, within, is_public),
-                        _ => todo!("NI"),
+                        } => self.announce_resolution(symbol, is_at, within, is_public),*/
+                        //_ => todo!("NI"),
                     }
                 }
                 _ => todo!("don't have others yet"),
