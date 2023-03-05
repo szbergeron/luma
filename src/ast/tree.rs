@@ -89,7 +89,7 @@ pub struct CtxID(pub AtomicVecIndex);
 
 impl std::fmt::Debug for CtxID {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("{}", self.0))
+        f.write_fmt( format_args!("{}", self.0))
         //self.0::<as std::fmt::Display>::fmt(f)
         //self.resolve().fmt(f)
     }
@@ -165,7 +165,7 @@ pub struct Node {
     pub parent: Option<CtxID>,
     pub global: Option<CtxID>,
 
-    pub inner: Mutex<NodeUnion>,
+    pub inner: NodeUnion,
 
     pub use_statements: Vec<UseDeclaration>,
 
@@ -216,7 +216,7 @@ impl Node {
             generics,
             parent,
             global,
-            inner: Mutex::new(inner),
+            inner,
             children: DashMap::new(),
             //implementations_in_scope: RwLock::new(Vec::new()),
             frozen: Fuse::new(),
@@ -291,7 +291,7 @@ impl Node {
                     let public = f.public;
                     let fd = ast::types::FunctionDefinition::from_cst(f);
 
-                    let inner = NodeUnion::Function(fd);
+                    let inner = NodeUnion::Function(Mutex::new(fd));
 
                     let child = Self::new(
                         name,
@@ -350,7 +350,7 @@ impl Node {
 
                     let td = ast::types::StructuralDataDefinition { fields };
 
-                    let inner = NodeUnion::Type(td);
+                    let inner = NodeUnion::Type(Mutex::new(td));
 
                     let child =
                         Self::new(name, generics, Some(node), global, inner, public, vec![]);
@@ -454,13 +454,13 @@ impl Node {
 
 impl std::fmt::Display for Node {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &*self.inner.lock().unwrap() {
+        match &self.inner {
             NodeUnion::Type(td) => {
                 writeln!(
                     f,
                     "struct {} with fields {:?}",
                     self.name.resolve(),
-                    td.fields
+                    td.lock().unwrap().fields
                 )
             }
             NodeUnion::Empty() => {
@@ -473,8 +473,8 @@ impl std::fmt::Display for Node {
 
 #[derive(Debug)]
 pub enum NodeUnion {
-    Type(ast::types::StructuralDataDefinition),
-    Function(ast::types::FunctionDefinition),
+    Type(Mutex<ast::types::StructuralDataDefinition>),
+    Function(Mutex<ast::types::FunctionDefinition>),
     Global(!),
     Empty(),
     //Implementation(Implementation),

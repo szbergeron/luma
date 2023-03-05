@@ -9,13 +9,16 @@ use uuid::Uuid;
 
 use crate::{
     ast::{
-        self, executor::Executor, resolver2::NameResolutionMessage, tree::CtxID,
-        types::{AbstractTypeReference, FunctionDefinition},
+        self,
+        executor::Executor,
+        resolver2::{CompositeResolution, ImportError, NameResolutionMessage, TypeResolver},
+        tree::CtxID,
+        types::{AbstractTypeReference, FunctionDefinition, TypeBase, self},
     },
     avec::{AtomicVec, AtomicVecIndex},
     compile::per_module::{Content, ControlMessage, Destination, Earpiece, Message, Service},
-    cst::{GenericHandle, TypeReference, ScopedName},
-    helper::{interner::IStr, CompilationError, VecOps},
+    cst::{GenericHandle, ScopedName, TypeReference, ExpressionWrapper},
+    helper::{interner::IStr, CompilationError, VecOps, SwapWith}, mir::expressions::{AnyExpression, ExpressionContext},
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -51,7 +54,10 @@ pub struct Quark {
 
 impl Quark {
     fn as_dest(&self) -> Destination {
-        Destination { node: self.node_id, service: Service::Quark() }
+        Destination {
+            node: self.node_id,
+            service: Service::Quark(),
+        }
     }
 
     pub fn for_node(node_id: CtxID, earpiece: Earpiece) -> Self {
@@ -68,13 +74,24 @@ impl Quark {
         }
     }
 
+    #[allow(unused_mut)]
+    pub async fn descend<'func>(mut self, executor: &'static Executor, f: &'func mut ast::types::FunctionDefinition) {
+        let mut ec = ExpressionContext::new_empty();
+
+        let ae = AnyExpression::from_ast(&mut ec, &f.implementation);
+
+        todo!("descend completed?");
+
+        //rec(&mut f.implementation).await;
+    }
+
     pub async fn thread(mut self, executor: &'static Executor) {
         info!("starts quark thread");
 
-        match &mut *self.node_id.resolve().inner.lock().unwrap() {
+        match &self.node_id.resolve().inner {
             ast::tree::NodeUnion::Function(f) => {
                 warn!("quark for a function starts up");
-                self.entry(f).await;
+                self.entry(&mut f.lock().unwrap(), executor).await;
 
                 //self.thread_stage_2(f).await;
             }
@@ -104,106 +121,38 @@ impl Quark {
         }
     }
 
-    pub fn start_resolve_typeref(&mut self, tb: &mut TypeReference) {
-        let abstrakt: &mut AbstractTypeReference = match tb {
-            TypeReference::Syntactic(s) => {
-                let generic_args = self
-                    .node_id
-                    .resolve()
-                    .generics
-                    .iter()
-                    .map(|(name, _tr)| *name)
-                    .collect_vec();
-                let abstrakt = s.to_abstract(generic_args.as_slice());
+    pub async fn entry(mut self, f: &mut crate::ast::types::FunctionDefinition, executor: &'static Executor) {
+        let parent_id = self.node_id.resolve().parent.unwrap();
 
-                *tb = TypeReference::Abstract(box abstrakt, *s);
-
-                match tb {
-                    TypeReference::Abstract(a, s) => &mut *a,
-                    _ => unreachable!(),
-                }
-            }
-            TypeReference::Abstract(a, s) => {
-                panic!("this shouldn't have already been made abstract yet, that was our job!")
-            }
-        };
-
-        let typ_bases = abstrakt.bases.read().unwrap();
-
-        for base in typ_bases.iter() {
-            match base {
-                crate::ast::types::TypeBase::Generic(_) => {
-                    todo!("we don't yet handle generics")
-                }
-                crate::ast::types::TypeBase::Resolved(_) => {
-                    //todo!("we shouldn't be trying to handle an already resolved typeref")
-                    // do nothing here, since maybe someone else resolved it?
-                }
-                crate::ast::types::TypeBase::UnResolved(r) => {
-                    assert!(r.generics.is_empty()); // we don't yet handle generics
-
-                    self.start_resolve_symref(r.named.clone());
-                }
-            }
-        }
-    }
-
-    fn start_resolve_symref(&mut self, nr: ScopedName) {
-        /*match self.name_to_ref.contains_key(&nr) {
-            true => {
-                // do nothing, already gonna resolve it
-            }
-            false => {
-                let convo_id = self.next_convo();
-
-                let cc = ConversationContext {
-                    publish_as: None, // this isn't an import
-                    remaining_scope: nr.clone().scope,
-                    original_scope: nr.clone(),
-                    // we search within parent here because we're a typeref within
-                    // a Type, which implicitly looks for things within the parent
-                    // scope unless we *explicitly* use the Self qualifier
-                    searching_within: self.self_ctx.resolve().parent.unwrap(),
-                    for_ref_id: convo_id,
-                    public: false,
-                };
-
-                self.name_to_ref.insert(nr, convo_id);
-                self.waiting_to_resolve.insert(convo_id, cc.clone());
-
-                self.step_resolve(convo_id);
-            }
-        };*/
-        warn!("Quark starts resolving {nr:?} within {:?}", self.node_id);
-        self.earpiece.send(Message {
-            to: Destination::resolver(self.node_id),
-            from: self.as_dest(),
-            send_reply_to: self.as_dest(),
-            conversation: Uuid::new_v4(),
-            content: Content::NameResolution(NameResolutionMessage::WhatIs {
-                composite_symbol: nr,
-                given_root: self.node_id.resolve().parent.expect("there wasn't a parent node for a type"),
-            }),
-        })
-    }
-
-    pub async fn entry(mut self, f: &mut crate::ast::types::FunctionDefinition) {
         for (name, tr) in f.parameters.iter_mut() {
-            self.start_resolve_typeref(tr);
+            TypeResolver {
+                node_id: self.node_id,
+                earpiece: &mut self.earpiece,
+                for_service: Service::Quark(),
+            }.resolve(tr).await;
+
+            //println!("resolved a param type");
         }
 
-        self.start_resolve_typeref(&mut f.return_type);
+        let tres = TypeResolver {
+            node_id: self.node_id,
+            earpiece: &mut self.earpiece,
+            for_service: Service::Quark(),
+        }.resolve(&mut f.return_type).await;
+        //tres.resolve_typeref(&mut f.return_type).await;
+
+        self.descend(executor, f).await;
 
         // start walking the function tree now? or do later?
 
-        self.thread_stage_2(f).await;
+        //self.thread_stage_2(f).await;
     }
 
-    pub async fn thread_stage_2(mut self, f: &mut FunctionDefinition) {
+    /*pub async fn thread_stage_2(mut self, f: &mut FunctionDefinition) {
         while let Ok(v) = self.earpiece.wait().await {
             info!("quark got a message");
         }
-    }
+    }*/
 
     /// Convert tree form into serial-evaluated sea of nodes (to be translated down to LLVM later)
     fn build_from(root: ast::types::FunctionDefinition) -> Quark {
@@ -642,8 +591,7 @@ enum TypeReferenceBacking {
     Indirect(IndirectTypeReference),
 }*/
 
-struct NameResolverContext {
-}
+struct NameResolverContext {}
 
 /// An initialization is a branch point for type inference
 ///

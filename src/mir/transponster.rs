@@ -1,6 +1,11 @@
 use tracing::warn;
 
-use crate::{ast::{tree::CtxID, executor::Executor}, compile::per_module::Earpiece};
+use crate::{
+    ast::{
+        executor::Executor, resolver2::TypeResolver, tree::CtxID, types::StructuralDataDefinition,
+    },
+    compile::per_module::Earpiece,
+};
 
 /// Yes, it's a reference, and no, it's not a good one
 ///
@@ -32,15 +37,45 @@ use crate::{ast::{tree::CtxID, executor::Executor}, compile::per_module::Earpiec
 /// even if there is a specific root that could provide
 /// information for dependents
 pub struct Transponster {
+    for_ctx: CtxID,
+    earpiece: Earpiece,
 }
 
 impl Transponster {
     pub fn for_node(node_id: CtxID, earpiece: Earpiece) -> Self {
-        Self {}
+        Self {
+            for_ctx: node_id,
+            earpiece,
+        }
+    }
+
+    pub async fn entry(mut self, executor: &'static Executor, sd: &mut StructuralDataDefinition) {
+        let parent_id = self.for_ctx.resolve().parent.unwrap();
+
+        for field in sd.fields.iter_mut() {
+            let tres = TypeResolver {
+                node_id: self.for_ctx,
+                earpiece: &mut self.earpiece,
+                for_service: crate::compile::per_module::Service::Oracle(),
+            }
+            .resolve(field.has_type.as_mut().unwrap()).await;
+
+            warn!("transponster resolved a field type");
+        }
     }
 
     pub async fn thread(self, executor: &'static Executor) {
         warn!("starting transponster");
-    }
 
+        let node = &self.for_ctx.resolve().inner;
+
+        match node {
+            crate::ast::tree::NodeUnion::Type(t) => {
+                self.entry(executor, &mut t.lock().unwrap()).await;
+            }
+            _other => {
+                warn!("Transponster shuts down since this node type wasn't a Type")
+            }
+        }
+    }
 }

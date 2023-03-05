@@ -24,6 +24,12 @@ impl ExpressionContext {
     pub fn add(&mut self, expr: AnyExpression) -> (ExpressionID, &AnyExpression) {
         self.expressions.push(expr)
     }
+
+    pub fn new_empty() -> Self {
+        Self {
+            expressions: AtomicVec::new(),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -91,7 +97,7 @@ pub enum AnyExpression {
 }
 
 impl AnyExpression {
-    pub fn from_ast(within: &mut ExpressionContext, ast_node: ExpressionWrapper) -> ExpressionID {
+    pub fn from_ast(within: &mut ExpressionContext, ast_node: &ExpressionWrapper) -> ExpressionID {
         match ast_node {
             ExpressionWrapper::Assignment(a) => {
                 let cst::AssignmentExpression {
@@ -100,8 +106,8 @@ impl AnyExpression {
                     rhs,
                 } = a;
 
-                let rhs_id = Self::from_ast(within, *rhs);
-                let lhs_id = Self::from_ast(within, *lhs);
+                let rhs_id = Self::from_ast(within, &rhs);
+                let lhs_id = Self::from_ast(within, &lhs);
 
                 let self_node = AnyExpression::Assign(Assign {
                     rhs: rhs_id,
@@ -171,8 +177,8 @@ impl AnyExpression {
                     rhs,
                 } = c;
 
-                let rhs_id = Self::from_ast(within, *rhs);
-                let lhs_id = Self::from_ast(within, *lhs);
+                let rhs_id = Self::from_ast(within, &rhs);
+                let lhs_id = Self::from_ast(within, &lhs);
 
                 let opstr = match operation {
                     cst::ComparisonOperation::Equal => "operation ==",
@@ -235,7 +241,7 @@ impl AnyExpression {
                     id
                 }
 
-                let self_id = let_recursive(primary_component, within);
+                let self_id = let_recursive(primary_component.clone(), within);
 
                 self_id
             }
@@ -271,8 +277,9 @@ impl AnyExpression {
             ExpressionWrapper::Block(b) => {
                 let items = b
                     .contents
+                    .clone()
                     .into_iter()
-                    .map(|box e| AnyExpression::from_ast(within, e))
+                    .map(|box e| AnyExpression::from_ast(within, &e))
                     .collect_vec();
 
                 let ae = AnyExpression::Block(StringBlock { expressions: items });
@@ -288,7 +295,7 @@ impl AnyExpression {
                 within
                     .add(AnyExpression::Convert(Convert {
                         source: AnyExpression::from_ast(within, subexpr),
-                        target: typeref,
+                        target: typeref.clone(),
                         implicit: todo!(),
                     }))
                     .0
@@ -296,7 +303,7 @@ impl AnyExpression {
             ExpressionWrapper::MemberAccess(ma) => {
                 let MemberAccessExpression { node_info, box on, name } = ma;
 
-                let sa = StaticAccess { field: name, on: AnyExpression::from_ast(within, on) };
+                let sa = StaticAccess { field: *name, on: AnyExpression::from_ast(within, on) };
 
                 within.add(AnyExpression::StaticAccess(sa)).0
             }
