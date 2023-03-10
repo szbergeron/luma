@@ -168,6 +168,12 @@ pub enum TypeReference {
     Abstract(Box<AbstractTypeReference>, SyntacticTypeReferenceRef),
 }
 
+impl TypeReference {
+    pub fn from_std(s: &str) -> Self {
+        todo!("syntactic ref from here?")
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub struct SyntacticTypeReferenceRef(uuid::Uuid);
 

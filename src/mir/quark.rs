@@ -18,7 +18,7 @@ use crate::{
     avec::{AtomicVec, AtomicVecIndex},
     compile::per_module::{Content, ControlMessage, Destination, Earpiece, Message, Service},
     cst::{GenericHandle, ScopedName, TypeReference, ExpressionWrapper},
-    helper::{interner::IStr, CompilationError, VecOps, SwapWith}, mir::expressions::{AnyExpression, ExpressionContext},
+    helper::{interner::IStr, CompilationError, VecOps, SwapWith}, mir::expressions::{AnyExpression, ExpressionContext, Binding, Bindings},
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -78,7 +78,9 @@ impl Quark {
     pub async fn descend<'func>(mut self, executor: &'static Executor, f: &'func mut ast::types::FunctionDefinition) {
         let mut ec = ExpressionContext::new_empty();
 
-        let ae = AnyExpression::from_ast(&mut ec, &f.implementation);
+        let mut binding_scope = Bindings::fresh();
+
+        let ae = AnyExpression::from_ast(&mut ec, &f.implementation, &mut binding_scope);
 
         todo!("descend completed?");
 
@@ -380,7 +382,7 @@ pub struct SymbolicType {
     typeclass: Option<AbstractTypeReference>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct ResolvedType {
     node: CtxID,
     generics: Vec<ResolvedType>,
@@ -409,13 +411,22 @@ pub enum TypeType {
 
 impl TypeType {}
 
-pub struct Type {
+#[derive(Debug, Clone)]
+pub struct TypeVar {
+    pub within: CtxID,
     pub referees: Vec<TypeID>,
     pub current: TypeType,
 }
 
+pub struct TypeVarLocalID(usize);
+
+pub struct TypeVarID {
+    pub for_quark: CtxID,
+    pub for_var: TypeVarLocalID,
+}
+
 pub struct TypeContext {
-    types: AtomicVec<Type>,
+    types: AtomicVec<TypeVar>,
 }
 
 impl TypeContext {
@@ -433,9 +444,10 @@ impl TypeContext {
         //let merged = ar.current.union(&br.current);
         let merged = self.unify_simple(TypeID(root_1), TypeID(root_2))?;
 
-        let nt = Type {
+        let nt = TypeVar {
             referees: vec![TypeID(root_1), TypeID(root_2)],
             current: merged,
+            within: todo!(),
         };
 
         let (nti, _) = self.types.push(nt);
@@ -541,7 +553,7 @@ impl TypeContext {
         TypeID(id)
     }
 
-    pub fn register_type(&mut self, t: Type) {}
+    pub fn register_type(&mut self, t: TypeVar) {}
 }
 
 impl SymbolicType {

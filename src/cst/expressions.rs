@@ -1087,7 +1087,21 @@ pub enum Literal {
     i16Literal(i16),
     i8Literal(i8),
 
+    Boolean(bool),
+
     UnknownIntegerLiteral(u128),
+}
+
+impl Literal {
+    #[allow(non_snake_case)]
+    pub fn FALSE() -> Self {
+        Self::Boolean(false)
+    }
+
+    #[allow(non_snake_case)]
+    pub fn TRUE() -> Self {
+        Self::Boolean(false)
+    }
 }
 
 /*impl Debug for Literal {
@@ -1120,7 +1134,7 @@ pub enum Literal {
 
 #[derive(Clone)]
 pub struct LiteralExpression {
-    node_info: NodeInfo,
+    pub node_info: NodeInfo,
 
     //pub contents: &'a str,
     pub contents: Literal,

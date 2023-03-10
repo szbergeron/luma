@@ -19,7 +19,7 @@ use crate::{
     avec::AtomicVecIndex,
     cst::ScopedName,
     helper::interner::IStr,
-    mir::{quark::Quark, transponster::Transponster},
+    mir::{quark::Quark, transponster::{Transponster, Memo}},
 };
 
 pub struct CompilationUnit {
@@ -424,6 +424,8 @@ pub enum Content {
     Announce(AnnounceMessage),
 
     Quark(Photon),
+
+    Transponster(Memo),
 
     NameResolution(NameResolutionMessage),
 }

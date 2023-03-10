@@ -6,7 +6,7 @@ use crate::{
     avec::AtomicVec,
     cst::{
         self, CastExpression, ExpressionWrapper, IfThenElseExpression, LetComponentIdentifier,
-        TypeReference, MemberAccessExpression,
+        LiteralExpression, MemberAccessExpression, TypeReference,
     },
     helper::interner::{IStr, Internable},
 };
@@ -34,6 +34,15 @@ impl ExpressionContext {
 
 #[derive(Clone, Debug)]
 pub struct VarID(usize);
+
+/// If we have two operands but want to know which direction
+/// any coercions should be going, this specifies which
+/// operand is the source and which is the dest
+#[derive(Clone, Debug)]
+pub enum AssignmentDirection {
+    SrcThenDest,
+    DestThenSrc,
+}
 
 #[derive(Clone, Debug)]
 pub enum AnyExpression {
@@ -96,8 +105,34 @@ pub enum AnyExpression {
     Composite(Composite),
 }
 
+pub struct Bindings<'prior> {
+    cur: smallvec::SmallVec<[(IStr, VarID); 5]>,
+
+    prior: Option<&'prior Bindings<'prior>>,
+}
+
+impl<'prior> Bindings<'prior> {
+    pub fn child_scoped<'s>(&'s self) -> Bindings<'s> where 's: 'prior {
+        Self {
+            cur: smallvec::SmallVec::new(),
+            prior: Some(self),
+        }
+    }
+
+    pub fn add_binding(&mut self, name: IStr, id: VarID)  {
+        todo!()
+    }
+
+}
+
+impl Bindings<'static> {
+    pub fn fresh() -> Self {
+        Self { cur: smallvec::SmallVec::new(), prior: None }
+    }
+}
+
 impl AnyExpression {
-    pub fn from_ast(within: &mut ExpressionContext, ast_node: &ExpressionWrapper) -> ExpressionID {
+    pub fn from_ast<'bindings>(within: &mut ExpressionContext, ast_node: &ExpressionWrapper, bindings: &mut Bindings<'bindings>) -> ExpressionID {
         match ast_node {
             ExpressionWrapper::Assignment(a) => {
                 let cst::AssignmentExpression {
@@ -106,8 +141,8 @@ impl AnyExpression {
                     rhs,
                 } = a;
 
-                let rhs_id = Self::from_ast(within, &rhs);
-                let lhs_id = Self::from_ast(within, &lhs);
+                let rhs_id = Self::from_ast(within, &rhs, bindings);
+                let lhs_id = Self::from_ast(within, &lhs, bindings);
 
                 let self_node = AnyExpression::Assign(Assign {
                     rhs: rhs_id,
@@ -126,8 +161,8 @@ impl AnyExpression {
                     operation,
                 } = bo;
 
-                let rhs_id = Self::from_ast(within, rhs);
-                let lhs_id = Self::from_ast(within, lhs);
+                let rhs_id = Self::from_ast(within, rhs, bindings);
+                let lhs_id = Self::from_ast(within, lhs, bindings);
 
                 let opstr = match operation {
                     cst::BinaryOperation::Multiply => "operation *",
@@ -153,7 +188,7 @@ impl AnyExpression {
                     box subexpr,
                 } = uo;
 
-                let on_id = Self::from_ast(within, subexpr);
+                let on_id = Self::from_ast(within, subexpr, &mut bindings.child_scoped());
 
                 let opstr = match operation {
                     cst::UnaryOperation::Negate => "operation u-",
@@ -177,8 +212,8 @@ impl AnyExpression {
                     rhs,
                 } = c;
 
-                let rhs_id = Self::from_ast(within, &rhs);
-                let lhs_id = Self::from_ast(within, &lhs);
+                let rhs_id = Self::from_ast(within, &rhs, &mut bindings.child_scoped());
+                let lhs_id = Self::from_ast(within, &lhs, &mut bindings.child_scoped());
 
                 let opstr = match operation {
                     cst::ComparisonOperation::Equal => "operation ==",
@@ -205,7 +240,12 @@ impl AnyExpression {
                     constrained_to,
                 } = le;
 
-                let from_exp_id = Self::from_ast(within, expression);
+                //let mut cs = bindings.child_scoped();
+
+                // a let expression operates on the parent scope
+                bindings.add_binding(todo!("break down primary_component"), todo!("need to create a new var id for the binds"));
+
+                let from_exp_id = Self::from_ast(within, expression, &mut bindings.child_scoped());
 
                 fn let_recursive(
                     primary_component: cst::LetComponent,
@@ -253,18 +293,18 @@ impl AnyExpression {
                     ..
                 } = ite;
 
-                let branch_on = AnyExpression::from_ast(within, if_exp);
+                let branch_on = AnyExpression::from_ast(within, if_exp, &mut bindings.child_scoped());
 
                 let branch_yes = BranchArm {
-                    pattern: Pattern::Literal(Literal::TRUE()),
+                    pattern: Pattern::Literal(Literal::lit_true()),
                     guard: None,
-                    body: AnyExpression::from_ast(within, then_exp),
+                    body: AnyExpression::from_ast(within, then_exp, &mut bindings.child_scoped()),
                 };
 
                 let branch_no = BranchArm {
-                    pattern: Pattern::Literal(Literal::FALSE()),
+                    pattern: Pattern::Literal(Literal::lit_false()),
                     guard: None,
-                    body: AnyExpression::from_ast(within, else_exp),
+                    body: AnyExpression::from_ast(within, else_exp, &mut bindings.child_scoped()),
                 };
 
                 let branch = Branch {
@@ -275,11 +315,14 @@ impl AnyExpression {
                 within.add(AnyExpression::Branch(branch)).0
             }
             ExpressionWrapper::Block(b) => {
+                let mut cs = bindings.child_scoped(); // every bind within this operates within the
+                                                  // same binding scope
+
                 let items = b
                     .contents
                     .clone()
                     .into_iter()
-                    .map(|box e| AnyExpression::from_ast(within, &e))
+                    .map(|box e| AnyExpression::from_ast(within, &e, &mut cs))
                     .collect_vec();
 
                 let ae = AnyExpression::Block(StringBlock { expressions: items });
@@ -294,20 +337,52 @@ impl AnyExpression {
                 } = c;
                 within
                     .add(AnyExpression::Convert(Convert {
-                        source: AnyExpression::from_ast(within, subexpr),
+                        source: AnyExpression::from_ast(within, subexpr, &mut bindings.child_scoped()),
                         target: typeref.clone(),
                         implicit: todo!(),
                     }))
                     .0
             }
             ExpressionWrapper::MemberAccess(ma) => {
-                let MemberAccessExpression { node_info, box on, name } = ma;
+                let MemberAccessExpression {
+                    node_info,
+                    box on,
+                    name,
+                } = ma;
 
-                let sa = StaticAccess { field: *name, on: AnyExpression::from_ast(within, on) };
+                let sa = StaticAccess {
+                    field: *name,
+                    on: AnyExpression::from_ast(within, on, &mut bindings.child_scoped()),
+                };
 
                 within.add(AnyExpression::StaticAccess(sa)).0
             }
-            ExpressionWrapper::Literal(_) => todo!(),
+            ExpressionWrapper::Literal(li) => {
+                let LiteralExpression {
+                    node_info,
+                    contents,
+                } = li;
+
+                match contents {
+                    cst::Literal::StringLiteral(_) => todo!(),
+                    cst::Literal::f32Literal(_) => todo!(),
+                    cst::Literal::f64Literal(_) => todo!(),
+                    cst::Literal::u128Literal(_) => todo!(),
+                    cst::Literal::u64Literal(_) => todo!(),
+                    cst::Literal::u32Literal(_) => todo!(),
+                    cst::Literal::u16Literal(_) => todo!(),
+                    cst::Literal::u8Literal(_) => todo!(),
+                    cst::Literal::i128Literal(_) => todo!(),
+                    cst::Literal::i64Literal(_) => todo!(),
+                    cst::Literal::i32Literal(_) => todo!(),
+                    cst::Literal::i16Literal(_) => todo!(),
+                    cst::Literal::i8Literal(_) => todo!(),
+                    cst::Literal::UnknownIntegerLiteral(_) => todo!(),
+                    cst::Literal::Boolean(_) => todo!()
+                };
+
+                let li = Literal { has_type: todo!(), value: todo!() };
+            }
             ExpressionWrapper::Statement(_) => todo!(),
             ExpressionWrapper::While(_) => todo!(),
             ExpressionWrapper::Tuple(_) => todo!(),
@@ -476,14 +551,30 @@ pub struct Binding {
 #[derive(Clone, Debug)]
 pub struct Literal {
     has_type: TypeReference,
+
+    value: LiteralExpression,
 }
 
 impl Literal {
-    pub fn TRUE() -> Self {
-        todo!()
+    pub fn lit_true() -> Self {
+        Self::lit_bool(true)
     }
 
-    pub fn FALSE() -> Self {
+    pub fn lit_false() -> Self {
+        Self::lit_bool(false)
+    }
+
+    pub fn lit_bool(v: bool) -> Self {
+        Literal {
+            has_type: TypeReference::from_std("std::primitive::bool"),
+            value: LiteralExpression {
+                node_info: cst::NodeInfo::Builtin,
+                contents: cst::Literal::Boolean(v),
+            },
+        }
+    }
+
+    pub fn lit_i32(val: i32) -> Self {
         todo!()
     }
 }
