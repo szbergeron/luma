@@ -5,8 +5,6 @@ use std::{
     sync::atomic::AtomicUsize,
 };
 
-
-
 use itertools::Itertools;
 use tracing::{info, warn};
 use uuid::Uuid;
@@ -844,30 +842,28 @@ impl<'ep> SymbolResolver<'ep> {
             }
         };
 
-        let mut typ_bases = abstrakt.bases.write().unwrap();
+        let mut base = abstrakt.inner.write().unwrap();
 
-        for base in typ_bases.iter_mut() {
-            match base {
-                crate::ast::types::TypeBase::Generic(_) => {
-                    todo!("we don't yet handle generics")
-                }
-                crate::ast::types::TypeBase::Resolved(_) => {
-                    //todo!("we shouldn't be trying to handle an already resolved typeref")
-                    // do nothing here, since maybe someone else resolved it?
-                }
-                crate::ast::types::TypeBase::UnResolved(ur) => {
-                    assert!(ur.generics.is_empty()); // we don't yet handle generics
+        match &mut *base {
+            crate::ast::types::TypeBase::Generic(_) => {
+                todo!("we don't yet handle generics")
+            }
+            crate::ast::types::TypeBase::Resolved(_) => {
+                //todo!("we shouldn't be trying to handle an already resolved typeref")
+                // do nothing here, since maybe someone else resolved it?
+            }
+            crate::ast::types::TypeBase::UnResolved(ur) => {
+                assert!(ur.generics.is_empty()); // we don't yet handle generics
 
-                    let r = self.resolve_symref(ur.named.clone()).await;
+                let r = self.resolve_symref(ur.named.clone()).await;
 
-                    let r = r.expect("handle bad imports");
+                let r = r.expect("handle bad imports");
 
-                    *base = TypeBase::Resolved(ast::types::ResolvedType {
-                        from: ur.from,
-                        base: r.is_at,
-                        generics: ur.generics.clone(),
-                    })
-                }
+                *base = TypeBase::Resolved(ast::types::ResolvedType {
+                    from: ur.from,
+                    base: r.is_at,
+                    generics: ur.generics.clone(),
+                })
             }
         }
     }

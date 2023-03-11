@@ -23,7 +23,7 @@ use itertools::Itertools;
 pub struct AbstractTypeReference {
     //pub id: AbstractTypeReferenceRef,
 
-    pub bases: RwLock<Vec<TypeBase>>,
+    pub inner: RwLock<TypeBase>,
 }
 
 impl AbstractTypeReference {
@@ -35,11 +35,11 @@ impl AbstractTypeReference {
         match &cst.inner {
             SyntacticTypeReferenceInner::Single { name } => Self {
                 //id: AbstractTypeReferenceRef::new_nil(),
-                bases: RwLock::new(vec![TypeBase::UnResolved(UnResolvedType {
+                inner: RwLock::new(TypeBase::UnResolved(UnResolvedType {
                     from: cst.info,
                     named: name.clone(),
                     generics: vec![],
-                })]),
+                })),
             },
             _ => todo!("only handle simple non-generic types for now"),
         }
@@ -49,7 +49,7 @@ impl AbstractTypeReference {
 
 impl Clone for AbstractTypeReference {
     fn clone(&self) -> Self {
-        Self { bases: RwLock::new(self.bases.read().unwrap().clone()) }
+        Self { inner: RwLock::new(self.inner.read().unwrap().clone()) }
     }
 }
 

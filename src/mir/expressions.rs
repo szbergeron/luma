@@ -11,6 +11,8 @@ use crate::{
     helper::interner::{IStr, Internable},
 };
 
+use super::quark::{TypeVar, TypeVarID};
+
 //use super::{ty, tree::NodeReference};
 
 pub type ExpressionID = crate::avec::AtomicVecIndex;
@@ -23,6 +25,10 @@ pub struct ExpressionContext {
 impl ExpressionContext {
     pub fn add(&mut self, expr: AnyExpression) -> (ExpressionID, &AnyExpression) {
         self.expressions.push(expr)
+    }
+
+    pub fn get(&self, id: ExpressionID) -> &AnyExpression {
+        self.expressions.get(id)
     }
 
     pub fn new_empty() -> Self {
@@ -62,14 +68,15 @@ pub enum AnyExpression {
     While(Iterate),
     Branch(Branch),
 
-    Expire(VarID),
+    //Expire(VarID),
 
-    ///
     Binding(Binding),
+
+    Invoke(Invoke),
 
     /// If the target is FQ we know exactly what to call, so we can
     /// use it directly for inference
-    InvokeKnown(InvokeKnown),
+    //InvokeKnown(InvokeKnown),
 
     /// If this is a method call or otherwise not fully qualified
     /// then we just know the name, and a list of args, and
@@ -437,33 +444,33 @@ pub struct MetaData {
 }*/
 #[derive(Clone, Debug)]
 pub struct StringBlock {
-    expressions: Vec<ExpressionID>,
+    pub expressions: Vec<ExpressionID>,
 }
 
 #[derive(Clone, Debug)]
 pub struct Scope {
-    contents: ExpressionID,
+    pub contents: ExpressionID,
 }
 
 #[derive(Clone, Debug)]
 pub struct Assign {
     //meta: MetaData,
-    rhs: ExpressionID,
-    lhs: ExpressionID,
+    pub rhs: ExpressionID,
+    pub lhs: ExpressionID,
 }
 
 #[derive(Clone, Debug)]
 pub struct Compare {
     //meta: MetaData,
-    rhs: ExpressionID,
-    lhs: ExpressionID,
+    pub rhs: ExpressionID,
+    pub lhs: ExpressionID,
 }
 
 #[derive(Clone, Debug)]
 pub struct Convert {
     //meta: MetaData,
-    source: ExpressionID,
-    target: TypeReference,
+    pub source: ExpressionID,
+    pub target: TypeReference,
     /// Indicates that this is an inverred conversion,
     /// which can allow things like deref conversions
     /// and the like, but not more involved conversions
@@ -473,12 +480,18 @@ pub struct Convert {
 #[derive(Clone, Debug)]
 pub struct Iterate {
     //meta: MetaData,
-    iterator: ExpressionID,
+    pub iterator: ExpressionID,
 
-    body: ExpressionID,
+    pub body: ExpressionID,
 }
 
 #[derive(Clone, Debug)]
+pub struct Invoke {
+    pub on: ExpressionID,
+    pub args: Vec<ExpressionID>,
+}
+
+/*#[derive(Clone, Debug)]
 pub struct InvokeVirtual {
     pub args: Vec<ExpressionID>,
     pub on: ExpressionID,
@@ -495,7 +508,7 @@ pub struct InvokeKnown {
     pub named: IStr,
 
     pub generics: Vec<TypeReference>,
-}
+}*/
 
 impl Iterate {
     pub fn lower(&self, backto: usize) {
@@ -545,12 +558,14 @@ pub enum Pattern {
 pub struct Binding {
     name: IStr,
 
-    has_type: Option<Box<TypeReference>>,
+    introduced_as: VarID,
+
+    has_type: Option<TypeVarID>,
 }
 
 #[derive(Clone, Debug)]
 pub struct Literal {
-    has_type: TypeReference,
+    has_type: TypeVarID,
 
     value: LiteralExpression,
 }

@@ -94,6 +94,18 @@ pub enum Memo {
     /// We now know the type, or know that it can not be resolved, so
     /// you can ask us again for more information
     CheckAgain { field: FieldID },
+
+    /// A quark can tell the transponster for its own node that
+    /// it is a callable, so the transponster can respond to call
+    /// format queries
+    NotifySelfCallable {
+    }
+}
+
+pub struct CallableInterface {
+    return_type: TypeVar,
+    parameter_types: Vec<TypeVar>,
+    generics: Vec<IStr>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
