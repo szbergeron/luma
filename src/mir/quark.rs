@@ -18,7 +18,10 @@ use crate::{
     avec::{AtomicVec, AtomicVecIndex},
     compile::per_module::{Content, ControlMessage, Destination, Earpiece, Message, Service},
     cst::GenericHandle,
-    helper::{interner::{IStr, Internable}, CompilationError, VecOps},
+    helper::{
+        interner::{IStr, Internable},
+        CompilationError, VecOps,
+    },
     mir::expressions::{AnyExpression, Bindings, ExpressionContext},
 };
 
@@ -53,9 +56,11 @@ pub struct Quark {
 
     type_of: HashMap<ExpressionID, TypeID>,
 
-    wait_resolve: HashMap<TypeID, Vec<executor::UnsafeAsyncCompletable<TypeID>>>,
+    wait_resolve: HashMap<TypeID, Vec<executor::UnsafeAsyncCompletable<Result<(), ()>>>>,
 
     earpiece: Earpiece,
+
+    executor: &'static Executor,
 
     node_id: CtxID,
 }
@@ -82,6 +87,7 @@ impl Quark {
             acting_on: todo!(),
             type_of: todo!(),
             wait_resolve: todo!(),
+            executor: todo!(),
         }
     }
 
@@ -105,9 +111,13 @@ impl Quark {
                 match b.expressions.last() {
                     None => {
                         todo!("block has type unit")
-                    },
+                    }
                     Some(eid) => {
-                        self.add_unify(e_ty_id, self.type_of[eid], "a block returns the same type as the last expression in it".intern());
+                        self.add_unify(
+                            e_ty_id,
+                            self.type_of[eid],
+                            "a block returns the same type as the last expression in it".intern(),
+                        );
                     }
                 }
             }
@@ -115,18 +125,48 @@ impl Quark {
                 let rhs_tid = self.do_the_thing_rec(a.rhs);
                 let lhs_tid = self.do_the_thing_rec(a.lhs);
 
-                self.add_unify(rhs_tid, lhs_tid, "left and ride hand side of an assignment should be the same type".intern());
-            },
+                self.add_unify(
+                    rhs_tid,
+                    lhs_tid,
+                    "left and ride hand side of an assignment should be the same type".intern(),
+                );
+
+                self.add_unify(
+                    e_ty_id,
+                    lhs_tid,
+                    "an assignment returns the type of the LHS".intern(),
+                );
+            }
             AnyExpression::Convert(c) => todo!(),
             AnyExpression::While(_) => todo!(),
             AnyExpression::Branch(_) => todo!(),
             AnyExpression::Binding(_) => todo!(),
-            AnyExpression::Invoke(_) => todo!(),
+            AnyExpression::Invoke(i) => {
+                todo!("for an invocation, we need to figure out specifically what it's on");
+
+                unsafe {
+                    self.executor.install(
+                        async move {
+                            let resulting_type_id = e_ty_id;
+
+                            let fid: FieldID = todo!();
+                        },
+                        "find type for an invocation, waiting on resolving the type of the base",
+                    )
+                }
+            }
             AnyExpression::StaticAccess(_) => todo!(),
             AnyExpression::DynamicAccess(_) => todo!(),
             AnyExpression::Variable(_) => todo!(),
-            AnyExpression::Literal(_) => todo!(),
-            AnyExpression::Composite(_) => todo!(),
+            AnyExpression::Literal(l) => {}
+            AnyExpression::Composite(c) => {
+                let ty = SymbolicType {
+                    generics: todo!(),
+                    typeclass: todo!(),
+                };
+
+                todo!()
+            }
         }
 
         e_ty_id

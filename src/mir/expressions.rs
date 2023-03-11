@@ -11,7 +11,7 @@ use crate::{
     helper::interner::{IStr, Internable},
 };
 
-use super::quark::{TypeVar, TypeVarID};
+use super::quark::{TypeVar, TypeVarID, TypeID};
 
 //use super::{ty, tree::NodeReference};
 
@@ -565,7 +565,7 @@ pub struct Binding {
 
 #[derive(Clone, Debug)]
 pub struct Literal {
-    has_type: TypeVarID,
+    has_type: TypeID,
 
     value: LiteralExpression,
 }
@@ -608,11 +608,11 @@ pub struct DynamicAccess {
 
 #[derive(Clone, Debug)]
 pub struct Composite {
-    base_type: TypeReference,
+    pub base_type: TypeReference,
 
-    generics: Vec<TypeReference>,
+    pub generics: Vec<TypeReference>,
 
-    fields: HashMap<IStr, ExpressionID>,
+    pub fields: HashMap<IStr, ExpressionID>,
 }
 
 #[derive(Clone, Debug)]

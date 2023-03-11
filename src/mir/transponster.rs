@@ -7,12 +7,12 @@ use crate::{
         executor::Executor, resolver2::SymbolResolver, tree::CtxID, types::StructuralDataDefinition,
     },
     compile::per_module::{Earpiece, Message, Destination, Content},
-    helper::interner::IStr,
+    helper::interner::IStr, cst::SyntacticTypeReferenceRef,
 };
 
 use super::{
     expressions::AssignmentDirection,
-    quark::{ResolvedType, TypeType, TypeVar},
+    quark::{ResolvedType, TypeType, TypeVar, TypeID},
 };
 
 /// Yes, it's a reference, and no, it's not a good one
@@ -48,6 +48,8 @@ pub struct Transponster {
     for_ctx: CtxID,
     earpiece: Earpiece,
 
+    generics: Vec<IStr>,
+
     //resolutions: HashMap<FieldID, >,
 
     //assignments: HashMap<FieldID, Vec<TypeVar>>,
@@ -55,11 +57,22 @@ pub struct Transponster {
 
     /// If it's in here, then we've committed to a type for that
     /// variant/field and it can be used for inference
-    dynamic_fields: HashMap<FieldID, FieldType>,
+    dynamic_fields: HashMap<FieldID, SyntacticTypeReferenceRef>,
 
     notify_when_resolved: HashMap<FieldID, Vec<Destination>>,
 
-    regular_fields: HashMap<IStr, FieldType>,
+    regular_fields: HashMap<IStr, SyntacticTypeReferenceRef>,
+}
+
+struct Instantiation {
+    generics: HashMap<IStr, TypeID>,
+
+    of_base: CtxID,
+}
+
+impl Instantiation {
+    pub fn type_of_field(&self, field: IStr) -> Result<Instantiation, ()> {
+    }
 }
 
 struct FieldContext {
@@ -75,11 +88,6 @@ struct FieldContext {
     direct_assignments: Vec<ResolvedType>,
 
     assigns_into: Vec<FieldID>,
-}
-
-pub enum FieldType {
-    Known(ResolvedType),
-    Generic(IStr),
 }
 
 #[derive(Debug, Clone)]
@@ -120,10 +128,10 @@ pub struct FieldID {
     name: IStr,
     on: CtxID,
 
-    /// This is a field on a struct parameterized by
-    /// the given typevar. If the struct this is on
-    /// is not generic, this is empty
-    parameterized_by: Vec<ResolvedType>,
+    ///// This is a field on a struct parameterized by
+    ///// the given typevar. If the struct this is on
+    ///// is not generic, this is empty
+    //parameterized_by: Vec<ResolvedType>,
 }
 
 impl Transponster {
