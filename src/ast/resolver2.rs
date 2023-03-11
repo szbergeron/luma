@@ -1,19 +1,13 @@
 use std::{
     cell::{RefCell, UnsafeCell},
-    collections::{HashMap, HashSet},
-    fmt::format,
-    pin::Pin,
+    collections::HashMap,
     rc::Rc,
     sync::atomic::AtomicUsize,
 };
 
-use async_executor::LocalExecutor;
-use futures_intrusive::channel::{
-    GenericOneshotBroadcastChannel, LocalOneshotBroadcastChannel, LocalOneshotChannel,
-};
+
+
 use itertools::Itertools;
-use smallvec::ToSmallVec;
-use tokio::task::LocalSet;
 use tracing::{info, warn};
 use uuid::Uuid;
 
@@ -807,14 +801,14 @@ pub struct Conversation {
     messages: Vec<Message>,
 }*/
 
-pub struct TypeResolver<'ep> {
+pub struct SymbolResolver<'ep> {
     //pub tr: &'ep mut TypeReference,
     pub node_id: CtxID, // the scope we're resolving within
     pub earpiece: &'ep mut Earpiece,
     pub for_service: Service,
 }
 
-impl<'ep> TypeResolver<'ep> {
+impl<'ep> SymbolResolver<'ep> {
     pub fn as_dest(&self) -> Destination {
         Destination {
             node: self.node_id,

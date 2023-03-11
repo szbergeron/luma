@@ -8,16 +8,11 @@ use std::{
     task::{RawWaker, RawWakerVTable, Wake},
 };
 
-use futures::{
-    future::{BoxFuture, FutureExt, LocalBoxFuture},
-    task::{waker_ref, ArcWake},
-};
+use futures::future::{FutureExt, LocalBoxFuture};
 use std::{
     future::Future,
-    sync::mpsc::{sync_channel, Receiver, SyncSender},
-    sync::{Arc, Mutex},
+    sync::Arc,
     task::Context,
-    time::Duration,
 };
 use tracing::{debug, info};
 

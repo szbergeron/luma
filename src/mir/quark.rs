@@ -3,22 +3,23 @@ use std::{
     sync::Arc,
 };
 
-use itertools::Itertools;
+//use itertools::Itertools;
+
 use tracing::{info, warn};
-use uuid::Uuid;
+
 
 use crate::{
     ast::{
         self,
         executor::Executor,
-        resolver2::{CompositeResolution, ImportError, NameResolutionMessage, TypeResolver},
+        resolver2::SymbolResolver,
         tree::CtxID,
-        types::{AbstractTypeReference, FunctionDefinition, TypeBase, self},
+        types::AbstractTypeReference,
     },
     avec::{AtomicVec, AtomicVecIndex},
     compile::per_module::{Content, ControlMessage, Destination, Earpiece, Message, Service},
-    cst::{GenericHandle, ScopedName, TypeReference, ExpressionWrapper},
-    helper::{interner::IStr, CompilationError, VecOps, SwapWith}, mir::expressions::{AnyExpression, ExpressionContext, Binding, Bindings},
+    cst::GenericHandle,
+    helper::{interner::IStr, CompilationError, VecOps}, mir::expressions::{AnyExpression, ExpressionContext, Bindings},
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -127,7 +128,7 @@ impl Quark {
         let parent_id = self.node_id.resolve().parent.unwrap();
 
         for (name, tr) in f.parameters.iter_mut() {
-            TypeResolver {
+            SymbolResolver {
                 node_id: self.node_id,
                 earpiece: &mut self.earpiece,
                 for_service: Service::Quark(),
@@ -136,7 +137,7 @@ impl Quark {
             //println!("resolved a param type");
         }
 
-        let tres = TypeResolver {
+        let tres = SymbolResolver {
             node_id: self.node_id,
             earpiece: &mut self.earpiece,
             for_service: Service::Quark(),

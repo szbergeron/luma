@@ -44,7 +44,7 @@ extern crate static_assertions;
 #[macro_use]
 extern crate lazy_static;
 
-use console_subscriber;
+//use console_subscriber;
 
 //#[macro_use]
 //extern crate ouroboros;

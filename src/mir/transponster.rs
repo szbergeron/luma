@@ -1,13 +1,12 @@
 use std::{collections::{HashMap, HashSet}, sync::Arc};
 
-use fixed::traits::Fixed;
 use tracing::warn;
 
 use crate::{
     ast::{
-        executor::Executor, resolver2::TypeResolver, tree::CtxID, types::StructuralDataDefinition,
+        executor::Executor, resolver2::SymbolResolver, tree::CtxID, types::StructuralDataDefinition,
     },
-    compile::per_module::{Destination, Earpiece},
+    compile::per_module::{Earpiece, Message, Destination, Content},
     helper::interner::IStr,
 };
 
@@ -52,7 +51,15 @@ pub struct Transponster {
     //resolutions: HashMap<FieldID, >,
 
     //assignments: HashMap<FieldID, Vec<TypeVar>>,
-    fields: HashMap<FieldID, FieldContext>,
+    dynamic_field_contexts: HashMap<FieldID, FieldContext>,
+
+    /// If it's in here, then we've committed to a type for that
+    /// variant/field and it can be used for inference
+    dynamic_fields: HashMap<FieldID, FieldType>,
+
+    notify_when_resolved: HashMap<FieldID, Vec<Destination>>,
+
+    regular_fields: HashMap<IStr, FieldType>,
 }
 
 struct FieldContext {
@@ -70,11 +77,23 @@ struct FieldContext {
     assigns_into: Vec<FieldID>,
 }
 
+pub enum FieldType {
+    Known(ResolvedType),
+    Generic(IStr),
+}
+
 #[derive(Debug, Clone)]
 pub enum Memo {
     /// AnnounceCommit is used when a source says they have
     /// directs and have committed to a given type
     AnnounceCommit { original: Arc<AnnounceCommit>, for_field: FieldID},
+
+    /// If you are sent this, it means you asked a while ago
+    /// about a field and we didn't know what type it was
+    ///
+    /// We now know the type, or know that it can not be resolved, so
+    /// you can ask us again for more information
+    CheckAgain { field: FieldID },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -96,12 +115,23 @@ pub struct FieldID {
 }
 
 impl Transponster {
+    pub fn as_dest(&self) -> Destination {
+        Destination::transponster(self.for_ctx)
+    }
+
     pub fn for_node(node_id: CtxID, earpiece: Earpiece) -> Self {
+        let regular_fields = HashMap::new();
+
         Self {
             for_ctx: node_id,
             earpiece,
 
-            fields: HashMap::new(),
+            dynamic_field_contexts: HashMap::new(),
+            dynamic_fields: HashMap::new(),
+
+            notify_when_resolved: HashMap::new(),
+            
+            regular_fields,
         }
     }
 
@@ -109,7 +139,7 @@ impl Transponster {
         let parent_id = self.for_ctx.resolve().parent.unwrap();
 
         for field in sd.fields.iter_mut() {
-            let tres = TypeResolver {
+            let tres = SymbolResolver {
                 node_id: self.for_ctx,
                 earpiece: &mut self.earpiece,
                 for_service: crate::compile::per_module::Service::Oracle(),
@@ -117,12 +147,28 @@ impl Transponster {
             .resolve(field.has_type.as_mut().unwrap())
             .await;
 
+            match field.has_type.as_ref().expect("no type?") {
+                crate::cst::TypeReference::Syntactic(_) => todo!(),
+                crate::cst::TypeReference::Abstract(box a, _) => {
+                    todo!()
+                }
+            }
+
             warn!("transponster resolved a field type");
         }
     }
 
-    fn field_handle(&mut self, field: FieldID) -> &mut FieldContext {
-        self.fields.entry(field.clone()).or_insert(FieldContext {
+    fn field_handle_mut(fields: &mut HashMap<FieldID, FieldContext>, field: FieldID) -> &mut FieldContext {
+        fields.entry(field.clone()).or_insert(FieldContext {
+            for_field: field,
+            received_broadcasts: HashSet::new(),
+            direct_assignments: Vec::new(),
+            assigns_into: Vec::new(),
+        })
+    }
+
+    fn field_handle(&mut self, field: FieldID) -> &FieldContext {
+        self.dynamic_field_contexts.entry(field.clone()).or_insert(FieldContext {
             for_field: field,
             received_broadcasts: HashSet::new(),
             direct_assignments: Vec::new(),
@@ -140,19 +186,41 @@ impl Transponster {
             "if it isn't on self, then it isn't a direct"
         );
 
-        let field_context = self.field_handle(field);
+        let field_context = Self::field_handle_mut(&mut self.dynamic_field_contexts, field);
 
         field_context.direct_assignments.push(value_type);
     }
 
     pub fn receive_broadcast(&mut self, ac: Arc<AnnounceCommit>, for_field: FieldID) {
-        let fc = self.field_handle(for_field);
+        let sd = self.as_dest();
+        let fc = Self::field_handle_mut(&mut self.dynamic_field_contexts, for_field);
 
-        fc.received_broadcasts.insert(ac);
+        let already_received = fc.received_broadcasts.insert(ac.clone());
+
+        if !already_received {
+            // we then forward it along
+            for f in fc.assigns_into.iter() {
+                Self::send_announce_to(sd, &mut self.earpiece, ac.clone(), f.clone());
+            }
+        }
+    }
+
+    pub fn send_announce_to(from: Destination, ep: &mut Earpiece, ac: Arc<AnnounceCommit>, to: FieldID) {
+        ep.send(Message {
+            to: Destination::transponster(to.on),
+            from,
+            send_reply_to: from,
+            conversation: uuid::Uuid::new_v4(),
+            content: Content::Transponster(Memo::AnnounceCommit { original: ac, for_field: to }),
+        })
+    }
+
+    pub async fn ask_type_of(&mut self, field: FieldID, notify_later: Destination) -> Result<FieldType, ()> {
+        todo!()
     }
 
     pub async fn emit_broadcasts(&mut self) {
-        for (fid, fc) in self.fields.iter_mut() {
+        for (fid, fc) in self.dynamic_field_contexts.iter_mut() {
             let directs = fc.direct_assignments.iter();
 
             let mut counts = HashMap::new();
