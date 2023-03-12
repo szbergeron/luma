@@ -5,12 +5,11 @@ use std::{
     sync::atomic::AtomicUsize,
 };
 
-use itertools::Itertools;
+
 use tracing::{info, warn};
 use uuid::Uuid;
 
 use crate::{
-    ast::{self, types::TypeBase},
     compile::per_module::{Content, ConversationContext, Destination, Earpiece, Message, Service},
     cst::{ScopedName, UseDeclaration},
     helper::interner::{IStr, Internable},
@@ -19,7 +18,6 @@ use crate::{
 use super::{
     executor::{Executor, UnsafeAsyncCompletable},
     tree::CtxID,
-    types::AbstractTypeReference,
 };
 
 #[derive(Debug, Clone)]
@@ -960,7 +958,7 @@ impl NameResolver {
 
     pub async fn using_context(
         self,
-        cc: &ConversationContext<'static>,
+        cc: &ConversationContext,
     ) -> Result<CtxID, ImportError> {
         let msg = Message {
             to: Destination::resolver(self.based_in),

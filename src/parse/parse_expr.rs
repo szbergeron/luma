@@ -1,5 +1,5 @@
 //use crate::ast;
-use crate::cst::{self, SyntacticTypeReference};
+use crate::cst;
 use crate::lex::{CodeLocation, ParseResultError, Token};
 use either::Either;
 

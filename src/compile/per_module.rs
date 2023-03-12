@@ -233,6 +233,7 @@ impl Group {
         let quark = Quark::for_node(
             self.for_node,
             Earpiece::new(rtr_s.clone(), qk_r, self.for_node),
+            exer,
         );
         //let bridge = Bridge::new(self.listen_to, rtr_s.clone());
         let router = Router::new(
@@ -531,10 +532,23 @@ impl Earpiece {
         }
     }
 
-    pub fn split(self) -> (local_channel::mpsc::Receiver<Message>, local_channel::mpsc::Sender<Message>) {
-        let Self { listen, talk, within } = self;
+    pub fn split(
+        self,
+    ) -> (
+        local_channel::mpsc::Receiver<Message>,
+        local_channel::mpsc::Sender<Message>,
+    ) {
+        let Self {
+            listen,
+            talk,
+            within,
+        } = self;
 
         (listen, talk)
+    }
+
+    pub fn cloned_sender(&self) -> local_channel::mpsc::Sender<Message> {
+        self.talk.clone()
     }
 }
 
@@ -571,20 +585,20 @@ pub enum Phase {
     GloballyComplete(),
 }
 
-pub struct ConversationContext<'ep> {
-    inner: RefCell<ConversationContextInner<'ep>>,
+pub struct ConversationContext {
+    inner: RefCell<ConversationContextInner>,
 }
 
-struct ConversationContextInner<'ep> {
+struct ConversationContextInner {
     waiters: HashMap<Uuid, Rc<UnsafeAsyncCompletable<Message>>>,
-    sender: &'ep mut local_channel::mpsc::Sender<Message>,
+    sender: local_channel::mpsc::Sender<Message>,
 }
 
-impl<'ep> ConversationContext<'ep> {
+impl ConversationContext {
     /// CONTRACT: this may be passed between threads, but must never
     /// be shared between them despite the type being Sync + Send
     /// and the main methods taking &self
-    pub unsafe fn new(sender: &'ep mut local_channel::mpsc::Sender<Message>) -> Self {
+    pub unsafe fn new(sender: local_channel::mpsc::Sender<Message>) -> Self {
         Self {
             inner: RefCell::new(ConversationContextInner {
                 waiters: HashMap::new(),
@@ -598,10 +612,12 @@ impl<'ep> ConversationContext<'ep> {
     ///
     /// Otherwise, the message was handled internally
     pub fn dispatch(&self, message: Message) -> Option<Message> {
-        let inner = self.inner.borrow_mut();
-        
+        let mut inner = self.inner.borrow_mut();
+
         if let Some(v) = inner.waiters.remove(&message.conversation) {
-            unsafe { v.complete(message); }
+            unsafe {
+                v.complete(message).expect("already complete?");
+            }
 
             None
         } else {
@@ -612,17 +628,17 @@ impl<'ep> ConversationContext<'ep> {
     pub fn send_and_forget(&self, message: Message) {
         let inner = self.inner.borrow_mut();
 
-        inner.sender.send(message);
+        inner.sender.send(message).expect("couldn't send, this is bad?");
     }
 
     pub fn wait_for(&self, reply_to: Message) -> UnsafeAsyncCompletableFuture<Message> {
-        let inner = self.inner.borrow_mut();
+        let mut inner = self.inner.borrow_mut();
 
         let fut = unsafe { UnsafeAsyncCompletable::new() };
 
         inner.waiters.insert(reply_to.conversation, fut.clone());
 
-        inner.sender.send(reply_to);
+        inner.sender.send(reply_to).expect("couldn't send?");
 
         std::mem::drop(inner); // make extra sure we drop the refmut
 

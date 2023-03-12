@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use itertools::Itertools;
+use tracing::info;
 
 use crate::{
     avec::AtomicVec,
@@ -10,10 +11,6 @@ use crate::{
     },
     helper::interner::{IStr, Internable},
 };
-
-use super::quark::{TypeVar, TypeVarID, TypeID};
-
-//use super::{ty, tree::NodeReference};
 
 pub type ExpressionID = crate::avec::AtomicVecIndex;
 
@@ -69,7 +66,6 @@ pub enum AnyExpression {
     Branch(Branch),
 
     //Expire(VarID),
-
     Binding(Binding),
 
     Invoke(Invoke),
@@ -119,27 +115,36 @@ pub struct Bindings<'prior> {
 }
 
 impl<'prior> Bindings<'prior> {
-    pub fn child_scoped<'s>(&'s self) -> Bindings<'s> where 's: 'prior {
+    pub fn child_scoped<'s>(&'s self) -> Bindings<'s>
+    where
+        's: 'prior,
+    {
         Self {
             cur: smallvec::SmallVec::new(),
             prior: Some(self),
         }
     }
 
-    pub fn add_binding(&mut self, name: IStr, id: VarID)  {
+    pub fn add_binding(&mut self, name: IStr, id: VarID) {
         todo!()
     }
-
 }
 
 impl Bindings<'static> {
     pub fn fresh() -> Self {
-        Self { cur: smallvec::SmallVec::new(), prior: None }
+        Self {
+            cur: smallvec::SmallVec::new(),
+            prior: None,
+        }
     }
 }
 
 impl AnyExpression {
-    pub fn from_ast<'bindings>(within: &mut ExpressionContext, ast_node: &ExpressionWrapper, bindings: &mut Bindings<'bindings>) -> ExpressionID {
+    pub fn from_ast<'bindings>(
+        within: &mut ExpressionContext,
+        ast_node: &ExpressionWrapper,
+        bindings: &mut Bindings<'bindings>,
+    ) -> ExpressionID {
         match ast_node {
             ExpressionWrapper::Assignment(a) => {
                 let cst::AssignmentExpression {
@@ -250,7 +255,10 @@ impl AnyExpression {
                 //let mut cs = bindings.child_scoped();
 
                 // a let expression operates on the parent scope
-                bindings.add_binding(todo!("break down primary_component"), todo!("need to create a new var id for the binds"));
+                bindings.add_binding(
+                    todo!("break down primary_component"),
+                    todo!("need to create a new var id for the binds"),
+                );
 
                 let from_exp_id = Self::from_ast(within, expression, &mut bindings.child_scoped());
 
@@ -301,7 +309,8 @@ impl AnyExpression {
                     ..
                 } = ite;
 
-                let branch_on = AnyExpression::from_ast(within, if_exp, &mut bindings.child_scoped());
+                let branch_on =
+                    AnyExpression::from_ast(within, if_exp, &mut bindings.child_scoped());
 
                 let branch_yes = BranchArm {
                     pattern: Pattern::Literal(Literal::lit_true()),
@@ -324,7 +333,7 @@ impl AnyExpression {
             }
             ExpressionWrapper::Block(b) => {
                 let mut cs = bindings.child_scoped(); // every bind within this operates within the
-                                                  // same binding scope
+                                                      // same binding scope
 
                 let items = b
                     .contents
@@ -345,7 +354,11 @@ impl AnyExpression {
                 } = c;
                 within
                     .add(AnyExpression::Convert(Convert {
-                        source: AnyExpression::from_ast(within, subexpr, &mut bindings.child_scoped()),
+                        source: AnyExpression::from_ast(
+                            within,
+                            subexpr,
+                            &mut bindings.child_scoped(),
+                        ),
                         target: typeref.clone(),
                         implicit: todo!(),
                     }))
@@ -371,7 +384,7 @@ impl AnyExpression {
                     contents,
                 } = li;
 
-                match contents {
+                let value_type = match contents {
                     cst::Literal::StringLiteral(_) => todo!(),
                     cst::Literal::f32Literal(_) => todo!(),
                     cst::Literal::f64Literal(_) => todo!(),
@@ -385,11 +398,20 @@ impl AnyExpression {
                     cst::Literal::i32Literal(_) => todo!(),
                     cst::Literal::i16Literal(_) => todo!(),
                     cst::Literal::i8Literal(_) => todo!(),
-                    cst::Literal::UnknownIntegerLiteral(_) => todo!(),
-                    cst::Literal::Boolean(_) => todo!()
+                    cst::Literal::UnknownIntegerLiteral(v) => {
+                        tracing::warn!("for now just casting unknown ints down to i64");
+                        //Literal::lit_i32(*v as i32)
+                        SyntacticTypeReferenceRef::from_std("std::primitive::i64")
+                    }
+                    cst::Literal::Boolean(_) => todo!(),
                 };
 
-                let li = Literal { has_type: todo!(), value: todo!() };
+                let li = Literal {
+                    has_type: value_type,
+                    value: li.clone(),
+                };
+
+                within.add(AnyExpression::Literal(li)).0
             }
             ExpressionWrapper::Statement(_) => todo!(),
             ExpressionWrapper::While(_) => todo!(),
@@ -411,7 +433,16 @@ impl AnyExpression {
         args: Vec<ExpressionID>,
         generics: Vec<()>,
     ) -> ExpressionID {
-        todo!()
+        info!("making a call to {to}");
+
+        let field = AnyExpression::StaticAccess(StaticAccess { field: to, on });
+        let field_eid = within.add(field);
+
+        let invoke = AnyExpression::Invoke(Invoke { target_fn: field_eid.0, args });
+
+        let invoke_eid = within.add(invoke);
+
+        invoke_eid.0
     }
 }
 
@@ -488,7 +519,7 @@ pub struct Iterate {
 
 #[derive(Clone, Debug)]
 pub struct Invoke {
-    pub on: ExpressionID,
+    pub target_fn: ExpressionID,
     pub args: Vec<ExpressionID>,
 }
 
@@ -591,7 +622,13 @@ impl Literal {
     }
 
     pub fn lit_i32(val: i32) -> Self {
-        todo!()
+        Literal {
+            has_type: SyntacticTypeReferenceRef::from_std("std::primitive::i32"),
+            value: LiteralExpression {
+                node_info: cst::NodeInfo::Builtin,
+                contents: cst::Literal::i32Literal(val),
+            },
+        }
     }
 }
 

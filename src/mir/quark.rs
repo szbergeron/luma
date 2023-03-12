@@ -1,6 +1,6 @@
 use std::{
-    collections::{HashMap, HashSet},
     sync::Arc,
+    collections::HashMap,
 };
 
 //use itertools::Itertools;
@@ -11,7 +11,6 @@ use crate::{
     ast::{
         self,
         executor::{self, Executor},
-        resolver2::SymbolResolver,
         tree::CtxID,
         types::AbstractTypeReference,
     },
@@ -20,7 +19,7 @@ use crate::{
     cst::GenericHandle,
     helper::{
         interner::{IStr, Internable},
-        CompilationError, VecOps,
+        CompilationError,
     },
     mir::expressions::{AnyExpression, Bindings, ExpressionContext},
 };
@@ -42,6 +41,8 @@ pub struct TypeID(AtomicVecIndex);
 /// with IDs and filled in generics
 pub struct Quark {
     type_args: Vec<SymbolicType>,
+
+    typer: TypeContext,
 
     //value: Linear,
 
@@ -73,7 +74,7 @@ impl Quark {
         }
     }
 
-    pub fn for_node(node_id: CtxID, earpiece: Earpiece) -> Self {
+    pub fn for_node(node_id: CtxID, earpiece: Earpiece, executor: &'static Executor) -> Self {
         warn!("quark is being improperly initialized to make things happy");
 
         Self {
@@ -84,10 +85,11 @@ impl Quark {
             //frames: Vec::new(),
             earpiece,
             node_id,
-            acting_on: todo!(),
-            type_of: todo!(),
-            wait_resolve: todo!(),
-            executor: todo!(),
+            acting_on: ExpressionContext::new_empty(),
+            type_of: HashMap::new(),
+            wait_resolve: HashMap::new(),
+            executor,
+            typer: TypeContext::fresh(),
         }
     }
 
@@ -182,7 +184,7 @@ impl Quark {
 
         let mut binding_scope = Bindings::fresh();
 
-        let ae = AnyExpression::from_ast(&mut ec, &f.implementation, &mut binding_scope, &mut self);
+        let ae = AnyExpression::from_ast(&mut ec, &f.implementation, &mut binding_scope);
 
         todo!("descend completed?");
 
@@ -225,6 +227,7 @@ impl Quark {
         }
     }
 
+    #[allow(unused_mut)]
     pub async fn entry(
         mut self,
         f: &mut crate::ast::types::FunctionDefinition,
@@ -232,7 +235,8 @@ impl Quark {
     ) {
         let parent_id = self.node_id.resolve().parent.unwrap();
 
-        for (name, tr) in f.parameters.iter_mut() {
+        tracing::error!("need to properly uh...handle generics for stuff");
+        /*for (name, tr) in f.parameters.iter_mut() {
             SymbolResolver {
                 node_id: self.node_id,
                 earpiece: &mut self.earpiece,
@@ -250,7 +254,7 @@ impl Quark {
             for_service: Service::Quark(),
         }
         .resolve(&mut f.return_type)
-        .await;
+        .await;*/
         //tres.resolve_typeref(&mut f.return_type).await;
 
         self.descend(executor, f).await;
@@ -326,6 +330,10 @@ impl TypeContext {
         let waiting_for: HashMap<FieldID, TypeVar> = HashMap::new();
 
         //
+    }
+
+    pub fn fresh() -> Self {
+        Self { types: AtomicVec::new() }
     }
 
     pub fn unify(&mut self, a: TypeID, b: TypeID) -> Result<TypeID, TypeError> {

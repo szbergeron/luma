@@ -4,7 +4,6 @@ use std::{
     sync::Arc,
 };
 
-use smallvec::smallvec;
 use tracing::warn;
 
 use crate::{
@@ -66,17 +65,28 @@ pub struct Transponster {
 
     /// If it's in here, then we've committed to a type for that
     /// variant/field and it can be used for inference
-    dynamic_fields: HashMap<FieldID, Rc<UnsafeAsyncCompletable<Arc<Instantiation>>>>,
+    dynamic_fields: HashMap<FieldID, Rc<UnsafeAsyncCompletable<PortableTypeVar>>>,
 
     notify_when_resolved: HashMap<FieldID, Vec<Destination>>,
 
     regular_fields: HashMap<IStr, SyntacticTypeReferenceRef>,
 
-    conversations: ConversationContext<'static>,
+    conversations: ConversationContext,
+}
+
+/// We can potentially extend this into supporting HKTs
+/// by allowing generics to be provided on an opaque TypeID
+///
+/// though, that will make actually doing the stepped
+/// dyn field solve a lottttt harder
+#[derive(Debug, Clone)]
+pub enum PortableTypeVar {
+    UnPortable(TypeID),
+    Instantiation(Arc<Instantiation>),
 }
 
 #[derive(Debug, Clone)]
-struct Instantiation {
+pub struct Instantiation {
     /// eventually will make this support constraints as alternatives on it
     /// instead of just either a TypeID that was passed through or fully
     /// unconstrained
@@ -161,6 +171,8 @@ impl Transponster {
     pub fn for_node(node_id: CtxID, earpiece: Earpiece) -> Self {
         let regular_fields = HashMap::new();
 
+        let cc_send = earpiece.cloned_sender();
+
         Self {
             for_ctx: node_id,
             earpiece,
@@ -172,7 +184,7 @@ impl Transponster {
 
             regular_fields,
             generics: Vec::new(),
-            conversations: todo!(), // TODO: generics
+            conversations: unsafe { ConversationContext::new(cc_send) }, // TODO: generics
         }
     }
 
@@ -187,13 +199,13 @@ impl Transponster {
         &mut self,
         field: IStr,
         on: Arc<Instantiation>,
-    ) -> Result<Arc<Instantiation>, Option<TypeID>> {
+    ) -> PortableTypeVar {
         if let Some(v) = self.regular_fields.get(&field) {
             // turn the STR into a lowered form according to the types in the Instantiation
             match v.resolve().unwrap().inner.clone() {
                 crate::cst::SyntacticTypeReferenceInner::Single { name } => {
                     if let [one] = name.scope.as_slice() && self.generics.contains(one) {
-                        Err(on.generics[one].clone())
+                        PortableTypeVar::UnPortable(on.generics[one].clone().expect("uhhhhh"))
                     } else {
                         let resolved = NameResolver::new(name, self.for_ctx)
                             .using_context(&self.conversations)
@@ -202,7 +214,7 @@ impl Transponster {
 
                         // no generics since this is just a single (the other ones get more
                         // complicated)
-                        Ok(Arc::new(Instantiation {
+                        PortableTypeVar::Instantiation(Arc::new(Instantiation {
                             generics: HashMap::new(),
                             of_base: resolved,
                         }))
@@ -221,7 +233,7 @@ impl Transponster {
                     })
                     .or_insert(UnsafeAsyncCompletable::new());
 
-                Ok(f.clone().wait().await)
+                f.clone().wait().await
             }
         }
     }
