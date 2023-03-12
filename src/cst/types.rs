@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use dashmap::DashMap;
 use smallvec::{SmallVec, smallvec};
 
-use crate::{helper::interner::{IStr, SpurHelper}, ast::types::AbstractTypeReference};
+use crate::{helper::interner::{IStr, SpurHelper, Internable}, ast::types::AbstractTypeReference};
 
 use super::{NodeInfo, CstNode, IntoCstNode, FunctionDefinition};
 
@@ -160,19 +160,19 @@ impl ScopedName {
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum TypeReference {
+/*#[derive(Debug, Clone)]
+pub enum OldTypeReference {
     Syntactic(SyntacticTypeReferenceRef),
 
     // Includes both what it is resolved to now and what it was resolved from first
-    Abstract(Box<AbstractTypeReference>, SyntacticTypeReferenceRef),
-}
+    //Abstract(Box<AbstractTypeReference>, SyntacticTypeReferenceRef),
+}*/
 
-impl TypeReference {
+/*impl OldTypeReference {
     pub fn from_std(s: &str) -> Self {
         todo!("syntactic ref from here?")
     }
-}
+}*/
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub struct SyntacticTypeReferenceRef(uuid::Uuid);
@@ -196,6 +196,20 @@ impl SyntacticTypeReferenceRef {
 
     pub fn to_abstract(self, within_generic_context: &[IStr]) -> AbstractTypeReference {
         AbstractTypeReference::from_cst(self, within_generic_context)
+    }
+
+    pub fn from_std(s: &'static str) -> Self {
+        let inner = s.split("::").map(|s| s.intern()).collect();
+
+        let inner = SyntacticTypeReferenceInner::Single { name: ScopedName { scope: inner } };
+
+        let syntr = SyntacticTypeReference {
+            id: Self::new_nil(),
+            info: NodeInfo::Builtin,
+            inner,
+        };
+
+        syntr.intern()
     }
 }
 

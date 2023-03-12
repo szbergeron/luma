@@ -1,5 +1,5 @@
 //use crate::ast;
-use crate::cst::{self, TypeReference};
+use crate::cst::{self, SyntacticTypeReference};
 use crate::lex::{CodeLocation, ParseResultError, Token};
 use either::Either;
 
@@ -116,7 +116,7 @@ impl<'lexer> Parser<'lexer> {
                     .join_hard(&mut t)
                     .catch(&mut t)?;
                 r.end().map(|loc| end = loc);
-                Some(box TypeReference::Syntactic(r.intern()))
+                Some(box r.intern())
             }
             None => None,
         };
@@ -556,7 +556,7 @@ impl<'lexer> Parser<'lexer> {
                 .parse_type_specifier(&t)
                 .join_hard(&mut t)
                 .catch(&mut t)?;
-            Some((TypeReference::Syntactic(tr.intern()), name.slice))
+            Some((tr.intern(), name.slice))
         } else {
             None
         };
@@ -820,7 +820,7 @@ impl<'lexer> Parser<'lexer> {
                 lhs = cst::CastExpression::new_expr(
                     node_info,
                     lhs,
-                    box TypeReference::Syntactic(typeref.intern()),
+                    box typeref.intern(),
                 );
                 continue;
             } else if let Some(_arrow) = t.try_take(Token::ThinArrowLeft) {

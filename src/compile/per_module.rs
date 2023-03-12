@@ -5,15 +5,25 @@ use tracing::{info, warn};
 use uuid::Uuid;
 //use std::collec
 use std::{
+    cell::RefCell,
     collections::HashMap,
+    rc::Rc,
     sync::{atomic::AtomicUsize, Arc},
     time::Duration,
 };
 
 use crate::{
-    ast::{executor::Executor, resolver2::NameResolutionMessage, resolver2::Resolver, tree::CtxID},
+    ast::{
+        executor::{Executor, UnsafeAsyncCompletable, UnsafeAsyncCompletableFuture},
+        resolver2::NameResolutionMessage,
+        resolver2::Resolver,
+        tree::CtxID,
+    },
     avec::AtomicVecIndex,
-    mir::{quark::Quark, transponster::{Transponster, Memo}},
+    mir::{
+        quark::Quark,
+        transponster::{Memo, Transponster},
+    },
 };
 
 pub struct CompilationUnit {
@@ -258,12 +268,24 @@ impl Group {
             let eref = &exe as *const Executor;
             let eref = eref.as_ref().unwrap();
 
-            exe.install(sref.thread(), format!("resolver for node {:?}", self.for_node));
+            exe.install(
+                sref.thread(),
+                format!("resolver for node {:?}", self.for_node),
+            );
 
-            exe.install(quark.thread(eref), format!("quark for node {:?}", self.for_node));
-            exe.install(oracle.thread(eref), format!("oracle for node {:?}", self.for_node));
+            exe.install(
+                quark.thread(eref),
+                format!("quark for node {:?}", self.for_node),
+            );
+            exe.install(
+                oracle.thread(eref),
+                format!("oracle for node {:?}", self.for_node),
+            );
 
-            exe.install(router.thread(), format!("router for node {:?}", self.for_node));
+            exe.install(
+                router.thread(),
+                format!("router for node {:?}", self.for_node),
+            );
 
             //exe.install(bridge.thread());
 
@@ -471,7 +493,10 @@ impl Destination {
     }
 
     pub fn transponster(node: CtxID) -> Self {
-        Self { node, service: Service::Oracle() }
+        Self {
+            node,
+            service: Service::Oracle(),
+        }
     }
 }
 
@@ -504,6 +529,12 @@ impl Earpiece {
             talk: send,
             within,
         }
+    }
+
+    pub fn split(self) -> (local_channel::mpsc::Receiver<Message>, local_channel::mpsc::Sender<Message>) {
+        let Self { listen, talk, within } = self;
+
+        (listen, talk)
     }
 }
 
@@ -538,4 +569,63 @@ pub enum Phase {
     /// message handler, and have finished any work
     /// that we were expected to do for external messages
     GloballyComplete(),
+}
+
+pub struct ConversationContext<'ep> {
+    inner: RefCell<ConversationContextInner<'ep>>,
+}
+
+struct ConversationContextInner<'ep> {
+    waiters: HashMap<Uuid, Rc<UnsafeAsyncCompletable<Message>>>,
+    sender: &'ep mut local_channel::mpsc::Sender<Message>,
+}
+
+impl<'ep> ConversationContext<'ep> {
+    /// CONTRACT: this may be passed between threads, but must never
+    /// be shared between them despite the type being Sync + Send
+    /// and the main methods taking &self
+    pub unsafe fn new(sender: &'ep mut local_channel::mpsc::Sender<Message>) -> Self {
+        Self {
+            inner: RefCell::new(ConversationContextInner {
+                waiters: HashMap::new(),
+                sender,
+            }),
+        }
+    }
+
+    /// If the message wasn't for an active conversation,
+    /// then the message is returned intact as Some(Message)
+    ///
+    /// Otherwise, the message was handled internally
+    pub fn dispatch(&self, message: Message) -> Option<Message> {
+        let inner = self.inner.borrow_mut();
+        
+        if let Some(v) = inner.waiters.remove(&message.conversation) {
+            unsafe { v.complete(message); }
+
+            None
+        } else {
+            Some(message)
+        }
+    }
+
+    pub fn send_and_forget(&self, message: Message) {
+        let inner = self.inner.borrow_mut();
+
+        inner.sender.send(message);
+    }
+
+    pub fn wait_for(&self, reply_to: Message) -> UnsafeAsyncCompletableFuture<Message> {
+        let inner = self.inner.borrow_mut();
+
+        let fut = unsafe { UnsafeAsyncCompletable::new() };
+
+        inner.waiters.insert(reply_to.conversation, fut.clone());
+
+        inner.sender.send(reply_to);
+
+        std::mem::drop(inner); // make extra sure we drop the refmut
+
+        unsafe { fut.wait() } // don't await it, the user can do that for themselves
+    }
 }

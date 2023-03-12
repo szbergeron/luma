@@ -6,7 +6,7 @@ use crate::{
     avec::AtomicVec,
     cst::{
         self, CastExpression, ExpressionWrapper, IfThenElseExpression, LetComponentIdentifier,
-        LiteralExpression, MemberAccessExpression, TypeReference,
+        LiteralExpression, MemberAccessExpression, SyntacticTypeReferenceRef,
     },
     helper::interner::{IStr, Internable},
 };
@@ -265,8 +265,9 @@ impl AnyExpression {
                             type_specifier,
                         }) => {
                             let b = AnyExpression::Binding(Binding {
+                                introduced_as: todo!("variable ID'ing"),
                                 name: identifier_string,
-                                has_type: type_specifier,
+                                has_type: type_specifier.map(|box v| v),
                             });
 
                             b
@@ -470,7 +471,7 @@ pub struct Compare {
 pub struct Convert {
     //meta: MetaData,
     pub source: ExpressionID,
-    pub target: TypeReference,
+    pub target: SyntacticTypeReferenceRef,
     /// Indicates that this is an inverred conversion,
     /// which can allow things like deref conversions
     /// and the like, but not more involved conversions
@@ -560,12 +561,12 @@ pub struct Binding {
 
     introduced_as: VarID,
 
-    has_type: Option<TypeVarID>,
+    has_type: Option<SyntacticTypeReferenceRef>,
 }
 
 #[derive(Clone, Debug)]
 pub struct Literal {
-    has_type: TypeID,
+    has_type: SyntacticTypeReferenceRef,
 
     value: LiteralExpression,
 }
@@ -581,7 +582,7 @@ impl Literal {
 
     pub fn lit_bool(v: bool) -> Self {
         Literal {
-            has_type: TypeReference::from_std("std::primitive::bool"),
+            has_type: SyntacticTypeReferenceRef::from_std("std::primitive::bool"),
             value: LiteralExpression {
                 node_info: cst::NodeInfo::Builtin,
                 contents: cst::Literal::Boolean(v),
@@ -608,9 +609,9 @@ pub struct DynamicAccess {
 
 #[derive(Clone, Debug)]
 pub struct Composite {
-    pub base_type: TypeReference,
+    pub base_type: SyntacticTypeReferenceRef,
 
-    pub generics: Vec<TypeReference>,
+    pub generics: Vec<SyntacticTypeReferenceRef>,
 
     pub fields: HashMap<IStr, ExpressionID>,
 }
@@ -641,7 +642,7 @@ struct Invert {}
 
 struct Guard {
     check: AnyExpression,
-    has: TypeReference,
+    has: SyntacticTypeReferenceRef,
 
     then: AnyExpression,
     otherwise: AnyExpression,

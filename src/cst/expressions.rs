@@ -4,8 +4,8 @@ use smallvec::smallvec;
 use smallvec::SmallVec;
 
 use super::ScopedName;
+use super::SyntacticTypeReferenceRef;
 use super::cst_traits::*;
-use super::TypeReference;
 
 use crate::helper::VecOps;
 /*use super::base::*;
@@ -426,7 +426,7 @@ pub struct LetExpression {
 
     pub primary_component: Box<LetComponent>,
 
-    pub constrained_to: TypeReference,
+    pub constrained_to: SyntacticTypeReferenceRef,
 
     pub expression: Box<ExpressionWrapper>,
 }
@@ -444,7 +444,7 @@ pub struct LetComponentTuple {
     // pub arity: usize, // implicit in length of component vec
     pub elements: Vec<LetComponent>,
 
-    pub type_specifier: Option<Box<super::TypeReference>>,
+    pub type_specifier: Option<Box<super::SyntacticTypeReferenceRef>>,
 }
 
 #[derive(Debug, Clone)]
@@ -453,7 +453,7 @@ pub struct LetComponentIdentifier {
 
     pub identifier_string: IStr,
 
-    pub type_specifier: Option<Box<super::TypeReference>>,
+    pub type_specifier: Option<Box<super::SyntacticTypeReferenceRef>>,
 }
 
 #[derive(Debug, Clone)]
@@ -898,7 +898,7 @@ pub struct CastExpression {
 
     pub subexpr: Box<ExpressionWrapper>,
     //pub typeref: Box<ExpressionWrapper>,
-    pub typeref: Box<super::TypeReference>,
+    pub typeref: Box<super::SyntacticTypeReferenceRef>,
     //pub typeref: Box<types::TypeReference>,
     //pub span: Span,
 }
@@ -907,7 +907,7 @@ impl CastExpression {
     pub fn new_expr(
         node_info: NodeInfo,
         lhs: Box<ExpressionWrapper>,
-        typeref: Box<super::TypeReference>,
+        typeref: Box<super::SyntacticTypeReferenceRef>,
     ) -> Box<ExpressionWrapper> {
         Box::new(ExpressionWrapper::Cast(CastExpression {
             node_info,
@@ -946,7 +946,7 @@ pub struct LLVMLiteralExpression {
     /// the value will reside in will be referred to output.unwrap().1
     ///
     /// Care should be taken by the user that the binding name does not cause a name collision
-    pub output: Option<(super::TypeReference, IStr)>,
+    pub output: Option<(super::SyntacticTypeReferenceRef, IStr)>,
 }
 
 impl CstNode for LLVMLiteralExpression {
@@ -1203,7 +1203,7 @@ pub enum CSTTag {
     /// Not yet used, but we can eventually allow tags to be based on a type
     /// and do enforcement that the value provided matches the interface of the type
     /// (or inherits the remainder of the impl)
-    Type(TypeReference),
+    Type(SyntacticTypeReferenceRef),
 }
 
 #[derive(Debug, Clone)]
@@ -1224,7 +1224,7 @@ pub struct Member {
 
     tagged: CSTTag,
 
-    typed: Option<TypeReference>,
+    typed: Option<SyntacticTypeReferenceRef>,
 
     value: Option<Box<ExpressionWrapper>>, // if value not provided, we default initialize the member
 }

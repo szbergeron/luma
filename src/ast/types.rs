@@ -3,7 +3,7 @@ use std::sync::RwLock;
 //use dashmap::lock::RwLock;
 
 use crate::{
-    cst::{ScopedName, SyntacticTypeReferenceInner, NodeInfo, SyntacticTypeReferenceRef, TypeReference},
+    cst::{ScopedName, SyntacticTypeReferenceInner, NodeInfo, SyntacticTypeReferenceRef},
     helper::interner::IStr,
 };
 
@@ -75,7 +75,7 @@ pub struct ResolvedType {
     pub base: CtxID,
 
     /// May or may not yet be directly resolved
-    pub generics: Vec<TypeReference>,
+    pub generics: Vec<SyntacticTypeReferenceRef>,
 }
 
 #[derive(Debug, Clone)]
@@ -89,7 +89,7 @@ pub struct UnResolvedType {
 
     pub named: ScopedName,
 
-    pub generics: Vec<TypeReference>,
+    pub generics: Vec<SyntacticTypeReferenceRef>,
 }
 
 #[derive(Debug, Clone)]
@@ -101,7 +101,7 @@ pub enum NodeReference {
 #[derive(Debug, Clone)]
 pub struct FieldMember {
     pub name: IStr,
-    pub has_type: Option<TypeReference>,
+    pub has_type: Option<SyntacticTypeReferenceRef>,
     pub initialization: Option<cst::expressions::ExpressionWrapper>,
 }
 
@@ -115,8 +115,8 @@ pub struct FunctionDefinition {
     pub info: cst::NodeInfo,
     pub name: IStr,
 
-    pub parameters: Vec<(IStr, TypeReference)>,
-    pub return_type: TypeReference,
+    pub parameters: Vec<(IStr, SyntacticTypeReferenceRef)>,
+    pub return_type: SyntacticTypeReferenceRef,
 
     pub implementation: cst::expressions::ExpressionWrapper,
 }
@@ -136,12 +136,12 @@ impl FunctionDefinition {
         let generic_names = generics.iter().map(|(name, ty)| *name).collect_vec();
 
         //let return_type = AbstractTypeReference::from_cst(return_type, generic_names.as_slice());
-        let return_type = TypeReference::Syntactic(return_type);
+        //let return_type = OldTypeReference::Syntactic(return_type);
 
         let parameters = params
             .into_iter()
             //.map(|(name, tr)| (name, AbstractTypeReference::from_cst(tr, generic_names.as_slice())))
-            .map(|(name, ty)| (name, TypeReference::Syntactic(ty)))
+            .map(|(name, ty)| (name, ty))
             .collect();
 
         //[1, 2].into_iter().coll
@@ -159,8 +159,8 @@ impl FunctionDefinition {
 }
 
 pub struct StructDefinition {
-    generics: Vec<(IStr, TypeReference)>,
+    generics: Vec<(IStr, SyntacticTypeReferenceRef)>,
     name: IStr,
 
-    fields: Vec<(IStr, TypeReference)>,
+    fields: Vec<(IStr, SyntacticTypeReferenceRef)>,
 }

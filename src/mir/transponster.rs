@@ -1,18 +1,27 @@
-use std::{collections::{HashMap, HashSet}, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    rc::Rc,
+    sync::Arc,
+};
 
+use smallvec::smallvec;
 use tracing::warn;
 
 use crate::{
     ast::{
-        executor::Executor, resolver2::SymbolResolver, tree::CtxID, types::StructuralDataDefinition,
+        executor::{Executor, UnsafeAsyncCompletable},
+        resolver2::NameResolver,
+        tree::CtxID,
+        types::StructuralDataDefinition,
     },
-    compile::per_module::{Earpiece, Message, Destination, Content},
-    helper::interner::IStr, cst::SyntacticTypeReferenceRef,
+    compile::per_module::{Content, ConversationContext, Destination, Earpiece, Message},
+    cst::SyntacticTypeReferenceRef,
+    helper::interner::IStr,
 };
 
 use super::{
     expressions::AssignmentDirection,
-    quark::{ResolvedType, TypeType, TypeVar, TypeID},
+    quark::{ResolvedType, TypeID, TypeType, TypeVar},
 };
 
 /// Yes, it's a reference, and no, it's not a good one
@@ -57,22 +66,23 @@ pub struct Transponster {
 
     /// If it's in here, then we've committed to a type for that
     /// variant/field and it can be used for inference
-    dynamic_fields: HashMap<FieldID, SyntacticTypeReferenceRef>,
+    dynamic_fields: HashMap<FieldID, Rc<UnsafeAsyncCompletable<Arc<Instantiation>>>>,
 
     notify_when_resolved: HashMap<FieldID, Vec<Destination>>,
 
     regular_fields: HashMap<IStr, SyntacticTypeReferenceRef>,
+
+    conversations: ConversationContext<'static>,
 }
 
+#[derive(Debug, Clone)]
 struct Instantiation {
-    generics: HashMap<IStr, TypeID>,
+    /// eventually will make this support constraints as alternatives on it
+    /// instead of just either a TypeID that was passed through or fully
+    /// unconstrained
+    generics: HashMap<IStr, Option<TypeID>>,
 
     of_base: CtxID,
-}
-
-impl Instantiation {
-    pub fn type_of_field(&self, field: IStr) -> Result<Instantiation, ()> {
-    }
 }
 
 struct FieldContext {
@@ -82,7 +92,6 @@ struct FieldContext {
     //forwarded_broadcasts: HashMap<FieldID, HashSet<FieldID>>,
     /// Map<Origin Field, Map<Local Field, (Received Count, Decided Type, Decision Weights)>>
     //received_broadcasts: HashMap<FieldID, HashMap<FieldID, (usize, ResolvedType, Vec<(f32, ResolvedType)>)>>,
-
     received_broadcasts: HashSet<Arc<AnnounceCommit>>,
 
     direct_assignments: Vec<ResolvedType>,
@@ -94,7 +103,19 @@ struct FieldContext {
 pub enum Memo {
     /// AnnounceCommit is used when a source says they have
     /// directs and have committed to a given type
-    AnnounceCommit { original: Arc<AnnounceCommit>, for_field: FieldID},
+    AnnounceCommit {
+        original: Arc<AnnounceCommit>,
+        for_field: FieldID,
+    },
+
+    AskFieldType {
+        instantiation: Arc<Instantiation>,
+        field: FieldID,
+    },
+
+    ReplyFieldType {
+        new_instantiation: Arc<Instantiation>,
+    },
 
     /// If you are sent this, it means you asked a while ago
     /// about a field and we didn't know what type it was
@@ -106,8 +127,7 @@ pub enum Memo {
     /// A quark can tell the transponster for its own node that
     /// it is a callable, so the transponster can respond to call
     /// format queries
-    NotifySelfCallable {
-    }
+    NotifySelfCallable {},
 }
 
 pub struct CallableInterface {
@@ -118,16 +138,15 @@ pub struct CallableInterface {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AnnounceCommit {
-        from_source: FieldID,
-        commits_to: ResolvedType,
-        weights: Vec<(fixed::types::U10F22, ResolvedType)>,
+    from_source: FieldID,
+    commits_to: ResolvedType,
+    weights: Vec<(fixed::types::U10F22, ResolvedType)>,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct FieldID {
     name: IStr,
     on: CtxID,
-
     ///// This is a field on a struct parameterized by
     ///// the given typevar. If the struct this is on
     ///// is not generic, this is empty
@@ -150,8 +169,60 @@ impl Transponster {
             dynamic_fields: HashMap::new(),
 
             notify_when_resolved: HashMap::new(),
-            
+
             regular_fields,
+            generics: Vec::new(),
+            conversations: todo!(), // TODO: generics
+        }
+    }
+
+    pub fn is_regular_field(&self, field: IStr) -> bool {
+        self.regular_fields.contains_key(&field)
+    }
+
+    /// If the instantiation didn't
+    /// allow us to resolve the type of the field directly,
+    /// then we return the determining TypeID
+    pub async fn wait_solve_field(
+        &mut self,
+        field: IStr,
+        on: Arc<Instantiation>,
+    ) -> Result<Arc<Instantiation>, Option<TypeID>> {
+        if let Some(v) = self.regular_fields.get(&field) {
+            // turn the STR into a lowered form according to the types in the Instantiation
+            match v.resolve().unwrap().inner.clone() {
+                crate::cst::SyntacticTypeReferenceInner::Single { name } => {
+                    if let [one] = name.scope.as_slice() && self.generics.contains(one) {
+                        Err(on.generics[one].clone())
+                    } else {
+                        let resolved = NameResolver::new(name, self.for_ctx)
+                            .using_context(&self.conversations)
+                            .await;
+                        let resolved = resolved.expect("need to handle unresolved names");
+
+                        // no generics since this is just a single (the other ones get more
+                        // complicated)
+                        Ok(Arc::new(Instantiation {
+                            generics: HashMap::new(),
+                            of_base: resolved,
+                        }))
+                    }
+                }
+                _ => todo!("other kinds of STR"),
+            }
+        } else {
+            // could be a dynamic field, so this is a new usage
+            unsafe {
+                let f = self
+                    .dynamic_fields
+                    .entry(FieldID {
+                        name: field,
+                        on: self.for_ctx,
+                    })
+                    .or_insert(UnsafeAsyncCompletable::new());
+
+                Ok(f.clone().wait().await)
+            }
         }
     }
 
@@ -159,26 +230,27 @@ impl Transponster {
         let parent_id = self.for_ctx.resolve().parent.unwrap();
 
         for field in sd.fields.iter_mut() {
-            let tres = SymbolResolver {
+            /*let tres = SymbolResolver {
                 node_id: self.for_ctx,
                 earpiece: &mut self.earpiece,
                 for_service: crate::compile::per_module::Service::Oracle(),
             }
             .resolve(field.has_type.as_mut().unwrap())
-            .await;
-
-            match field.has_type.as_ref().expect("no type?") {
-                crate::cst::TypeReference::Syntactic(_) => todo!(),
-                crate::cst::TypeReference::Abstract(box a, _) => {
-                    todo!()
-                }
-            }
+            .await;*/
+            //let ft = field.has_type.as_ref().expect("no type?");
+            self.regular_fields.insert(
+                field.name,
+                field.has_type.expect("field didn't have a type?"),
+            );
 
             warn!("transponster resolved a field type");
         }
     }
 
-    fn field_handle_mut(fields: &mut HashMap<FieldID, FieldContext>, field: FieldID) -> &mut FieldContext {
+    fn field_handle_mut(
+        fields: &mut HashMap<FieldID, FieldContext>,
+        field: FieldID,
+    ) -> &mut FieldContext {
         fields.entry(field.clone()).or_insert(FieldContext {
             for_field: field,
             received_broadcasts: HashSet::new(),
@@ -188,12 +260,14 @@ impl Transponster {
     }
 
     fn field_handle(&mut self, field: FieldID) -> &FieldContext {
-        self.dynamic_field_contexts.entry(field.clone()).or_insert(FieldContext {
-            for_field: field,
-            received_broadcasts: HashSet::new(),
-            direct_assignments: Vec::new(),
-            assigns_into: Vec::new(),
-        })
+        self.dynamic_field_contexts
+            .entry(field.clone())
+            .or_insert(FieldContext {
+                for_field: field,
+                received_broadcasts: HashSet::new(),
+                direct_assignments: Vec::new(),
+                assigns_into: Vec::new(),
+            })
     }
 
     pub async fn wait_for(&mut self, field: FieldID) -> Result<TypeVar, !> {
@@ -225,18 +299,22 @@ impl Transponster {
         }
     }
 
-    pub fn send_announce_to(from: Destination, ep: &mut Earpiece, ac: Arc<AnnounceCommit>, to: FieldID) {
+    pub fn send_announce_to(
+        from: Destination,
+        ep: &mut Earpiece,
+        ac: Arc<AnnounceCommit>,
+        to: FieldID,
+    ) {
         ep.send(Message {
             to: Destination::transponster(to.on),
             from,
             send_reply_to: from,
             conversation: uuid::Uuid::new_v4(),
-            content: Content::Transponster(Memo::AnnounceCommit { original: ac, for_field: to }),
+            content: Content::Transponster(Memo::AnnounceCommit {
+                original: ac,
+                for_field: to,
+            }),
         })
-    }
-
-    pub async fn ask_type_of(&mut self, field: FieldID, notify_later: Destination) -> Result<FieldType, ()> {
-        todo!()
     }
 
     pub async fn emit_broadcasts(&mut self) {
@@ -320,5 +398,13 @@ impl Transponster {
                 warn!("Transponster shuts down since this node type wasn't a Type")
             }
         }
+    }
+
+    pub async fn ask_type_of(
+        &mut self,
+        field: FieldID,
+        notify_later: Destination,
+    ) -> Result<!, ()> {
+        todo!()
     }
 }

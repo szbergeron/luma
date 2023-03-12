@@ -11,8 +11,8 @@ use uuid::Uuid;
 
 use crate::{
     ast::{self, types::TypeBase},
-    compile::per_module::{Content, Destination, Earpiece, Message, Service},
-    cst::{ScopedName, TypeReference, UseDeclaration},
+    compile::per_module::{Content, ConversationContext, Destination, Earpiece, Message, Service},
+    cst::{ScopedName, UseDeclaration},
     helper::interner::{IStr, Internable},
 };
 
@@ -799,6 +799,7 @@ pub struct Conversation {
     messages: Vec<Message>,
 }*/
 
+/*
 pub struct SymbolResolver<'ep> {
     //pub tr: &'ep mut TypeReference,
     pub node_id: CtxID, // the scope we're resolving within
@@ -814,13 +815,13 @@ impl<'ep> SymbolResolver<'ep> {
         }
     }
 
-    pub async fn resolve(mut self, tr: &mut TypeReference) {
+    pub async fn resolve(mut self, tr: &mut OldTypeReference) {
         self.resolve_typeref(tr).await;
     }
 
-    pub async fn resolve_typeref(&mut self, tb: &mut TypeReference) {
+    pub async fn resolve_typeref(&mut self, tb: &mut OldTypeReference) {
         let abstrakt: &mut AbstractTypeReference = match tb {
-            TypeReference::Syntactic(s) => {
+            OldTypeReference::Syntactic(s) => {
                 let generic_args = self
                     .node_id
                     .resolve()
@@ -830,14 +831,14 @@ impl<'ep> SymbolResolver<'ep> {
                     .collect_vec();
                 let abstrakt = s.to_abstract(generic_args.as_slice());
 
-                *tb = TypeReference::Abstract(box abstrakt, *s);
+                *tb = OldTypeReference::Abstract(box abstrakt, *s);
 
                 match tb {
-                    TypeReference::Abstract(a, s) => &mut *a,
+                    OldTypeReference::Abstract(a, s) => &mut *a,
                     _ => unreachable!(),
                 }
             }
-            TypeReference::Abstract(a, s) => {
+            OldTypeReference::Abstract(a, s) => {
                 panic!("this shouldn't have already been made abstract yet, that was our job!")
             }
         };
@@ -943,5 +944,55 @@ impl<'ep> SymbolResolver<'ep> {
         }
 
         //warn!("quark got a message back: {m:#?}");
+    }
+}
+*/
+
+pub struct NameResolver {
+    name: ScopedName,
+    based_in: CtxID,
+}
+
+impl NameResolver {
+    pub fn new(name: ScopedName, based_in: CtxID) -> Self {
+        Self { name, based_in }
+    }
+
+    pub async fn using_context(
+        self,
+        cc: &ConversationContext<'static>,
+    ) -> Result<CtxID, ImportError> {
+        let msg = Message {
+            to: Destination::resolver(self.based_in),
+            from: Destination::resolver(self.based_in),
+            send_reply_to: Destination::resolver(self.based_in),
+            conversation: Uuid::new_v4(),
+            content: Content::NameResolution(NameResolutionMessage::WhatIs {
+                composite_symbol: self.name,
+                given_root: self.based_in,
+            }),
+        };
+
+        let reply = cc.wait_for(msg).await;
+
+        if let Content::NameResolution(nr) = reply.content {
+            match nr {
+                NameResolutionMessage::RefersTo {
+                    composite_symbol,
+                    is_at,
+                    given_root,
+                } => Ok(is_at),
+                NameResolutionMessage::HasNoResolution {
+                    composite_symbol,
+                    longest_prefix,
+                    prefix_ends_at,
+                    given_root,
+                } => todo!(),
+                NameResolutionMessage::CausesCircularImport { v } => todo!(),
+                _ => panic!("got another weird message?"),
+            }
+        } else {
+            panic!("got a weird message back?")
+        }
     }
 }

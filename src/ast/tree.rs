@@ -1,5 +1,5 @@
 use crate::avec::AtomicVec;
-use crate::cst::{SyntacticTypeReferenceRef, TopLevel, TypeReference};
+use crate::cst::{SyntacticTypeReferenceRef, TopLevel};
 use crate::{avec::AtomicVecIndex, cst::UseDeclaration};
 use itertools::Itertools;
 use tracing::info;
@@ -151,7 +151,7 @@ pub struct Node {
     pub node_id: OnceCell<CtxID>,
 
     //node_id: CtxID,
-    pub generics: Vec<(IStr, TypeReference)>,
+    pub generics: Vec<(IStr, SyntacticTypeReferenceRef)>,
 
     pub children: DashMap<IStr, CtxID>,
 
@@ -208,7 +208,7 @@ impl Node {
     ) -> CtxID {
         let generics = generics
             .into_iter()
-            .map(|(name, ty)| (name, TypeReference::Syntactic(ty)))
+            .map(|(name, ty)| (name, ty))
             .collect_vec();
         let n = Node {
             node_id: OnceCell::new(),
@@ -340,7 +340,7 @@ impl Node {
 
                             let field = ast::types::FieldMember {
                                 name: has_name,
-                                has_type: Some(TypeReference::Syntactic(has_type)),
+                                has_type: Some(has_type),
                                 initialization: None, // TODO
                             };
 
