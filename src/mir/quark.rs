@@ -1,11 +1,9 @@
-use std::{
-    sync::Arc,
-    collections::HashMap,
-};
+use std::{collections::HashMap, sync::Arc};
 
 //use itertools::Itertools;
 
 use tracing::{info, warn};
+use uuid::Uuid;
 
 use crate::{
     ast::{
@@ -21,12 +19,15 @@ use crate::{
         interner::{IStr, Internable},
         CompilationError,
     },
-    mir::expressions::{AnyExpression, Bindings, ExpressionContext},
+    mir::{
+        expressions::{AnyExpression, Bindings, ExpressionContext},
+        transponster::Memo,
+    },
 };
 
 use super::{expressions::ExpressionID, transponster::FieldID};
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TypeID(AtomicVecIndex);
 
 /// Quark instances are provided a single
@@ -97,17 +98,22 @@ impl Quark {
         todo!()
     }
 
-    pub async fn do_the_thing(&mut self) {}
+    pub async fn do_the_thing(&mut self, on_id: ExpressionID) {
+        let root_type_id = self.do_the_thing_rec(on_id);
+    }
 
     pub fn do_the_thing_rec(&mut self, on_id: ExpressionID) -> TypeID {
-        let e_ty_id: TypeID = todo!();
+        tracing::info!("do_the_thing_rec on id: {on_id}");
 
-        match self.acting_on.get(on_id) {
+        let e_ty_id: TypeID = self.typer.register_type(TypeVar { within: self.node_id, referees: Vec::new(), current: TypeType::Unknown() });
+
+        match self.acting_on.get(on_id).clone() {
             AnyExpression::Block(b) => {
                 for &eid in b.expressions.iter() {
                     let c_ty = self.do_the_thing_rec(eid);
 
-                    self.type_of[&eid] = c_ty;
+                    //self.type_of[&eid] = c_ty;
+                    self.type_of.insert(eid, c_ty);
                 }
 
                 match b.expressions.last() {
@@ -176,28 +182,28 @@ impl Quark {
 
     #[allow(unused_mut)]
     pub async fn descend<'func>(
-        mut self,
-        executor: &'static Executor,
+        &mut self,
         f: &'func mut ast::types::FunctionDefinition,
-    ) {
-        let mut ec = ExpressionContext::new_empty();
+    ) -> ExpressionID {
+        //let mut ec = ExpressionContext::new_empty();
 
         let mut binding_scope = Bindings::fresh();
 
-        let ae = AnyExpression::from_ast(&mut ec, &f.implementation, &mut binding_scope);
+        let ae = AnyExpression::from_ast(&mut self.acting_on, &f.implementation, &mut binding_scope);
 
-        todo!("descend completed?");
+        //todo!("descend completed?");
+        ae
 
         //rec(&mut f.implementation).await;
     }
 
-    pub async fn thread(mut self, executor: &'static Executor) {
+    pub async fn thread(mut self) {
         info!("starts quark thread");
 
         match &self.node_id.resolve().inner {
             ast::tree::NodeUnion::Function(f) => {
                 warn!("quark for a function starts up");
-                self.entry(&mut f.lock().unwrap(), executor).await;
+                self.entry(&mut f.lock().unwrap()).await;
 
                 //self.thread_stage_2(f).await;
             }
@@ -231,7 +237,7 @@ impl Quark {
     pub async fn entry(
         mut self,
         f: &mut crate::ast::types::FunctionDefinition,
-        executor: &'static Executor,
+        //executor: &'static Executor,
     ) {
         let parent_id = self.node_id.resolve().parent.unwrap();
 
@@ -257,7 +263,24 @@ impl Quark {
         .await;*/
         //tres.resolve_typeref(&mut f.return_type).await;
 
-        self.descend(executor, f).await;
+        // this is all we need to do for now
+        // to let the local transponster know how to answer call queries
+        // and instantiations
+        self.earpiece.send(Message {
+            to: Destination::transponster(self.node_id),
+            from: self.as_dest(),
+            send_reply_to: Destination::nil(),
+            conversation: Uuid::new_v4(),
+            content: Content::Transponster(Memo::NotifySelfCallable {
+                generics: self.node_id.resolve().generics.clone().into_iter().collect(),
+                params: f.parameters.clone(),
+                returns: f.return_type.clone(),
+            }),
+        });
+
+        let aeid = self.descend(f).await;
+
+        self.do_the_thing(aeid).await;
 
         // start walking the function tree now? or do later?
 
@@ -333,7 +356,9 @@ impl TypeContext {
     }
 
     pub fn fresh() -> Self {
-        Self { types: AtomicVec::new() }
+        Self {
+            types: AtomicVec::new(),
+        }
     }
 
     pub fn unify(&mut self, a: TypeID, b: TypeID) -> Result<TypeID, TypeError> {
@@ -365,10 +390,6 @@ impl TypeContext {
         let br = self.types.get_mut(root_2);
         br.current = TypeType::Refer(TypeID(nti));
 
-        todo!()
-    }
-
-    pub fn new_alloc(&mut self) -> Allocation {
         todo!()
     }
 
@@ -459,7 +480,9 @@ impl TypeContext {
         TypeID(id)
     }
 
-    pub fn register_type(&mut self, t: TypeVar) {}
+    pub fn register_type(&mut self, t: TypeVar) -> TypeID {
+        TypeID(self.types.push(t).0)
+    }
 }
 
 impl SymbolicType {

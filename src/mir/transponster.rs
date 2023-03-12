@@ -137,7 +137,14 @@ pub enum Memo {
     /// A quark can tell the transponster for its own node that
     /// it is a callable, so the transponster can respond to call
     /// format queries
-    NotifySelfCallable {},
+    NotifySelfCallable {
+        /// the context that any generics in the params/returns
+        /// operate in if there are any generic args
+        generics: HashMap<IStr, SyntacticTypeReferenceRef>,
+
+        params: Vec<(IStr, SyntacticTypeReferenceRef)>,
+        returns: SyntacticTypeReferenceRef,
+    },
 }
 
 pub struct CallableInterface {

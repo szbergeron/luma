@@ -275,7 +275,7 @@ impl Group {
             );
 
             exe.install(
-                quark.thread(eref),
+                quark.thread(),
                 format!("quark for node {:?}", self.for_node),
             );
             exe.install(
