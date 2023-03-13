@@ -1,11 +1,15 @@
 use crate::avec::AtomicVec;
-use crate::cst::{SyntacticTypeReferenceRef, TopLevel};
+use crate::cst::{
+    ScopedName, SyntacticTypeReference, SyntacticTypeReferenceInner, SyntacticTypeReferenceRef,
+    TopLevel,
+};
 use crate::{avec::AtomicVecIndex, cst::UseDeclaration};
 use itertools::Itertools;
 use tracing::info;
 
 use crate::ast;
 
+use std::default::default;
 use std::{
     ptr::NonNull,
     sync::{
@@ -89,7 +93,7 @@ pub struct CtxID(pub AtomicVecIndex);
 
 impl std::fmt::Debug for CtxID {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt( format_args!("{}", self.0))
+        f.write_fmt(format_args!("{}", self.0))
         //self.0::<as std::fmt::Display>::fmt(f)
         //self.resolve().fmt(f)
     }
@@ -188,6 +192,33 @@ impl std::fmt::Debug for Node {
 }
 
 impl Node {
+    pub fn canonical_typeref(&self) -> SyntacticTypeReferenceRef {
+        fn build_back_up(cid: CtxID) -> ScopedName {
+            let n = cid.resolve();
+            let base = match n.parent {
+                Some(p) => {
+                    let s = build_back_up(p);
+                    s
+                }
+                None => ScopedName { scope: default() },
+            };
+
+            base.scope.push(n.name);
+
+            base
+        }
+
+        let s = build_back_up(*self.node_id.get().unwrap());
+
+        tracing::error!("implement actual generics for canonical ref here");
+        SyntacticTypeReference {
+            inner: SyntacticTypeReferenceInner::Single { name: s },
+            info: cst::NodeInfo::Builtin, // for now, we can get origins and such later
+            id: SyntacticTypeReferenceRef::new_nil(),
+        }
+        .intern()
+    }
+
     // we know that frozen only
     // ever mutates in "one direction": unfrozen -> frozen
     //

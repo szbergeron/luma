@@ -4,6 +4,7 @@ use std::{
     sync::Arc,
 };
 
+use fixed::traits::ToFixed;
 use tracing::warn;
 
 use crate::{
@@ -67,12 +68,15 @@ pub struct Transponster {
     /// variant/field and it can be used for inference
     dynamic_fields: HashMap<FieldID, Rc<UnsafeAsyncCompletable<PortableTypeVar>>>,
 
-    notify_when_resolved: HashMap<FieldID, Vec<Destination>>,
+    notify_when_resolved: HashMap<FieldID, Vec<(Destination, FieldID)>>,
 
     regular_fields: HashMap<IStr, SyntacticTypeReferenceRef>,
 
     conversations: ConversationContext,
 }
+
+#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug)]
+pub struct UsageHandle(uuid::Uuid);
 
 /// We can potentially extend this into supporting HKTs
 /// by allowing generics to be provided on an opaque TypeID
@@ -82,6 +86,8 @@ pub struct Transponster {
 #[derive(Debug, Clone)]
 pub enum PortableTypeVar {
     UnPortable(TypeID),
+    /// a free type that should be matched to a new TypeID within the solver system
+    Free(),
     Instantiation(Arc<Instantiation>),
 }
 
@@ -90,7 +96,7 @@ pub struct Instantiation {
     /// eventually will make this support constraints as alternatives on it
     /// instead of just either a TypeID that was passed through or fully
     /// unconstrained
-    generics: HashMap<IStr, Option<TypeID>>,
+    generics: HashMap<IStr, PortableTypeVar>,
 
     of_base: CtxID,
 }
@@ -98,15 +104,47 @@ pub struct Instantiation {
 struct FieldContext {
     for_field: FieldID,
 
-    /// map of <Origin, Recipient>
+    //// map of <Origin, Recipient>
     //forwarded_broadcasts: HashMap<FieldID, HashSet<FieldID>>,
-    /// Map<Origin Field, Map<Local Field, (Received Count, Decided Type, Decision Weights)>>
+    //// Map<Origin Field, Map<Local Field, (Received Count, Decided Type, Decision Weights)>>
     //received_broadcasts: HashMap<FieldID, HashMap<FieldID, (usize, ResolvedType, Vec<(f32, ResolvedType)>)>>,
+
     received_broadcasts: HashSet<Arc<AnnounceCommit>>,
 
-    direct_assignments: Vec<ResolvedType>,
+    usages: HashSet<UsageHandle>,
 
-    assigns_into: Vec<FieldID>,
+    resolutions: HashMap<UsageHandle, ResolvedType>,
+}
+
+impl FieldContext {
+    /// After any given pass, this takes what we know
+    /// about the usage of this field and tries to
+    /// put a number on how sure we are that
+    /// we are the type we think, and thus how good a
+    /// candidate we are for committing
+    ///
+    /// Any number over 0.95 should imply we are a candidate
+    /// for immediate commit, without trying to do an election
+    pub fn calculate_certainty(&self) -> fixed::types::I16F16 {
+        // simply take how many direct usages we have and compare that
+        // to how many unknowns we have, for now
+        //
+        // we may want to include an additional biasing operation later
+        // where we get more confident with more directs even
+        // with a lower ratio
+        let usage_count = self.usages.len() as f64;
+        let resolution_count = self.resolutions.len() as f64;
+
+
+        let ratio = if usage_count > 0.0 {
+            resolution_count / usage_count
+        } else {
+            // if we have no usages, we have no certainty and no type we could possibly be
+            0.0
+        };
+
+        ratio.to_fixed()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -157,10 +195,10 @@ pub struct CallableInterface {
 pub struct AnnounceCommit {
     from_source: FieldID,
     commits_to: ResolvedType,
-    weights: Vec<(fixed::types::U10F22, ResolvedType)>,
+    weights: Vec<(fixed::types::I16F16, ResolvedType)>,
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub struct FieldID {
     name: IStr,
     on: CtxID,
@@ -202,6 +240,10 @@ impl Transponster {
     /// If the instantiation didn't
     /// allow us to resolve the type of the field directly,
     /// then we return the determining TypeID
+    ///
+    /// We may wait to resolve until we have committed to a type
+    /// in the case that we will *eventually* have enough information
+    /// to make that determination
     pub async fn wait_solve_field(
         &mut self,
         field: IStr,
@@ -212,7 +254,8 @@ impl Transponster {
             match v.resolve().unwrap().inner.clone() {
                 crate::cst::SyntacticTypeReferenceInner::Single { name } => {
                     if let [one] = name.scope.as_slice() && self.generics.contains(one) {
-                        PortableTypeVar::UnPortable(on.generics[one].clone().expect("uhhhhh"))
+                        //PortableTypeVar::UnPortable(on.generics[one].clone())
+                        on.generics[one].clone()
                     } else {
                         let resolved = NameResolver::new(name, self.for_ctx)
                             .using_context(&self.conversations)
@@ -264,6 +307,13 @@ impl Transponster {
 
             warn!("transponster resolved a field type");
         }
+
+        for mref in self.for_ctx.resolve().children.iter() {
+            let (&name, child) = mref.pair();
+            self.regular_fields.insert(name, child.resolve().canonical_typeref());
+        }
+
+        tracing::error!("add iter of methods/children of the type");
     }
 
     fn field_handle_mut(
@@ -273,8 +323,8 @@ impl Transponster {
         fields.entry(field.clone()).or_insert(FieldContext {
             for_field: field,
             received_broadcasts: HashSet::new(),
-            direct_assignments: Vec::new(),
-            assigns_into: Vec::new(),
+            usages: HashSet::new(),
+            resolutions: HashMap::new(),
         })
     }
 
@@ -284,8 +334,8 @@ impl Transponster {
             .or_insert(FieldContext {
                 for_field: field,
                 received_broadcasts: HashSet::new(),
-                direct_assignments: Vec::new(),
-                assigns_into: Vec::new(),
+                usages: HashSet::new(),
+                resolutions: HashMap::new(),
             })
     }
 
@@ -293,7 +343,7 @@ impl Transponster {
         todo!()
     }
 
-    pub async fn add_direct(&mut self, field: FieldID, value_type: ResolvedType) {
+    pub async fn resolve_usage(&mut self, field: FieldID, usage: UsageHandle, value_type: ResolvedType) {
         assert!(
             field.on == self.for_ctx,
             "if it isn't on self, then it isn't a direct"
@@ -301,10 +351,14 @@ impl Transponster {
 
         let field_context = Self::field_handle_mut(&mut self.dynamic_field_contexts, field);
 
-        field_context.direct_assignments.push(value_type);
+        assert!(field_context.usages.contains(&usage), "we don't have a matching usage for this");
+
+        let prior = field_context.resolutions.insert(usage, value_type);
+
+        assert!(prior.is_none(), "they already resolved this usage, why are they doing it again");
     }
 
-    pub fn receive_broadcast(&mut self, ac: Arc<AnnounceCommit>, for_field: FieldID) {
+    /*pub fn receive_broadcast(&mut self, ac: Arc<AnnounceCommit>, for_field: FieldID) {
         let sd = self.as_dest();
         let fc = Self::field_handle_mut(&mut self.dynamic_field_contexts, for_field);
 
@@ -316,7 +370,7 @@ impl Transponster {
                 Self::send_announce_to(sd, &mut self.earpiece, ac.clone(), f.clone());
             }
         }
-    }
+    }*/
 
     pub fn send_announce_to(
         from: Destination,
@@ -337,13 +391,15 @@ impl Transponster {
     }
 
     pub async fn emit_broadcasts(&mut self) {
+        let self_as_dest = self.as_dest();
+
         for (fid, fc) in self.dynamic_field_contexts.iter_mut() {
-            let directs = fc.direct_assignments.iter();
+            let directs = fc.resolutions.iter();
 
-            let mut counts = HashMap::new();
+            let mut counts: HashMap<ResolvedType, fixed::types::I16F16> = HashMap::new();
 
-            for direct in directs {
-                *counts.entry(direct.clone()).or_insert(0.0f32) += 1.0;
+            for (usage, resolution) in directs {
+                *counts.entry(resolution.clone()).or_insert(0.0.to_fixed()) += (1.0).to_fixed::<fixed::types::I16F16>();
             }
 
             let mut weights = Vec::new();
@@ -352,11 +408,41 @@ impl Transponster {
 
             for (ty, count) in counts.into_iter() {
                 // this can't be a div by zero since len must have been > 0 to get into this loop
-                weights.push((count / len, ty));
+                weights.push((count / len.to_fixed::<fixed::types::I16F16>(), ty));
+            }
+
+            if weights.len() > 1 {
+                todo!("emit a type error, we have conflicting assignments");
             }
 
             if !weights.is_empty() {
                 // we get to choose one and do a broadcast
+                //weights.sort_unstable_by_key(|(a, b)| *a);
+                let (weight, ty) = weights.iter().max_by_key(|(a, b)| *a).expect("wasn't empty, but no max?").clone();
+
+                tracing::info!("node {:?} commits to type {ty:?}", self.for_ctx);
+
+                let announce = Arc::new(AnnounceCommit {
+                    from_source: *fid,
+                    commits_to: ty,
+                    weights,
+                });
+
+                for (dest, target_field) in self.notify_when_resolved.remove(fid).unwrap_or(Vec::new()) {
+                    let m = Memo::AnnounceCommit { original: announce.clone(), for_field: target_field };
+
+                    let m = Message {
+                        to: dest,
+                        from: self_as_dest,
+                        send_reply_to: Destination::nil(),
+                        conversation: uuid::Uuid::new_v4(),
+                        content: Content::Transponster(m),
+                    };
+
+                    self.earpiece.send(m);
+                }
+
+                // now the last one 
             }
         }
     }
@@ -401,7 +487,7 @@ impl Transponster {
     /// then a set of the typevars that it could be are returned, each
     /// paired with how likely that var is to be the case
     pub async fn compute_certainty(&mut self, field: FieldID) -> Option<Vec<(TypeVar, f64)>> {
-        todo!()
+        todo!("probably not using this approach in particular");
     }
 
     pub async fn thread(self, executor: &'static Executor) {

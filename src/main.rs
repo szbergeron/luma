@@ -29,7 +29,8 @@
     exclusive_range_pattern,
     generic_const_exprs,
     const_trait_impl,
-    box_patterns
+    box_patterns,
+    default_free_fn,
 )]
 #![allow(irrefutable_let_patterns)]
 #![allow(dead_code)]

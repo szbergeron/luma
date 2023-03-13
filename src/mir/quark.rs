@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::{HashMap, HashSet}, sync::Arc, rc::Rc};
 
 //use itertools::Itertools;
 
@@ -8,7 +8,7 @@ use uuid::Uuid;
 use crate::{
     ast::{
         self,
-        executor::{self, Executor},
+        executor::{self, Executor, UnsafeAsyncCompletable},
         tree::CtxID,
         types::AbstractTypeReference,
     },
@@ -346,6 +346,10 @@ pub struct TypeVarID {
 
 pub struct TypeContext {
     types: AtomicVec<TypeVar>,
+
+    when_resolve: HashMap<TypeID, Rc<UnsafeAsyncCompletable<()>>>,
+
+    dynamic_fields: HashSet<TypeID>,
 }
 
 impl TypeContext {
@@ -358,8 +362,12 @@ impl TypeContext {
     pub fn fresh() -> Self {
         Self {
             types: AtomicVec::new(),
+            when_resolve: HashMap::new(),
+            dynamic_fields: HashSet::new(),
         }
     }
+
+    //pub async fn hm_app(
 
     pub fn unify(&mut self, a: TypeID, b: TypeID) -> Result<TypeID, TypeError> {
         let TypeID(root_1) = self.root(a);
