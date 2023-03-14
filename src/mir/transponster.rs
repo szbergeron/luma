@@ -73,6 +73,26 @@ pub struct Transponster {
     regular_fields: HashMap<IStr, SyntacticTypeReferenceRef>,
 
     conversations: ConversationContext,
+
+    /// When we get a new instance of something in Quark, we put
+    /// the instance in here. This allows us to nicely do unification for generics
+    /// for any type, since the type itself handles doing that unification
+    /// and Quark only has to handle detecting value flow and doing function
+    /// type unification
+    instances: HashMap<InstanceID, Instance>,
+}
+
+pub struct InstanceID(uuid::Uuid);
+
+pub struct Instance {
+    id: InstanceID,
+
+    regular_fields: Rc<HashMap<IStr, SyntacticTypeReferenceRef>>,
+
+    generics: HashMap<IStr, TypeID>,
+}
+
+impl Instance {
 }
 
 #[derive(Eq, PartialEq, Hash, Clone, Copy, Debug)]
@@ -117,6 +137,10 @@ struct FieldContext {
 }
 
 impl FieldContext {
+    pub fn new_for_field(for_field: FieldID) -> Self {
+        Self { for_field, received_broadcasts: HashSet::new(), usages: HashSet::new(), resolutions: HashMap::new() }
+    }
+
     /// After any given pass, this takes what we know
     /// about the usage of this field and tries to
     /// put a number on how sure we are that
@@ -343,6 +367,20 @@ impl Transponster {
         todo!()
     }
 
+    pub async fn use_field(&mut self, field: FieldID) -> UsageHandle {
+        assert!(field.on == self.for_ctx, "not our field");
+
+        if let Some(v) = self.regular_fields.get(&field.name) {
+            // we had a regular field for it, maybe tie in generics here?
+            todo!()
+        } else {
+            // it must be a generic field then
+            let usage_id = UsageHandle(uuid::Uuid::new_v4());
+
+            usage_id
+        }
+    }
+
     pub async fn resolve_usage(&mut self, field: FieldID, usage: UsageHandle, value_type: ResolvedType) {
         assert!(
             field.on == self.for_ctx,
@@ -447,7 +485,7 @@ impl Transponster {
         }
     }
 
-    pub async fn add_usage(&mut self, field: FieldID, value_type: TypeVar) {
+    /*pub async fn add_usage(&mut self, field: FieldID, value_type: TypeVar) {
         assert!(
             field.on == self.for_ctx,
             "can only add a usage where the field is on self, otherwise it's nonsense"
@@ -455,9 +493,12 @@ impl Transponster {
 
         match value_type.current {
             TypeType::Resolved(box rt) => {
-                self.add_direct(field, rt).await;
+                //self.add_direct(field, rt).await;
+                let fc = self.dynamic_field_contexts.entry(field).or_insert(FieldContext::new_for_field(field));
+
+                fc.resolutions
             }
-            TypeType::Symbolic(sy) => {
+            TypeType::Symbolic(box sy) => {
                 // we need to add an indirect here and set a waiter on it
             }
             TypeType::Refer(_) => {
@@ -467,7 +508,7 @@ impl Transponster {
                 panic!("what")
             }
         }
-    }
+    }*/
 
     /// Takes a field on self and says
     pub async fn add_indirect(
