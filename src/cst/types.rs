@@ -1,9 +1,9 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::{sync::atomic::{AtomicUsize, Ordering}, collections::HashMap};
 
 use dashmap::DashMap;
 use smallvec::{SmallVec, smallvec};
 
-use crate::{helper::interner::{IStr, SpurHelper, Internable}, ast::types::AbstractTypeReference};
+use crate::{helper::interner::{IStr, SpurHelper, Internable}, ast::types::AbstractTypeReference, mir::quark::TypeID};
 
 use super::{NodeInfo, CstNode, IntoCstNode, FunctionDefinition};
 
@@ -211,6 +211,8 @@ impl SyntacticTypeReferenceRef {
 
         syntr.intern()
     }
+
+    //pub fn resolve_within_context(self, context: &HashMap<IStr, TypeID>) -> 
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -251,7 +253,8 @@ pub enum SyntacticTypeReferenceInner {
 
     Single { name: ScopedName },
 
-    Generic { label: IStr },
+    //Generic { label: IStr }, // just detect this later based on what other info we have at the
+    //time (this isn't always knowable up-front)
 
     Parameterized { name: ScopedName, generics: Vec<SyntacticTypeReference> },
 

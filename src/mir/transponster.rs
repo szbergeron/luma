@@ -21,7 +21,7 @@ use crate::{
 
 use super::{
     expressions::AssignmentDirection,
-    quark::{ResolvedType, TypeID, TypeType, TypeVar},
+    quark::{Quark, ResolvedType, TypeContext, TypeError, TypeID, TypeType, TypeVar},
 };
 
 /// Yes, it's a reference, and no, it's not a good one
@@ -84,15 +84,184 @@ pub struct Transponster {
 
 pub struct InstanceID(uuid::Uuid);
 
+/// This is used later once we start doing things like typeclasses for dynamic fields,
+/// so we can allow putting a subtype in with a write and reading a supertype
+pub enum UsageDirection {
+    Load(),
+    Store(),
+}
+
 pub struct Instance {
     id: InstanceID,
 
-    regular_fields: Rc<HashMap<IStr, SyntacticTypeReferenceRef>>,
+    /// The Ctx
+    in_ctx: CtxID,
+
+    of: InstanceOf,
 
     generics: HashMap<IStr, TypeID>,
 }
 
+pub enum InstanceOf {
+    Type(InstanceOfType),
+    Func(InstanceOfFn),
+}
+
+pub struct InstanceOfType {
+    regular_fields: Rc<HashMap<IStr, SyntacticTypeReferenceRef>>,
+}
+
+pub struct InstanceOfFn {
+    parameters: Vec<TypeID>,
+    returns: TypeID,
+}
+
+pub struct Unify {
+    from: TypeID,
+    into: TypeID,
+}
+
 impl Instance {
+    pub fn as_call(
+        of: CtxID,
+        params: Vec<TypeID>,
+        generics: Vec<TypeID>,
+        within: &mut Quark,
+    ) -> Result<(Self, Option<TypeID>, Vec<Unify>), TypeError> {
+        // if we are generic, then we need to check whether those generics propagate
+        // through to our result, or if our result can be instantiated
+        //
+        // if we aren't callable, then we should return None
+
+        //let params_from_
+
+        Err(TypeError { components: todo!(), complaint: format!("tried to call a type/value that was not callable") })
+    }
+
+    pub fn typeof_regular_field(
+        &self,
+        field: IStr,
+        in_context: &mut TypeContext,
+    ) -> Option<TypeVar> {
+        if let InstanceOf::Type(InstanceOfType { regular_fields }) = self.of {
+            match regular_fields.get(&field) {
+                None => None,
+                Some(stref) => Some(TypeVar {
+                    within: todo!(),
+                    referees: todo!(),
+                    current: todo!(),
+                }),
+            }
+        } else {
+            todo!("user tried to get a field on a function type")
+        }
+    }
+
+    pub fn typeof_dynamic_field(&self, field: IStr) -> Option<ResolvedType> {
+        todo!()
+    }
+
+    /// the direction here says, if Load then "the field is loaded from into something of TID
+    /// <with_tid>, and the inverse if direction is Store
+    pub fn use_field(&self, field: IStr, with_tid: TypeID, direction: UsageDirection) -> UsageHandle {
+        todo!()
+    }
+
+    /// allows us to add a direct
+    /// if the field was already resolved, this returns a TypeError describing the
+    /// mismatch
+    pub fn resolve_usage(
+        &self,
+        usage: UsageHandle,
+        direction: UsageDirection,
+    ) -> Result<(), TypeError> {
+        todo!()
+    }
+
+    pub fn construct_instance(
+        base: CtxID,
+        field_values: HashMap<IStr, TypeID>,
+        provided_generics: Vec<TypeID>,
+    ) -> Self {
+        todo!()
+    }
+
+    pub fn infer_instance(base: CtxID, provided_generics: Vec<TypeID>) -> Self {
+        let inst = base.resolve();
+
+        // use inst to get regular_fields from the transponster or something
+
+        Instance {
+            id: InstanceID(uuid::Uuid::new_v4()),
+            in_ctx: base,
+            of: todo!(), // need to figure this out from what we're based on
+            generics: todo!(
+                "need to map order of generics to the inner generics, if there are any"
+            ),
+        }
+    }
+
+    /// allows us to unify two things of known base and say they are the "same type"
+    ///
+    /// if this returns Ok(), then the vec of TypeIDs is unifications that this says may happen
+    pub fn unify_with(
+        self,
+        stores_into: Instance,
+        within: &mut Quark,
+    ) -> Result<(Instance, Vec<Unify>), TypeError> {
+        if self.in_ctx != stores_into.in_ctx {
+            tracing::error!(
+                "we don't allow typeclasses yet, so treat unequal ctx for assignment as type error"
+            );
+            return Err(TypeError {
+                components: todo!(),
+                complaint: todo!(),
+            });
+        }
+
+        let all_generic_keys: HashSet<IStr> = self
+            .generics
+            .keys()
+            .into_iter()
+            .copied()
+            .chain(stores_into.generics.keys().into_iter().copied())
+            .collect();
+
+        let mut all_generic_unifies = Vec::new();
+
+        let mut unified_generics = HashMap::new();
+
+        for key in all_generic_keys {
+            let a = self.generics.get(&key);
+            let b = stores_into.generics.get(&key);
+
+            let v = match (a, b) {
+                (None, None) => None,
+                (Some(&t), None) | (None, Some(&t)) => Some(t),
+                (Some(&a), Some(&b)) => {
+                    if a != b {
+                        let unify = Unify { from: a, into: b };
+                        all_generic_unifies.push(unify);
+                    }
+
+                    Some(a)
+                }
+            };
+
+            if let Some(v) = v {
+                unified_generics.insert(key, v);
+            }
+        }
+
+        let i = Instance {
+            id: InstanceID(uuid::Uuid::new_v4()),
+            in_ctx: self.in_ctx,
+            regular_fields: self.regular_fields.clone(),
+            generics: unified_generics,
+        };
+
+        Ok((i, all_generic_unifies))
+    }
 }
 
 #[derive(Eq, PartialEq, Hash, Clone, Copy, Debug)]
@@ -128,7 +297,6 @@ struct FieldContext {
     //forwarded_broadcasts: HashMap<FieldID, HashSet<FieldID>>,
     //// Map<Origin Field, Map<Local Field, (Received Count, Decided Type, Decision Weights)>>
     //received_broadcasts: HashMap<FieldID, HashMap<FieldID, (usize, ResolvedType, Vec<(f32, ResolvedType)>)>>,
-
     received_broadcasts: HashSet<Arc<AnnounceCommit>>,
 
     usages: HashSet<UsageHandle>,
@@ -138,7 +306,12 @@ struct FieldContext {
 
 impl FieldContext {
     pub fn new_for_field(for_field: FieldID) -> Self {
-        Self { for_field, received_broadcasts: HashSet::new(), usages: HashSet::new(), resolutions: HashMap::new() }
+        Self {
+            for_field,
+            received_broadcasts: HashSet::new(),
+            usages: HashSet::new(),
+            resolutions: HashMap::new(),
+        }
     }
 
     /// After any given pass, this takes what we know
@@ -158,7 +331,6 @@ impl FieldContext {
         // with a lower ratio
         let usage_count = self.usages.len() as f64;
         let resolution_count = self.resolutions.len() as f64;
-
 
         let ratio = if usage_count > 0.0 {
             resolution_count / usage_count
@@ -334,7 +506,8 @@ impl Transponster {
 
         for mref in self.for_ctx.resolve().children.iter() {
             let (&name, child) = mref.pair();
-            self.regular_fields.insert(name, child.resolve().canonical_typeref());
+            self.regular_fields
+                .insert(name, child.resolve().canonical_typeref());
         }
 
         tracing::error!("add iter of methods/children of the type");
@@ -381,7 +554,12 @@ impl Transponster {
         }
     }
 
-    pub async fn resolve_usage(&mut self, field: FieldID, usage: UsageHandle, value_type: ResolvedType) {
+    pub async fn resolve_usage(
+        &mut self,
+        field: FieldID,
+        usage: UsageHandle,
+        value_type: ResolvedType,
+    ) {
         assert!(
             field.on == self.for_ctx,
             "if it isn't on self, then it isn't a direct"
@@ -389,11 +567,17 @@ impl Transponster {
 
         let field_context = Self::field_handle_mut(&mut self.dynamic_field_contexts, field);
 
-        assert!(field_context.usages.contains(&usage), "we don't have a matching usage for this");
+        assert!(
+            field_context.usages.contains(&usage),
+            "we don't have a matching usage for this"
+        );
 
         let prior = field_context.resolutions.insert(usage, value_type);
 
-        assert!(prior.is_none(), "they already resolved this usage, why are they doing it again");
+        assert!(
+            prior.is_none(),
+            "they already resolved this usage, why are they doing it again"
+        );
     }
 
     /*pub fn receive_broadcast(&mut self, ac: Arc<AnnounceCommit>, for_field: FieldID) {
@@ -437,7 +621,8 @@ impl Transponster {
             let mut counts: HashMap<ResolvedType, fixed::types::I16F16> = HashMap::new();
 
             for (usage, resolution) in directs {
-                *counts.entry(resolution.clone()).or_insert(0.0.to_fixed()) += (1.0).to_fixed::<fixed::types::I16F16>();
+                *counts.entry(resolution.clone()).or_insert(0.0.to_fixed()) +=
+                    (1.0).to_fixed::<fixed::types::I16F16>();
             }
 
             let mut weights = Vec::new();
@@ -456,7 +641,11 @@ impl Transponster {
             if !weights.is_empty() {
                 // we get to choose one and do a broadcast
                 //weights.sort_unstable_by_key(|(a, b)| *a);
-                let (weight, ty) = weights.iter().max_by_key(|(a, b)| *a).expect("wasn't empty, but no max?").clone();
+                let (weight, ty) = weights
+                    .iter()
+                    .max_by_key(|(a, b)| *a)
+                    .expect("wasn't empty, but no max?")
+                    .clone();
 
                 tracing::info!("node {:?} commits to type {ty:?}", self.for_ctx);
 
@@ -466,8 +655,13 @@ impl Transponster {
                     weights,
                 });
 
-                for (dest, target_field) in self.notify_when_resolved.remove(fid).unwrap_or(Vec::new()) {
-                    let m = Memo::AnnounceCommit { original: announce.clone(), for_field: target_field };
+                for (dest, target_field) in
+                    self.notify_when_resolved.remove(fid).unwrap_or(Vec::new())
+                {
+                    let m = Memo::AnnounceCommit {
+                        original: announce.clone(),
+                        for_field: target_field,
+                    };
 
                     let m = Message {
                         to: dest,
@@ -480,7 +674,7 @@ impl Transponster {
                     self.earpiece.send(m);
                 }
 
-                // now the last one 
+                // now the last one
             }
         }
     }

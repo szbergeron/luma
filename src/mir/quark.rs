@@ -1,4 +1,8 @@
-use std::{collections::{HashMap, HashSet}, sync::Arc, rc::Rc};
+use std::{
+    collections::{HashMap, HashSet},
+    rc::Rc,
+    sync::Arc,
+};
 
 //use itertools::Itertools;
 
@@ -14,7 +18,7 @@ use crate::{
     },
     avec::{AtomicVec, AtomicVecIndex},
     compile::per_module::{Content, ControlMessage, Destination, Earpiece, Message, Service},
-    cst::GenericHandle,
+    cst::{GenericHandle, SyntacticTypeReferenceInner, SyntacticTypeReferenceRef},
     helper::{
         interner::{IStr, Internable},
         CompilationError,
@@ -25,7 +29,10 @@ use crate::{
     },
 };
 
-use super::{expressions::ExpressionID, transponster::FieldID};
+use super::{
+    expressions::ExpressionID,
+    transponster::{FieldID, Instance, InstanceID, UsageHandle},
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TypeID(AtomicVecIndex);
@@ -58,7 +65,17 @@ pub struct Quark {
 
     type_of: HashMap<ExpressionID, TypeID>,
 
-    wait_resolve: HashMap<TypeID, Vec<executor::UnsafeAsyncCompletable<Result<(), ()>>>>,
+    //wait_resolve: HashMap<TypeID, Vec<executor::UnsafeAsyncCompletable<Result<(), ()>>>>,
+
+    /// If we resolve a TypeID from here, we should tell any usages/instances
+    /// that there is a new direct
+    dynfield_notifies: HashMap<TypeID, Vec<(InstanceID, UsageHandle)>>,
+
+    /// If we've resolved a type far enough to know that it is an Instance,
+    /// it is recorded here so we can do field analysis on it
+    instances: HashMap<TypeID, Instance>,
+
+    once_know: HashMap<TypeID, Vec<Action>>,
 
     earpiece: Earpiece,
 
@@ -67,12 +84,62 @@ pub struct Quark {
     node_id: CtxID,
 }
 
+pub enum Action {
+    LoadFieldInto(IStr, TypeID),
+    StoreFieldFrom(IStr, TypeID),
+
+    /// Provide Vec<Parameters> as .0, the return value is stored into .1
+    CallWith(Vec<TypeID>, TypeID),
+}
+
 impl Quark {
     fn as_dest(&self) -> Destination {
         Destination {
             node: self.node_id,
             service: Service::Quark(),
         }
+    }
+
+    /// turn a typeref into a bunch of `stuff`
+    ///
+    /// this is how we take typerefs within fields on instances
+    /// and try to make them symbolic within some Quark context
+    ///
+    /// this turns it into either an instance or a TypeID, depending on how well things go
+    fn resolve_typeref(
+        &mut self,
+        tr: SyntacticTypeReferenceRef,
+        with_generics: HashMap<IStr, TypeID>,
+        from_base: CtxID,
+    ) -> TypeID {
+        match tr.resolve().unwrap().inner {
+            SyntacticTypeReferenceInner::Single { name } => {
+                if let [one] = name.scope.as_slice() && let Some(v) = with_generics.get(one) {
+                    // we are ourselves just a generic, so pass through the type ID ffrom the
+                    // generic
+                    *v
+                } else {
+                    // we are maybe an instance of a type? or some node? so figure out which one it
+                    // is
+                    todo!("new instance")
+                }
+            }
+            SyntacticTypeReferenceInner::Unconstrained() => todo!(),
+            SyntacticTypeReferenceInner::Tuple(t) => {
+                todo!("need to actually make tuple types")
+            }
+            SyntacticTypeReferenceInner::Parameterized { name, generics } => todo!(),
+            SyntacticTypeReferenceInner::Reference { to, mutable } => todo!(),
+            SyntacticTypeReferenceInner::Pointer { to, mutable } => todo!(),
+        }
+    }
+
+    pub fn instance_for(&mut self, tid: TypeID, instance: Instance) {
+        todo!()
+    }
+
+    pub fn new_tid(&mut self) -> TypeID {
+        todo!()
     }
 
     pub fn for_node(node_id: CtxID, earpiece: Earpiece, executor: &'static Executor) -> Self {
@@ -91,6 +158,8 @@ impl Quark {
             wait_resolve: HashMap::new(),
             executor,
             typer: TypeContext::fresh(),
+            dynfield_notifies: todo!(),
+            instances: todo!(),
         }
     }
 
@@ -105,7 +174,11 @@ impl Quark {
     pub fn do_the_thing_rec(&mut self, on_id: ExpressionID) -> TypeID {
         tracing::info!("do_the_thing_rec on id: {on_id}");
 
-        let e_ty_id: TypeID = self.typer.register_type(TypeVar { within: self.node_id, referees: Vec::new(), current: TypeType::Unknown() });
+        let e_ty_id: TypeID = self.typer.register_type(TypeVar {
+            within: self.node_id,
+            referees: Vec::new(),
+            current: TypeType::Unknown(),
+        });
 
         match self.acting_on.get(on_id).clone() {
             AnyExpression::Block(b) => {
@@ -189,7 +262,8 @@ impl Quark {
 
         let mut binding_scope = Bindings::fresh();
 
-        let ae = AnyExpression::from_ast(&mut self.acting_on, &f.implementation, &mut binding_scope);
+        let ae =
+            AnyExpression::from_ast(&mut self.acting_on, &f.implementation, &mut binding_scope);
 
         //todo!("descend completed?");
         ae
@@ -272,7 +346,13 @@ impl Quark {
             send_reply_to: Destination::nil(),
             conversation: Uuid::new_v4(),
             content: Content::Transponster(Memo::NotifySelfCallable {
-                generics: self.node_id.resolve().generics.clone().into_iter().collect(),
+                generics: self
+                    .node_id
+                    .resolve()
+                    .generics
+                    .clone()
+                    .into_iter()
+                    .collect(),
                 params: f.parameters.clone(),
                 returns: f.return_type.clone(),
             }),
