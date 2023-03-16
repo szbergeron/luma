@@ -7,9 +7,10 @@ use uuid::Uuid;
 use std::{
     cell::RefCell,
     collections::HashMap,
+    pin::Pin,
     rc::Rc,
     sync::{atomic::AtomicUsize, Arc},
-    time::Duration, pin::Pin,
+    time::Duration,
 };
 
 use crate::{

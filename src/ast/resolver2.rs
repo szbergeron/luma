@@ -138,7 +138,6 @@ pub struct ResInner {
         *mut LocalOneshotBroadcastChannel<Result<CompositeResolution, ImportError>>,
     >,*/
     //conversations: HashMap<Uuid, Rc<UnsafeAsyncCompletable<Message>>>,
-
     /// If an alias exists within this map at the time of publishing,
     /// then the entry should be removed from this map and the symbol
     /// should instead be published locally as the name matching the
@@ -1026,14 +1025,25 @@ pub struct NameResolver {
 
 impl NameResolver {
     pub fn new(name: ScopedName, based_in: CtxID, reply_to: CtxID, service: Service) -> Self {
-        Self { name, based_in, service, reply_to }
+        Self {
+            name,
+            based_in,
+            service,
+            reply_to,
+        }
     }
 
     pub async fn using_context(self, cc: &ConversationContext) -> Result<CtxID, ImportError> {
         let msg = Message {
             to: Destination::resolver(self.based_in),
-            from: Destination { node: self.reply_to, service: self.service },
-            send_reply_to: Destination { node: self.reply_to, service: self.service },
+            from: Destination {
+                node: self.reply_to,
+                service: self.service,
+            },
+            send_reply_to: Destination {
+                node: self.reply_to,
+                service: self.service,
+            },
             conversation: Uuid::new_v4(),
             content: Content::NameResolution(NameResolutionMessage::WhatIs {
                 composite_symbol: self.name,

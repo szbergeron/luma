@@ -555,7 +555,13 @@ impl Transponster {
                         //PortableTypeVar::UnPortable(on.generics[one].clone())
                         on.generics[one].clone()
                     } else {
-                        let nr = NameResolver { name, based_in: self.for_ctx.resolve().parent.unwrap(), reply_to: self.for_ctx, service: Service::Oracle() };
+                        let nr = NameResolver {
+                            name,
+                            based_in: self.for_ctx.resolve().parent.unwrap(),
+                            reply_to: self.for_ctx,
+                            service: Service::Oracle()
+                        };
+
                         let resolved = nr
                             .using_context(&self.conversations)
                             .await;

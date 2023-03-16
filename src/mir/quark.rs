@@ -447,7 +447,11 @@ impl Quark {
 
         for (param_name, param_type) in f.parameters.clone() {
             let ptype = self
-                .resolve_typeref(param_type, self.generics.clone(), self.node_id.resolve().parent.unwrap())
+                .resolve_typeref(
+                    param_type,
+                    self.generics.clone(),
+                    self.node_id.resolve().parent.unwrap(),
+                )
                 .await;
         }
 
