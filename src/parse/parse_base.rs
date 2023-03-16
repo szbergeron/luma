@@ -243,7 +243,7 @@ impl<'lexer> Parser<'lexer> {
 
                     //todo!();
                     let fd = self
-                        .parse_function_declaration(&t)
+                        .parse_function_declaration(&t, &vec![])
                         .join_hard(&mut t)
                         .catch(&mut t)?;
                     cst::TopLevel::Function(fd)
@@ -290,7 +290,7 @@ impl<'lexer> Parser<'lexer> {
 
                     println!("Parsing dbg expr, got first tok");
                     let e = self
-                        .parse_expr(&t)
+                        .parse_expr(&t, &Vec::new())
                         .join_hard(&mut t)
                         .catch(&mut t)
                         .handle_here()?;
@@ -452,6 +452,7 @@ impl<'lexer> Parser<'lexer> {
     pub fn parse_function_param_list(
         &mut self,
         t: &TokenProvider,
+        with_generics: &Vec<IStr>,
     ) -> ParseResult<Vec<(IStr, cst::SyntacticTypeReferenceRef)>> {
         //let mut t = t.child();
         let mut t = parse_header!(t);
@@ -461,7 +462,7 @@ impl<'lexer> Parser<'lexer> {
         while let Some(i) = t.try_take(Token::Identifier) {
             t.take(Token::Colon).join()?;
             let tr = self
-                .parse_type_specifier(&t)
+                .parse_type_specifier(&t, with_generics)
                 .join_hard(&mut t)
                 .catch(&mut t)?
                 .intern();
@@ -483,6 +484,7 @@ impl<'lexer> Parser<'lexer> {
     pub fn parse_function_declaration(
         &mut self,
         t: &TokenProvider,
+        parent_generics: &Vec<IStr>,
     ) -> ParseResult<cst::FunctionDefinition> {
         //let mut t = t.child();
         let mut t = parse_header!(t);
@@ -490,21 +492,37 @@ impl<'lexer> Parser<'lexer> {
         let start = t.take(Token::Function).join()?.start;
         let function_name = t.take(Token::Identifier).join()?;
 
+        let inner_generics = self
+            .parse_generic_param_list(&t)
+            .join_hard(&mut t)
+            .catch(&mut t)?;
+
+        let mut generics = parent_generics.clone();
+
+        for (inner, _) in inner_generics.iter() {
+            if parent_generics.contains(&inner) {
+                todo!("user tried to shadow generics")
+            }
+
+            generics.push(*inner);
+        }
+
+
         t.take(Token::LParen).join()?;
         let params = self
-            .parse_function_param_list(&t)
+            .parse_function_param_list(&t, &generics)
             .join_hard(&mut t)
             .catch(&mut t)?;
         t.take(Token::RParen).join()?;
 
         t.take(Token::ThinArrow).join()?;
         let return_type = self
-            .parse_type_specifier(&t)
+            .parse_type_specifier(&t, &generics)
             .join_hard(&mut t)
             .catch(&mut t)?
             .intern();
 
-        let body = self.parse_expr(&t).join_hard(&mut t).catch(&mut t)?;
+        let body = self.parse_expr(&t, &generics).join_hard(&mut t).catch(&mut t)?;
 
         let end = body.as_node().start().expect("Some(_) body has None end");
 
@@ -518,7 +536,7 @@ impl<'lexer> Parser<'lexer> {
             return_type,
             name: function_name.slice,
             public: false,
-            generics: vec![],
+            generics: inner_generics,
         })
     }
 

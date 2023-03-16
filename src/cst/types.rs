@@ -253,8 +253,7 @@ pub enum SyntacticTypeReferenceInner {
 
     Single { name: ScopedName },
 
-    //Generic { label: IStr }, // just detect this later based on what other info we have at the
-    //time (this isn't always knowable up-front)
+    Generic { label: IStr },
 
     Parameterized { name: ScopedName, generics: Vec<SyntacticTypeReference> },
 

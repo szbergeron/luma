@@ -7,7 +7,7 @@ use crate::{
     avec::AtomicVec,
     cst::{
         self, CastExpression, ExpressionWrapper, IfThenElseExpression, LetComponentIdentifier,
-        LiteralExpression, MemberAccessExpression, SyntacticTypeReferenceRef,
+        LiteralExpression, MemberAccessExpression, SyntacticTypeReferenceRef, ScopedName,
     },
     helper::interner::{IStr, Internable},
 };
@@ -597,9 +597,9 @@ pub struct Binding {
 
 #[derive(Clone, Debug)]
 pub struct Literal {
-    has_type: SyntacticTypeReferenceRef,
+    pub has_type: SyntacticTypeReferenceRef,
 
-    value: LiteralExpression,
+    pub value: LiteralExpression,
 }
 
 impl Literal {
@@ -634,8 +634,8 @@ impl Literal {
 
 #[derive(Clone, Debug)]
 pub struct StaticAccess {
-    field: IStr,
-    on: ExpressionID,
+    pub field: IStr,
+    pub on: ExpressionID,
 }
 
 #[derive(Clone, Debug)]
@@ -646,7 +646,7 @@ pub struct DynamicAccess {
 
 #[derive(Clone, Debug)]
 pub struct Composite {
-    pub base_type: SyntacticTypeReferenceRef,
+    pub base_type: ScopedName,
 
     pub generics: Vec<SyntacticTypeReferenceRef>,
 

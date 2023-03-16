@@ -195,7 +195,7 @@ impl Node {
     pub fn canonical_typeref(&self) -> SyntacticTypeReferenceRef {
         fn build_back_up(cid: CtxID) -> ScopedName {
             let n = cid.resolve();
-            let base = match n.parent {
+            let mut base = match n.parent {
                 Some(p) => {
                     let s = build_back_up(p);
                     s
@@ -320,9 +320,10 @@ impl Node {
                 TopLevel::Function(f) => {
                     let name = f.name;
                     let public = f.public;
-                    let fd = ast::types::FunctionDefinition::from_cst(f);
+                    let mut fd = ast::types::FunctionDefinition::from_cst(f);
+                    let imp = fd.implementation.take();
 
-                    let inner = NodeUnion::Function(Mutex::new(fd));
+                    let inner = NodeUnion::Function(fd, Mutex::new(imp));
 
                     let child = Self::new(
                         name,
@@ -505,7 +506,7 @@ impl std::fmt::Display for Node {
 #[derive(Debug)]
 pub enum NodeUnion {
     Type(Mutex<ast::types::StructuralDataDefinition>),
-    Function(Mutex<ast::types::FunctionDefinition>),
+    Function(ast::types::FunctionDefinition, Mutex<Option<cst::expressions::ExpressionWrapper>>),
     Global(!),
     Empty(),
     //Implementation(Implementation),

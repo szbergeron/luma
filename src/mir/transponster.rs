@@ -20,8 +20,8 @@ use crate::{
 };
 
 use super::{
-    expressions::AssignmentDirection,
-    quark::{Quark, ResolvedType, TypeContext, TypeError, TypeID, TypeType, TypeVar},
+    expressions::{AssignmentDirection, ExpressionID},
+    quark::{Quark, ResolvedType, TypeError, TypeID},
 };
 
 /// Yes, it's a reference, and no, it's not a good one
@@ -74,12 +74,12 @@ pub struct Transponster {
 
     conversations: ConversationContext,
 
-    /// When we get a new instance of something in Quark, we put
-    /// the instance in here. This allows us to nicely do unification for generics
-    /// for any type, since the type itself handles doing that unification
-    /// and Quark only has to handle detecting value flow and doing function
-    /// type unification
-    instances: HashMap<InstanceID, Instance>,
+    //// When we get a new instance of something in Quark, we put
+    //// the instance in here. This allows us to nicely do unification for generics
+    //// for any type, since the type itself handles doing that unification
+    //// and Quark only has to handle detecting value flow and doing function
+    //// type unification
+    //instances: HashMap<InstanceID, Instance>,
 }
 
 pub struct InstanceID(uuid::Uuid);
@@ -91,11 +91,19 @@ pub enum UsageDirection {
     Store(),
 }
 
+/// This is basically our new TypeVar
 pub struct Instance {
     id: InstanceID,
 
     /// The Ctx
-    in_ctx: CtxID,
+    instantiated_in: CtxID,
+
+    instantiated_from: Option<CtxID>,
+
+    /// If this was a field/method, this stores the
+    /// expression that it was accessed on,
+    /// for use later when determining how the function call works
+    accessed_from: Option<ExpressionID>,
 
     of: InstanceOf,
 
@@ -104,11 +112,23 @@ pub struct Instance {
 
 pub enum InstanceOf {
     Type(InstanceOfType),
+
     Func(InstanceOfFn),
+
+    /// This is a type that can be passed around but that we can do
+    /// nothing but unify with itself
+    ///
+    /// This allows opaque values to be passed around
+    Generic(IStr),
+
+    /// Means this is only named, but never called nor constructed yet
+    /// so what it "is" will need to be figured out
+    Unknown(),
 }
 
 pub struct InstanceOfType {
-    regular_fields: Rc<HashMap<IStr, SyntacticTypeReferenceRef>>,
+    //regular_fields: Rc<HashMap<IStr, SyntacticTypeReferenceRef>>,
+    regular_fields: HashMap<IStr, TypeID>,
 }
 
 pub struct InstanceOfFn {
@@ -135,36 +155,63 @@ impl Instance {
 
         //let params_from_
 
-        Err(TypeError { components: todo!(), complaint: format!("tried to call a type/value that was not callable") })
+        Err(TypeError {
+            components: todo!(),
+            complaint: format!("tried to call a type/value that was not callable"),
+        })
     }
 
-    pub fn typeof_regular_field(
-        &self,
-        field: IStr,
-        in_context: &mut TypeContext,
-    ) -> Option<TypeVar> {
-        if let InstanceOf::Type(InstanceOfType { regular_fields }) = self.of {
+    pub async fn typeof_regular_field(&self, field: IStr, within: &mut Quark) -> Option<TypeID> {
+        if let InstanceOf::Type(InstanceOfType { regular_fields }) = &self.of {
             match regular_fields.get(&field) {
                 None => None,
-                Some(stref) => Some(TypeVar {
-                    within: todo!(),
-                    referees: todo!(),
-                    current: todo!(),
-                }),
+                Some(&tid) => Some(tid),
             }
         } else {
             todo!("user tried to get a field on a function type")
         }
     }
 
+    /// If we already have a type for the DynField, then return it here
     pub fn typeof_dynamic_field(&self, field: IStr) -> Option<ResolvedType> {
         todo!()
     }
 
     /// the direction here says, if Load then "the field is loaded from into something of TID
     /// <with_tid>, and the inverse if direction is Store
-    pub fn use_field(&self, field: IStr, with_tid: TypeID, direction: UsageDirection) -> UsageHandle {
-        todo!()
+    pub fn use_field(
+        &self,
+        field: IStr,
+        with_tid: TypeID,
+        direction: UsageDirection,
+    ) -> (UsageHandle, Vec<Unify>) {
+        let mut unify = Vec::new();
+
+        match &self.of {
+            InstanceOf::Type(t) => {
+                if let Some(&field_type) = t.regular_fields.get(&field) {
+                    let u = match direction {
+                        UsageDirection::Load() => Unify {
+                            from: field_type,
+                            into: with_tid,
+                        },
+                        UsageDirection::Store() => Unify {
+                            from: with_tid,
+                            into: field_type,
+                        },
+                    };
+
+                    unify.push(u);
+
+                    (UsageHandle(uuid::Uuid::new_v4()), unify)
+                } else {
+                    // this is a dynamic field
+                    todo!("dynamic fields")
+                }
+            }
+            InstanceOf::Func(f) => todo!("unify function calls"),
+            InstanceOf::Unknown() => todo!(),
+        }
     }
 
     /// allows us to add a direct
@@ -174,6 +221,7 @@ impl Instance {
         &self,
         usage: UsageHandle,
         direction: UsageDirection,
+        to_type: ResolvedType,
     ) -> Result<(), TypeError> {
         todo!()
     }
@@ -186,19 +234,29 @@ impl Instance {
         todo!()
     }
 
-    pub fn infer_instance(base: CtxID, provided_generics: Vec<TypeID>) -> Self {
-        let inst = base.resolve();
-
-        // use inst to get regular_fields from the transponster or something
+    pub fn infer_instance(base: Option<CtxID>, within: &Quark) -> Self {
 
         Instance {
             id: InstanceID(uuid::Uuid::new_v4()),
-            in_ctx: base,
+            instantiated_from: base,
+            instantiated_in: within.node_id,
             of: todo!(), // need to figure this out from what we're based on
-            generics: todo!(
-                "need to map order of generics to the inner generics, if there are any"
-            ),
+            generics: HashMap::new(),
+            accessed_from: None,
         }
+    }
+
+    pub fn resolve_base(&mut self, base: CtxID, within: &mut Quark) {
+        let inst = base.resolve();
+
+        // use inst to get regular_fields from the transponster or something
+        let gens_for_type = inst
+            .generics
+            .iter()
+            .map(|(g, r)| (*g, within.new_tid()))
+            .collect();
+
+        self.generics = gens_for_type;
     }
 
     /// allows us to unify two things of known base and say they are the "same type"
@@ -209,7 +267,9 @@ impl Instance {
         stores_into: Instance,
         within: &mut Quark,
     ) -> Result<(Instance, Vec<Unify>), TypeError> {
-        if self.in_ctx != stores_into.in_ctx {
+        assert!(self.instantiated_in == stores_into.instantiated_in);
+
+        if self.instantiated_from != stores_into.instantiated_from {
             tracing::error!(
                 "we don't allow typeclasses yet, so treat unequal ctx for assignment as type error"
             );
@@ -226,6 +286,49 @@ impl Instance {
             .copied()
             .chain(stores_into.generics.keys().into_iter().copied())
             .collect();
+
+        let new_of = match (self.of, stores_into.of) {
+            (InstanceOf::Type(ta), InstanceOf::Type(tb)) => {
+                // unify two type instances
+                todo!("unify two structural types")
+            }
+
+            (InstanceOf::Func(fa), InstanceOf::Func(fb)) => {
+                // unify two func calls
+                todo!("unify two function calls")
+            }
+
+            (InstanceOf::Unknown(), other) | (other, InstanceOf::Unknown()) => other,
+
+            (other_a, other_b) => {
+                panic!("we tried to unify a function call with a structural type? our type system doesn't allow this");
+            }
+        };
+
+        let accessed_from = match (self.accessed_from, stores_into.accessed_from) {
+            (None, None) => {
+                // the most obvious case, 
+                None
+            },
+            (Some(v), None) => {
+                // this is fine, we're assigning into a field (probably)
+                tracing::info!("what");
+                None
+            },
+            (None, Some(v)) => {
+                tracing::info!("no");
+                None
+            },
+            (Some(a), Some(b)) => {
+                // this means it's an instance of `a.b = c.d`,
+                // which is fine, it just means we don't have a sensical
+                // "accessed from" anymore unless we formally
+                // define the semantics of what comes out of
+                // an assignment, value-wise (it's an rval, right?
+                // it can't be a method with a sensical callee, right?)
+                None
+            }
+        };
 
         let mut all_generic_unifies = Vec::new();
 
@@ -255,9 +358,12 @@ impl Instance {
 
         let i = Instance {
             id: InstanceID(uuid::Uuid::new_v4()),
-            in_ctx: self.in_ctx,
-            regular_fields: self.regular_fields.clone(),
+            instantiated_from: self.instantiated_from,
+            instantiated_in: self.instantiated_in,
+            //regular_fields: self.regular_fields.clone(),
             generics: unified_generics,
+            of: new_of,
+            accessed_from,
         };
 
         Ok((i, all_generic_unifies))
@@ -381,12 +487,6 @@ pub enum Memo {
     },
 }
 
-pub struct CallableInterface {
-    return_type: TypeVar,
-    parameter_types: Vec<TypeVar>,
-    generics: Vec<IStr>,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AnnounceCommit {
     from_source: FieldID,
@@ -425,7 +525,8 @@ impl Transponster {
 
             regular_fields,
             generics: Vec::new(),
-            conversations: unsafe { ConversationContext::new(cc_send) }, // TODO: generics
+            conversations: unsafe { ConversationContext::new(cc_send) },
+            //instances: todo!(), // TODO: generics
         }
     }
 
@@ -536,9 +637,9 @@ impl Transponster {
             })
     }
 
-    pub async fn wait_for(&mut self, field: FieldID) -> Result<TypeVar, !> {
+    /*pub async fn wait_for(&mut self, field: FieldID) -> Result<TypeVar, !> {
         todo!()
-    }
+    }*/
 
     pub async fn use_field(&mut self, field: FieldID) -> UsageHandle {
         assert!(field.on == self.for_ctx, "not our field");
@@ -721,7 +822,7 @@ impl Transponster {
     /// If a certainty for the field *can* be computed,
     /// then a set of the typevars that it could be are returned, each
     /// paired with how likely that var is to be the case
-    pub async fn compute_certainty(&mut self, field: FieldID) -> Option<Vec<(TypeVar, f64)>> {
+    pub async fn compute_certainty(&mut self, field: FieldID) -> Option<Vec<(!, f64)>> {
         todo!("probably not using this approach in particular");
     }
 

@@ -3,7 +3,7 @@ use std::sync::RwLock;
 //use dashmap::lock::RwLock;
 
 use crate::{
-    cst::{ScopedName, SyntacticTypeReferenceInner, NodeInfo, SyntacticTypeReferenceRef},
+    cst::{NodeInfo, ScopedName, SyntacticTypeReferenceInner, SyntacticTypeReferenceRef},
     helper::interner::IStr,
 };
 
@@ -13,7 +13,6 @@ use super::tree::CtxID;
 
 //use itertoo
 
-
 use itertools::Itertools;
 
 /// A TypeReference encloses an entire constraint,
@@ -22,15 +21,11 @@ use itertools::Itertools;
 #[derive(Debug)]
 pub struct AbstractTypeReference {
     //pub id: AbstractTypeReferenceRef,
-
     pub inner: RwLock<TypeBase>,
 }
 
 impl AbstractTypeReference {
-    pub fn from_cst(
-        cst: SyntacticTypeReferenceRef,
-        within_generic_context: &[IStr],
-    ) -> Self {
+    pub fn from_cst(cst: SyntacticTypeReferenceRef, within_generic_context: &[IStr]) -> Self {
         let cst = cst.resolve().unwrap();
         match &cst.inner {
             SyntacticTypeReferenceInner::Single { name } => Self {
@@ -44,12 +39,13 @@ impl AbstractTypeReference {
             _ => todo!("only handle simple non-generic types for now"),
         }
     }
-
 }
 
 impl Clone for AbstractTypeReference {
     fn clone(&self) -> Self {
-        Self { inner: RwLock::new(self.inner.read().unwrap().clone()) }
+        Self {
+            inner: RwLock::new(self.inner.read().unwrap().clone()),
+        }
     }
 }
 
@@ -84,7 +80,6 @@ pub struct UnResolvedType {
     /// and serves to allow going back and knowing which one to resolve after
     /// everything has been published/resolved
     //id: usize,
-
     pub from: NodeInfo,
 
     pub named: ScopedName,
@@ -117,8 +112,8 @@ pub struct FunctionDefinition {
 
     pub parameters: Vec<(IStr, SyntacticTypeReferenceRef)>,
     pub return_type: SyntacticTypeReferenceRef,
-
-    pub implementation: cst::expressions::ExpressionWrapper,
+    pub implementation: Option<cst::expressions::ExpressionWrapper>, // quark removes this to do
+                                                                    // stuff on, drops it "early"
 }
 
 impl FunctionDefinition {
@@ -151,7 +146,7 @@ impl FunctionDefinition {
         Self {
             info,
             name,
-            implementation: *body,
+            implementation: Some(*body),
             return_type,
             parameters,
         }
