@@ -33,7 +33,7 @@ pub struct MyWaker {
 
 impl Wake for MyWaker {
     fn wake(self: Arc<Self>) {
-        info!("wake for task {}", self.id);
+        info!("wake for task {} got called", self.id);
         unsafe { self.queue.get().as_mut().unwrap().push_back(self.id) }
     }
 
@@ -201,14 +201,19 @@ pub struct UnsafeAsyncCompletableFuture<T: Clone> {
     refers: std::rc::Rc<UnsafeAsyncCompletable<T>>,
 }
 
-impl<T: Clone> Future for UnsafeAsyncCompletableFuture<T> {
+impl<T: Clone + std::fmt::Debug> Future for UnsafeAsyncCompletableFuture<T> {
     type Output = T;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> std::task::Poll<Self::Output> {
+        tracing::debug!("got poll for unsafe completable");
         unsafe {
             match self.refers.value.get().as_ref().unwrap() {
-                Some(v) => std::task::Poll::Ready(v.clone()),
+                Some(v) => {
+                    tracing::debug!("returns val {v:?} from unsafe completable");
+                    std::task::Poll::Ready(v.clone())
+                }
                 None => {
+                    tracing::debug!("future didn't have anything in it, so we rest");
                     let waker = cx.waker().clone();
 
                     self.refers.waiters.get().as_mut().unwrap().push(waker);
@@ -225,13 +230,16 @@ pub struct UnsafeAsyncCompletable<T: Clone> {
     waiters: UnsafeCell<Vec<std::task::Waker>>,
 }
 
-impl<T: Clone> UnsafeAsyncCompletable<T> {
+impl<T: Clone + std::fmt::Debug> UnsafeAsyncCompletable<T> {
     pub unsafe fn complete(&self, val: T) -> Result<(), SendError> {
+
         let mref = self.value.get().as_mut().expect("unsafecell being dumb");
 
         if mref.is_some() {
             return Err(SendError::AlreadyCompleted());
         }
+
+        tracing::debug!("stores value into completable, val is {val:?}, wasn't already completed");
 
         *mref = Some(val);
 
@@ -250,6 +258,9 @@ impl<T: Clone> UnsafeAsyncCompletable<T> {
     }
 
     pub unsafe fn wait(self: Rc<Self>) -> UnsafeAsyncCompletableFuture<T> {
+        if self.value.get().as_mut().expect("bad unsafecell").is_some() {
+            //self.wake_waiters();
+        }
         UnsafeAsyncCompletableFuture {
             _phantom: PhantomData::default(),
             refers: self.clone(),

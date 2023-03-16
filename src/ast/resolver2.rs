@@ -2,15 +2,16 @@ use std::{
     cell::{RefCell, UnsafeCell},
     collections::HashMap,
     rc::Rc,
-    sync::atomic::AtomicUsize,
+    sync::{atomic::AtomicUsize, Mutex},
 };
-
 
 use tracing::{info, warn};
 use uuid::Uuid;
 
 use crate::{
-    compile::per_module::{Content, ConversationContext, Destination, Earpiece, Message, Service},
+    compile::per_module::{
+        Content, ControlMessage, ConversationContext, Destination, Earpiece, Message, Service,
+    },
     cst::{ScopedName, UseDeclaration},
     helper::interner::{IStr, Internable},
 };
@@ -136,7 +137,7 @@ pub struct ResInner {
         (ScopedName, CtxID),
         *mut LocalOneshotBroadcastChannel<Result<CompositeResolution, ImportError>>,
     >,*/
-    conversations: HashMap<Uuid, Rc<UnsafeAsyncCompletable<Message>>>,
+    //conversations: HashMap<Uuid, Rc<UnsafeAsyncCompletable<Message>>>,
 
     /// If an alias exists within this map at the time of publishing,
     /// then the entry should be removed from this map and the symbol
@@ -148,26 +149,31 @@ pub struct ResInner {
     /// we can know for certain that everything that will
     /// be exported will be by-name in this vec
     fused_exports: Option<Vec<IStr>>,
+
+    is_fused: bool,
 }
 
 impl ResInner {}
 
 pub struct Resolver {
-    inner: RefCell<ResInner>,
+    inner: Mutex<ResInner>,
     earpiece: UnsafeCell<Earpiece>,
 
     executor: &'static Executor,
+    conversations: ConversationContext,
 
     /// The context that we are handling resolution in the context of
     for_ctx: CtxID,
 }
 
 impl Resolver {
+    /*
     /// Returns true if we created a new conversation, false if it already existed
     fn conversation_open(&self, conversation: Uuid) -> bool {
         let mut r = true;
         self.inner
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .conversations
             .entry(conversation)
             .or_insert_with(|| {
@@ -182,7 +188,13 @@ impl Resolver {
     /// need to make very *very* sure that the conversation
     /// we're closing isn't one being actively awaited
     unsafe fn conversation_close(&self, conversation: Uuid) {
-        match self.inner.borrow_mut().conversations.remove(&conversation) {
+        match self
+            .inner
+            .lock()
+            .unwrap()
+            .conversations
+            .remove(&conversation)
+        {
             Some(v) => { /* just drop v */ }
             None => warn!("tried to remove conversation by id {conversation} which did not exist"),
         }
@@ -195,7 +207,8 @@ impl Resolver {
     async unsafe fn conversation_wait_reply(&self, conversation: Uuid) -> Option<Message> {
         let conv = self
             .inner
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .conversations
             .get(&conversation)
             .expect("tried to wait on a conversation that didn't yet exist")
@@ -207,23 +220,25 @@ impl Resolver {
     }
 
     /// returns true if successfully pushed the message,
-    fn conversation_notify_reply(&self, cnversation: Uuid, message: Message) -> bool {
+    fn conversation_notify_reply(&self, conversation: Uuid, message: Message) -> bool {
+        tracing::info!("notifies conversation reply to conversation: {conversation}");
         let conv = self
             .inner
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .conversations
-            .get(&cnversation)
+            .get(&conversation)
             .expect("tried to send to a conversation that no longer exists")
             .clone();
 
         unsafe { conv.complete(message) }.is_ok()
-    }
+    }*/
 
     fn with_inner<F, T>(&self, f: F) -> T
     where
         F: FnOnce(&mut ResInner) -> T,
     {
-        let mut b = self.inner.borrow_mut();
+        let mut b = self.inner.lock().unwrap();
 
         f(&mut *b)
         //f(self.inner.borrow_mut())
@@ -294,9 +309,20 @@ impl Resolver {
 
         let conversation = Uuid::new_v4();
 
+        //tracing::debug!("=== single inner res ptr is: {:?}", &self.inner.lock().unwrap().resolutions as *const _);
+        tracing::debug!(
+            "entry in there: {}",
+            self.inner
+                .lock()
+                .unwrap()
+                .resolutions
+                .get(&(single, within))
+                .is_some()
+        );
+
         let recv = self.with_inner(|inner| {
             for ((name, within), gbc) in inner.resolutions.iter() {
-                warn!("current symbol: {name} within {within:?}");
+                warn!("current node is {:?}, current symbol: ({name}, {within:?})", self.for_ctx);
             };
 
             let recv = unsafe {
@@ -304,13 +330,15 @@ impl Resolver {
                     .resolutions
                     .entry((single, within))
                     .or_insert_with(|| {
-                        warn!("we're the first to wait for the symbol, symbol is {single}, within is {within:?}, we are {:?}",
-                              self.for_ctx);
+                        warn!("we're the first to wait for the symbol, symbol is {single}, within is {within:?}, we are {:?}, the istr is {}",
+                              self.for_ctx, single.id());
                         // need to send a message and have it waiting for resolve
                         // it's going to be our job to complete it after this
                         //Box::leak(Box::new(LocalOneshotBroadcastChannel::new()))
                         //    as *mut LocalOneshotBroadcastChannel<_>
-                        UnsafeAsyncCompletable::new()
+                        let usc = UnsafeAsyncCompletable::new();
+
+                        usc
 
                         // if there was already something in there, then we recv it and return
                         // that existing resolution immediately
@@ -322,15 +350,28 @@ impl Resolver {
             // if we'd be asking ourself, then we shouldn't send a message, just wait for a
             // resolution. This is the "base case"
             if within == self.for_ctx {
+                tracing::debug!("just waiting for the symbol locally");
                 // we're expecting the symbol at some point, since we
                 // passed the fused_exports check, but
                 // we're still waiting for it to be resolved, so just
                 // leave it for now
+                    if inner.is_fused {
+                        unsafe {
+                            let useme = inner.resolutions
+                                .get(&(single, within))
+                                .unwrap()
+                                .complete(Err(ImportError {
+                                    symbol_name: single,
+                                    from_ctx: within,
+                                    error_reason: "couldn't import the symbol since we're fused and it wasn't in imports".to_owned() }));
+                        }
+                    }
             } else {
                 // we're asking someone else and just keeping a
                 // cache, so we need to start a convo
 
                 // we needed to create the entry, so we're the ones who have to ask
+                tracing::debug!("will ask for a DoYouHave for {single}");
                 let m = Message {
                     to: Destination {
                         node: within,
@@ -344,6 +385,7 @@ impl Resolver {
                         within,
                     }),
                 };
+                tracing::debug!("asked for a DoYouHave for {single}");
 
                 message_to_send = Some(m);
             }
@@ -354,17 +396,15 @@ impl Resolver {
         // send message if we need to, and await it
         // once we get back, complete the oneshot with it
         if let Some(v) = message_to_send {
-            self.conversation_open(conversation);
+            //self.conversation_open(conversation);
+            //self.conversations.
 
-            unsafe {
-                self.earpiece.get().as_mut().unwrap().send(v);
-            }
             warn!("sent a message to our earpiece");
             //self.conversation_notify_reply(conversation, v);
 
-            let resp = unsafe { self.conversation_wait_reply(conversation).await };
+            let resp = unsafe { self.conversations.wait_for(v).await };
 
-            let resp = resp.expect("we asked, so we should get a response damnit");
+            //let resp = resp.expect("we asked, so we should get a response damnit");
 
             if let Content::NameResolution(nr) = resp.content {
                 match nr {
@@ -388,10 +428,6 @@ impl Resolver {
                 }
             } else {
                 tracing::error!("we got something other than an NR in response to an NR ask");
-            }
-
-            unsafe {
-                self.conversation_close(conversation);
             }
         }
 
@@ -458,7 +494,7 @@ impl Resolver {
         while let Ok(v) = self.earpiece.get().as_mut().unwrap().wait().await {
             warn!("got a message: {v:#?}");
 
-            match v.content {
+            match v.content.clone() {
                 Content::NameResolution(nr) => {
                     match nr {
                         NameResolutionMessage::WhatIs {
@@ -527,9 +563,15 @@ impl Resolver {
                             }, format!("do_single task looking for {symbol} within {within:?}"))
                         },
                         other => {
-                            if self.inner.borrow().conversations.contains_key(&v.conversation) {
-                                self.conversation_notify_reply(v.conversation, Message { content: Content::NameResolution(other), ..v });
+                            if let Some(v) = self.conversations.dispatch(v) {
+                                panic!("unhandled message for conversations");
                             }
+                            /*if self.inner.lock().unwrap().conversations.contains_key(&v.conversation) {
+                                //self.conversation_notify_reply(v.conversation, Message { content: Content::NameResolution(other), ..v });
+
+                            } else {
+                                panic!("this wasn't for us? we didn't open this conversation, weird!");
+                            }*/
                         }
                         /*NameResolutionMessage::ItIsAt {
                             symbol,
@@ -539,6 +581,9 @@ impl Resolver {
                         } => self.announce_resolution(symbol, is_at, within, is_public),*/
                         //_ => todo!("NI"),
                     }
+                }
+                Content::Control(ControlMessage::ShouldFuseNames()) => {
+                    self.fuse();
                 }
                 _ => todo!("don't have others yet"),
             }
@@ -558,11 +603,15 @@ impl Resolver {
             let (symbol, is_at) = child.pair();
             let is_public = is_at.resolve().public;
 
+            tracing::debug!("puts symbol {symbol} in self");
             self.announce_resolution(*symbol, *is_at, self.for_ctx, is_public);
         }
 
         if let Some(parent) = nref.parent {
+            tracing::debug!("installs super symbol within {:?}", self.for_ctx);
             self.announce_resolution("super".intern(), parent, self.for_ctx, true);
+        } else {
+            tracing::debug!("no super symbol within {:?}", self.for_ctx);
         }
 
         if let Some(global) = nref.global {
@@ -631,6 +680,8 @@ impl Resolver {
                     }
                 }
             }
+            inner.is_fused = true;
+
         });
     }
 
@@ -642,11 +693,17 @@ impl Resolver {
         is_public: bool,
     ) {
         info!(
-            "node {:?} is saying we have resolved, entry is ({symbol}, {within:?}) with val {is_at:?}",
-            self.for_ctx
+            "node {:?} is saying we have resolved, entry is ('{symbol}', {within:?}), the istr is {} with val {is_at:?}",
+            self.for_ctx,
+            symbol.id()
         );
+
+        //tracing::debug!("=== resolution inner res ptr is: {:?}", &self.inner.lock().unwrap().resolutions as *const _);
+        //// wtf? how? why is this doing this? where did the completable go :/
+
         self.inner
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .resolutions
             .entry((symbol, within))
             .or_insert_with(|| {
@@ -662,12 +719,23 @@ impl Resolver {
             }))
             .expect("couldn't push resolution");
 
+        tracing::debug!(
+            "The entry in there after resolve: {}",
+            self.inner
+                .lock()
+                .unwrap()
+                .resolutions
+                .get(&(symbol, within))
+                .is_some()
+        );
+
         info!("sent the resolution");
     }
 
     pub unsafe fn announce_failure(&self, symbol: IStr, within: CtxID, ie: ImportError) {
         self.inner
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .resolutions
             .entry((symbol, within))
             .or_insert_with(|| UnsafeAsyncCompletable::new())
@@ -676,17 +744,20 @@ impl Resolver {
     }
 
     pub fn for_node(node: CtxID, use_executor: &'static Executor, ep: Earpiece) -> Self {
+        let cs = ep.cloned_sender();
         Self {
-            inner: RefCell::new(ResInner {
+            inner: Mutex::new(ResInner {
+                is_fused: false,
                 resolutions: HashMap::new(),
                 //composite_resolutions: HashMap::new(),
-                conversations: HashMap::new(),
+                //conversations: HashMap::new(),
                 aliases: HashMap::new(),
                 fused_exports: None,
             }),
             for_ctx: node,
             executor: use_executor,
             earpiece: UnsafeCell::new(ep),
+            conversations: unsafe { ConversationContext::new(cs) },
         }
     }
 }
@@ -947,23 +1018,22 @@ impl<'ep> SymbolResolver<'ep> {
 */
 
 pub struct NameResolver {
-    name: ScopedName,
-    based_in: CtxID,
+    pub name: ScopedName,
+    pub based_in: CtxID,
+    pub reply_to: CtxID,
+    pub service: Service,
 }
 
 impl NameResolver {
-    pub fn new(name: ScopedName, based_in: CtxID) -> Self {
-        Self { name, based_in }
+    pub fn new(name: ScopedName, based_in: CtxID, reply_to: CtxID, service: Service) -> Self {
+        Self { name, based_in, service, reply_to }
     }
 
-    pub async fn using_context(
-        self,
-        cc: &ConversationContext,
-    ) -> Result<CtxID, ImportError> {
+    pub async fn using_context(self, cc: &ConversationContext) -> Result<CtxID, ImportError> {
         let msg = Message {
             to: Destination::resolver(self.based_in),
-            from: Destination::resolver(self.based_in),
-            send_reply_to: Destination::resolver(self.based_in),
+            from: Destination { node: self.reply_to, service: self.service },
+            send_reply_to: Destination { node: self.reply_to, service: self.service },
             conversation: Uuid::new_v4(),
             content: Content::NameResolution(NameResolutionMessage::WhatIs {
                 composite_symbol: self.name,

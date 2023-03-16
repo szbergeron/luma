@@ -677,15 +677,16 @@ impl<'lexer> Parser<'lexer> {
                     }
                 }
 
+                scope.scope.push(typename.slice);
+
                 let inner = if let [one] = scope.scope.as_slice() && with_generics.contains(one) {
                     cst::SyntacticTypeReferenceInner::Generic { label: *one }
                 } else {
                     cst::SyntacticTypeReferenceInner::Single { name: ScopedName::new(scope.scope) }
                 };
 
-                scope.scope.push(typename.slice);
 
-                let s: ScopedName = ScopedName::new(scope.scope);
+                //let s: ScopedName = ScopedName::new(scope.scope);
 
                 let end = typename.end;
 

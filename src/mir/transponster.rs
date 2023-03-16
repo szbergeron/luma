@@ -14,7 +14,7 @@ use crate::{
         tree::CtxID,
         types::StructuralDataDefinition,
     },
-    compile::per_module::{Content, ConversationContext, Destination, Earpiece, Message},
+    compile::per_module::{Content, ConversationContext, Destination, Earpiece, Message, Service},
     cst::SyntacticTypeReferenceRef,
     helper::interner::IStr,
 };
@@ -73,7 +73,6 @@ pub struct Transponster {
     regular_fields: HashMap<IStr, SyntacticTypeReferenceRef>,
 
     conversations: ConversationContext,
-
     //// When we get a new instance of something in Quark, we put
     //// the instance in here. This allows us to nicely do unification for generics
     //// for any type, since the type itself handles doing that unification
@@ -210,6 +209,9 @@ impl Instance {
                 }
             }
             InstanceOf::Func(f) => todo!("unify function calls"),
+            InstanceOf::Generic(g) => {
+                todo!("what now?")
+            }
             InstanceOf::Unknown() => todo!(),
         }
     }
@@ -235,7 +237,6 @@ impl Instance {
     }
 
     pub fn infer_instance(base: Option<CtxID>, within: &Quark) -> Self {
-
         Instance {
             id: InstanceID(uuid::Uuid::new_v4()),
             instantiated_from: base,
@@ -287,49 +288,6 @@ impl Instance {
             .chain(stores_into.generics.keys().into_iter().copied())
             .collect();
 
-        let new_of = match (self.of, stores_into.of) {
-            (InstanceOf::Type(ta), InstanceOf::Type(tb)) => {
-                // unify two type instances
-                todo!("unify two structural types")
-            }
-
-            (InstanceOf::Func(fa), InstanceOf::Func(fb)) => {
-                // unify two func calls
-                todo!("unify two function calls")
-            }
-
-            (InstanceOf::Unknown(), other) | (other, InstanceOf::Unknown()) => other,
-
-            (other_a, other_b) => {
-                panic!("we tried to unify a function call with a structural type? our type system doesn't allow this");
-            }
-        };
-
-        let accessed_from = match (self.accessed_from, stores_into.accessed_from) {
-            (None, None) => {
-                // the most obvious case, 
-                None
-            },
-            (Some(v), None) => {
-                // this is fine, we're assigning into a field (probably)
-                tracing::info!("what");
-                None
-            },
-            (None, Some(v)) => {
-                tracing::info!("no");
-                None
-            },
-            (Some(a), Some(b)) => {
-                // this means it's an instance of `a.b = c.d`,
-                // which is fine, it just means we don't have a sensical
-                // "accessed from" anymore unless we formally
-                // define the semantics of what comes out of
-                // an assignment, value-wise (it's an rval, right?
-                // it can't be a method with a sensical callee, right?)
-                None
-            }
-        };
-
         let mut all_generic_unifies = Vec::new();
 
         let mut unified_generics = HashMap::new();
@@ -355,6 +313,49 @@ impl Instance {
                 unified_generics.insert(key, v);
             }
         }
+
+        let new_of = match (self.of, stores_into.of) {
+            (InstanceOf::Type(ta), InstanceOf::Type(tb)) => {
+                // unify two type instances
+                todo!("unify two structural types")
+            }
+
+            (InstanceOf::Func(fa), InstanceOf::Func(fb)) => {
+                // unify two func calls
+                todo!("unify two function calls")
+            }
+
+            (InstanceOf::Unknown(), other) | (other, InstanceOf::Unknown()) => other,
+
+            (other_a, other_b) => {
+                panic!("we tried to unify a function call with a structural type? our type system doesn't allow this");
+            }
+        };
+
+        let accessed_from = match (self.accessed_from, stores_into.accessed_from) {
+            (None, None) => {
+                // the most obvious case,
+                None
+            }
+            (Some(v), None) => {
+                // this is fine, we're assigning into a field (probably)
+                tracing::info!("what");
+                None
+            }
+            (None, Some(v)) => {
+                tracing::info!("no");
+                None
+            }
+            (Some(a), Some(b)) => {
+                // this means it's an instance of `a.b = c.d`,
+                // which is fine, it just means we don't have a sensical
+                // "accessed from" anymore unless we formally
+                // define the semantics of what comes out of
+                // an assignment, value-wise (it's an rval, right?
+                // it can't be a method with a sensical callee, right?)
+                None
+            }
+        };
 
         let i = Instance {
             id: InstanceID(uuid::Uuid::new_v4()),
@@ -554,7 +555,8 @@ impl Transponster {
                         //PortableTypeVar::UnPortable(on.generics[one].clone())
                         on.generics[one].clone()
                     } else {
-                        let resolved = NameResolver::new(name, self.for_ctx)
+                        let nr = NameResolver { name, based_in: self.for_ctx.resolve().parent.unwrap(), reply_to: self.for_ctx, service: Service::Oracle() };
+                        let resolved = nr
                             .using_context(&self.conversations)
                             .await;
                         let resolved = resolved.expect("need to handle unresolved names");
@@ -839,6 +841,8 @@ impl Transponster {
                 warn!("Transponster shuts down since this node type wasn't a Type")
             }
         }
+
+        tracing::error!("possible memory corruption risk, should not get here");
     }
 
     pub async fn ask_type_of(

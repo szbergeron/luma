@@ -105,7 +105,7 @@ pub struct StructuralDataDefinition {
     pub fields: Vec<FieldMember>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FunctionDefinition {
     pub info: cst::NodeInfo,
     pub name: IStr,

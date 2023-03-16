@@ -9,7 +9,7 @@ use std::{
     collections::HashMap,
     rc::Rc,
     sync::{atomic::AtomicUsize, Arc},
-    time::Duration,
+    time::Duration, pin::Pin,
 };
 
 use crate::{
@@ -88,10 +88,25 @@ impl Watchdog {
     }
 
     pub async fn run(self) {
+        let mut sent_fuse = true;
         println!("about to send heartbeat");
         while self.postal.send_heartbeat() {
             println!("sent heartbeat");
             tokio::time::sleep(Duration::from_millis(500)).await;
+
+            if !sent_fuse {
+                sent_fuse = true;
+                self.postal.send_broadcast(Message {
+                    to: Destination {
+                        node: CtxID(AtomicVecIndex::nil()),
+                        service: Service::Broadcast(),
+                    },
+                    from: Destination::nil(),
+                    send_reply_to: Destination::nil(),
+                    conversation: uuid::Uuid::new_v4(),
+                    content: Content::Control(ControlMessage::ShouldFuseNames()),
+                })
+            }
         }
     }
 }
@@ -127,11 +142,12 @@ impl Postal {
     }*/
 
     pub fn send(&self, msg: Message) {
-        self.senders
-            .get(&msg.to.node)
-            .expect("tried to send something to a nil dest")
-            .send(msg)
-            .expect("couldn't send a message through postal")
+        match self.senders.get(&msg.to.node) {
+            Some(v) => v.send(msg).expect("couldn't send a message through postal"),
+            None => {
+                tracing::error!("something tried to send to a nil dest! message: {msg:?}");
+            }
+        }
     }
 
     pub fn sign_out(&self, id: CtxID) {
@@ -159,6 +175,18 @@ impl Postal {
                     conversation: Uuid::new_v4(),
                 });
             }
+        }
+    }
+
+    pub fn send_broadcast(&self, msg: Message) {
+        for (cid, send) in self.senders.iter() {
+            let mut msg = msg.clone();
+            msg.to = Destination {
+                node: *cid,
+                service: Service::Broadcast(),
+            };
+
+            self.send(msg);
         }
     }
 
@@ -211,7 +239,7 @@ impl Group {
         }
     }
     pub async fn start(mut self) {
-        info!("starts group for node {:?}", self.for_node);
+        tracing::error!("starts group for node {:?}", self.for_node);
         // this is only allowed because the things that *aren't* send
         // in these futures actually don't care so long as
         // the entire group of them is moved at a time
@@ -232,7 +260,8 @@ impl Group {
         );
         let quark = Quark::for_node(
             self.for_node,
-            Earpiece::new(rtr_s.clone(), qk_r, self.for_node),
+            rtr_s.clone(),
+            //Earpiece::new(rtr_s.clone(), qk_r, self.for_node),
             exer,
         );
         //let bridge = Bridge::new(self.listen_to, rtr_s.clone());
@@ -263,7 +292,8 @@ impl Group {
             // it doesn't truly live for static, but it lives long enough that the executor itself
             // is dropped before resolver is, and we've awaited all the futures so they are allowed
             // to drop then
-            let sref = &resolver as *const Resolver;
+            let pinned = Box::pin(resolver);
+            let sref = Pin::into_inner(pinned.as_ref()) as *const Resolver;
             let sref = sref.as_ref().unwrap();
 
             let eref = &exe as *const Executor;
@@ -275,7 +305,7 @@ impl Group {
             );
 
             exe.install(
-                quark.thread(),
+                quark.thread(Earpiece::new(rtr_s.clone(), qk_r, self.for_node)),
                 format!("quark for node {:?}", self.for_node),
             );
             exe.install(
@@ -467,6 +497,8 @@ pub enum ControlMessage {
     /// Can be used to indicate that, say, the type of a field was asked of
     /// a
     CanNotReply(),
+
+    ShouldFuseNames(),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -628,7 +660,10 @@ impl ConversationContext {
     pub fn send_and_forget(&self, message: Message) {
         let inner = self.inner.borrow_mut();
 
-        inner.sender.send(message).expect("couldn't send, this is bad?");
+        inner
+            .sender
+            .send(message)
+            .expect("couldn't send, this is bad?");
     }
 
     pub fn wait_for(&self, reply_to: Message) -> UnsafeAsyncCompletableFuture<Message> {

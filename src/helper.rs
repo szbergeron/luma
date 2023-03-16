@@ -19,6 +19,12 @@ pub mod interner {
         internal: usize,
     }
 
+    impl IStr {
+        pub fn id(self) -> usize {
+            self.internal
+        }
+    }
+
     unsafe impl lasso::Key for IStr {
         fn into_usize(self) -> usize {
             self.internal

@@ -1,7 +1,9 @@
 use std::{
+    cell::RefCell,
     collections::{HashMap, HashSet},
+    pin::Pin,
     rc::Rc,
-    sync::Arc, cell::RefCell,
+    sync::Arc,
 };
 
 //use itertools::Itertools;
@@ -15,7 +17,7 @@ use crate::{
         executor::{Executor, UnsafeAsyncCompletable},
         resolver2::NameResolver,
         tree::CtxID,
-        types::AbstractTypeReference,
+        types::{AbstractTypeReference, FunctionDefinition},
     },
     avec::{AtomicVec, AtomicVecIndex},
     compile::per_module::{
@@ -71,7 +73,7 @@ pub struct Quark {
 
     //variables: Vec<(IStr, AllocationReference)>,
     //frames: Vec<usize>,
-    acting_on: ExpressionContext,
+    acting_on: RefCell<ExpressionContext>,
 
     type_of: RefCell<HashMap<ExpressionID, TypeID>>,
 
@@ -88,7 +90,8 @@ pub struct Quark {
 
     once_know: RefCell<HashMap<TypeID, Vec<Action>>>,
 
-    earpiece: Earpiece,
+    //earpiece: Earpiece,
+    sender: local_channel::mpsc::Sender<Message>,
 
     executor: &'static Executor,
 
@@ -149,36 +152,37 @@ impl Quark {
     ) -> TypeID {
         match &tr.resolve().unwrap().inner {
             SyntacticTypeReferenceInner::Single { name } => {
-                if let [one] = name.scope.as_slice() && let Some(v) = with_generics.get(one) {
-                    // we are ourselves just a generic, so pass through the type ID ffrom the
-                    // generic
-                    *v
-                } else {
-                    // we are maybe an instance of a type? or some node? so figure out which one it
-                    // is
-                    let r = NameResolver::new(name.clone(), from_base).using_context(&self.conversations).await;
-                    match r {
-                        Ok(cid) => {
-                            let instance = Instance::infer_instance(Some(cid), self);
+                // we are maybe an instance of a type? or some node? so figure out which one it
+                // is
+                let nr = NameResolver {
+                    name: name.clone(),
+                    based_in: from_base,
+                    reply_to: self.node_id,
+                    service: Service::Quark(),
+                };
+                let r = nr.using_context(&self.conversations).await;
+                match r {
+                    Ok(cid) => {
+                        tracing::info!("constructs an instance for single {name:?}, and it pointed to {cid:?} for a simple typeref");
+                        let instance = Instance::infer_instance(Some(cid), self);
 
-                            // don't set an accessed_from for this, since it's a plain function
-                            // (shouldn't have a propagated `self`)
+                        // don't set an accessed_from for this, since it's a plain function
+                        // (shouldn't have a propagated `self`)
 
-                            let tid = self.new_tid();
+                        let tid = self.new_tid();
 
-                            self.instance_for(tid, instance);
+                        self.instance_for(tid, instance);
 
-                            tid
-                        },
-                        Err(_) => {
-                            todo!("need to handle import errors with Instances");
+                        tid
+                    }
+                    Err(_) => {
+                        todo!("need to handle import errors with Instances");
 
-                            // once we've propagated the error, we just treat this as unconstrained
-                            // to let us find as many errors as possible
-                            let tid = self.new_tid();
+                        // once we've propagated the error, we just treat this as unconstrained
+                        // to let us find as many errors as possible
+                        let tid = self.new_tid();
 
-                            tid
-                        },
+                        tid
                     }
                 }
             }
@@ -187,6 +191,13 @@ impl Quark {
                 let tid = self.new_tid();
 
                 tid
+            }
+            SyntacticTypeReferenceInner::Generic { label } => {
+                let existing_tid = self
+                    .generics
+                    .get(label)
+                    .expect("got a generic that didn't mean anything in the context");
+                *existing_tid
             }
             SyntacticTypeReferenceInner::Tuple(t) => {
                 todo!("need to actually make tuple types")
@@ -213,9 +224,13 @@ impl Quark {
         TypeID(uuid::Uuid::new_v4())
     }
 
-    pub fn for_node(node_id: CtxID, earpiece: Earpiece, executor: &'static Executor) -> Self {
+    pub fn for_node(
+        node_id: CtxID,
+        sender: local_channel::mpsc::Sender<Message>,
+        executor: &'static Executor,
+    ) -> Self {
         warn!("quark is being improperly initialized to make things happy");
-        let cs = earpiece.cloned_sender();
+        let cs = sender.clone();
 
         let mut generics = HashMap::new();
         for (gname, gtype) in node_id.resolve().generics.iter() {
@@ -230,9 +245,9 @@ impl Quark {
             //allocation_references: HashMap::new(),
             //variables: Vec::new(),
             //frames: Vec::new(),
-            earpiece,
+            sender,
             node_id,
-            acting_on: ExpressionContext::new_empty(),
+            acting_on: RefCell::new(ExpressionContext::new_empty()),
             type_of: RefCell::new(HashMap::new()),
             executor,
             //typer: TypeContext::fresh(),
@@ -245,12 +260,9 @@ impl Quark {
         }
     }
 
-    pub async unsafe fn do_the_thing(&mut self, on_id: ExpressionID) {
+    pub async fn do_the_thing(&'static self, on_id: ExpressionID) {
         let root_type_id = self.new_tid();
-        let sptr = self as *mut Self;
-        let sref = sptr.as_ref().unwrap();
-
-        sref.do_the_thing_rec(on_id, root_type_id, false);
+        self.do_the_thing_rec(on_id, root_type_id, false);
     }
 
     /// lval is true if we are being assigned into, otherwise we can be treated as an rval
@@ -265,7 +277,7 @@ impl Quark {
 
         let e_ty_id = use_tid;
 
-        match self.acting_on.get(on_id).clone() {
+        match self.acting_on.borrow_mut().get(on_id).clone() {
             AnyExpression::Block(b) => {
                 for &eid in b.expressions.iter() {
                     let c_ty = self.new_tid();
@@ -368,40 +380,58 @@ impl Quark {
                 } = c;
 
                 unsafe {
-                    self.executor.install(async move {
+                    self.executor.install(
+                        async move {
+                            let nr = NameResolver {
+                                name: base_type.clone(),
+                                based_in: self.node_id.resolve().parent.unwrap(),
+                                reply_to: self.node_id,
+                                service: Service::Quark()
+                            };
 
-                    let ctx_for_base =
-                        NameResolver::new(base_type, self.node_id).using_context(&self.conversations).await;
+                            let ctx_for_base = nr
+                                .using_context(&self.conversations)
+                                .await;
 
-                    let ctx_for_base = match ctx_for_base {
-                        Ok(v) => v,
-                        Err(ie) => todo!("handle import error")
-                    };
+                            tracing::info!("resolved a ctx for name {base_type:?} for a composite construction, it ended up being {ctx_for_base:?}");
 
-                    //.expect("couldn't resolve base tyep");
+                            let ctx_for_base = match ctx_for_base {
+                                Ok(v) => v,
+                                Err(ie) => todo!("handle import error"),
+                            };
 
-                    let mut inst_fields = HashMap::new();
+                            //.expect("couldn't resolve base tyep");
 
-                    for (fname, fexp) in fields {
-                        let fty = self.new_tid();
-                        self.do_the_thing_rec(fexp, use_tid, false); // not lval as we load from it
+                            let mut inst_fields = HashMap::new();
 
-                        inst_fields.insert(fname, fty);
-                    }
+                            for (fname, fexp) in fields {
+                                let fty = self.new_tid();
+                                self.do_the_thing_rec(fexp, use_tid, false); // not lval as we load from it
 
-                    let mut inst_generics = Vec::new();
+                                inst_fields.insert(fname, fty);
+                            }
 
-                    for gen in generics {
-                        let ty = self.resolve_typeref(gen, self.generics.clone(), self.node_id).await;
+                            let mut inst_generics = Vec::new();
 
-                        inst_generics.push(ty);
-                    }
+                            for gen in generics {
+                                let ty = self
+                                    .resolve_typeref(gen, self.generics.clone(), self.node_id.resolve().parent.unwrap())
+                                    .await;
 
-                    //let base_id = self.resolve_typeref(c.base_type, self.type_args, self.node_id).await;
-                    let inst = Instance::construct_instance(ctx_for_base, inst_fields, inst_generics);
+                                inst_generics.push(ty);
+                            }
 
-                    self.instances.borrow_mut().insert(e_ty_id, inst);
-                }, "composite resolution block");
+                            //let base_id = self.resolve_typeref(c.base_type, self.type_args, self.node_id).await;
+                            let inst = Instance::construct_instance(
+                                ctx_for_base,
+                                inst_fields,
+                                inst_generics,
+                            );
+
+                            self.instances.borrow_mut().insert(e_ty_id, inst);
+                        },
+                        "composite resolution block",
+                    );
                 }
             }
         }
@@ -409,15 +439,21 @@ impl Quark {
 
     #[allow(unused_mut)]
     pub async fn descend<'func>(
-        &mut self,
+        &'static self,
         f: &'func ast::types::FunctionDefinition,
         imp: &'func mut ExpressionWrapper,
     ) -> ExpressionID {
         //let mut ec = ExpressionContext::new_empty();
 
+        for (param_name, param_type) in f.parameters.clone() {
+            let ptype = self
+                .resolve_typeref(param_type, self.generics.clone(), self.node_id.resolve().parent.unwrap())
+                .await;
+        }
+
         let mut binding_scope = Bindings::fresh();
 
-        let ae = AnyExpression::from_ast(&mut self.acting_on, imp, &mut binding_scope);
+        let ae = AnyExpression::from_ast(&mut self.acting_on.borrow_mut(), imp, &mut binding_scope);
 
         //todo!("descend completed?");
         ae
@@ -425,18 +461,48 @@ impl Quark {
         //rec(&mut f.implementation).await;
     }
 
-    pub async fn thread(mut self) {
+    pub async fn thread(self, mut ep: Earpiece) {
+        let boxed = Box::pin(self); // put ourselves into the heap in a definitely known location
+                                    // to avoid dumb shenaniganery
+        let sptr: *const Quark = Pin::into_inner(boxed.as_ref()) as *const _;
+        let sref: &'static Quark = unsafe { sptr.as_ref().unwrap() };
+
         info!("starts quark thread");
 
-        match &self.node_id.resolve().inner {
+        match &sref.node_id.resolve().inner {
             ast::tree::NodeUnion::Function(f, imp) => {
-                warn!("quark for a function starts up");
+                let f = f.clone();
+                warn!(
+                    "quark for a function starts up using ctx id {:?}",
+                    sref.node_id
+                );
                 let mut imp = imp
                     .lock()
                     .unwrap()
                     .take()
                     .expect("someone else got to this impl first?");
-                self.entry(&f, &mut imp).await;
+
+                unsafe {
+                    let cloned: FunctionDefinition = f.clone();
+                    let eps = ep.cloned_sender();
+
+                    sref.executor.install(
+                        async move { sref.entry(cloned, &mut imp).await },
+                        "quark worker thread".to_owned(),
+                    )
+
+                    //while let Some(v) =
+                }
+
+                while let Ok(v) = ep.wait().await {
+                    tracing::info!("got a message for quark, forwarding to conversations...");
+                    let remainder = sref.conversations.dispatch(v);
+                    if let Some(v) = remainder {
+                        tracing::error!("unhandled message? it is: {:#?}", v);
+                    }
+                }
+
+                unreachable!()
 
                 //self.thread_stage_2(f).await;
             }
@@ -445,17 +511,17 @@ impl Quark {
                 // a function
                 warn!(
                     "quark for node {:?} is shutting down, as it is not a function",
-                    self.node_id
+                    sref.node_id
                 );
 
-                while let Ok(v) = self.earpiece.wait().await {
+                while let Ok(v) = ep.wait().await {
                     info!("Quark got a message");
 
-                    self.earpiece.send(Message {
+                    ep.send(Message {
                         to: v.send_reply_to,
                         send_reply_to: Destination::nil(),
                         from: Destination {
-                            node: self.node_id,
+                            node: sref.node_id,
                             service: Service::Quark(),
                         },
                         conversation: v.conversation,
@@ -468,10 +534,11 @@ impl Quark {
 
     #[allow(unused_mut)]
     pub async fn entry(
-        mut self,
-        f: &crate::ast::types::FunctionDefinition,
+        &'static self,
+        f: crate::ast::types::FunctionDefinition,
         imp: &mut ExpressionWrapper, //executor: &'static Executor,
     ) {
+        tracing::info!("getting parent for node: {:?}", self.node_id);
         let parent_id = self.node_id.resolve().parent.unwrap();
 
         tracing::error!("need to properly uh...handle generics for stuff");
@@ -499,7 +566,7 @@ impl Quark {
         // this is all we need to do for now
         // to let the local transponster know how to answer call queries
         // and instantiations
-        self.earpiece.send(Message {
+        /*let _ = self.earpiece.cloned_sender().send(Message {
             to: Destination::transponster(self.node_id),
             from: self.as_dest(),
             send_reply_to: Destination::nil(),
@@ -515,13 +582,11 @@ impl Quark {
                 params: f.parameters.clone(),
                 returns: f.return_type.clone(),
             }),
-        });
+        });*/
 
-        let aeid = self.descend(f, imp).await;
+        let aeid = self.descend(&f, imp).await;
 
-        unsafe {
-            self.do_the_thing(aeid).await;
-        }
+        self.do_the_thing(aeid).await;
 
         // start walking the function tree now? or do later?
 
