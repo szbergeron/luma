@@ -81,6 +81,7 @@ pub struct Transponster {
     //instances: HashMap<InstanceID, Instance>,
 }
 
+#[derive(Clone, Debug)]
 pub struct InstanceID(uuid::Uuid);
 
 /// This is used later once we start doing things like typeclasses for dynamic fields,
@@ -91,6 +92,7 @@ pub enum UsageDirection {
 }
 
 /// This is basically our new TypeVar
+#[derive(Clone, Debug)]
 pub struct Instance {
     id: InstanceID,
 
@@ -109,6 +111,7 @@ pub struct Instance {
     generics: HashMap<IStr, TypeID>,
 }
 
+#[derive(Clone, Debug)]
 pub enum InstanceOf {
     Type(InstanceOfType),
 
@@ -125,19 +128,22 @@ pub enum InstanceOf {
     Unknown(),
 }
 
+#[derive(Clone, Debug)]
 pub struct InstanceOfType {
     //regular_fields: Rc<HashMap<IStr, SyntacticTypeReferenceRef>>,
     regular_fields: HashMap<IStr, TypeID>,
 }
 
+#[derive(Clone, Debug)]
 pub struct InstanceOfFn {
     parameters: Vec<TypeID>,
     returns: TypeID,
 }
 
+#[derive(Clone, Debug)]
 pub struct Unify {
-    from: TypeID,
-    into: TypeID,
+    pub from: TypeID,
+    pub into: TypeID,
 }
 
 impl Instance {
@@ -275,7 +281,7 @@ impl Instance {
                     let fname = field.name;
                     let ty = field.has_type.unwrap();
 
-                    let tid = within.resolve_typeref(ty, &self.generics, base).await;
+                    let tid = within.resolve_typeref(ty, &self.generics, inst.parent.unwrap()).await;
 
                     inst_fields.insert(fname, tid);
                 }
@@ -301,7 +307,7 @@ impl Instance {
     pub fn unify_with(
         self,
         stores_into: Instance,
-        within: &mut Quark,
+        within: &Quark,
     ) -> Result<(Instance, Vec<Unify>), TypeError> {
         tracing::info!("unifying two instances!");
 

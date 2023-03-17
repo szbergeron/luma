@@ -29,13 +29,13 @@ use crate::{
 
 use super::{
     expressions::ExpressionID,
-    transponster::{FieldID, Instance, InstanceID, UsageHandle},
+    transponster::{FieldID, Instance, InstanceID, UsageHandle, Unify}, sets::Unifier,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct TypeID(uuid::Uuid);
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TypeError {
     pub components: Vec<TypeID>,
     pub complaint: String,
@@ -77,7 +77,9 @@ pub struct Quark {
 
     /// If we've resolved a type far enough to know that it is an Instance,
     /// it is recorded here so we can do field analysis on it
-    instances: RefCell<HashMap<TypeID, Instance>>,
+    //instances: RefCell<HashMap<TypeID, Instance>>,
+
+    instances: RefCell<Unifier<TypeID, Instance>>,
 
     once_know: RefCell<HashMap<TypeID, Vec<Action>>>,
 
@@ -114,7 +116,23 @@ pub enum Action {
 
 impl Quark {
     pub fn add_unify(&self, a: TypeID, b: TypeID, reason: IStr) {
-        todo!()
+        let mut refm = self.instances.borrow_mut();
+        let mut resulting_unifies = Vec::new();
+
+        let res = refm.unify(a, b, |a, b| {
+            let original_a = a.clone();
+            match a.unify_with(b, self) {
+                Ok((v, u)) => {
+                    resulting_unifies = u;
+                    Ok(v)
+                },
+                Err(e) => Err(e)
+            }
+        }).expect("user did a type error");
+
+        for Unify { from, into } in resulting_unifies {
+            self.add_unify(from, into, "resulting unify from an instance add".intern());
+        }
     }
 
     pub fn action(&self, once: ExpressionID, apply: Action) {
@@ -205,13 +223,26 @@ impl Quark {
     }
 
     pub fn instance_for(&self, tid: TypeID, instance: Instance) {
-        let was_there = self.instances.borrow_mut().insert(tid, instance);
+        // make a new tid inst here since the regular one automatically adds it to unifier
+        let instance_tid = TypeID(uuid::Uuid::new_v4());
 
-        assert!(was_there.is_none(), "instance already assigned for tid");
+        let mut refm = self.instances.borrow_mut();
+
+        refm.add_kv(instance_tid, instance);
+
+        std::mem::drop(refm);
+
+        self.add_unify(tid, instance_tid, "unify because of trivial add instance".intern());
+
+        //assert!(was_there.is_none(), "instance already assigned for tid");
     }
 
     pub fn new_tid(&self) -> TypeID {
-        TypeID(uuid::Uuid::new_v4())
+        let tid = TypeID(uuid::Uuid::new_v4());
+
+        self.instances.borrow_mut().add_k(tid);
+
+        tid
     }
 
     pub fn for_node(
@@ -242,7 +273,7 @@ impl Quark {
             executor,
             //typer: TypeContext::fresh(),
             dynfield_notifies: RefCell::new(HashMap::new()),
-            instances: RefCell::new(HashMap::new()),
+            instances: RefCell::new(Unifier::new()),
             once_know: RefCell::new(HashMap::new()),
             conversations: unsafe { ConversationContext::new(cs) },
             generics: Rc::new(generics),
@@ -418,7 +449,9 @@ impl Quark {
                                 inst_generics,
                             );
 
-                            self.instances.borrow_mut().insert(e_ty_id, inst);
+                            self.instance_for(e_ty_id, inst);
+
+                            //self.instances.borrow_mut().insert(e_ty_id, inst);
                         },
                         "composite resolution block",
                     );
