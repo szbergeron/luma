@@ -11,7 +11,7 @@ use crate::{
     ast::{
         executor::{Executor, UnsafeAsyncCompletable},
         resolver2::NameResolver,
-        tree::CtxID,
+        tree::{CtxID, NodeUnion},
         types::StructuralDataDefinition,
     },
     compile::per_module::{Content, ConversationContext, Destination, Earpiece, Message, Service},
@@ -236,18 +236,26 @@ impl Instance {
         todo!()
     }
 
-    pub fn infer_instance(base: Option<CtxID>, within: &Quark) -> Self {
-        Instance {
+    pub async fn infer_instance(base: Option<CtxID>, within: &Quark) -> Self {
+
+        let mut inst = Instance {
             id: InstanceID(uuid::Uuid::new_v4()),
             instantiated_from: base,
             instantiated_in: within.node_id,
-            of: todo!(), // need to figure this out from what we're based on
+            of: InstanceOf::Unknown(), // need to figure this out from what we're based on
             generics: HashMap::new(),
             accessed_from: None,
+        };
+
+        if let Some(v) = base {
+            inst.resolve_base(v, within).await;
         }
+
+        inst
     }
 
-    pub fn resolve_base(&mut self, base: CtxID, within: &mut Quark) {
+    #[async_recursion::async_recursion(?Send)]
+    pub async fn resolve_base(&mut self, base: CtxID, within: &Quark) {
         let inst = base.resolve();
 
         // use inst to get regular_fields from the transponster or something
@@ -256,6 +264,33 @@ impl Instance {
             .iter()
             .map(|(g, r)| (*g, within.new_tid()))
             .collect();
+
+        let of = match &inst.inner {
+            NodeUnion::Type(t) => {
+                let fields = t.lock().unwrap().fields.clone();
+
+                let mut inst_fields = HashMap::new();
+
+                for field in fields {
+                    let fname = field.name;
+                    let ty = field.has_type.unwrap();
+
+                    let tid = within.resolve_typeref(ty, &self.generics, base).await;
+
+                    inst_fields.insert(fname, tid);
+                }
+
+                InstanceOf::Type(InstanceOfType { regular_fields: inst_fields })
+            }
+            NodeUnion::Function(f, i) => {
+                todo!("huh")
+            }
+            other => {
+                todo!("no")
+            }
+        };
+
+        self.of = of;
 
         self.generics = gens_for_type;
     }
@@ -268,6 +303,8 @@ impl Instance {
         stores_into: Instance,
         within: &mut Quark,
     ) -> Result<(Instance, Vec<Unify>), TypeError> {
+        tracing::info!("unifying two instances!");
+
         assert!(self.instantiated_in == stores_into.instantiated_in);
 
         if self.instantiated_from != stores_into.instantiated_from {

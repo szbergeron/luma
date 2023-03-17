@@ -1,9 +1,9 @@
-use std::{sync::atomic::{AtomicUsize, Ordering}, collections::HashMap};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use dashmap::DashMap;
 use smallvec::{SmallVec, smallvec};
 
-use crate::{helper::interner::{IStr, SpurHelper, Internable}, ast::types::AbstractTypeReference, mir::quark::TypeID};
+use crate::{helper::interner::{IStr, SpurHelper, Internable}, ast::types::AbstractTypeReference};
 
 use super::{NodeInfo, CstNode, IntoCstNode, FunctionDefinition};
 

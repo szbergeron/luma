@@ -1,6 +1,6 @@
 use std::{
-    cell::{RefCell, UnsafeCell},
     collections::HashMap,
+    cell::UnsafeCell,
     rc::Rc,
     sync::{atomic::AtomicUsize, Mutex},
 };
@@ -401,7 +401,7 @@ impl Resolver {
             warn!("sent a message to our earpiece");
             //self.conversation_notify_reply(conversation, v);
 
-            let resp = unsafe { self.conversations.wait_for(v).await };
+            let resp = self.conversations.wait_for(v).await;
 
             //let resp = resp.expect("we asked, so we should get a response damnit");
 

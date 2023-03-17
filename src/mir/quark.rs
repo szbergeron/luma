@@ -1,39 +1,30 @@
 use std::{
     cell::RefCell,
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     pin::Pin,
     rc::Rc,
-    sync::Arc,
 };
 
 //use itertools::Itertools;
 
 use tracing::{info, warn};
-use uuid::Uuid;
 
 use crate::{
     ast::{
         self,
-        executor::{Executor, UnsafeAsyncCompletable},
+        executor::Executor,
         resolver2::NameResolver,
         tree::CtxID,
-        types::{AbstractTypeReference, FunctionDefinition},
+        types::FunctionDefinition,
     },
-    avec::{AtomicVec, AtomicVecIndex},
     compile::per_module::{
         Content, ControlMessage, ConversationContext, Destination, Earpiece, Message, Service,
     },
     cst::{
-        ExpressionWrapper, GenericHandle, SyntacticTypeReferenceInner, SyntacticTypeReferenceRef,
+        ExpressionWrapper, SyntacticTypeReferenceInner, SyntacticTypeReferenceRef,
     },
-    helper::{
-        interner::{IStr, Internable},
-        CompilationError,
-    },
-    mir::{
-        expressions::{AnyExpression, Bindings, Composite, ExpressionContext},
-        transponster::Memo,
-    },
+    helper::interner::{IStr, Internable},
+    mir::expressions::{AnyExpression, Bindings, Composite, ExpressionContext},
 };
 
 use super::{
@@ -90,7 +81,6 @@ pub struct Quark {
 
     once_know: RefCell<HashMap<TypeID, Vec<Action>>>,
 
-    //earpiece: Earpiece,
     sender: local_channel::mpsc::Sender<Message>,
 
     executor: &'static Executor,
@@ -147,7 +137,7 @@ impl Quark {
     pub async fn resolve_typeref(
         &self,
         tr: SyntacticTypeReferenceRef,
-        with_generics: Rc<HashMap<IStr, TypeID>>,
+        with_generics: &HashMap<IStr, TypeID>,
         from_base: CtxID,
     ) -> TypeID {
         match &tr.resolve().unwrap().inner {
@@ -164,7 +154,7 @@ impl Quark {
                 match r {
                     Ok(cid) => {
                         tracing::info!("constructs an instance for single {name:?}, and it pointed to {cid:?} for a simple typeref");
-                        let instance = Instance::infer_instance(Some(cid), self);
+                        let instance = Instance::infer_instance(Some(cid), self).await;
 
                         // don't set an accessed_from for this, since it's a plain function
                         // (shouldn't have a propagated `self`)
@@ -277,7 +267,7 @@ impl Quark {
 
         let e_ty_id = use_tid;
 
-        match self.acting_on.borrow_mut().get(on_id).clone() {
+        match self.acting_on.borrow().get(on_id).clone() {
             AnyExpression::Block(b) => {
                 for &eid in b.expressions.iter() {
                     let c_ty = self.new_tid();
@@ -415,7 +405,7 @@ impl Quark {
 
                             for gen in generics {
                                 let ty = self
-                                    .resolve_typeref(gen, self.generics.clone(), self.node_id.resolve().parent.unwrap())
+                                    .resolve_typeref(gen, self.generics.as_ref(), self.node_id.resolve().parent.unwrap())
                                     .await;
 
                                 inst_generics.push(ty);
@@ -449,7 +439,7 @@ impl Quark {
             let ptype = self
                 .resolve_typeref(
                     param_type,
-                    self.generics.clone(),
+                    self.generics.as_ref(),
                     self.node_id.resolve().parent.unwrap(),
                 )
                 .await;
@@ -458,6 +448,8 @@ impl Quark {
         let mut binding_scope = Bindings::fresh();
 
         let ae = AnyExpression::from_ast(&mut self.acting_on.borrow_mut(), imp, &mut binding_scope);
+
+        tracing::info!("done with from_ast for node {:?}", self.node_id);
 
         //todo!("descend completed?");
         ae

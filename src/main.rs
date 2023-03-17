@@ -31,6 +31,7 @@
     const_trait_impl,
     box_patterns,
     default_free_fn,
+    map_many_mut,
 )]
 #![allow(irrefutable_let_patterns)]
 #![allow(dead_code)]

@@ -4,7 +4,7 @@ use itertools::Itertools;
 
 use crate::cst::{
     self, CstNode, IntoCstNode, NodeInfo, ScopedName, SyntacticTypeReference,
-    SyntacticTypeReferenceRef, ScopedNameReference,
+    SyntacticTypeReferenceRef,
 };
 
 /*use cst::{
