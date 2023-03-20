@@ -31,6 +31,7 @@ pub enum ExpressionWrapper {
     Comparison(ComparisonOperationExpression),
     Cast(CastExpression),
     Literal(LiteralExpression),
+    StructLiteral(StructLiteralExpression),
     //MethodCall(MethodCall),
     //Access(AccessExpression),
     MemberAccess(MemberAccessExpression),
@@ -77,6 +78,7 @@ impl ExpressionWrapper {
             ExpressionWrapper::Comparison(e) => smallvec![&*e.lhs, &*e.rhs],
             ExpressionWrapper::Cast(e) => smallvec![&*e.subexpr],
             ExpressionWrapper::Literal(e) => smallvec![],
+            ExpressionWrapper::StructLiteral(e) => e.bind_from.iter().map(|e| e.1.as_ref()).collect(),
             ExpressionWrapper::MemberAccess(e) => smallvec![&*e.on],
             ExpressionWrapper::Statement(e) => smallvec![&*e.subexpr],
             ExpressionWrapper::Block(e) => e.contents.iter().map(|e| e.as_ref()).collect(),
@@ -104,6 +106,7 @@ impl ExpressionWrapper {
             ExpressionWrapper::Comparison(e) => smallvec![e.lhs.as_mut(), e.rhs.as_mut()],
             ExpressionWrapper::Cast(e) => smallvec![e.subexpr.as_mut()],
             ExpressionWrapper::Literal(e) => smallvec![],
+            ExpressionWrapper::StructLiteral(e) => e.bind_from.iter_mut().map(|e| e.1.as_mut()).collect(),
             ExpressionWrapper::MemberAccess(e) => smallvec![e.on.as_mut()],
             ExpressionWrapper::Statement(e) => smallvec![e.subexpr.as_mut()],
             ExpressionWrapper::Block(e) => e.contents.iter_mut().map(|e| e.as_mut()).collect(),
@@ -144,6 +147,7 @@ impl IntoCstNode for ExpressionWrapper {
             Self::UnaryOperation(e) => e,
             Self::Comparison(e) => e,
             Self::Literal(e) => e,
+            Self::StructLiteral(e) => e,
             Self::Cast(e) => e,
             Self::Statement(e) => e,
             Self::Block(e) => e,
@@ -1175,6 +1179,18 @@ impl LiteralExpression {
 impl CstNode for LiteralExpression {
     fn node_info(&self) -> NodeInfo {
         self.node_info
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct StructLiteralExpression {
+    pub info: NodeInfo,
+    pub bind_from: Vec<(IStr, Box<ExpressionWrapper>)>,
+}
+
+impl CstNode for StructLiteralExpression {
+    fn node_info(&self) -> NodeInfo {
+        self.info
     }
 }
 

@@ -16,7 +16,7 @@ pub type ExpressionID = crate::avec::AtomicVecIndex;
 
 #[derive(Debug)]
 pub struct ExpressionContext {
-    expressions: AtomicVec<AnyExpression>,
+    pub expressions: AtomicVec<AnyExpression>,
 }
 
 impl ExpressionContext {
@@ -177,10 +177,10 @@ impl AnyExpression {
                 let lhs_id = Self::from_ast(within, lhs, bindings);
 
                 let opstr = match operation {
-                    cst::BinaryOperation::Multiply => "operation *",
-                    cst::BinaryOperation::Divide => "operation /",
-                    cst::BinaryOperation::Add => "operation +",
-                    cst::BinaryOperation::Subtract => "operation -",
+                    cst::BinaryOperation::Multiply => "__operation_binary_multiply",
+                    cst::BinaryOperation::Divide => "__operation_binary_divide",
+                    cst::BinaryOperation::Add => "__operation_binary_plus",
+                    cst::BinaryOperation::Subtract => "__operation_binary_minus",
                 }
                 .intern();
 
@@ -203,10 +203,10 @@ impl AnyExpression {
                 let on_id = Self::from_ast(within, subexpr, &mut bindings.child_scoped());
 
                 let opstr = match operation {
-                    cst::UnaryOperation::Negate => "operation u-",
-                    cst::UnaryOperation::Invert => "operation u!",
-                    cst::UnaryOperation::Dereference => "operation u*",
-                    cst::UnaryOperation::Reference => "operation u&",
+                    cst::UnaryOperation::Negate => "__operation_unary_minus",
+                    cst::UnaryOperation::Invert => "operation_unary_invert",
+                    cst::UnaryOperation::Dereference => "operation_unary_deref",
+                    cst::UnaryOperation::Reference => "operation_unary_ref",
                 }
                 .intern();
 
@@ -413,6 +413,7 @@ impl AnyExpression {
 
                 within.add(AnyExpression::Literal(li)).0
             }
+            ExpressionWrapper::StructLiteral(sl) => todo!(),
             ExpressionWrapper::Statement(_) => todo!(),
             ExpressionWrapper::While(_) => todo!(),
             ExpressionWrapper::Tuple(_) => todo!(),

@@ -54,7 +54,11 @@ impl<'lexer> Parser<'lexer> {
         ))
     }
 
-    pub fn parse_field(&mut self, t: &TokenProvider, with_generics: &Vec<IStr>) -> ParseResult<cst::Field> {
+    pub fn parse_field(
+        &mut self,
+        t: &TokenProvider,
+        with_generics: &Vec<IStr>,
+    ) -> ParseResult<cst::Field> {
         println!("Parsing a field");
         let mut t = parse_header!(t);
 
@@ -100,7 +104,8 @@ impl<'lexer> Parser<'lexer> {
                         id: SyntacticTypeReferenceRef::new_nil(),
                         info: NodeInfo::Builtin,
                         inner: cst::SyntacticTypeReferenceInner::Unconstrained(),
-                    }.intern(),
+                    }
+                    .intern(),
                 );
 
                 params.push(pair);
@@ -134,14 +139,19 @@ impl<'lexer> Parser<'lexer> {
             .join_hard(&mut t)
             .catch(&mut t)?;
 
-        let generics_as_list_istr = generics.clone().into_iter().map(|(name, _)| name).collect_vec();
+        let generics_as_list_istr = generics
+            .clone()
+            .into_iter()
+            .map(|(name, _)| name)
+            .collect_vec();
 
         let mut fields = Vec::new();
+        let mut methods = Vec::new();
 
         t.take(Token::LBrace).join()?;
 
         //while let Ok(Token::Var) = t.lh.la(0).map(|tw| tw.token) {
-        while let next = t.take_in(&[Token::Var, Token::RBrace]).join()? {
+        while let next = t.take_in(&[Token::Var, Token::RBrace, Token::Function]).join()? {
             match next.token {
                 Token::RBrace => {
                     println!("Got a brace");
@@ -150,21 +160,37 @@ impl<'lexer> Parser<'lexer> {
                 Token::Var => {
                     t.lh.backtrack();
                     println!("getting a var");
+
+                    let field = self
+                        .parse_field(&t, &generics_as_list_istr)
+                        .join_hard(&mut t)
+                        .catch(&mut t)
+                        .handle_here()?
+                        .update_solution(&t)
+                        .try_get();
+
+                    //fields.push(field);
+                    if let Some(v) = field {
+                        fields.push(v);
+                    }
+                }
+                Token::Function => {
+                    t.lh.backtrack();
+                    println!("getting a method");
+
+                    let method = self
+                        .parse_function_declaration(&t, &generics_as_list_istr)
+                        .join_hard(&mut t)
+                        .catch(&mut t)
+                        .handle_here()?
+                        .update_solution(&t)
+                        .try_get();
+
+                    if let Some(v) = method {
+                        methods.push(v);
+                    }
                 }
                 _ => unreachable!(),
-            }
-
-            let field = self
-                .parse_field(&t, &generics_as_list_istr)
-                .join_hard(&mut t)
-                .catch(&mut t)
-                .handle_here()?
-                .update_solution(&t)
-                .try_get();
-
-            //fields.push(field);
-            if let Some(v) = field {
-                fields.push(v);
             }
 
             let ending = t.take_in(&[Token::Comma, Token::RBrace]).join()?;
@@ -184,6 +210,7 @@ impl<'lexer> Parser<'lexer> {
         t.success(cst::StructDefinition {
             info: NodeInfo::from_indices(start, end),
             fields,
+            methods,
             name,
             generics,
             public: true, // TODO: parse public/private on structs
@@ -231,7 +258,10 @@ impl<'lexer> Parser<'lexer> {
                     }
                 }
                 Token::Var => {
-                    let f = self.parse_field(&t, with_generics).join_hard(&mut t).catch(&mut t)?; // TODO: fix ya error handlin'
+                    let f = self
+                        .parse_field(&t, with_generics)
+                        .join_hard(&mut t)
+                        .catch(&mut t)?; // TODO: fix ya error handlin'
                     fields.push(f);
                     /*let ident = t.take(Token::Identifier).join()?;
                     let _ = t.take(Token::Colon).join()?;
@@ -339,7 +369,11 @@ impl<'lexer> Parser<'lexer> {
             .join_hard(&mut t)
             .catch(&mut t)?;
 
-        let generics_as_list_istr = generics.clone().into_iter().map(|(name, _)| name).collect_vec();
+        let generics_as_list_istr = generics
+            .clone()
+            .into_iter()
+            .map(|(name, _)| name)
+            .collect_vec();
 
         let t1 = self
             .parse_type_specifier(&t, &generics_as_list_istr)
@@ -391,7 +425,11 @@ impl<'lexer> Parser<'lexer> {
             .join_hard(&mut t)
             .catch(&mut t)?;
 
-        let generics_as_list_istr = generics.clone().into_iter().map(|(name, _)| name).collect_vec();
+        let generics_as_list_istr = generics
+            .clone()
+            .into_iter()
+            .map(|(name, _)| name)
+            .collect_vec();
 
         let name = t.take(Token::Identifier).join()?.slice;
 
@@ -566,7 +604,10 @@ impl<'lexer> Parser<'lexer> {
     ) -> ParseResult<cst::StaticVariableDeclaration> {
         let mut t = t.child();
 
-        let expr = self.parse_expr(&t, &Vec::new()).join_hard(&mut t).catch(&mut t)?;
+        let expr = self
+            .parse_expr(&t, &Vec::new())
+            .join_hard(&mut t)
+            .catch(&mut t)?;
 
         t.take(Token::Semicolon).join()?;
 
@@ -669,7 +710,10 @@ impl<'lexer> Parser<'lexer> {
                 match t.try_take(Token::CmpLessThan) {
                     Some(tw) => {
                         // parse a generic
-                        let tl = self.parse_type_list(&t, Token::CmpGreaterThan, with_generics).join_hard(&mut t).catch(&mut t)?;
+                        let tl = self
+                            .parse_type_list(&t, Token::CmpGreaterThan, with_generics)
+                            .join_hard(&mut t)
+                            .catch(&mut t)?;
                         todo!("handle parameterization for type constraint")
                     }
                     None => {
@@ -684,7 +728,6 @@ impl<'lexer> Parser<'lexer> {
                 } else {
                     cst::SyntacticTypeReferenceInner::Single { name: ScopedName::new(scope.scope) }
                 };
-
 
                 //let s: ScopedName = ScopedName::new(scope.scope);
 
@@ -727,7 +770,19 @@ impl<'lexer> Parser<'lexer> {
                 //todo!("Need to implement tuple types/type references")
             }
             Some(tw) if tw.token.matches(Token::Ampersand) => {
-                panic!()
+                let is_mut = t.try_take(Token::Mutable);
+
+                let inner = self.parse_type_specifier(&t, with_generics).join_hard(&mut t).catch(&mut t)?;
+
+                let tr = cst::SyntacticTypeReferenceInner::Reference { to: Box::new(inner), mutable: is_mut.is_some() };
+
+                let tr = cst::SyntacticTypeReference {
+                    id: SyntacticTypeReferenceRef::new_nil(),
+                    inner: tr,
+                    info: NodeInfo::Builtin, // TODO
+                };
+
+                t.success(tr)
             }
             Some(tw) if tw.token.matches(Token::Asterisk) => {
                 panic!()

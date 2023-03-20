@@ -264,6 +264,9 @@ pub enum Token {
     #[regex("[0-9]+f32")]
     f32Literal,
 
+    #[regex(r"operator\[(\[\]|[_\+\-\~`\*\&\^%\$\#@!a-zA-Z]+)\]")]
+    FnOperator,
+
     #[token(" ")]
     Space,
 
@@ -567,6 +570,7 @@ impl<'a> TokenStream<'a> {
 
     pub fn advance(&mut self) -> () {
         let tok = self.lexer.next();
+        println!("got tok in advance: {tok:?}");
         match tok {
             Some(tok) => {
                 let (startloc, endloc) = match tok {
@@ -696,6 +700,13 @@ impl<'a> TokenStream<'a> {
                 v.push(tw);
             }
         }
+        println!("Tokens:");
+
+        for tok in v.iter() {
+            print!("{:?}({}) ", tok.token, tok.slice);
+        }
+
+        println!();
 
         v
     }

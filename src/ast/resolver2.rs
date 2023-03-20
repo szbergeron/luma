@@ -1,6 +1,6 @@
 use std::{
-    collections::HashMap,
     cell::UnsafeCell,
+    collections::HashMap,
     rc::Rc,
     sync::{atomic::AtomicUsize, Mutex},
 };
@@ -505,16 +505,20 @@ impl Resolver {
                                 self.executor.install(
                                     async move {
                                         let res =
-                                            self.do_composite(composite_symbol, given_root).await;
+                                            self.do_composite(composite_symbol.clone(), given_root).await;
 
                                         let content = match res {
                                             Ok(r) => NameResolutionMessage::RefersTo {
                                                 composite_symbol: r.name, is_at: r.is_at, given_root },
-                                            Err(e) => NameResolutionMessage::HasNoResolution {
-                                                composite_symbol: todo!(),
+                                            Err(e) => {
+                                                eprintln!("import error: {e:?}, while looking for: {composite_symbol:?}");
+                                                std::process::exit(-1);
+                                                NameResolutionMessage::HasNoResolution {
+                                                composite_symbol,
                                                 longest_prefix: todo!(),
                                                 prefix_ends_at: todo!(),
                                                 given_root: todo!()
+                                            }
                                             }
                                         };
 

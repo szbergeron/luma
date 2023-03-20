@@ -258,6 +258,139 @@ impl Node {
         Contexts::instance().intern(n)
     }
 
+    pub fn from_decl(
+        decl: TopLevel,
+        parent: CtxID,
+        global: Option<CtxID>,
+    ) {
+        println!("Got a decl: {decl:?}");
+        match decl {
+            TopLevel::Namespace(n) => {
+                let cst::NamespaceDefinition {
+                    name,
+                    node_info,
+                    contents,
+                    public,
+                } = n;
+
+                let child = Self::from_outer(
+                    contents,
+                    name.expect("namespace had no name?"),
+                    vec![], // TODO
+                    Some(parent),
+                    global,
+                    n.public,
+                );
+
+                parent.to_ref()
+                    .children
+                    .entry(name.expect("namespace had no name?")).or_insert(child);
+            }
+            TopLevel::Function(f) => {
+                let name = f.name;
+                let public = f.public;
+                let mut fd = ast::types::FunctionDefinition::from_cst(f);
+                let imp = fd.implementation.take();
+
+                let inner = NodeUnion::Function(fd, Mutex::new(imp));
+
+                let child = Self::new(
+                    name,
+                    vec![], // TODO
+                    Some(parent),
+                    global,
+                    inner,
+                    public,
+                    vec![],
+                );
+
+                Contexts::instance().get(&parent).children.insert(name, child);
+            }
+
+            TopLevel::Impl(i) => {
+                println!("Detected an impl!");
+                let cst::ImplementationDefinition {
+                    info,
+                    generics,
+                    for_type,
+                    of_trait,
+                    functions,
+                    fields,
+                } = i;
+            }
+            TopLevel::Trait(t) => {
+                println!("Detected a trait!");
+            }
+            TopLevel::Struct(s) => {
+                let cst::StructDefinition {
+                    info,
+                    generics,
+                    name,
+                    fields,
+                    public,
+                    methods,
+                } = s;
+
+                let fields = fields
+                    .into_iter()
+                    .map(|field| {
+                        let cst::Field {
+                            info,
+                            has_type,
+                            has_name,
+                        } = field;
+
+                        let field = ast::types::FieldMember {
+                            name: has_name,
+                            has_type: Some(has_type),
+                            initialization: None, // TODO
+                        };
+
+                        field
+                    })
+                    .collect();
+
+                for method in methods {
+                    let mname = method.name;
+
+                    panic!()
+
+                    //Self::from_parse(n, name, parent, global);
+                }
+
+                let td = ast::types::StructuralDataDefinition { fields };
+
+                let inner = NodeUnion::Type(Mutex::new(td));
+
+                let child = Self::new(name, generics, Some(parent), global, inner, public, vec![]);
+
+                parent.to_ref()
+                    .children
+                    .entry(name)
+                    .and_modify(|prior| {
+                        let prior = prior.resolve();
+                        let p = prior.node_id.get().unwrap().to_ref();
+                        println!("");
+                        println!("There was an existing entry! Conflict between:");
+                        println!("{p}");
+                        println!("{}", child.to_ref());
+                        println!("");
+                    })
+                    .or_insert(child);
+                /*.or_insert(NodeReference {
+                    node_id: child.into(),
+                    within: node,
+                    relative_path: vec![name],
+                });*/
+            }
+            TopLevel::UseDeclaration(ud) => {
+                // just pass here, already added them
+                info!("ignoring use decl since already added");
+            }
+            _ => todo!(),
+        };
+    }
+
     pub fn from_outer(
         o: cst::OuterScope,
         name: IStr,
@@ -276,6 +409,7 @@ impl Node {
         // pre-collect use decls
 
         let mut use_decls = Vec::new();
+
         for decl in declarations.iter() {
             if let TopLevel::UseDeclaration(u) = decl {
                 use_decls.push(u.clone());
@@ -294,124 +428,7 @@ impl Node {
 
         // iterate through decls and put as children here
         for decl in declarations {
-            println!("Got a decl: {decl:?}");
-            match decl {
-                TopLevel::Namespace(n) => {
-                    let cst::NamespaceDefinition {
-                        name,
-                        node_info,
-                        contents,
-                        public,
-                    } = n;
-
-                    let child = Self::from_outer(
-                        contents,
-                        name.expect("namespace had no name?"),
-                        vec![], // TODO
-                        node.into(),
-                        global.clone(),
-                        n.public,
-                    );
-
-                    node.to_ref()
-                        .children
-                        .entry(name.expect("namespace had no name?"));
-                }
-                TopLevel::Function(f) => {
-                    let name = f.name;
-                    let public = f.public;
-                    let mut fd = ast::types::FunctionDefinition::from_cst(f);
-                    let imp = fd.implementation.take();
-
-                    let inner = NodeUnion::Function(fd, Mutex::new(imp));
-
-                    let child = Self::new(
-                        name,
-                        vec![], // TODO
-                        Some(node),
-                        global,
-                        inner,
-                        public,
-                        vec![],
-                    );
-
-                    Contexts::instance().get(&node).children.insert(name, child);
-                }
-
-                TopLevel::Impl(i) => {
-                    println!("Detected an impl!");
-                    let cst::ImplementationDefinition {
-                        info,
-                        generics,
-                        for_type,
-                        of_trait,
-                        functions,
-                        fields,
-                    } = i;
-                }
-                TopLevel::Trait(t) => {
-                    println!("Detected a trait!");
-                }
-                TopLevel::Struct(s) => {
-                    let cst::StructDefinition {
-                        info,
-                        generics,
-                        name,
-                        fields,
-                        public,
-                    } = s;
-
-                    let fields = fields
-                        .into_iter()
-                        .map(|field| {
-                            let cst::Field {
-                                info,
-                                has_type,
-                                has_name,
-                            } = field;
-
-                            let field = ast::types::FieldMember {
-                                name: has_name,
-                                has_type: Some(has_type),
-                                initialization: None, // TODO
-                            };
-
-                            field
-                        })
-                        .collect();
-
-                    let td = ast::types::StructuralDataDefinition { fields };
-
-                    let inner = NodeUnion::Type(Mutex::new(td));
-
-                    let child =
-                        Self::new(name, generics, Some(node), global, inner, public, vec![]);
-
-                    node.to_ref()
-                        .children
-                        .entry(name)
-                        .and_modify(|prior| {
-                            let prior = prior.resolve();
-                            let p = prior.node_id.get().unwrap().to_ref();
-                            println!("");
-                            println!("There was an existing entry! Conflict between:");
-                            println!("{p}");
-                            println!("{}", child.to_ref());
-                            println!("");
-                        })
-                        .or_insert(child);
-                    /*.or_insert(NodeReference {
-                        node_id: child.into(),
-                        within: node,
-                        relative_path: vec![name],
-                    });*/
-                }
-                TopLevel::UseDeclaration(ud) => {
-                    // just pass here, already added them
-                    info!("ignoring use decl since already added");
-                }
-                _ => todo!(),
-            };
+            Self::from_decl(decl, node, global);
         }
 
         node
@@ -506,7 +523,10 @@ impl std::fmt::Display for Node {
 #[derive(Debug)]
 pub enum NodeUnion {
     Type(Mutex<ast::types::StructuralDataDefinition>),
-    Function(ast::types::FunctionDefinition, Mutex<Option<cst::expressions::ExpressionWrapper>>),
+    Function(
+        ast::types::FunctionDefinition,
+        Mutex<Option<cst::expressions::ExpressionWrapper>>,
+    ),
     Global(!),
     Empty(),
     //Implementation(Implementation),

@@ -18,6 +18,8 @@ pub struct StructDefinition {
     pub name: IStr,
 
     pub fields: Vec<Field>,
+
+    pub methods: Vec<FunctionDefinition>,
 }
 
 impl CstNode for StructDefinition {

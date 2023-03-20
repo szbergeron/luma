@@ -490,7 +490,7 @@ impl<'lexer> Parser<'lexer> {
         let mut t = parse_header!(t);
 
         let start = t.take(Token::Function).join()?.start;
-        let function_name = t.take(Token::Identifier).join()?;
+        let function_name = t.take_in(&[Token::Identifier, Token::FnOperator]).join()?;
 
         let inner_generics = self
             .parse_generic_param_list(&t)

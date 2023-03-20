@@ -151,7 +151,7 @@ impl Instance {
         of: CtxID,
         params: Vec<TypeID>,
         generics: Vec<TypeID>,
-        within: &mut Quark,
+        within: &Quark,
     ) -> Result<(Self, Option<TypeID>, Vec<Unify>), TypeError> {
         // if we are generic, then we need to check whether those generics propagate
         // through to our result, or if our result can be instantiated

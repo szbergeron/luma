@@ -1,5 +1,5 @@
 //use crate::ast;
-use crate::cst;
+use crate::cst::{self, StructLiteralExpression};
 use crate::lex::{CodeLocation, ParseResultError, Token};
 use either::Either;
 
@@ -40,7 +40,11 @@ impl<'lexer> Parser<'lexer> {
     /// let <parse_binding()> = <expression>;
     ///
     /// includes support for parsing type specifiers within
-    pub fn parse_binding(&mut self, t: &TokenProvider, with_generics: &Vec<IStr>) -> ParseResult<Box<cst::LetComponent>> {
+    pub fn parse_binding(
+        &mut self,
+        t: &TokenProvider,
+        with_generics: &Vec<IStr>,
+    ) -> ParseResult<Box<cst::LetComponent>> {
         // want to find if this is going to be a destructuring operation
         /*let mut t = t
         .child()
@@ -141,6 +145,53 @@ impl<'lexer> Parser<'lexer> {
         }
     }
 
+    pub fn parse_struct_literal(
+        &mut self,
+        t: &TokenProvider,
+        with_generics: &Vec<IStr>,
+    ) -> ExpressionResult {
+        let mut t = parse_header!(t);
+        tracing::info!("todo: better error handling here");
+
+        let start = t.take(Token::Struct).join()?.start;
+
+        let struct_type = self
+            .parse_type_specifier(&t, with_generics)
+            .join_hard(&mut t)
+            .catch(&mut t)?;
+
+        t.take(Token::LBrace).join()?;
+
+        let mut pairs = Vec::new();
+
+        let end = loop {
+            let la = t.la(0).catch(&mut t).join_hard(&mut t)?;
+            match la.token {
+                Token::RBrace => {
+                    t.take(Token::RBrace).join()?;
+                    break la.end;
+                }
+                _ => {
+                    let field_name = t.take(Token::Identifier).join()?.slice;
+                    let _colon = t.take(Token::Colon).join()?;
+                    // TODO: recover errors
+                    let val = self
+                        .parse_expr(&t, with_generics)
+                        .join_hard(&mut t)
+                        .catch(&mut t)?;
+
+                    pairs.push((field_name, val));
+                }
+            }
+        };
+
+        tracing::info!("struct literal thing");
+
+        t.success(Box::new(cst::ExpressionWrapper::StructLiteral(
+            StructLiteralExpression { info: NodeInfo::from_indices(start, end), bind_from: pairs },
+        )))
+    }
+
     /// syntax: let <binding>: <type> = <expr>
     pub fn parse_let(&mut self, t: &TokenProvider, with_generics: &Vec<IStr>) -> ExpressionResult {
         //let mut t = t.child();
@@ -148,11 +199,17 @@ impl<'lexer> Parser<'lexer> {
 
         let start = t.take(Token::Let).join()?.start;
 
-        let binding = self.parse_binding(&t, with_generics).join_hard(&mut t).catch(&mut t)?;
+        let binding = self
+            .parse_binding(&t, with_generics)
+            .join_hard(&mut t)
+            .catch(&mut t)?;
 
         let _eq = t.take(Token::Equals).join()?;
 
-        let expr = self.parse_expr(&t, with_generics).join_hard(&mut t).catch(&mut t)?;
+        let expr = self
+            .parse_expr(&t, with_generics)
+            .join_hard(&mut t)
+            .catch(&mut t)?;
 
         // TODO: eval if this could ever be None, potentially force expr to have a
         // CodeLocation::Parsed
@@ -173,7 +230,11 @@ impl<'lexer> Parser<'lexer> {
     // where:
     //     typespecifier: <typelist>
     //     pattern: (expressionlist)
-    pub fn parse_pattern(&mut self, t: &TokenProvider, with_generics: &Vec<IStr>) -> ParseResult<cst::Tuple> {
+    pub fn parse_pattern(
+        &mut self,
+        t: &TokenProvider,
+        with_generics: &Vec<IStr>,
+    ) -> ParseResult<cst::Tuple> {
         //let mut t = t.child();
         let mut t = parse_header!(t);
         // can be a single literal or tuple, and each tuple is a set of expressions
@@ -305,7 +366,11 @@ impl<'lexer> Parser<'lexer> {
         t.success(r)
     }*/
 
-    pub fn atomic_expression(&mut self, t: &TokenProvider, with_generics: &Vec<IStr>) -> ExpressionResult {
+    pub fn atomic_expression(
+        &mut self,
+        t: &TokenProvider,
+        with_generics: &Vec<IStr>,
+    ) -> ExpressionResult {
         //let mut t = t.child();
         let mut t = parse_header!(t);
         let tw = t
@@ -366,7 +431,10 @@ impl<'lexer> Parser<'lexer> {
             Token::LParen => {
                 // doing a function call on the current continuation
                 t.lh.backtrack();
-                let call_tuple = self.parse_tuple(&t, with_generics).join_hard(&mut t).catch(&mut t)?;
+                let call_tuple = self
+                    .parse_tuple(&t, with_generics)
+                    .join_hard(&mut t)
+                    .catch(&mut t)?;
                 let end = if let NodeInfo::Parsed(pni) = call_tuple.as_node().node_info() {
                     pni.span.end
                 } else {
@@ -411,12 +479,19 @@ impl<'lexer> Parser<'lexer> {
 
     /// Parses an "operand", where in "x = y + z" x, y, and z are all operands.
     /// In the expression "foo.bar = baz.qux()", both foo.bar and baz.qux() are operands.
-    pub fn parse_operand(&mut self, t: &TokenProvider, with_generics: &Vec<IStr>) -> ExpressionResult {
+    pub fn parse_operand(
+        &mut self,
+        t: &TokenProvider,
+        with_generics: &Vec<IStr>,
+    ) -> ExpressionResult {
         let mut t = parse_header!(t);
 
         let scope = self.parse_scope(&t).join_hard(&mut t).catch(&mut t)?;
 
-        let mut base = self.parse_access_base(&t, with_generics).join_hard(&mut t).catch(&mut t)?;
+        let mut base = self
+            .parse_access_base(&t, with_generics)
+            .join_hard(&mut t)
+            .catch(&mut t)?;
 
         loop {
             match self
@@ -440,7 +515,11 @@ impl<'lexer> Parser<'lexer> {
 
     /// Parses a literal, tuple, or identifier that forms the "base" of an access or operand.
     /// Any scoping must have been parsed prior
-    pub fn parse_access_base(&mut self, t: &TokenProvider, with_generics: &Vec<IStr>) -> ExpressionResult {
+    pub fn parse_access_base(
+        &mut self,
+        t: &TokenProvider,
+        with_generics: &Vec<IStr>,
+    ) -> ExpressionResult {
         let mut t = parse_header!(t, [Token::Identifier => 1.0, Token::UnknownIntegerLiteral => 1.0, Token::StringLiteral => 1.0]);
 
         let tw = t.try_take_if(|tw| {
@@ -474,7 +553,11 @@ impl<'lexer> Parser<'lexer> {
         }
     }
 
-    pub fn parse_tuple(&mut self, t: &TokenProvider, with_generics: &Vec<IStr>) -> ExpressionResult {
+    pub fn parse_tuple(
+        &mut self,
+        t: &TokenProvider,
+        with_generics: &Vec<IStr>,
+    ) -> ExpressionResult {
         let mut t =
             parse_header!(t, [Token::LParen => 1.0, Token::Comma => 1.0, Token::RParen => 1.0]);
 
@@ -521,7 +604,11 @@ impl<'lexer> Parser<'lexer> {
         t.success(ex)
     }
 
-    pub fn parse_llvm_builtin(&mut self, t: &TokenProvider, with_generics: &Vec<IStr>) -> ExpressionResult {
+    pub fn parse_llvm_builtin(
+        &mut self,
+        t: &TokenProvider,
+        with_generics: &Vec<IStr>,
+    ) -> ExpressionResult {
         //let mut t = t.child();
         let mut t = parse_header!(t);
 
@@ -535,7 +622,10 @@ impl<'lexer> Parser<'lexer> {
         while let Some(tok) = t.try_take_in(&[Token::LL_Bind, Token::LL_Var]) {
             match tok.token {
                 Token::LL_Bind => {
-                    let exp = self.parse_expr(&t, with_generics).join_hard(&mut t).catch(&mut t)?;
+                    let exp = self
+                        .parse_expr(&t, with_generics)
+                        .join_hard(&mut t)
+                        .catch(&mut t)?;
                     let _ = t.take(Token::ThickArrow).join()?;
                     let name = t.take(Token::Identifier).join()?;
 
@@ -575,7 +665,11 @@ impl<'lexer> Parser<'lexer> {
         t.success(Box::new(cst::ExpressionWrapper::LLVMLiteral(llvmle)))
     }
 
-    pub fn parse_if_then_else(&mut self, t: &TokenProvider, with_generics: &Vec<IStr>) -> ExpressionResult {
+    pub fn parse_if_then_else(
+        &mut self,
+        t: &TokenProvider,
+        with_generics: &Vec<IStr>,
+    ) -> ExpressionResult {
         //let mut t = t.child();
         let mut t = parse_header!(t);
 
@@ -585,9 +679,15 @@ impl<'lexer> Parser<'lexer> {
             .join()?
             .start;
         let if_exp = self.parse_expr(&t, with_generics).hint("An 'if' must be followed by a conditional expression followed by a then expression").join_hard(&mut t).catch(&mut t)?;
-        let then_exp = self.parse_expr(&t, with_generics).join_hard(&mut t).catch(&mut t)?;
+        let then_exp = self
+            .parse_expr(&t, with_generics)
+            .join_hard(&mut t)
+            .catch(&mut t)?;
         let (else_exp, end) = if t.try_take(Token::Else).is_some() {
-            let exp = self.parse_expr(&t, with_generics).join_hard(&mut t).catch(&mut t)?;
+            let exp = self
+                .parse_expr(&t, with_generics)
+                .join_hard(&mut t)
+                .catch(&mut t)?;
             let end = exp
                 .as_node()
                 .end()
@@ -608,20 +708,34 @@ impl<'lexer> Parser<'lexer> {
         ))
     }
 
-    pub fn parse_while(&mut self, t: &TokenProvider, with_generics: &Vec<IStr>) -> ExpressionResult {
+    pub fn parse_while(
+        &mut self,
+        t: &TokenProvider,
+        with_generics: &Vec<IStr>,
+    ) -> ExpressionResult {
         //let mut t = t.child();
         let mut t = parse_header!(t);
 
         let start = t.take(Token::While).join()?.start;
-        let while_exp = self.parse_expr(&t, with_generics).join_hard(&mut t).catch(&mut t)?;
-        let do_exp = self.parse_expr(&t, with_generics).join_hard(&mut t).catch(&mut t)?;
+        let while_exp = self
+            .parse_expr(&t, with_generics)
+            .join_hard(&mut t)
+            .catch(&mut t)?;
+        let do_exp = self
+            .parse_expr(&t, with_generics)
+            .join_hard(&mut t)
+            .catch(&mut t)?;
 
         let node_info = NodeInfo::from_indices(start, do_exp.as_node().end().unwrap_or(start));
 
         t.success(cst::WhileExpression::new_expr(node_info, while_exp, do_exp))
     }
 
-    pub fn syntactic_block(&mut self, t: &TokenProvider, with_generics: &Vec<IStr>) -> ExpressionResult {
+    pub fn syntactic_block(
+        &mut self,
+        t: &TokenProvider,
+        with_generics: &Vec<IStr>,
+    ) -> ExpressionResult {
         let mut t = parse_header!(t, [Token::LBrace => 1.0, Token::Semicolon => 10.0, Token::RBrace => 10.0]);
 
         /*let mut t = t.child().predict(&[
@@ -734,7 +848,10 @@ impl<'lexer> Parser<'lexer> {
                 r
             }
             Token::LBrace => {
-                let r = self.syntactic_block(&t, with_generics).join_hard(&mut t).catch(&mut t)?;
+                let r = self
+                    .syntactic_block(&t, with_generics)
+                    .join_hard(&mut t)
+                    .catch(&mut t)?;
 
                 r
             }
@@ -755,12 +872,27 @@ impl<'lexer> Parser<'lexer> {
                 r
             }
             Token::While => {
-                let r = self.parse_while(&t, with_generics).join_hard(&mut t).catch(&mut t)?;
+                let r = self
+                    .parse_while(&t, with_generics)
+                    .join_hard(&mut t)
+                    .catch(&mut t)?;
+
+                r
+            }
+            Token::Struct => {
+                tracing::info!("parsing a struct literal");
+                let r = self
+                    .parse_struct_literal(&t, with_generics)
+                    .join_hard(&mut t)
+                    .catch(&mut t)?;
 
                 r
             }
             Token::Let => {
-                let r = self.parse_let(&t, with_generics).join_hard(&mut t).catch(&mut t)?;
+                let r = self
+                    .parse_let(&t, with_generics)
+                    .join_hard(&mut t)
+                    .catch(&mut t)?;
 
                 r
             }
@@ -796,7 +928,10 @@ impl<'lexer> Parser<'lexer> {
                 /*let ae = self.atomic_expression(&t).join_hard(&mut t).catch(&mut t)?;
                 println!("ae is: {ae:?}");
                 ae*/
-                let operand = self.parse_operand(&t, with_generics).join_hard(&mut t).catch(&mut t)?;
+                let operand = self
+                    .parse_operand(&t, with_generics)
+                    .join_hard(&mut t)
+                    .catch(&mut t)?;
                 operand
             }
             _other => {
@@ -819,11 +954,7 @@ impl<'lexer> Parser<'lexer> {
                     .expect("parsed lhs did not have a start");
                 let end = typeref.end().expect("parsed typeref did not have an end");
                 let node_info = NodeInfo::from_indices(start, end);
-                lhs = cst::CastExpression::new_expr(
-                    node_info,
-                    lhs,
-                    box typeref.intern(),
-                );
+                lhs = cst::CastExpression::new_expr(node_info, lhs, box typeref.intern());
                 continue;
             } else if let Some(_arrow) = t.try_take(Token::ThinArrowLeft) {
                 println!("Parsing implementation expression");
@@ -863,7 +994,10 @@ impl<'lexer> Parser<'lexer> {
                 .map(|tw| tw.token.is_operand_base())
                 .unwrap_or(false)
             {
-                lhs = self.parse_operand(&t, with_generics).join_hard(&mut t).catch(&mut t)?;
+                lhs = self
+                    .parse_operand(&t, with_generics)
+                    .join_hard(&mut t)
+                    .catch(&mut t)?;
                 continue;
             } else {
                 break;
