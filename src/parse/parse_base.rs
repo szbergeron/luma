@@ -35,6 +35,7 @@ impl<'lexer> Parser<'lexer> {
         //while let Ok(tw) = t.sync().la(0) {
         loop {
             if t.lh.la(0).is_err() && is_file {
+                println!("breaks out of entry since hit end of file");
                 break; // no decs left in file
             }
 
@@ -54,7 +55,7 @@ impl<'lexer> Parser<'lexer> {
             println!("Entry: got a tw {:?}", tw);
             match tw.token {
                 Token::RBrace => {
-                    t.take(Token::RBrace).join()?;
+                    //t.take(Token::RBrace).join()?;
                     if !is_file || t.sync().la(0).is_err() {
                         println!("Ending entry since found }}");
                     } else {
@@ -68,6 +69,8 @@ impl<'lexer> Parser<'lexer> {
                         t.add_error(e);
                         //panic!();
                     }
+                    println!("exits from entry since got closing brace");
+                    //panic!();
                     break;
                 }
                 _ => {
@@ -368,7 +371,8 @@ impl<'lexer> Parser<'lexer> {
 
         let pu = self.entry(&t, false).join_hard(&mut t).catch(&mut t)?;
 
-        t.take(Token::RBrace).join()?;
+        //t.take(Token::RBrace).join()?; // entry already takes the rbrace for us
+        tracing::info!("got rbrace");
 
         let end = self.lex.la(-1).map_or(CodeLocation::Builtin, |tw| tw.end);
 

@@ -1,4 +1,4 @@
-use std::sync::RwLock;
+use std::{sync::RwLock, collections::HashMap};
 
 //use dashmap::lock::RwLock;
 
@@ -103,6 +103,7 @@ pub struct FieldMember {
 #[derive(Debug)]
 pub struct StructuralDataDefinition {
     pub fields: Vec<FieldMember>,
+    pub methods: HashMap<IStr, CtxID>,
 }
 
 #[derive(Debug, Clone)]

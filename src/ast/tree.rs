@@ -3,12 +3,15 @@ use crate::cst::{
     ScopedName, SyntacticTypeReference, SyntacticTypeReferenceInner, SyntacticTypeReferenceRef,
     TopLevel,
 };
+use crate::helper::interner::Internable;
 use crate::{avec::AtomicVecIndex, cst::UseDeclaration};
 use itertools::Itertools;
+use smallvec::smallvec;
 use tracing::info;
 
 use crate::ast;
 
+use std::collections::HashMap;
 use std::default::default;
 use std::{
     ptr::NonNull,
@@ -37,15 +40,14 @@ pub struct Contexts {
     owning: AtomicVec<Node>,
 
     node_ids: Mutex<Vec<CtxID>>,
-
-    by_path: DashMap<Box<[IStr]>, CtxID>,
+    //by_path: DashMap<Box<[IStr]>, CtxID>,
 }
 
 impl Contexts {
     pub fn new() -> Self {
         Self {
             owning: AtomicVec::new(),
-            by_path: DashMap::new(),
+            //by_path: DashMap::new(),
             node_ids: Mutex::new(Vec::new()),
         }
     }
@@ -235,8 +237,17 @@ impl Node {
         global: Option<CtxID>,
         inner: NodeUnion,
         public: bool,
-        use_statements: Vec<UseDeclaration>,
+        mut use_statements: Vec<UseDeclaration>,
     ) -> CtxID {
+        use_statements.push(UseDeclaration {
+            node_info: cst::NodeInfo::Builtin,
+            public: false,
+            scope: ScopedName {
+                scope: smallvec!["global".intern(), "std".intern()],
+            },
+            alias: Some("std".intern()),
+        });
+
         let generics = generics
             .into_iter()
             .map(|(name, ty)| (name, ty))
@@ -258,11 +269,7 @@ impl Node {
         Contexts::instance().intern(n)
     }
 
-    pub fn from_decl(
-        decl: TopLevel,
-        parent: CtxID,
-        global: Option<CtxID>,
-    ) {
+    pub fn from_decl(decl: TopLevel, parent: CtxID, global: Option<CtxID>) -> Option<CtxID> {
         println!("Got a decl: {decl:?}");
         match decl {
             TopLevel::Namespace(n) => {
@@ -282,9 +289,13 @@ impl Node {
                     n.public,
                 );
 
-                parent.to_ref()
+                parent
+                    .to_ref()
                     .children
-                    .entry(name.expect("namespace had no name?")).or_insert(child);
+                    .entry(name.expect("namespace had no name?"))
+                    .or_insert(child);
+
+                Some(child)
             }
             TopLevel::Function(f) => {
                 let name = f.name;
@@ -304,7 +315,12 @@ impl Node {
                     vec![],
                 );
 
-                Contexts::instance().get(&parent).children.insert(name, child);
+                Contexts::instance()
+                    .get(&parent)
+                    .children
+                    .insert(name, child);
+
+                Some(child)
             }
 
             TopLevel::Impl(i) => {
@@ -317,9 +333,13 @@ impl Node {
                     functions,
                     fields,
                 } = i;
+
+                todo!()
             }
             TopLevel::Trait(t) => {
                 println!("Detected a trait!");
+
+                todo!()
             }
             TopLevel::Struct(s) => {
                 let cst::StructDefinition {
@@ -350,21 +370,38 @@ impl Node {
                     })
                     .collect();
 
-                for method in methods {
-                    let mname = method.name;
-
-                    panic!()
-
-                    //Self::from_parse(n, name, parent, global);
-                }
-
-                let td = ast::types::StructuralDataDefinition { fields };
+                let td = ast::types::StructuralDataDefinition {
+                    fields,
+                    methods: HashMap::new(),
+                };
 
                 let inner = NodeUnion::Type(Mutex::new(td));
 
                 let child = Self::new(name, generics, Some(parent), global, inner, public, vec![]);
 
-                parent.to_ref()
+                let mut method_pairs = HashMap::new();
+
+                for method in methods {
+                    let mname = method.name;
+
+                    let node = Self::from_decl(TopLevel::Function(method), child, global);
+
+                    method_pairs.insert(
+                        mname,
+                        node.expect("inserted a function, should get back id"),
+                    );
+
+                    //Self::from_parse(n, name, parent, global);
+                }
+
+                if let NodeUnion::Type(inner) = &child.resolve().inner {
+                    inner.lock().unwrap().methods = method_pairs;
+                } else {
+                    unreachable!()
+                }
+
+                parent
+                    .to_ref()
                     .children
                     .entry(name)
                     .and_modify(|prior| {
@@ -382,13 +419,16 @@ impl Node {
                     within: node,
                     relative_path: vec![name],
                 });*/
+                Some(child)
             }
             TopLevel::UseDeclaration(ud) => {
                 // just pass here, already added them
                 info!("ignoring use decl since already added");
+
+                None
             }
             _ => todo!(),
-        };
+        }
     }
 
     pub fn from_outer(

@@ -132,6 +132,7 @@ pub enum InstanceOf {
 pub struct InstanceOfType {
     //regular_fields: Rc<HashMap<IStr, SyntacticTypeReferenceRef>>,
     regular_fields: HashMap<IStr, TypeID>,
+    //methods: HashMap<>
 }
 
 #[derive(Clone, Debug)]
@@ -209,6 +210,7 @@ impl Instance {
                     unify.push(u);
 
                     (UsageHandle(uuid::Uuid::new_v4()), unify)
+                //} else if let Some(pair) = t.m
                 } else {
                     // this is a dynamic field
                     todo!("dynamic fields")

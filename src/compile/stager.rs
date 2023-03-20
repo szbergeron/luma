@@ -8,6 +8,7 @@ use crate::lex::{ErrorSet, LookaheadHandle, TokenStream};
 use crate::parse::schema::TokenProvider;
 use crate::parse::Parser;
 use std::collections::HashSet;
+use std::str::FromStr;
 
 use crate::{ast, cst};
 use std::path::{Path, PathBuf};
@@ -150,7 +151,9 @@ fn args_to_roles(args: &ArgResult) -> Vec<FileRole> {
 async fn async_launch(args: ArgResult) {
     let files: FileRegistry = Default::default();
 
-    let roles = args_to_roles(&args);
+    let mut roles = args_to_roles(&args);
+
+    roles.push(FileRole::Source(SourceFile { location: PathBuf::from_str("./std.luma").unwrap() }));
 
     println!("Building node");
 
