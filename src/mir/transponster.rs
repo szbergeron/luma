@@ -195,6 +195,9 @@ impl Instance {
 
         match &self.of {
             InstanceOf::Type(t) => {
+                if let Some(v) = self.instantiated_from {
+                    todo!("we know??")
+                }
                 if let Some(&field_type) = t.regular_fields.get(&field) {
                     let u = match direction {
                         UsageDirection::Load() => Unify {

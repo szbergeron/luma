@@ -157,6 +157,14 @@ impl ScopedName {
         ScopedName { scope: s.into() }
     }
 
+    pub fn from_many<S: Into<String>>(s: S) -> Self {
+        let s: String = s.into();
+
+        let inner = s.split("::").map(|s| s.intern()).collect();
+
+        Self { scope: inner }
+    }
+
     pub fn from_one(s: IStr) -> ScopedName {
         ScopedName { scope: smallvec![s] }
     }
@@ -201,9 +209,9 @@ impl SyntacticTypeReferenceRef {
     }
 
     pub fn from_std(s: &'static str) -> Self {
-        let inner = s.split("::").map(|s| s.intern()).collect();
+        let sn = ScopedName::from_many(s);
 
-        let inner = SyntacticTypeReferenceInner::Single { name: ScopedName { scope: inner } };
+        let inner = SyntacticTypeReferenceInner::Single { name: sn };
 
         let syntr = SyntacticTypeReference {
             id: Self::new_nil(),

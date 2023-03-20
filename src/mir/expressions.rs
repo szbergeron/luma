@@ -177,10 +177,10 @@ impl AnyExpression {
                 let lhs_id = Self::from_ast(within, lhs, bindings);
 
                 let opstr = match operation {
-                    cst::BinaryOperation::Multiply => "__operation_binary_multiply",
-                    cst::BinaryOperation::Divide => "__operation_binary_divide",
-                    cst::BinaryOperation::Add => "__operation_binary_plus",
-                    cst::BinaryOperation::Subtract => "__operation_binary_minus",
+                    cst::BinaryOperation::Multiply => "operation[_*_]",
+                    cst::BinaryOperation::Divide => "operation[_/_]",
+                    cst::BinaryOperation::Add => "operation[_+_]",
+                    cst::BinaryOperation::Subtract => "operation[_-_]",
                 }
                 .intern();
 

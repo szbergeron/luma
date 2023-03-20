@@ -89,11 +89,11 @@ impl Watchdog {
     }
 
     pub async fn run(self) {
-        let mut sent_fuse = true;
+        let mut sent_fuse = false;
         println!("about to send heartbeat");
         while self.postal.send_heartbeat() {
             println!("sent heartbeat");
-            tokio::time::sleep(Duration::from_millis(500)).await;
+            tokio::time::sleep(Duration::from_millis(5000)).await;
 
             if !sent_fuse {
                 sent_fuse = true;
@@ -227,6 +227,13 @@ pub struct Group {
     with_postal: Arc<Postal>,
 }
 
+fn static_pinned_leaked<V>(v: V) -> &'static V {
+    //let boxed = Box::pin(v); // don't even pin here, just senseless
+    let mref = Box::leak(Box::new(v));
+
+    mref
+}
+
 impl Group {
     pub fn new(
         listen_to: UnboundedReceiver<Message>,
@@ -245,7 +252,11 @@ impl Group {
         // in these futures actually don't care so long as
         // the entire group of them is moved at a time
         let exe = unsafe { Executor::new() };
-        let exer = unsafe { (&exe as *const Executor).as_ref().unwrap() };
+        /*let exe_boxed = Box::pin(exe);
+        let exe_ptr = Pin::into_inner(exe_boxed.as_ref()) as *const Executor;
+        let exer = unsafe { exe_ptr.as_ref().unwrap() };*/
+        let exer = static_pinned_leaked(exe);
+        //let exer = unsafe { (&exe as *const Executor).as_ref().unwrap() };
 
         let (res_s, res_r) = local_channel::mpsc::channel();
         let (qk_s, qk_r) = local_channel::mpsc::channel();
@@ -259,12 +270,19 @@ impl Group {
             exer,
             Earpiece::new(rtr_s.clone(), res_r, self.for_node),
         );
+
+        /*let resolver_pinned = Box::pin(resolver);
+        let resolver_static_ptr = Pin::into_inner(resolver_pinned.as_ref()) as *const Resolver;
+        let resolver_static_ref = unsafe { resolver_static_ptr.as_ref().unwrap() };*/
+        let resolver_static_ref = static_pinned_leaked(resolver);
+
         let quark = Quark::for_node(
             self.for_node,
             rtr_s.clone(),
             //Earpiece::new(rtr_s.clone(), qk_r, self.for_node),
             exer,
         );
+
         //let bridge = Bridge::new(self.listen_to, rtr_s.clone());
         let router = Router::new(
             rtr_r,
@@ -287,34 +305,29 @@ impl Group {
 
         unsafe {
             info!("installing resolver uses into exe");
-            resolver.install(&exe);
+            resolver_static_ref.install(exer);
             info!("installed resolver uses into exe");
 
             // it doesn't truly live for static, but it lives long enough that the executor itself
             // is dropped before resolver is, and we've awaited all the futures so they are allowed
             // to drop then
-            let pinned = Box::pin(resolver);
-            let sref = Pin::into_inner(pinned.as_ref()) as *const Resolver;
-            let sref = sref.as_ref().unwrap();
+            //let pinned = Box::pin(resolver);
 
-            let eref = &exe as *const Executor;
-            let eref = eref.as_ref().unwrap();
-
-            exe.install(
-                sref.thread(),
+            exer.install(
+                resolver_static_ref.thread(),
                 format!("resolver for node {:?}", self.for_node),
             );
 
-            exe.install(
+            exer.install(
                 quark.thread(Earpiece::new(rtr_s.clone(), qk_r, self.for_node)),
                 format!("quark for node {:?}", self.for_node),
             );
-            exe.install(
-                oracle.thread(eref),
+            exer.install(
+                oracle.thread(exer),
                 format!("oracle for node {:?}", self.for_node),
             );
 
-            exe.install(
+            exer.install(
                 router.thread(),
                 format!("router for node {:?}", self.for_node),
             );
@@ -327,7 +340,7 @@ impl Group {
                 info!("doing a step loop");
                 // we want to wait until everything internal stabilizes,
                 // and then only step one external message at a time
-                let stepped_any = exe.until_stable(); // not async since it is, itself, an executor
+                let stepped_any = exer.until_stable(); // not async since it is, itself, an executor
 
                 // now everything is sleeping, so long as the
                 // services are well behaved (we have to assume they are!),

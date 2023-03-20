@@ -15,7 +15,7 @@ use crate::{
     compile::per_module::{
         Content, ControlMessage, ConversationContext, Destination, Earpiece, Message, Service,
     },
-    cst::{ExpressionWrapper, SyntacticTypeReferenceInner, SyntacticTypeReferenceRef},
+    cst::{ExpressionWrapper, SyntacticTypeReferenceInner, SyntacticTypeReferenceRef, ScopedName},
     helper::interner::{IStr, Internable},
     mir::expressions::{AnyExpression, Bindings, Composite, ExpressionContext, Literal},
 };
@@ -167,6 +167,7 @@ impl Quark {
             SyntacticTypeReferenceInner::Single { name } => {
                 // we are maybe an instance of a type? or some node? so figure out which one it
                 // is
+                tracing::info!("resolving nr {name:?}");
                 let nr = NameResolver {
                     name: name.clone(),
                     based_in: from_base,
@@ -174,6 +175,9 @@ impl Quark {
                     service: Service::Quark(),
                 };
                 let r = nr.using_context(&self.conversations).await;
+
+                //panic!("resolved using nr");
+
                 match r {
                     Ok(cid) => {
                         tracing::info!("constructs an instance for single {name:?}, and it pointed to {cid:?} for a simple typeref");
@@ -219,7 +223,16 @@ impl Quark {
                 todo!("handle generics for tr")
             }
             SyntacticTypeReferenceInner::Reference { to, mutable } => {
-                todo!("handle references in quark")
+                let nr = NameResolver {
+                    name: ScopedName::from_many("std::pointers::reference"),
+                    based_in: from_base,
+                    reply_to: self.node_id,
+                    service: Service::Quark(),
+                };
+
+                todo!()
+
+                //let ty = SyntacticTypeReferenceInner::
             }
             SyntacticTypeReferenceInner::Pointer { to, mutable } => {
                 todo!("handle pointers in quark")
@@ -434,7 +447,11 @@ impl Quark {
                             let Literal { has_type, value } = l;
                             let hm = HashMap::new();
 
+                            //panic!("going to resolve: {:?}", has_type.resolve().unwrap().value());
+
                             let ltid = self.resolve_typeref(has_type, &hm, self.node_id).await;
+
+                            panic!("aaaaaaa");
 
                             self.add_unify(e_ty_id, ltid, "a literal should unify with the type it acts as".intern());
 

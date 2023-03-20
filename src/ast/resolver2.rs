@@ -492,6 +492,10 @@ impl Resolver {
         info!("starts thread for resolver");
         while let Ok(v) = self.earpiece.get().as_mut().unwrap().wait().await {
             warn!("got a message: {v:#?}");
+            let we_are = &self.for_ctx.resolve().inner;
+            warn!("we are: {:?}", we_are);
+            //let they_are = &v.from.node.resolve().inner;
+            //warn!("they are: {:?}", they_are);
 
             match v.content.clone() {
                 Content::NameResolution(nr) => {
@@ -594,7 +598,7 @@ impl Resolver {
         //self.with_inner(|inner| inner.earpiece.wait().await);
     }
 
-    pub unsafe fn install<'a>(&'a self, into: &Executor) {
+    pub unsafe fn install<'a>(&'static self, into: &Executor) {
         info!("hit install for resolver {:?}", self.for_ctx);
         let as_static: &'static Self = std::mem::transmute(self);
         //let into = LocalExecutor::njew();
@@ -619,6 +623,12 @@ impl Resolver {
 
         if let Some(global) = nref.global {
             self.announce_resolution("global".intern(), global, self.for_ctx, true);
+
+            self.announce_resolution("std".intern(), *global.resolve().children.get(&"std".intern()).unwrap().value(), self.for_ctx, false);
+        } else {
+            // we *are* the global
+            self.announce_resolution("global".intern(), self.for_ctx, self.for_ctx, true);
+            //panic!("There was no global around for {:?}", self.for_ctx);
         }
 
         let remaining_use_statements = Rc::new(AtomicUsize::new(
@@ -704,7 +714,7 @@ impl Resolver {
         //tracing::debug!("=== resolution inner res ptr is: {:?}", &self.inner.lock().unwrap().resolutions as *const _);
         //// wtf? how? why is this doing this? where did the completable go :/
 
-        self.inner
+        let _useme = self.inner
             .lock()
             .unwrap()
             .resolutions
@@ -719,8 +729,8 @@ impl Resolver {
                 is_public,
                 symbol,
                 is_at,
-            }))
-            .expect("couldn't push resolution");
+            }));
+            //.expect("couldn't push resolution");
 
         tracing::debug!(
             "The entry in there after resolve: {}",

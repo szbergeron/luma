@@ -1,0 +1,16 @@
+mod std {
+    mod primitive {
+
+        struct i64 {
+            fn operator[_+_](self: std::primitive::i64, other: std::primitive::i64) -> i64 {
+                3
+            }
+        }
+    }
+
+    mod pointers {
+        struct reference<T> {
+            var v: T,
+        }
+    }
+}

@@ -1,0 +1,9 @@
+struct S {
+    var a: B,
+
+    fn foo() -> i32 { 5 },
+
+    fn operator[_+_](self: S, other: S) -> S {
+        struct S { a: self.foo() + other.foo() }
+    }
+}
