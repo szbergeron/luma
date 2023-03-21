@@ -1,6 +1,7 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use dashmap::DashMap;
+use itertools::Itertools;
 use smallvec::{SmallVec, smallvec};
 
 use crate::{helper::interner::{IStr, SpurHelper, Internable}, ast::types::AbstractTypeReference};
@@ -128,11 +129,10 @@ impl ScopedNameReference {
 
 impl CstNode for ScopedNameReference {
     fn pretty(&self, f: &mut dyn std::fmt::Write, _depth: usize) {
-        let s: String = self
+        let s: String = Itertools::intersperse(self
             .scope
             .iter()
-            .map(|ss| ss.resolve())
-            .intersperse("::")
+            .map(|ss| ss.resolve()), "::")
             .collect();
         let _ = write!(f, "{}", s);
     }
@@ -225,7 +225,7 @@ impl SyntacticTypeReferenceRef {
     //pub fn resolve_within_context(self, context: &HashMap<IStr, TypeID>) -> 
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct SyntacticTypeReference {
     pub id: SyntacticTypeReferenceRef,
 
@@ -245,6 +245,29 @@ impl SyntacticTypeReference {
         // now we drop the original entry, ent, which clears the locking behavior
 
         *ent.value()
+    }
+}
+
+impl std::fmt::Debug for SyntacticTypeReference {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        //f.debug_struct("SyntacticTypeReference").field("id", &self.id).field("info", &self.info).field("inner", &self.inner).finish()
+        let inner = match &self.inner {
+            SyntacticTypeReferenceInner::Unconstrained() => "_".to_owned(),
+            SyntacticTypeReferenceInner::Tuple(t) => {
+                let values = t.iter().map(|syntr| format!("{syntr:?}")).join(", ");
+                let base = format!("Tuple{}<{values}>", t.len());
+
+                base
+            },
+            SyntacticTypeReferenceInner::Single { name } => {
+                name.scope.iter().map(|v| v.resolve().to_owned()).join("::")
+            },
+            SyntacticTypeReferenceInner::Generic { label } => label.resolve().to_owned(),
+            SyntacticTypeReferenceInner::Parameterized { name, generics } => todo!(),
+            SyntacticTypeReferenceInner::Reference { to, mutable } => format!("&{}<{to:?}>", if *mutable { "mut" } else { "" }),
+            SyntacticTypeReferenceInner::Pointer { to, mutable } => todo!(),
+        };
+        write!(f, "{inner}")
     }
 }
 

@@ -246,7 +246,7 @@ impl<'lexer> Parser<'lexer> {
 
                     //todo!();
                     let fd = self
-                        .parse_function_declaration(&t, &vec![])
+                        .parse_function_declaration(&t, &vec![], false)
                         .join_hard(&mut t)
                         .catch(&mut t)?;
                     cst::TopLevel::Function(fd)
@@ -489,6 +489,7 @@ impl<'lexer> Parser<'lexer> {
         &mut self,
         t: &TokenProvider,
         parent_generics: &Vec<IStr>,
+        is_method: bool,
     ) -> ParseResult<cst::FunctionDefinition> {
         //let mut t = t.child();
         let mut t = parse_header!(t);
@@ -536,6 +537,7 @@ impl<'lexer> Parser<'lexer> {
             info,
             body,
             params,
+            is_method,
             //params: Vec::new(), // TODO
             return_type,
             name: function_name.slice,

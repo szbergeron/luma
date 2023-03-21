@@ -19,7 +19,6 @@
     if_let_guard,
     const_heap,
     const_mut_refs,
-    box_syntax,
     never_type,
     backtrace_frames,
     unboxed_closures,

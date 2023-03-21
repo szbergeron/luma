@@ -428,6 +428,8 @@ pub struct FunctionDefinition {
     pub public: bool,
     pub name: IStr,
 
+    pub is_method: bool,
+
     pub body: Box<ExpressionWrapper>,
     pub return_type: cst::SyntacticTypeReferenceRef,
     //pub params: Vec<(Box<super::ExpressionWrapper>, super::TypeReference)>,

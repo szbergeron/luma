@@ -182,11 +182,11 @@ impl std::fmt::Debug for Node {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Node")
             .field("name", &self.name)
-            //.field("node_id", &self.node_id.get().unwrap().0)
+            .field("node_id", &self.node_id.get().unwrap())
             .field("generics", &self.generics)
             .field("children", &self.children)
-            //.field("parent", &self.parent)
-            //.field("global", &self.global)
+            .field("parent", &self.parent)
+            .field("global", &self.global)
             .field("inner", &self.inner)
             .field("frozen", &self.frozen)
             .finish()
@@ -269,7 +269,7 @@ impl Node {
         Contexts::instance().intern(n)
     }
 
-    pub fn from_decl(decl: TopLevel, parent: CtxID, global: Option<CtxID>) -> Option<CtxID> {
+    pub fn from_decl(decl: TopLevel, parent: CtxID, global: CtxID) -> Option<CtxID> {
         println!("Got a decl: {decl:?}");
         match decl {
             TopLevel::Namespace(n) => {
@@ -280,7 +280,7 @@ impl Node {
                     public,
                 } = n;
 
-                let child = Self::from_outer(
+                let node = Self::from_outer(
                     contents,
                     name.expect("namespace had no name?"),
                     vec![], // TODO
@@ -293,9 +293,9 @@ impl Node {
                     .to_ref()
                     .children
                     .entry(name.expect("namespace had no name?"))
-                    .or_insert(child);
+                    .or_insert(node);
 
-                Some(child)
+                Some(node)
             }
             TopLevel::Function(f) => {
                 let name = f.name;
@@ -305,11 +305,11 @@ impl Node {
 
                 let inner = NodeUnion::Function(fd, Mutex::new(imp));
 
-                let child = Self::new(
+                let node = Self::new(
                     name,
                     vec![], // TODO
                     Some(parent),
-                    global,
+                    Some(global),
                     inner,
                     public,
                     vec![],
@@ -318,9 +318,9 @@ impl Node {
                 Contexts::instance()
                     .get(&parent)
                     .children
-                    .insert(name, child);
+                    .insert(name, node);
 
-                Some(child)
+                Some(node)
             }
 
             TopLevel::Impl(i) => {
@@ -377,14 +377,14 @@ impl Node {
 
                 let inner = NodeUnion::Type(Mutex::new(td));
 
-                let child = Self::new(name, generics, Some(parent), global, inner, public, vec![]);
+                let node = Self::new(name, generics, Some(parent), Some(global), inner, public, vec![]);
 
                 let mut method_pairs = HashMap::new();
 
                 for method in methods {
                     let mname = method.name;
 
-                    let node = Self::from_decl(TopLevel::Function(method), child, global);
+                    let node = Self::from_decl(TopLevel::Function(method), node, global);
 
                     method_pairs.insert(
                         mname,
@@ -394,7 +394,7 @@ impl Node {
                     //Self::from_parse(n, name, parent, global);
                 }
 
-                if let NodeUnion::Type(inner) = &child.resolve().inner {
+                if let NodeUnion::Type(inner) = &node.resolve().inner {
                     inner.lock().unwrap().methods = method_pairs;
                 } else {
                     unreachable!()
@@ -410,16 +410,16 @@ impl Node {
                         println!("");
                         println!("There was an existing entry! Conflict between:");
                         println!("{p}");
-                        println!("{}", child.to_ref());
+                        println!("{}", node.to_ref());
                         println!("");
                     })
-                    .or_insert(child);
+                    .or_insert(node);
                 /*.or_insert(NodeReference {
                     node_id: child.into(),
                     within: node,
                     relative_path: vec![name],
                 });*/
-                Some(child)
+                Some(node)
             }
             TopLevel::UseDeclaration(ud) => {
                 // just pass here, already added them
@@ -436,7 +436,7 @@ impl Node {
         name: IStr,
         generics: Vec<(IStr, SyntacticTypeReferenceRef)>,
         parent: Option<CtxID>,
-        global: Option<CtxID>,
+        global: CtxID,
         public: bool,
     ) -> CtxID {
         let cst::OuterScope {
@@ -460,7 +460,7 @@ impl Node {
             name,
             generics,
             parent,
-            global.clone(),
+            Some(global),
             NodeUnion::Empty(),
             public,
             use_decls,
@@ -477,8 +477,8 @@ impl Node {
     pub fn from_parse(
         n: ParseTreeNode,
         name: IStr,
-        parent: Option<CtxID>,
-        global: Option<CtxID>,
+        parent: CtxID,
+        global: CtxID,
     ) -> CtxID {
         let ParseTreeNode {
             files,
@@ -512,8 +512,8 @@ impl Node {
             aggregate,
             name,
             vec![],
-            parent.clone(),
-            global.clone(),
+            Some(parent),
+            global,
             true,
         ); // TODO:
            // public
@@ -521,10 +521,10 @@ impl Node {
            // for
            // nodes
 
-        let global = match global {
+        /*let global = match global {
             Some(v) => Some(v),
             None => Some(s),
-        };
+        };*/
 
         for (cname, child) in children {
             let cid = Self::from_parse(child, cname, s.into(), global.into());

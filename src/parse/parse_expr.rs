@@ -120,7 +120,7 @@ impl<'lexer> Parser<'lexer> {
                     .join_hard(&mut t)
                     .catch(&mut t)?;
                 r.end().map(|loc| end = loc);
-                Some(box r.intern())
+                Some(Box::new(r.intern()))
             }
             None => None,
         };
@@ -449,7 +449,7 @@ impl<'lexer> Parser<'lexer> {
                     node_info: ni,
                 };
 
-                t.success((true, box cst::ExpressionWrapper::FunctionCall(fc)))
+                t.success((true, Box::new(cst::ExpressionWrapper::FunctionCall(fc))))
             }
             Token::Dot => {
                 // doing a member access
@@ -468,7 +468,7 @@ impl<'lexer> Parser<'lexer> {
                     node_info: ni,
                 };
 
-                t.success((true, box cst::ExpressionWrapper::MemberAccess(mae)))
+                t.success((true, Box::new(cst::ExpressionWrapper::MemberAccess(mae))))
             }
             Token::RBracket => {
                 todo!("Array access not yet implemented")
@@ -539,7 +539,7 @@ impl<'lexer> Parser<'lexer> {
             Token::Identifier => {
                 let e = cst::IdentifierExpression::from_token(tw);
 
-                t.success(box e)
+                t.success(Box::new(e))
             }
             other if other.is_literal() => {
                 let e = cst::LiteralExpression::new_expr(tw);
@@ -954,7 +954,7 @@ impl<'lexer> Parser<'lexer> {
                     .expect("parsed lhs did not have a start");
                 let end = typeref.end().expect("parsed typeref did not have an end");
                 let node_info = NodeInfo::from_indices(start, end);
-                lhs = cst::CastExpression::new_expr(node_info, lhs, box typeref.intern());
+                lhs = cst::CastExpression::new_expr(node_info, lhs, Box::new(typeref.intern()));
                 continue;
             } else if let Some(_arrow) = t.try_take(Token::ThinArrowLeft) {
                 println!("Parsing implementation expression");
@@ -963,7 +963,7 @@ impl<'lexer> Parser<'lexer> {
                     .join_hard(&mut t)
                     .catch(&mut t)?;
 
-                lhs = box v;
+                lhs = Box::new(v);
                 continue;
             } else if let Some(((l_bp, r_bp), tw)) =
                 t.try_take_if(|tw| infix_binding_power(tw.token))

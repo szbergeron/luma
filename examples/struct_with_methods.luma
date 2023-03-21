@@ -1,5 +1,5 @@
 struct S {
-    var a: B,
+    var a: std::primitive::i32,
 
     fn foo() -> i32 { 5 },
 

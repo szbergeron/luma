@@ -111,6 +111,8 @@ pub struct FunctionDefinition {
     pub info: cst::NodeInfo,
     pub name: IStr,
 
+    pub is_method: bool,
+
     pub parameters: Vec<(IStr, SyntacticTypeReferenceRef)>,
     pub return_type: SyntacticTypeReferenceRef,
     pub implementation: Option<cst::expressions::ExpressionWrapper>, // quark removes this to do
@@ -124,6 +126,7 @@ impl FunctionDefinition {
             public,
             name,
             body,
+            is_method,
             return_type,
             params,
             generics,
@@ -147,6 +150,7 @@ impl FunctionDefinition {
         Self {
             info,
             name,
+            is_method,
             implementation: Some(*body),
             return_type,
             parameters,

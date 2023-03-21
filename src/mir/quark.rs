@@ -267,6 +267,21 @@ impl Quark {
         tid
     }
 
+    pub fn is_method(&self) -> bool {
+        match &self.node_id.resolve().inner {
+            ast::tree::NodeUnion::Function(fd, _) => fd.is_method,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn search_within(&self) -> CtxID {
+        if self.is_method() {
+            self.node_id.resolve().parent.unwrap().resolve().parent.unwrap()
+        } else {
+            self.node_id.resolve().parent.unwrap()
+        }
+    }
+
     pub fn for_node(
         node_id: CtxID,
         sender: local_channel::mpsc::Sender<Message>,
@@ -449,9 +464,9 @@ impl Quark {
 
                             //panic!("going to resolve: {:?}", has_type.resolve().unwrap().value());
 
-                            let ltid = self.resolve_typeref(has_type, &hm, self.node_id).await;
+                            let ltid = self.resolve_typeref(has_type, &hm, self.search_within()).await;
 
-                            panic!("aaaaaaa");
+                            //panic!("aaaaaaa");
 
                             self.add_unify(e_ty_id, ltid, "a literal should unify with the type it acts as".intern());
 
@@ -476,7 +491,7 @@ impl Quark {
                         async move {
                             let nr = NameResolver {
                                 name: base_type.clone(),
-                                based_in: self.node_id.resolve().parent.unwrap(),
+                                based_in: self.search_within(),
                                 reply_to: self.node_id,
                                 service: Service::Quark()
                             };
@@ -507,7 +522,7 @@ impl Quark {
 
                             for gen in generics {
                                 let ty = self
-                                    .resolve_typeref(gen, self.generics.as_ref(), self.node_id.resolve().parent.unwrap())
+                                    .resolve_typeref(gen, self.generics.as_ref(), self.search_within())
                                     .await;
 
                                 inst_generics.push(ty);
@@ -544,7 +559,7 @@ impl Quark {
                 .resolve_typeref(
                     param_type,
                     self.generics.as_ref(),
-                    self.node_id.resolve().parent.unwrap(),
+                    self.search_within(),
                 )
                 .await;
         }

@@ -1,6 +1,6 @@
 use std::{
     cell::UnsafeCell,
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     rc::Rc,
     sync::{atomic::AtomicUsize, Mutex},
 };
@@ -12,7 +12,7 @@ use crate::{
     compile::per_module::{
         Content, ControlMessage, ConversationContext, Destination, Earpiece, Message, Service,
     },
-    cst::{ScopedName, UseDeclaration},
+    cst::{NodeInfo, ScopedName, UseDeclaration},
     helper::interner::{IStr, Internable},
 };
 
@@ -73,6 +73,15 @@ pub enum NameResolutionMessage {
         //composite:
     },
 
+    ListLocals {
+        in_node: CtxID
+    },
+
+    LocalsAre {
+        for_node: CtxID,
+        locals: Vec<(IStr, CtxID)>,
+    },
+
     AddImport {
         scope: ScopedName,
         alias: Option<IStr>,
@@ -109,14 +118,6 @@ struct Conversation {
 }
 
 pub struct ResInner {
-    /// All of the ongoing conversations
-    /// that this resolver is handling
-    ///
-    /// Conversations that have closed (we issue a term signal,
-    /// or get one from the other end) can be removed from here
-    //conversations: HashMap<Uuid, Conversation>,
-    //resolutions: HashMap<(IStr, CtxID), Result<Resolution, ImportError>>,
-
     /// The list of conversations that
     /// are currently waiting for a local symbol in order to resolve
     ///
@@ -124,26 +125,16 @@ pub struct ResInner {
     /// published all of our local symbols,
     /// then we should tell everyone in this list we
     /// couldn't find the given symbol
-    //waiting_for_resolution: HashMap<(IStr, CtxID), Vec<ConversationState>>,
     resolutions:
         HashMap<(IStr, CtxID), Rc<UnsafeAsyncCompletable<Result<SimpleResolution, ImportError>>>>,
+
+    possibles: HashSet<IStr>,
 
     // for now, we're not gonna try to complicate things
     // further by caching both
     //
     // just cache one and then have the do_single calls be
     // cheap and cached
-    /*composite_resolutions: HashMap<
-        (ScopedName, CtxID),
-        *mut LocalOneshotBroadcastChannel<Result<CompositeResolution, ImportError>>,
-    >,*/
-    //conversations: HashMap<Uuid, Rc<UnsafeAsyncCompletable<Message>>>,
-    /// If an alias exists within this map at the time of publishing,
-    /// then the entry should be removed from this map and the symbol
-    /// should instead be published locally as the name matching the
-    /// value of the entry
-    aliases: HashMap<ScopedName, IStr>,
-
     /// When we fuse this node (freeze its imports),
     /// we can know for certain that everything that will
     /// be exported will be by-name in this vec
@@ -166,73 +157,6 @@ pub struct Resolver {
 }
 
 impl Resolver {
-    /*
-    /// Returns true if we created a new conversation, false if it already existed
-    fn conversation_open(&self, conversation: Uuid) -> bool {
-        let mut r = true;
-        self.inner
-            .lock()
-            .unwrap()
-            .conversations
-            .entry(conversation)
-            .or_insert_with(|| {
-                r = false;
-                unsafe { UnsafeAsyncCompletable::new() }
-                //Box::leak(Box::new(LocalOneshotChannel::new())) as *mut LocalOneshotChannel<_>
-            });
-
-        r
-    }
-
-    /// need to make very *very* sure that the conversation
-    /// we're closing isn't one being actively awaited
-    unsafe fn conversation_close(&self, conversation: Uuid) {
-        match self
-            .inner
-            .lock()
-            .unwrap()
-            .conversations
-            .remove(&conversation)
-        {
-            Some(v) => { /* just drop v */ }
-            None => warn!("tried to remove conversation by id {conversation} which did not exist"),
-        }
-    }
-
-    /// Before we wait, make sure nothing is going to delete this conversation
-    /// while we're awaiting
-    ///
-    /// The thing awaiting should be the same future that eventually deletes
-    async unsafe fn conversation_wait_reply(&self, conversation: Uuid) -> Option<Message> {
-        let conv = self
-            .inner
-            .lock()
-            .unwrap()
-            .conversations
-            .get(&conversation)
-            .expect("tried to wait on a conversation that didn't yet exist")
-            .clone();
-
-        // we then drop the borrow, keep the ptr
-
-        Some(conv.wait().await)
-    }
-
-    /// returns true if successfully pushed the message,
-    fn conversation_notify_reply(&self, conversation: Uuid, message: Message) -> bool {
-        tracing::info!("notifies conversation reply to conversation: {conversation}");
-        let conv = self
-            .inner
-            .lock()
-            .unwrap()
-            .conversations
-            .get(&conversation)
-            .expect("tried to send to a conversation that no longer exists")
-            .clone();
-
-        unsafe { conv.complete(message) }.is_ok()
-    }*/
-
     fn with_inner<F, T>(&self, f: F) -> T
     where
         F: FnOnce(&mut ResInner) -> T,
@@ -252,6 +176,8 @@ impl Resolver {
             .last()
             .expect("there was no last symbol in a use statement");
         let alias = ud.alias.unwrap_or(*last);
+
+        //self.with_inner(|inner| inner.possibles.insert(alias));
 
         let resolution = self.do_composite(ud.scope, self.for_ctx).await;
 
@@ -303,8 +229,29 @@ impl Resolver {
         single: IStr,
         within: CtxID,
     ) -> Result<SimpleResolution, ImportError> {
-        warn!("do_single is looking for {single} within {within:?}");
+        warn!(
+            "do_single is looking for {single} within {within:?}, while self node is {:?}",
+            self.for_ctx
+        );
         let mut message_to_send: Option<Message> = None;
+
+        println!("query for do_single to node, has children:");
+
+        for child in self.for_ctx.resolve().children.iter() {
+            println!("child ({}, {:?})", child.key(), child.value());
+        }
+
+        println!("possible is: {:?}", self.inner.lock().unwrap().possibles);
+
+        if within == self.for_ctx && !self.with_inner(|inner| inner.possibles.contains(&single)) {
+            tracing::error!("returns a failure immediately, as it wasn't even a possible");
+            return Err(ImportError {
+                symbol_name: single,
+                from_ctx: within,
+                error_reason: "the symbol was not within the possibles set for the current node"
+                    .to_owned(),
+            });
+        }
 
         let conversation = Uuid::new_v4();
 
@@ -432,40 +379,10 @@ impl Resolver {
 
         let val = recv.await;
 
-        // need to delete the conversation channel
-
-        //let val = val.expect("channel was dropped or closed while we needed something");
-
         warn!("got val from simple of {val:?}");
 
         val
     }
-
-    /*fn step_conversation(&mut self, id: Uuid) {
-        let conversation: Conversation = self.conversations.get(id);
-
-        let current = conversation.frames.pop();
-
-        match current {
-            None => {
-                // there were no remaining anything to do for this conversation, so delete it
-                self.conversations.remove(id);
-            }
-            Some(v) => match v {
-                ConversationFrame::UseStatement {
-                    source_scope,
-                    alias,
-                    is_public,
-                } => {
-                }
-                ConversationFrame::Composite {
-                    currently_resolving,
-                    original_scope,
-                } => todo!(),
-                ConversationFrame::Single { symbol, within } => todo!(),
-            },
-        }
-    }*/
 
     fn loopback(&mut self, nr: NameResolutionMessage, conversation: Option<Uuid>) {
         unsafe {
@@ -573,20 +490,7 @@ impl Resolver {
                             if let Some(v) = self.conversations.dispatch(v) {
                                 panic!("unhandled message for conversations");
                             }
-                            /*if self.inner.lock().unwrap().conversations.contains_key(&v.conversation) {
-                                //self.conversation_notify_reply(v.conversation, Message { content: Content::NameResolution(other), ..v });
-
-                            } else {
-                                panic!("this wasn't for us? we didn't open this conversation, weird!");
-                            }*/
                         }
-                        /*NameResolutionMessage::ItIsAt {
-                            symbol,
-                            within,
-                            is_at,
-                            is_public,
-                        } => self.announce_resolution(symbol, is_at, within, is_public),*/
-                        //_ => todo!("NI"),
                     }
                 }
                 Content::Control(ControlMessage::ShouldFuseNames()) => {
@@ -595,15 +499,69 @@ impl Resolver {
                 _ => todo!("don't have others yet"),
             }
         }
-        //self.with_inner(|inner| inner.earpiece.wait().await);
     }
 
     pub unsafe fn install<'a>(&'static self, into: &Executor) {
         info!("hit install for resolver {:?}", self.for_ctx);
         let as_static: &'static Self = std::mem::transmute(self);
-        //let into = LocalExecutor::njew();
 
         let nref = self.for_ctx.resolve();
+
+        /*let additional_imports = match &nref.inner {
+            crate::ast::tree::NodeUnion::Type(t) => {
+                vec![UseDeclaration {
+                    node_info: crate::cst::NodeInfo::Builtin,
+                    public: false,
+                    scope: ScopedName::from_many("super::__locals"),
+                    alias: None,
+                }]
+            }
+            crate::ast::tree::NodeUnion::Function(fd, _e) => {
+                if fd.is_method {
+                    // the symbols of the parent-parent scope should be imported
+                    vec![UseDeclaration {
+                        node_info: NodeInfo::Builtin,
+                        public: false,
+                        scope: ScopedName::from_many("super::super::__locals"),
+                        alias: None,
+                    }]
+                } else {
+                    vec![UseDeclaration {
+                        node_info: NodeInfo::Builtin,
+                        public: false,
+                        scope: ScopedName::from_many("super::__locals"),
+                        alias: None,
+                    }]
+                    // we're a regular function, so just use symbols from
+                    // direct parent scope
+                }
+            }
+            crate::ast::tree::NodeUnion::Global(_) => vec![],
+            crate::ast::tree::NodeUnion::Empty() => vec![],
+        };*/
+
+        let additional_imports = vec![];
+
+        let _ = {
+            let mut inner = self.inner.lock().unwrap();
+
+            for s in ["global", "std", "super"] {
+                inner.possibles.insert(s.intern());
+            }
+
+            // we can reference symbols from our surrounding scope
+            for child in self.for_ctx.resolve().children.iter() {
+                inner.possibles.insert(*child.key());
+
+                //self.announce_resolution(child.key(), child.value(), self.for_ctx, false);
+            }
+
+            for ud in nref.use_statements.iter() {
+                let alias = ud.alias.unwrap_or(*ud.scope.scope.last().unwrap());
+
+                inner.possibles.insert(alias);
+            }
+        };
 
         // make all the resolutions for local symbols happen
         for child in nref.children.iter() {
@@ -624,10 +582,33 @@ impl Resolver {
         if let Some(global) = nref.global {
             self.announce_resolution("global".intern(), global, self.for_ctx, true);
 
-            self.announce_resolution("std".intern(), *global.resolve().children.get(&"std".intern()).unwrap().value(), self.for_ctx, false);
+            self.announce_resolution(
+                "std".intern(),
+                *global
+                    .resolve()
+                    .children
+                    .get(&"std".intern())
+                    .unwrap()
+                    .value(),
+                self.for_ctx,
+                false,
+            );
         } else {
             // we *are* the global
             self.announce_resolution("global".intern(), self.for_ctx, self.for_ctx, true);
+
+            self.announce_resolution(
+                "std".intern(),
+                *self
+                    .for_ctx
+                    .resolve()
+                    .children
+                    .get(&"std".intern())
+                    .unwrap()
+                    .value(),
+                self.for_ctx,
+                false,
+            );
             //panic!("There was no global around for {:?}", self.for_ctx);
         }
 
@@ -635,7 +616,7 @@ impl Resolver {
             self.for_ctx.resolve().use_statements.len(),
         ));
 
-        for ud in self.for_ctx.resolve().use_statements.clone().into_iter() {
+        for ud in self.for_ctx.resolve().use_statements.clone().into_iter().chain(additional_imports.into_iter()) {
             let named = format!(
                 "do_use task that uses UD {ud:?} within node {:?}",
                 self.for_ctx
@@ -714,7 +695,8 @@ impl Resolver {
         //tracing::debug!("=== resolution inner res ptr is: {:?}", &self.inner.lock().unwrap().resolutions as *const _);
         //// wtf? how? why is this doing this? where did the completable go :/
 
-        let _useme = self.inner
+        let mut _useme = self
+            .inner
             .lock()
             .unwrap()
             .resolutions
@@ -730,7 +712,7 @@ impl Resolver {
                 symbol,
                 is_at,
             }));
-            //.expect("couldn't push resolution");
+        //.expect("couldn't push resolution");
 
         tracing::debug!(
             "The entry in there after resolve: {}",
@@ -762,10 +744,8 @@ impl Resolver {
             inner: Mutex::new(ResInner {
                 is_fused: false,
                 resolutions: HashMap::new(),
-                //composite_resolutions: HashMap::new(),
-                //conversations: HashMap::new(),
-                aliases: HashMap::new(),
                 fused_exports: None,
+                possibles: HashSet::new(),
             }),
             for_ctx: node,
             executor: use_executor,
@@ -780,74 +760,6 @@ pub struct ImportError {
     pub symbol_name: IStr,
     pub from_ctx: CtxID,
     pub error_reason: String,
-}
-
-pub struct CompositeResolver {
-    ongoing_composites: HashMap<ScopedName, Uuid>,
-
-    /// Values are of the form (remaining_scope, full_scope)
-    /// we only reply when either we fail to resolve a step
-    /// or when remaining_scope is []
-    next_symbol_for: HashMap<(CtxID, IStr), Vec<CompositeState>>,
-}
-
-#[derive(Clone, Debug)]
-pub struct ConversationState {
-    reply_to: Destination,
-    conversation: Uuid,
-    inner: ConversationStateInner,
-}
-
-#[derive(Clone, Debug)]
-enum ConversationStateInner {
-    Composite(CompositeState),
-    Single(SingleState),
-}
-
-#[derive(Clone, Debug)]
-struct SingleState {
-    symbol: IStr,
-    within: CtxID,
-}
-
-#[derive(Clone, Debug)]
-struct CompositeState {
-    full_scope: ScopedName,
-    resolved_elements: usize,
-
-    current_symbol: IStr,
-    currently_within: CtxID,
-    originally_within: CtxID,
-}
-
-impl CompositeResolver {
-    pub fn handle_resolve(
-        &mut self,
-        symbol: IStr,
-        within: CtxID,
-        resolution: Option<SimpleResolution>,
-    ) {
-        match self.next_symbol_for.remove(&(within, symbol)) {
-            Some(v) => {
-                for sn in v {
-                    self.resolve_with(sn, resolution.clone());
-                }
-            }
-            None => {
-                // do nothing here, since we didn't have any components that
-                // were waiting for that symbol as a local composite
-            }
-        }
-    }
-
-    fn resolve_with(&mut self, current: CompositeState, resolution: Option<SimpleResolution>) {
-        match resolution {
-            Some(v) => {
-                //
-            }
-            None => {}
-        }
-    }
 }
 
 impl Resolver {
@@ -874,161 +786,6 @@ pub struct CompositeResolution {
     pub name: ScopedName,
     pub is_at: CtxID,
 }
-
-/*#[derive(Clone, Debug)]
-pub struct Conversation {
-    id: Uuid,
-    messages: Vec<Message>,
-}*/
-
-/*
-pub struct SymbolResolver<'ep> {
-    //pub tr: &'ep mut TypeReference,
-    pub node_id: CtxID, // the scope we're resolving within
-    pub earpiece: &'ep mut Earpiece,
-    pub for_service: Service,
-}
-
-impl<'ep> SymbolResolver<'ep> {
-    pub fn as_dest(&self) -> Destination {
-        Destination {
-            node: self.node_id,
-            service: self.for_service,
-        }
-    }
-
-    pub async fn resolve(mut self, tr: &mut OldTypeReference) {
-        self.resolve_typeref(tr).await;
-    }
-
-    pub async fn resolve_typeref(&mut self, tb: &mut OldTypeReference) {
-        let abstrakt: &mut AbstractTypeReference = match tb {
-            OldTypeReference::Syntactic(s) => {
-                let generic_args = self
-                    .node_id
-                    .resolve()
-                    .generics
-                    .iter()
-                    .map(|(name, _tr)| *name)
-                    .collect_vec();
-                let abstrakt = s.to_abstract(generic_args.as_slice());
-
-                *tb = OldTypeReference::Abstract(box abstrakt, *s);
-
-                match tb {
-                    OldTypeReference::Abstract(a, s) => &mut *a,
-                    _ => unreachable!(),
-                }
-            }
-            OldTypeReference::Abstract(a, s) => {
-                panic!("this shouldn't have already been made abstract yet, that was our job!")
-            }
-        };
-
-        let mut base = abstrakt.inner.write().unwrap();
-
-        match &mut *base {
-            crate::ast::types::TypeBase::Generic(_) => {
-                todo!("we don't yet handle generics")
-            }
-            crate::ast::types::TypeBase::Resolved(_) => {
-                //todo!("we shouldn't be trying to handle an already resolved typeref")
-                // do nothing here, since maybe someone else resolved it?
-            }
-            crate::ast::types::TypeBase::UnResolved(ur) => {
-                assert!(ur.generics.is_empty()); // we don't yet handle generics
-
-                let r = self.resolve_symref(ur.named.clone()).await;
-
-                let r = r.expect("handle bad imports");
-
-                *base = TypeBase::Resolved(ast::types::ResolvedType {
-                    from: ur.from,
-                    base: r.is_at,
-                    generics: ur.generics.clone(),
-                })
-            }
-        }
-    }
-
-    async fn resolve_symref(&mut self, nr: ScopedName) -> Result<CompositeResolution, ImportError> {
-        /*match self.name_to_ref.contains_key(&nr) {
-            true => {
-                // do nothing, already gonna resolve it
-            }
-            false => {
-                let convo_id = self.next_convo();
-
-                let cc = ConversationContext {
-                    publish_as: None, // this isn't an import
-                    remaining_scope: nr.clone().scope,
-                    original_scope: nr.clone(),
-                    // we search within parent here because we're a typeref within
-                    // a Type, which implicitly looks for things within the parent
-                    // scope unless we *explicitly* use the Self qualifier
-                    searching_within: self.self_ctx.resolve().parent.unwrap(),
-                    for_ref_id: convo_id,
-                    public: false,
-                };
-
-                self.name_to_ref.insert(nr, convo_id);
-                self.waiting_to_resolve.insert(convo_id, cc.clone());
-
-                self.step_resolve(convo_id);
-            }
-        };*/
-        warn!(
-            "TypeResolver starts resolving {nr:?} within {:?}",
-            self.node_id
-        );
-        self.earpiece.send(Message {
-            to: Destination::resolver(self.node_id),
-            from: self.as_dest(),
-            send_reply_to: self.as_dest(),
-            conversation: Uuid::new_v4(),
-            content: Content::NameResolution(NameResolutionMessage::WhatIs {
-                composite_symbol: nr,
-                given_root: self
-                    .node_id
-                    .resolve()
-                    .parent
-                    .expect("there wasn't a parent node for a type"),
-            }),
-        });
-
-        let m = self
-            .earpiece
-            .wait()
-            .await
-            .expect("didn't get a message back about imports");
-
-        if let Content::NameResolution(nr) = m.content {
-            match nr {
-                NameResolutionMessage::RefersTo {
-                    composite_symbol,
-                    is_at,
-                    given_root,
-                } => Ok(CompositeResolution {
-                    is_public: is_at.resolve().public,
-                    name: composite_symbol,
-                    is_at,
-                }),
-                NameResolutionMessage::HasNoResolution {
-                    composite_symbol,
-                    longest_prefix,
-                    prefix_ends_at,
-                    given_root,
-                } => Err(todo!("proper handle of bad import")),
-                _ => todo!("handle other nr messages"),
-            }
-        } else {
-            todo!("handle other messages?");
-        }
-
-        //warn!("quark got a message back: {m:#?}");
-    }
-}
-*/
 
 pub struct NameResolver {
     pub name: ScopedName,

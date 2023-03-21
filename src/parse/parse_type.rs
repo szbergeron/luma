@@ -49,7 +49,7 @@ impl<'lexer> Parser<'lexer> {
             cst::ImplementationModificationExpression {
                 modifying: lhs,
                 node_info,
-                impl_block: box impl_block,
+                impl_block: Box::new(impl_block),
             },
         ))
     }
@@ -179,7 +179,7 @@ impl<'lexer> Parser<'lexer> {
                     println!("getting a method");
 
                     let method = self
-                        .parse_function_declaration(&t, &generics_as_list_istr)
+                        .parse_function_declaration(&t, &generics_as_list_istr, true)
                         .join_hard(&mut t)
                         .catch(&mut t)
                         .handle_here()?
@@ -243,7 +243,7 @@ impl<'lexer> Parser<'lexer> {
                     let _ = t.lh.prev();
 
                     let f = self
-                        .parse_function_declaration(&t, with_generics)
+                        .parse_function_declaration(&t, with_generics, true)
                         .join_hard(&mut t)
                         .catch(&mut t)
                         .handle_here()?;

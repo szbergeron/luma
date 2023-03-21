@@ -1,5 +1,5 @@
 //use crate::ast::resolver::ResolverWorker;
-use crate::ast::tree::Contexts;
+use crate::ast::tree::{Contexts, CtxID};
 use crate::compile::parse_tree::ParseTreeNode;
 //use crate::ast;
 
@@ -19,6 +19,7 @@ use std::process;
 //use crate::ast::*;
 
 use crate::helper::interner::*;
+use itertools::Itertools;
 use tokio::runtime::*;
 
 //use super::file_tree::FileHandle;
@@ -148,29 +149,84 @@ fn args_to_roles(args: &ArgResult) -> Vec<FileRole> {
     roles
 }
 
+fn print_from_root(root: CtxID, indent: usize, named: IStr) {
+    let indents = (0..(indent * 4)).map(|_| " ").join("");
+    let indentsi = indents.clone() + "  +";
+    let node = root.resolve();
+
+    let nsuper = node.parent;
+    let nglobal = node.global;
+
+    let inner = match &node.inner {
+        ast::tree::NodeUnion::Type(t) => {
+            let t = t.lock().unwrap();
+            let fields = t.fields.clone().into_iter().map(|fm| (fm.name, fm.has_type.map(|syntrr| syntrr.resolve().unwrap().clone()))).collect_vec();
+            format!("type with fields: {:?}", fields)
+        },
+        ast::tree::NodeUnion::Function(fd, e) => {
+            let name = fd.name;
+            let args = fd.parameters.clone().into_iter().map(|(name, strr)| (name, strr.resolve().unwrap().clone())).collect_vec();
+            let rtype = fd.return_type.resolve().unwrap().clone();
+            format!("fn {name}({args:?}) -> {rtype:?}")
+        },
+        ast::tree::NodeUnion::Global(_) => todo!(),
+        ast::tree::NodeUnion::Empty() => {
+            format!("module")
+        },
+    };
+
+    println!("{indents}== node {root:?} with name {named}");
+    println!("{indentsi} super at {nsuper:?}, global at {nglobal:?}");
+    println!("{indentsi} value of: {inner}");
+    for child in node.children.iter() {
+        print_from_root(*child.value(), indent + 2, *child.key());
+    }
+}
+
 async fn async_launch(args: ArgResult) {
     let files: FileRegistry = Default::default();
 
-    let mut roles = args_to_roles(&args);
+    let roles = args_to_roles(&args);
 
-    roles.push(FileRole::Source(SourceFile { location: PathBuf::from_str("./std.luma").unwrap() }));
+    //roles.push(FileRole::Source(SourceFile { location: PathBuf::from_str("./std.luma").unwrap() }));
 
     println!("Building node");
 
     // build the initial module tree based on file locations
-    let node = crate::compile::preparse_tree::from_roots(&files, roles);
+    let usr_node = crate::compile::preparse_tree::from_roots(&files, roles);
+
+    let std_node = crate::compile::preparse_tree::from_roots(&files, vec![FileRole::Source(SourceFile { location: PathBuf::from_str("./std.luma").unwrap() })]);
 
     println!("Built node");
 
     // parse the files (parallel!)
-    let node = ParseTreeNode::from_preparse(node, vec![], &args.flags).await;
+    let usr_node = ParseTreeNode::from_preparse(usr_node, vec![], &args.flags).await;
 
-    println!("{node:#?}");
+    let std_node = ParseTreeNode::from_preparse(std_node, vec![], &args.flags).await;
 
+    println!("usr node: {usr_node:#?}");
+    println!("std node: {std_node:#?}");
+
+
+    let true_root = ast::tree::Node::new("root".intern(), Vec::new(), None, None, ast::tree::NodeUnion::Empty(), false, Vec::new());
     // convert CST to initial AST
-    let ast_root = ast::tree::Node::from_parse(node, "global".intern(), None, None);
+    let usr_root = ast::tree::Node::from_parse(usr_node, "usr".intern(), true_root, true_root);
 
-    println!("{:#?}", ast_root.to_ref());
+    let std_root = ast::tree::Node::from_parse(std_node, "std".intern(), true_root, true_root);
+
+    true_root.resolve().children.insert("std".intern(), std_root);
+    true_root.resolve().children.insert("usr".intern(), usr_root);
+
+    println!("true root is ctx {true_root:?}");
+
+    println!("{:#?}", usr_root.to_ref());
+    println!("{:#?}", std_root.to_ref());
+    println!("{:#?}", true_root.to_ref());
+
+    println!("roots:");
+    print_from_root(true_root, 0, "root".intern());
+
+    //panic!();
 
     let ids = Contexts::instance().get_ids();
 
