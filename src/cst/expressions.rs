@@ -1045,7 +1045,7 @@ pub struct IdentifierExpression {
 
     //pub name: &'a str,
     //pub context: Box<ScopedName>,
-    ident: ScopedName, // allows including additional scope info
+    pub ident: ScopedName, // allows including additional scope info
     //pub node_type: Option<types::TypeReference>,
     //pub span: Span,
 }

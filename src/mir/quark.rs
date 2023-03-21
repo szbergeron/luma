@@ -17,7 +17,7 @@ use crate::{
     },
     cst::{ExpressionWrapper, SyntacticTypeReferenceInner, SyntacticTypeReferenceRef, ScopedName},
     helper::interner::{IStr, Internable},
-    mir::expressions::{AnyExpression, Bindings, Composite, ExpressionContext, Literal},
+    mir::expressions::{AnyExpression, Bindings, Composite, ExpressionContext, Literal, VarID},
 };
 
 use super::{
@@ -553,6 +553,7 @@ impl Quark {
         imp: &'func mut ExpressionWrapper,
     ) -> ExpressionID {
         //let mut ec = ExpressionContext::new_empty();
+        let mut binding_scope = Bindings::fresh();
 
         for (param_name, param_type) in f.parameters.clone() {
             let ptype = self
@@ -562,9 +563,12 @@ impl Quark {
                     self.search_within(),
                 )
                 .await;
+
+            let vid = self.acting_on.borrow_mut().next_var();
+
+            binding_scope.add_binding(param_name, vid);
         }
 
-        let mut binding_scope = Bindings::fresh();
 
         let ae = AnyExpression::from_ast(&mut self.acting_on.borrow_mut(), imp, &mut binding_scope);
 

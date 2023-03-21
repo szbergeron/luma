@@ -7,7 +7,7 @@ use crate::{
     avec::AtomicVec,
     cst::{
         self, CastExpression, ExpressionWrapper, IfThenElseExpression, LetComponentIdentifier,
-        LiteralExpression, MemberAccessExpression, SyntacticTypeReferenceRef, ScopedName, StructLiteralExpression, FunctionCall,
+        LiteralExpression, MemberAccessExpression, SyntacticTypeReferenceRef, ScopedName, StructLiteralExpression, FunctionCall, IdentifierExpression,
     },
     helper::interner::{IStr, Internable},
 };
@@ -17,6 +17,8 @@ pub type ExpressionID = crate::avec::AtomicVecIndex;
 #[derive(Debug)]
 pub struct ExpressionContext {
     pub expressions: AtomicVec<AnyExpression>,
+
+    pub var_id_gen: usize,
 }
 
 impl ExpressionContext {
@@ -31,11 +33,17 @@ impl ExpressionContext {
     pub fn new_empty() -> Self {
         Self {
             expressions: AtomicVec::new(),
+            var_id_gen: 0,
         }
+    }
+
+    pub fn next_var(&mut self) -> VarID {
+        self.var_id_gen += 1;
+        VarID(self.var_id_gen)
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct VarID(usize);
 
 /// If we have two operands but want to know which direction
@@ -126,7 +134,18 @@ impl<'prior> Bindings<'prior> {
     }
 
     pub fn add_binding(&mut self, name: IStr, id: VarID) {
-        todo!()
+        tracing::info!("adding binding for '{name}' to {id:?}");
+        self.cur.push((name, id))
+    }
+
+    pub fn binding_for(&self, name: IStr) -> Option<VarID> {
+        tracing::info!("getting what '{name}' is bound to");
+
+        if let Some(v) = self.cur.iter().find(|(istr, vid)| *istr == name) {
+            Some(v.1)
+        } else {
+            self.prior.map(|p| p.binding_for(name)).flatten()
+        }
     }
 }
 
@@ -257,7 +276,7 @@ impl AnyExpression {
                 // a let expression operates on the parent scope
                 bindings.add_binding(
                     todo!("break down primary_component"),
-                    todo!("need to create a new var id for the binds"),
+                    within.next_var()
                 );
 
                 let from_exp_id = Self::from_ast(within, expression, &mut bindings.child_scoped());
@@ -434,7 +453,15 @@ impl AnyExpression {
             ExpressionWrapper::Return(_) => todo!(),
             ExpressionWrapper::Wildcard(_) => todo!(),
             ExpressionWrapper::LLVMLiteral(_) => todo!(),
-            ExpressionWrapper::Identifier(_) => todo!(),
+            ExpressionWrapper::Identifier(id) => {
+                let IdentifierExpression { node_info, ident } = id;
+
+                let ident = if let [one] = ident.scope.as_slice() { one } else { todo!("scoped ident?") };
+
+                let vid = bindings.binding_for(*ident).expect("variable was not in scope");
+
+                within.add(AnyExpression::Variable(vid)).0
+            },
             ExpressionWrapper::FunctionCall(fc) => {
                 let FunctionCall { node_info, function, args } = fc;
 
