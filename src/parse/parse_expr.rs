@@ -2,6 +2,7 @@
 use crate::cst::{self, StructLiteralExpression};
 use crate::lex::{CodeLocation, ParseResultError, Token};
 use either::Either;
+use itertools::Itertools;
 
 //use crate::helper::lex_wrap::{CodeLocation, ParseResultError};
 
@@ -187,8 +188,23 @@ impl<'lexer> Parser<'lexer> {
 
         tracing::info!("struct literal thing");
 
+        let (sb, sg) = match struct_type.inner {
+            cst::SyntacticTypeReferenceInner::Unconstrained() => todo!("what"),
+            cst::SyntacticTypeReferenceInner::Tuple(_) => todo!("no"),
+            cst::SyntacticTypeReferenceInner::Single { name } => (name, vec![]),
+            cst::SyntacticTypeReferenceInner::Generic { label } => todo!("no"),
+            cst::SyntacticTypeReferenceInner::Parameterized { name, generics } => (name, generics.into_iter().map(|g| g.intern()).collect_vec()),
+            cst::SyntacticTypeReferenceInner::Reference { to, mutable } => todo!("huh"),
+            cst::SyntacticTypeReferenceInner::Pointer { to, mutable } => todo!("wheee"),
+        };
+
         t.success(Box::new(cst::ExpressionWrapper::StructLiteral(
-            StructLiteralExpression { info: NodeInfo::from_indices(start, end), bind_from: pairs },
+            StructLiteralExpression {
+                info: NodeInfo::from_indices(start, end),
+                bind_from: pairs,
+                struct_base: sb,
+                generics: sg,
+            },
         )))
     }
 

@@ -7,7 +7,7 @@ use crate::{
     avec::AtomicVec,
     cst::{
         self, CastExpression, ExpressionWrapper, IfThenElseExpression, LetComponentIdentifier,
-        LiteralExpression, MemberAccessExpression, SyntacticTypeReferenceRef, ScopedName,
+        LiteralExpression, MemberAccessExpression, SyntacticTypeReferenceRef, ScopedName, StructLiteralExpression, FunctionCall,
     },
     helper::interner::{IStr, Internable},
 };
@@ -413,7 +413,21 @@ impl AnyExpression {
 
                 within.add(AnyExpression::Literal(li)).0
             }
-            ExpressionWrapper::StructLiteral(sl) => todo!(),
+            ExpressionWrapper::StructLiteral(sl) => {
+                let StructLiteralExpression { info, bind_from, struct_base: struct_tr, generics } = sl;
+
+                let fields = bind_from.into_iter().map(|(name, ew)| {
+                    let eid = Self::from_ast(within, ew, bindings);
+
+                    (*name, eid)
+                }).collect();
+
+                within.add(AnyExpression::Composite(Composite {
+                    fields,
+                    base_type: struct_tr.clone(),
+                    generics: generics.clone(),
+                })).0
+            },
             ExpressionWrapper::Statement(_) => todo!(),
             ExpressionWrapper::While(_) => todo!(),
             ExpressionWrapper::Tuple(_) => todo!(),
@@ -421,7 +435,23 @@ impl AnyExpression {
             ExpressionWrapper::Wildcard(_) => todo!(),
             ExpressionWrapper::LLVMLiteral(_) => todo!(),
             ExpressionWrapper::Identifier(_) => todo!(),
-            ExpressionWrapper::FunctionCall(_) => todo!(),
+            ExpressionWrapper::FunctionCall(fc) => {
+                let FunctionCall { node_info, function, args } = fc;
+
+                let dt = if let box ExpressionWrapper::Tuple(t) = args {
+                    t.expressions.clone()
+                } else {
+                    unreachable!("dumbness")
+                };
+
+                let args = dt.into_iter().map(|box e| Self::from_ast(within, &e, bindings)).collect_vec();
+
+                let target_fn = Self::from_ast(within, &function, bindings);
+
+                let invocation = Invoke { target_fn, args };
+
+                within.add(AnyExpression::Invoke(invocation)).0
+            },
             ExpressionWrapper::ImplementationModification(_) => todo!(),
             ExpressionWrapper::DynamicMember(_) => todo!(),
         }

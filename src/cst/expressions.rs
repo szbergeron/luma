@@ -1185,6 +1185,8 @@ impl CstNode for LiteralExpression {
 #[derive(Debug, Clone)]
 pub struct StructLiteralExpression {
     pub info: NodeInfo,
+    pub struct_base: ScopedName,
+    pub generics: Vec<SyntacticTypeReferenceRef>,
     pub bind_from: Vec<(IStr, Box<ExpressionWrapper>)>,
 }
 

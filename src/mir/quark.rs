@@ -470,7 +470,7 @@ impl Quark {
 
                             self.add_unify(e_ty_id, ltid, "a literal should unify with the type it acts as".intern());
 
-                            todo!("we now have the type of a literal, should resolve it");
+                            tracing::error!("we now have the type of a literal, should resolve it");
                         },
                         "resolve the type of a literal once we have it",
                     );

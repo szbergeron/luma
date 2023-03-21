@@ -1,7 +1,7 @@
 struct S {
-    var a: std::primitive::i32,
+    var a: std::primitive::i64,
 
-    fn foo() -> i32 { 5 },
+    fn foo() -> std::primitive::i64 { 5 },
 
     fn operator[_+_](self: S, other: S) -> S {
         struct S { a: self.foo() + other.foo() }
