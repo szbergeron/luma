@@ -6,7 +6,7 @@ pub struct Unifier<K: std::fmt::Debug, T: std::fmt::Debug> {
     elements: HashMap<K, Entry<K, T>>,
 }
 
-impl<T: Clone + Debug, K: Eq + PartialEq + std::hash::Hash + Copy + Debug> Unifier<K, T> {
+impl<T: Debug, K: Eq + PartialEq + std::hash::Hash + Copy + Debug> Unifier<K, T> {
     pub fn root_for(&self, mut elem_id: K) -> K {
         loop {
             let v = self.elements.get(&elem_id).unwrap();
@@ -40,25 +40,28 @@ impl<T: Clone + Debug, K: Eq + PartialEq + std::hash::Hash + Copy + Debug> Unifi
 
             tracing::info!("unifies {root_a:?} and {root_b:?} because {a:?} and {b:?} were unified");
 
-            (ar.inner, br.inner) = match (&mut ar.inner, &mut br.inner) {
+            let ta = std::mem::take(&mut ar.inner);
+            let tb = std::mem::take(&mut br.inner);
+
+            match (ta, tb) {
                 (EntryInner::Root(va), EntryInner::Root(vb)) => {
                     tracing::info!("they're both roots, need to merge val");
-                    let new_v = with_values(va.clone(), vb.clone())?;
+                    let new_v = with_values(va, vb)?;
                     ar.ref_from.push(root_b); // we're changing A to be authority
-                    //ar.inner = EntryInner::Root(with_values(va, vb));
-                    (EntryInner::Root(new_v), EntryInner::Refers(root_a))
+                    ar.inner = EntryInner::Root(new_v);
+                    br.inner = EntryInner::Refers(root_a);
                 }
                 (EntryInner::Free(), bi) => {
                     tracing::info!("a was free, so do a noop merge");
                     br.ref_from.push(root_a);
-                    //ar.inner = EntryInner::Refers(br.keyed);
-                    (EntryInner::Refers(br.keyed), bi.clone())
+                    ar.inner = EntryInner::Refers(br.keyed);
+                    br.inner = bi;
                 }
                 (ai, EntryInner::Free()) => {
                     tracing::info!("b was free, so do a noop merge");
                     ar.ref_from.push(root_b);
-                    //br.inner = EntryInner::Refers(ar.keyed);
-                    (ai.clone(), EntryInner::Refers(ar.keyed))
+                    br.inner = EntryInner::Refers(ar.keyed);
+                    ar.inner = ai;
                 }
                 _ => unreachable!(),
             };
@@ -129,7 +132,14 @@ impl<T: Clone + Debug, K: Eq + PartialEq + std::hash::Hash + Copy + Debug> Unifi
 pub enum EntryInner<K: Debug, T: Debug> {
     Root(T),
     Refers(K),
+    
     Free(),
+}
+
+impl<K: Debug, T: Debug> Default for EntryInner<K, T> {
+    fn default() -> Self {
+        EntryInner::Free()
+    }
 }
 
 #[derive(Clone, Debug)]

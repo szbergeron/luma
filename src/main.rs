@@ -31,7 +31,8 @@
     box_patterns,
     default_free_fn,
     map_many_mut,
-    is_some_and
+    is_some_and,
+    async_iterator,
 )]
 #![allow(irrefutable_let_patterns)]
 #![allow(dead_code)]
@@ -61,8 +62,7 @@ extern crate lazy_static;
 
 use std::env;
 
-use tracing::{dispatcher, span, Dispatch, Level, Subscriber};
-use tracing_subscriber::FmtSubscriber;
+use tracing::{dispatcher, span, Dispatch, Subscriber};
 
 pub mod ast;
 pub mod avec;

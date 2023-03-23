@@ -1,16 +1,17 @@
 use std::{
     collections::{HashMap, HashSet},
     rc::Rc,
-    sync::Arc,
+    sync::Arc, fmt::Debug,
 };
 
 use fixed::traits::ToFixed;
+use futures::future::{join_all, join};
 use itertools::Itertools;
-use tracing::warn;
+use tracing::{instrument::WithSubscriber, warn};
 
 use crate::{
     ast::{
-        executor::{Executor, UnsafeAsyncCompletable, UnsafeAsyncCompletableFuture},
+        executor::{Executor, Thunk, UnsafeAsyncCompletable},
         resolver2::NameResolver,
         tree::{CtxID, NodeUnion},
         types::StructuralDataDefinition,
@@ -108,7 +109,7 @@ pub struct Instance {
 
     pub of: InstanceOf,
 
-    pub generics: HashMap<IStr, TypeID>,
+    pub generics: Rc<HashMap<IStr, TypeID>>,
 
     pub notify: Rc<UnsafeAsyncCompletable<CtxID>>, // when we resolve our base, notify this
 }
@@ -135,15 +136,15 @@ pub struct InstanceOfType {
     //regular_fields: Rc<HashMap<IStr, SyntacticTypeReferenceRef>>,
 
     // since fields type can't be used to j
-    from: CtxID,
-    regular_fields: HashMap<IStr, TypeID>,
+    pub from: CtxID,
+    pub regular_fields: HashMap<IStr, TypeID>,
     //methods: HashMap<>
 }
 
 #[derive(Clone, Debug)]
 pub struct InstanceOfFn {
-    parameters: Vec<TypeID>,
-    returns: TypeID,
+    parameters: Vec<Thunk<TypeID>>,
+    returns: Thunk<TypeID>,
 
     from: Option<CtxID>,
 }
@@ -154,6 +155,35 @@ pub struct Unify {
     pub into: TypeID,
 }
 
+pub enum ValueOrThunk<T: Debug + Clone + 'static> {
+    Value(T),
+    Thunk(Thunk<T>),
+}
+
+impl<T: Debug + Clone + 'static> ValueOrThunk<T> {
+    pub async fn to_value(self) -> T {
+        match self {
+            Self::Value(v) => v,
+            Self::Thunk(t) => t.extract().await
+        }
+    }
+}
+
+pub struct UnifyThunk {
+    pub from: ValueOrThunk<TypeID>,
+    pub into: ValueOrThunk<TypeID>,
+}
+
+impl UnifyThunk {
+    pub async fn to_unify(self) -> Unify {
+        let (into, from) = join(self.into.to_value(), self.from.to_value()).await;
+        Unify {
+            into,
+            from,
+        }
+    }
+}
+
 pub struct Constrain {
     pub ty: TypeID,
     pub is_a: SyntacticTypeReferenceRef,
@@ -161,22 +191,57 @@ pub struct Constrain {
 
 impl Instance {
     pub fn as_call(
-        of: CtxID,
-        params: Vec<TypeID>,
+        &self,
+        args: Vec<TypeID>,
+        expected_return: TypeID,
         generics: Vec<TypeID>,
         within: &Quark,
-    ) -> Result<(Self, Option<TypeID>, Vec<Unify>), TypeError> {
+    ) -> Result<Vec<UnifyThunk>, TypeError> {
         // if we are generic, then we need to check whether those generics propagate
         // through to our result, or if our result can be instantiated
         //
         // if we aren't callable, then we should return None
 
-        //let params_from_
+        match &self.of {
+            InstanceOf::Type(t) => Err(TypeError {
+                components: todo!(),
+                complaint: todo!(),
+            }),
+            InstanceOf::Func(f) => {
+                // check that the call is compatible
+                /*if f.parameters.len() != args.len() {
+                    return Err(TypeError { components: vec![], complaint: "function was called with a different number of args than it has".to_owned() })
+                }*/
 
-        Err(TypeError {
+                //panic!("woo");
+
+                let mut unify = Vec::new();
+
+                for eb in f.parameters.iter().zip_longest(args.iter()) {
+                    match eb {
+                        itertools::EitherOrBoth::Both(param, arg) => {
+                            panic!("making a unify");
+                            unify.push(UnifyThunk { from: ValueOrThunk::Value(*arg), into: ValueOrThunk::Thunk(param.clone()) })
+                        },
+                        itertools::EitherOrBoth::Left(param) => todo!(),
+                        itertools::EitherOrBoth::Right(arg) => {
+                            tracing::error!("aaaa");
+                        }
+                    }
+                }
+
+                unify.push(UnifyThunk { from: ValueOrThunk::Thunk(f.returns.clone()), into: ValueOrThunk::Value(expected_return) });
+
+                Ok(unify)
+            }
+            InstanceOf::Generic(_) => todo!("can't call generic"),
+            InstanceOf::Unknown() => todo!("tried to interpret an unsolved with an of"),
+        }
+
+        /*Err(TypeError {
             components: todo!(),
             complaint: format!("tried to call a type/value that was not callable"),
-        })
+        })*/
     }
 
     pub async fn typeof_regular_field(&self, field: IStr, within: &mut Quark) -> Option<TypeID> {
@@ -263,7 +328,7 @@ impl Instance {
         base: CtxID,
         field_values: HashMap<IStr, TypeID>,
         provided_generics: Vec<TypeID>,
-        within: &Quark,
+        within: &'static Quark,
     ) -> (Self, Vec<Unify>) {
         let mut unifies = Vec::new();
 
@@ -276,7 +341,7 @@ impl Instance {
             for gen in origin
                 .generics
                 .clone()
-                .into_iter()
+                .iter()
                 .zip_longest(provided_generics)
             {
                 let ((origin_gen_name, origin_tid), given_tid) = gen
@@ -285,7 +350,7 @@ impl Instance {
 
                 unifies.push(Unify {
                     from: given_tid,
-                    into: origin_tid,
+                    into: *origin_tid,
                 });
 
                 //let base = within.resolve_typeref(syntr, , from_base)
@@ -323,7 +388,7 @@ impl Instance {
         }
     }
 
-    pub async fn infer_instance(base: Option<CtxID>, within: &Quark) -> Self {
+    pub async fn infer_instance(base: Option<CtxID>, within: &'static Quark) -> Self {
         let mut inst = Self::plain_instance(within);
 
         if let Some(v) = base {
@@ -339,7 +404,7 @@ impl Instance {
             //instantiated_from: base,
             instantiated_in: within.node_id,
             of: InstanceOf::Unknown(), // need to figure this out from what we're based on
-            generics: HashMap::new(),
+            generics: Rc::new(HashMap::new()),
             accessed_from: None,
             notify: unsafe { UnsafeAsyncCompletable::new() },
         };
@@ -360,15 +425,15 @@ impl Instance {
     }
 
     #[async_recursion::async_recursion(?Send)]
-    pub async fn resolve_base(&mut self, base: CtxID, within: &Quark) {
+    pub async fn resolve_base(&mut self, base: CtxID, within: &'static Quark) {
         let inst = base.resolve();
 
         // use inst to get regular_fields from the transponster or something
-        let gens_for_type = inst
-            .generics
-            .iter()
-            .map(|(g, r)| (*g, within.new_tid()))
-            .collect();
+        let gens_for_type = Rc::new(inst
+                        .generics
+                        .iter()
+                        .map(|(g, r)| (*g, within.new_tid()))
+                        .collect());
 
         let of = match &inst.inner {
             NodeUnion::Type(t) => {
@@ -387,13 +452,60 @@ impl Instance {
                     inst_fields.insert(fname, tid);
                 }
 
+                let methods = t.lock().unwrap().methods.clone();
+
+                for (mname, mref) in methods {
+                    let minst = Self::infer_instance(Some(mref), within).await;
+
+                    let minst_tid = within.introduce_instance(minst);
+
+                    inst_fields.insert(mname, minst_tid);
+                }
+
+                let _ = unsafe { self.notify.complete(base) }; // we don't yield yet, so this is
+                                                               // fine until ret
+
                 InstanceOf::Type(InstanceOfType {
                     regular_fields: inst_fields,
                     from: base,
                 })
             }
             NodeUnion::Function(f, i) => {
-                todo!("huh")
+                // the typeref there should be resolved, depending on if its a method or not,
+                // either the super scope or the super-super scope
+
+                let resolve_within = if f.is_method {
+                    inst.parent.unwrap().resolve().parent.unwrap()
+                } else {
+                    inst.parent.unwrap()
+                };
+
+                tracing::warn!("make function res better");
+                let _ = unsafe { self.notify.complete(base) };
+
+                let parameters = f.parameters.clone().into_iter().map(|(pname, pty)| unsafe {
+                    let generics = self.generics.clone();
+                    Thunk::new(within.executor, async move {
+                        let tid = within
+                            .resolve_typeref(pty, &generics, resolve_within)
+                            .await;
+
+                        tid
+                    })
+                });
+
+                let generics = self.generics.clone();
+                let returns = unsafe { Thunk::new(within.executor, async move {
+                    within
+                        .resolve_typeref(f.return_type, &generics, resolve_within)
+                        .await
+                }) };
+
+                InstanceOf::Func(InstanceOfFn {
+                    parameters: vec![],
+                    returns,
+                    from: Some(base),
+                })
             }
             other => {
                 todo!("no")
@@ -403,8 +515,6 @@ impl Instance {
         self.of = of;
 
         self.generics = gens_for_type;
-
-        let _ = unsafe { self.notify.complete(base) };
     }
 
     /// allows us to unify two things of known base and say they are the "same type"
@@ -417,7 +527,10 @@ impl Instance {
     ) -> Result<(Instance, Vec<Unify>), TypeError> {
         //panic!("wooo");
 
-        tracing::info!("unifying two instances!");
+        tracing::info!(
+            "unifying two instances! the resulting iid will be {:?}",
+            self.id
+        );
 
         assert!(self.instantiated_in == stores_into.instantiated_in);
 
@@ -520,32 +633,24 @@ impl Instance {
             }
         };
 
-        /*let notify_wait = unsafe { self.notify.clone().wait() };
-        unsafe {
-            within.executor.install(
-                async move {
-                    let v = notify_wait.await;
-                    let _ = stores_into.notify.complete(v);
-                },
-                "once unify notifies we should notify the other",
-            )
-        }*/
-
         let (conflicted, notify) = unsafe {
             UnsafeAsyncCompletable::combine(
                 within.executor,
                 self.notify,
                 stores_into.notify,
-                |va, vb| todo!("aaa"),
+                |va, vb| {
+                    tracing::warn!("we're unifying id {va:?} with id {vb:?} in ctx");
+                    if va != vb {
+                        panic!("user tried to unify two different types")
+                    }
+                },
             )
         };
 
         let i = Instance {
             id: InstanceID(uuid::Uuid::new_v4()),
-            //instantiated_from: self.instantiated_from,
             instantiated_in: self.instantiated_in,
-            //regular_fields: self.regular_fields.clone(),
-            generics: unified_generics,
+            generics: Rc::new(unified_generics),
             of: new_of,
             accessed_from,
             notify,

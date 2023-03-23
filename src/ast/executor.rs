@@ -1,6 +1,7 @@
 use std::{
     cell::UnsafeCell,
     collections::{HashMap, VecDeque},
+    fmt::Debug,
     marker::PhantomData,
     mem::ManuallyDrop,
     pin::Pin,
@@ -332,8 +333,7 @@ impl<T: Clone + std::fmt::Debug + 'static> UnsafeAsyncCompletable<T> {
                     let v = if_conflict(va, vb);
                     // would already be complete, so just return a
                     (Some(v), a)
-                }
-                //
+                } //
             }
         }
     }
@@ -342,4 +342,65 @@ impl<T: Clone + std::fmt::Debug + 'static> UnsafeAsyncCompletable<T> {
 #[derive(Debug, Clone)]
 pub enum SendError {
     AlreadyCompleted(),
+}
+
+pub struct Thunk<T: Clone + Debug + 'static> {
+    value: Rc<UnsafeAsyncCompletable<T>>,
+    compute_within: &'static Executor,
+    computation: Rc<UnsafeCell<Option<Pin<Box<dyn Future<Output = T>>>>>>,
+}
+
+impl<T: Clone + Debug + 'static> Thunk<T> {
+    pub async fn extract(&self) -> T {
+        //self.computation.as_ref();
+        if let Some(v) = unsafe { self.computation.as_ref().get().as_mut().unwrap().take() } {
+            let to_complete = self.value.clone();
+            unsafe {
+                self.compute_within.install(
+                    async move {
+                        tracing::error!("thinking a thunk");
+                        let v = v.await;
+
+                        tracing::error!("thunk a thunk");
+
+                        to_complete.complete(v).expect("unsound extract");
+                    },
+                    "lazy thunk computation",
+                )
+            };
+        }
+
+        unsafe { self.value.clone().wait().await }
+    }
+
+    /// CONTRACT: this can't leave the thread or bad things happen
+    pub unsafe fn new(
+        within: &'static Executor,
+        computation: impl Future<Output = T> + 'static,
+    ) -> Self {
+        Self {
+            value: unsafe { UnsafeAsyncCompletable::new() },
+            compute_within: within,
+            computation: Rc::new(UnsafeCell::new(Some(Box::pin(computation)))),
+        }
+    }
+}
+
+impl<T: Clone + Debug + 'static> Clone for Thunk<T> {
+    fn clone(&self) -> Self {
+        Self {
+            value: self.value.clone(),
+            compute_within: self.compute_within.clone(),
+            computation: self.computation.clone(),
+        }
+    }
+}
+
+impl<T: Clone + Debug + 'static> Debug for Thunk<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Thunk")
+            .field("value", &self.value)
+            .field("computation", &self.computation)
+            .finish()
+    }
 }

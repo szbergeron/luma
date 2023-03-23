@@ -12,7 +12,7 @@ use crate::{
     compile::per_module::{
         Content, ControlMessage, ConversationContext, Destination, Earpiece, Message, Service,
     },
-    cst::{NodeInfo, ScopedName, UseDeclaration},
+    cst::{ScopedName, UseDeclaration},
     helper::interner::{IStr, Internable},
 };
 

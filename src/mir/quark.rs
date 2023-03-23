@@ -1,7 +1,5 @@
 use std::{cell::RefCell, collections::HashMap, pin::Pin, rc::Rc};
 
-//use itertools::Itertools;
-
 use tracing::{info, warn};
 use uuid::Uuid;
 
@@ -18,14 +16,15 @@ use crate::{
     },
     cst::{ExpressionWrapper, ScopedName, SyntacticTypeReferenceInner, SyntacticTypeReferenceRef},
     helper::interner::{IStr, Internable},
-    mir::expressions::{AnyExpression, Bindings, Composite, ExpressionContext, Literal, VarID},
+    mir::{expressions::{AnyExpression, Bindings, Composite, ExpressionContext, Literal, VarID}, transponster::InstanceOf},
 };
 
 use super::{
     expressions::ExpressionID,
     sets::Unifier,
-    transponster::{FieldID, Instance, InstanceID, Unify, UsageHandle},
+    transponster::{Instance, Unify, UsageHandle},
 };
+use super::transponster::InstanceID;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct TypeID(uuid::Uuid);
@@ -47,33 +46,16 @@ pub struct TypeError {
 /// while outputs are references to actual Nodes
 /// with IDs and filled in generics
 pub struct Quark {
-    //type_args: Vec<SymbolicType>,
-    //typer: TypeContext,
-
-    //value: Linear,
-
-    //allocations: HashMap<usize, Allocation>,
-    //allocations: Vec<Allocation>,
-
-    //allocation_references: HashMap<usize, OwnedAllocationReference>,
-
-    //variables: Vec<(IStr, AllocationReference)>,
-    //frames: Vec<usize>,
     acting_on: RefCell<ExpressionContext>,
 
-    //type_of: RefCell<HashMap<ExpressionID, TypeID>>,
     type_of_var: RefCell<HashMap<VarID, TypeID>>,
 
-    //specializations: Vec<HashMap<IStr, ResolvedType>>,
-
-    //wait_resolve: HashMap<TypeID, Vec<executor::UnsafeAsyncCompletable<Result<(), ()>>>>,
     /// If we resolve a TypeID from here, we should tell any usages/instances
     /// that there is a new direct
     dynfield_notifies: RefCell<HashMap<TypeID, Vec<(InstanceID, UsageHandle)>>>,
 
     /// If we've resolved a type far enough to know that it is an Instance,
     /// it is recorded here so we can do field analysis on it
-    //instances: RefCell<HashMap<TypeID, Instance>>,
     instances: RefCell<Unifier<TypeID, Instance>>,
 
     once_know: RefCell<HashMap<TypeID, Vec<Action>>>,
@@ -136,7 +118,7 @@ impl Quark {
         }
 
         tracing::debug!("New status for sets:");
-        tracing::debug!("{:#?}", refm);
+        //tracing::debug!("{:#?}", refm);
 
         /*(let root_inst = refm.v_for(from);
         if let Some(root_inst) = root_inst {
@@ -208,7 +190,7 @@ impl Quark {
     ///
     /// this turns it into either an instance or a TypeID, depending on how well things go
     pub async fn resolve_typeref(
-        &self,
+        &'static self,
         tr: SyntacticTypeReferenceRef,
         with_generics: &HashMap<IStr, TypeID>,
         from_base: CtxID,
@@ -301,12 +283,14 @@ impl Quark {
             let instance = Instance::plain_instance(self);
 
             refm.add_kv(new_tid, instance);
-            let v = f(refm.v_for(new_tid).unwrap());
 
             // unify needs to borrow instances
             std::mem::drop(refm);
 
             self.add_unify(new_tid, tid, "identity unify since no instance existed for that tid");
+
+            let mut refm = self.instances.borrow_mut();
+            let v = f(refm.v_for(new_tid).unwrap());
 
             v
 
@@ -345,6 +329,17 @@ impl Quark {
 
         instance_tid
         //assert!(was_there.is_none(), "instance already assigned for tid");
+    }
+
+    /// Use this to introduce an instance with a completely untethered TID
+    pub fn introduce_instance(&self, instance: Instance) -> TypeID {
+        let instance_tid = TypeID(Uuid::new_v4());
+
+        let mut refm = self.instances.borrow_mut();
+
+        refm.add_kv(instance_tid, instance);
+
+        instance_tid
     }
 
     pub fn new_tid(&self) -> TypeID {
@@ -511,7 +506,43 @@ impl Quark {
                         ptypes.push(atid);
                     }
 
-                    self.executor.install(
+                    self.executor.install(async move {
+                        let fctx = self.with_instance(fn_tid, |instance| instance.notify.clone().wait()).await;
+
+                        let as_call_res = self.with_instance(fn_tid, |instance| {
+                            let as_call_res = instance.as_call(ptypes, resulting_type_id, vec![], self);
+
+                            as_call_res
+                        });
+
+
+                        match as_call_res {
+                            Ok(unifies) => {
+                                /*let call_inst_tid = self.introduce_instance(inst);*/
+
+                                for thunk in unifies {
+                                    //panic!("thunking");
+                                    let Unify { from, into } = thunk.to_unify().await;
+                                    //panic!("thunkd");
+                                    self.add_unify(from, into, "instance of a call told us to");
+                                }
+
+                                // unify the call inst with the actual func inst
+
+                                //self.add_unify(fn_tid, call_inst_tid, "calling a function requires args are able to be passed into it");
+                                //todo!("unified a call");
+
+                            },
+                            Err(e) => {
+                                todo!("error things")
+                            }
+                        }
+
+                        tracing::debug!("function got unified? maybe?");
+                        //todo!("fctx known");
+                    }, "verify function call is with the right params");
+
+                    /*self.executor.install(
                         async move {
                             let completable = self
                                 .once_know_ctx
@@ -533,7 +564,7 @@ impl Quark {
                             //let fid: FieldID = todo!();
                         },
                         "find type for an invocation, waiting on resolving the type of the base",
-                    )
+                    )*/
                 }
 
                 resulting_type_id
@@ -541,11 +572,6 @@ impl Quark {
             AnyExpression::StaticAccess(sa) => {
                 let result_ty = self.new_tid();
                 tracing::info!("static accessing: {sa:?}");
-                //let field_src_tid = e_ty_id; // if we're used as an lval, then we must allow the
-                // "src" type to assign into us
-
-                //todo!("static access: {sa:?}");
-
                 // the type of the base that we're accessing the field on
                 let src_ty = self.do_the_thing_rec(sa.on, false);
 
@@ -558,32 +584,52 @@ impl Quark {
 
                         let base_ctx = fut.await;
 
-                        todo!("now figure out field type since we have the base");
+                        // the base *must* have resolved at this point, so we can just use it and
+                        // ask for the field!
+
+                        match self.with_instance(src_ty, |instance| {
+                            tracing::info!("the iid of the one we got back is {:?}", instance.id);
+                            match &instance.of {
+                                InstanceOf::Type(t) => {
+                                    let f = t.regular_fields.get(&sa.field);
+
+                                    match f {
+                                        None => {
+                                            tracing::error!("Field is: {}", sa.field);
+                                            tracing::error!("All fields are: {:?}", t.regular_fields);
+                                            panic!("user tried to access a field that didn't exist on the type")
+                                        },
+                                        Some(tid) => {
+                                            tracing::info!("user got a valid field!");
+                                            Some(*tid)
+                                        }
+                                    }
+                                }
+                                InstanceOf::Func(f) =>{ 
+                                    panic!("user tried to access a field on a function");
+                                }
+                                InstanceOf::Generic(g) => {
+                                    panic!("generic? {g}");
+                                },
+                                InstanceOf::Unknown() => {
+                                    panic!("stop");
+                                }
+                            }
+                        }) {
+                            Some(tid) => {
+                                self.add_unify(tid, result_ty, "the field's type unifies with the result of its usage");
+                            },
+                            None => {
+                            }
+                        }
+
+                        tracing::info!("we unified a field type!");
+
+                        //todo!("now figure out field type since we have the base");
                     }, "wait for a resolution on the base of an access")
                 }
 
-                /*unsafe { self.executor.install(async move {
-                }, "if we find out more about a field because of unifies,
-                send that info along to the base for the field") };
-
-
-                unsafe { self.executor.install(async move {
-                    match is_lval {
-                        true => {
-                            self.action(sa.on, src_ty, Action::StoreFieldFrom(sa.field, result_ty));
-                        }
-                        false => {
-                            self.action(sa.on, src_ty, Action::LoadFieldInto(sa.field, result_ty));
-                        }
-                    }
-                }, "resolve the type of a field once we know what it's being accessed on") };*/
-
-
                 result_ty
-
-                //todo!("have transponster let us know when we know the type of the field");
-
-                //self.action(sa.on, Action::
             }
             AnyExpression::DynamicAccess(_) => {
                 todo!("no syntactic meaning to dynamic access anymore")
