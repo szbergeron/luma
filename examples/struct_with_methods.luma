@@ -3,6 +3,8 @@ struct S {
 
     fn foo() -> std::primitive::i64 { 5 },
 
+    fn blah() -> std::primitive::i32 { 5 },
+
     /*fn boo(self: S) {
         //5 = other
         5
@@ -10,5 +12,9 @@ struct S {
 
     fn operator[_+_](self: S, other: S) -> S {
         struct S { a: self.foo() + other.foo() }
+    },
+
+    fn blah(self: S) -> std::primitive::i32 {
+        5
     }
 }

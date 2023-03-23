@@ -6,7 +6,7 @@ use smallvec::{SmallVec, smallvec};
 
 use crate::{helper::interner::{IStr, SpurHelper, Internable}, ast::types::AbstractTypeReference};
 
-use super::{NodeInfo, CstNode, IntoCstNode, FunctionDefinition};
+use super::{NodeInfo, CstNode, IntoCstNode, FunctionDefinition, Span};
 
 #[derive(Clone, Debug)]
 pub struct StructDefinition {
@@ -185,24 +185,24 @@ pub enum OldTypeReference {
 }*/
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
-pub struct SyntacticTypeReferenceRef(uuid::Uuid);
+pub struct SyntacticTypeReferenceRef(uuid::Uuid, NodeInfo);
 
 impl SyntacticTypeReferenceRef {
     pub fn new_nil() -> Self {
-        Self(uuid::Uuid::nil())
+        Self(uuid::Uuid::nil(), NodeInfo::Builtin)
     }
 
-    pub fn new_rand() -> Self {
-        Self(uuid::Uuid::new_v4())
+    pub fn new_rand(location: NodeInfo) -> Self {
+        Self(uuid::Uuid::new_v4(), location)
     }
 
-    pub fn resolve(self) -> Option<dashmap::mapref::one::Ref<'static, Self, SyntacticTypeReference>> {
-        SYNTACTIC_FROM_REF.get(&self)
+    pub fn resolve(self) -> Option<SyntacticTypeReference> {
+        SYNTACTIC_FROM_REF.get(&self).map(|s| s.value().clone())
     }
 
-    pub fn resolve_mut(self) -> Option<dashmap::mapref::one::RefMut<'static, Self, SyntacticTypeReference>> {
+    /*pub fn resolve_mut(self) -> Option<dashmap::mapref::one::RefMut<'static, Self, SyntacticTypeReference>> {
         SYNTACTIC_FROM_REF.get_mut(&self)
-    }
+    }*/
 
     pub fn to_abstract(self, within_generic_context: &[IStr]) -> AbstractTypeReference {
         AbstractTypeReference::from_cst(self, within_generic_context)

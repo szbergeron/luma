@@ -2,16 +2,24 @@ mod primitive {
 
     struct i64 {
         fn operator[_+_](self: std::primitive::i64, other: std::primitive::i64) -> std::primitive::i64 {
-            self + other
-        }
+            5
+        },
+
+        fn operator[_/_](self: std::primitive::i64, other: std::primitive::i64) -> std::primitive::i64 {
+            0 + 2
+        },
+
+        fn operator[_-_](self: std::primitive::i64, other: std::primitive::i64) -> std::primitive::i64 {
+            self - other
+        },
     }
 
-    struct i32 {}
-
     struct i32 {
-        fn operator[_-_](self: std::primitive::i64, other: std::primitive::i64) -> std::primitive::i32 {
-            other + self
-        }
+        fn operator[_*_](self: std::primitive::i64) -> std::primitive::i32 {
+            //5 + 3 / 2
+            //3 / 2
+            3 + 3 / 2 - 5
+        },
     }
 }
 

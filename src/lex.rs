@@ -264,7 +264,7 @@ pub enum Token {
     #[regex("[0-9]+f32")]
     f32Literal,
 
-    #[regex(r"operator\[(\[\]|[_\+\-\~`\*\&\^%\$\#@!a-zA-Z]+)\]")]
+    #[regex(r"operator\[(\[\]|[/_\+\-\~`\*\&\^%\$\#@!a-zA-Z]+)\]")]
     FnOperator,
 
     #[token(" ")]
@@ -429,7 +429,7 @@ type LexResult = Result<TokenWrapper, ParseResultError>;
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub enum CodeLocation {
     Parsed(Loc),
-    Builtin,
+    //Builtin,
 }
 
 impl CodeLocation {

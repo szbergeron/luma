@@ -1,11 +1,12 @@
 use std::{
     collections::{HashMap, HashSet},
+    fmt::Debug,
     rc::Rc,
-    sync::Arc, fmt::Debug,
+    sync::Arc,
 };
 
 use fixed::traits::ToFixed;
-use futures::future::{join_all, join};
+use futures::future::{join, join_all};
 use itertools::Itertools;
 use tracing::{instrument::WithSubscriber, warn};
 
@@ -131,20 +132,37 @@ pub enum InstanceOf {
     Unknown(),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct InstanceOfType {
     //regular_fields: Rc<HashMap<IStr, SyntacticTypeReferenceRef>>,
 
     // since fields type can't be used to j
     pub from: CtxID,
-    pub regular_fields: HashMap<IStr, TypeID>,
+    pub regular_fields: HashMap<IStr, Thunk<TypeID>>,
+    pub methods: HashMap<IStr, Thunk<TypeID>>,
     //methods: HashMap<>
+}
+
+impl std::fmt::Debug for InstanceOfType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("InstanceOfType")
+            .field(
+                "from",
+                &self
+                    .from
+                    .resolve()
+                    .canonical_typeref()
+                    .resolve()
+                    .unwrap(),
+            )
+            .finish()
+    }
 }
 
 #[derive(Clone, Debug)]
 pub struct InstanceOfFn {
-    parameters: Vec<Thunk<TypeID>>,
-    returns: Thunk<TypeID>,
+    parameters: Vec<TypeID>,
+    returns: TypeID,
 
     from: Option<CtxID>,
 }
@@ -164,7 +182,7 @@ impl<T: Debug + Clone + 'static> ValueOrThunk<T> {
     pub async fn to_value(self) -> T {
         match self {
             Self::Value(v) => v,
-            Self::Thunk(t) => t.extract().await
+            Self::Thunk(t) => t.extract().await,
         }
     }
 }
@@ -177,10 +195,7 @@ pub struct UnifyThunk {
 impl UnifyThunk {
     pub async fn to_unify(self) -> Unify {
         let (into, from) = join(self.into.to_value(), self.from.to_value()).await;
-        Unify {
-            into,
-            from,
-        }
+        Unify { into, from }
     }
 }
 
@@ -221,8 +236,11 @@ impl Instance {
                     match eb {
                         itertools::EitherOrBoth::Both(param, arg) => {
                             panic!("making a unify");
-                            unify.push(UnifyThunk { from: ValueOrThunk::Value(*arg), into: ValueOrThunk::Thunk(param.clone()) })
-                        },
+                            unify.push(UnifyThunk {
+                                from: ValueOrThunk::Value(*arg),
+                                into: ValueOrThunk::Value(*param),
+                            })
+                        }
                         itertools::EitherOrBoth::Left(param) => todo!(),
                         itertools::EitherOrBoth::Right(arg) => {
                             tracing::error!("aaaa");
@@ -230,7 +248,10 @@ impl Instance {
                     }
                 }
 
-                unify.push(UnifyThunk { from: ValueOrThunk::Thunk(f.returns.clone()), into: ValueOrThunk::Value(expected_return) });
+                unify.push(UnifyThunk {
+                    from: ValueOrThunk::Value(f.returns),
+                    into: ValueOrThunk::Value(expected_return),
+                });
 
                 Ok(unify)
             }
@@ -244,15 +265,17 @@ impl Instance {
         })*/
     }
 
+    /*
     pub async fn typeof_regular_field(&self, field: IStr, within: &mut Quark) -> Option<TypeID> {
         if let InstanceOf::Type(InstanceOfType {
             regular_fields,
+            methods: regular_methods,
             from,
         }) = &self.of
         {
-            match regular_fields.get(&field) {
+            match &regular_fields.get(&field) {
                 None => None,
-                Some(&tid) => Some(tid),
+                Some(tid) => Some(tid.clone().extract().await),
             }
         } else {
             todo!("user tried to get a field on a function type")
@@ -262,7 +285,9 @@ impl Instance {
     /// If we already have a type for the DynField, then return it here
     pub fn typeof_dynamic_field(&self, field: IStr) -> Option<ResolvedType> {
         todo!()
-    }
+    }*/
+
+    /*
 
     /// the direction here says, if Load then "the field is loaded from into something of TID
     /// <with_tid>, and the inverse if direction is Store
@@ -324,6 +349,8 @@ impl Instance {
     ) -> UnsafeAsyncCompletableFuture<T> {
     }*/
 
+*/
+
     pub async fn construct_instance(
         base: CtxID,
         field_values: HashMap<IStr, TypeID>,
@@ -371,14 +398,14 @@ impl Instance {
                 let inst_field_tid = t
                     .regular_fields
                     .get(&key)
-                    .copied()
+                    .cloned()
                     .expect("user provided an extra key");
                 let provided_field_tid =
                     field_values.get(&key).copied().expect("user omitted a key");
 
                 unifies.push(Unify {
                     from: provided_field_tid,
-                    into: inst_field_tid,
+                    into: inst_field_tid.extract().await,
                 });
             }
 
@@ -429,37 +456,56 @@ impl Instance {
         let inst = base.resolve();
 
         // use inst to get regular_fields from the transponster or something
-        let gens_for_type = Rc::new(inst
-                        .generics
-                        .iter()
-                        .map(|(g, r)| (*g, within.new_tid()))
-                        .collect());
+        let gens_for_type = Rc::new(
+            inst.generics
+                .iter()
+                .map(|(g, r)| (*g, within.new_tid()))
+                .collect(),
+        );
 
         let of = match &inst.inner {
             NodeUnion::Type(t) => {
-                let fields = t.lock().unwrap().fields.clone();
-
                 let mut inst_fields = HashMap::new();
+                let mut inst_methods = HashMap::new();
+
+                let fields = t.lock().unwrap().fields.clone();
 
                 for field in fields {
                     let fname = field.name;
                     let ty = field.has_type.unwrap();
 
-                    let tid = within
-                        .resolve_typeref(ty, &self.generics, inst.parent.unwrap())
-                        .await;
+                    let generics = self.generics.clone(); // rc clone
 
-                    inst_fields.insert(fname, tid);
+                    let thunk = unsafe {
+                        Thunk::new(within.executor, async move {
+                            let tid = within
+                                .resolve_typeref(ty, &generics, inst.parent.unwrap())
+                                .await;
+
+                            tid
+                        })
+                    };
+
+                    inst_fields.insert(fname, thunk);
                 }
 
                 let methods = t.lock().unwrap().methods.clone();
 
                 for (mname, mref) in methods {
-                    let minst = Self::infer_instance(Some(mref), within).await;
+                    let minst_thunk = unsafe {
+                        Thunk::new(within.executor, async move {
+                            tracing::warn!("we're inferring the instance for field {mname}");
+                            let minst = Self::infer_instance(Some(mref), within).await;
 
-                    let minst_tid = within.introduce_instance(minst);
+                            let minst_tid = within.introduce_instance(minst);
 
-                    inst_fields.insert(mname, minst_tid);
+                            tracing::warn!("this instantiation of {mname} on {mref:?} was given tid {minst_tid:?}");
+
+                            minst_tid
+                        })
+                    };
+
+                    inst_methods.insert(mname, minst_thunk);
                 }
 
                 let _ = unsafe { self.notify.complete(base) }; // we don't yield yet, so this is
@@ -467,6 +513,7 @@ impl Instance {
 
                 InstanceOf::Type(InstanceOfType {
                     regular_fields: inst_fields,
+                    methods: inst_methods,
                     from: base,
                 })
             }
@@ -483,23 +530,37 @@ impl Instance {
                 tracing::warn!("make function res better");
                 let _ = unsafe { self.notify.complete(base) };
 
-                let parameters = f.parameters.clone().into_iter().map(|(pname, pty)| unsafe {
+                /*let parameters = f.parameters.clone().into_iter().map(|(pname, pty)| unsafe {
                     let generics = self.generics.clone();
                     Thunk::new(within.executor, async move {
-                        let tid = within
-                            .resolve_typeref(pty, &generics, resolve_within)
-                            .await;
+                        let tid = within.resolve_typeref(pty, &generics, resolve_within).await;
 
                         tid
                     })
                 });
 
                 let generics = self.generics.clone();
-                let returns = unsafe { Thunk::new(within.executor, async move {
-                    within
-                        .resolve_typeref(f.return_type, &generics, resolve_within)
-                        .await
-                }) };
+                let returns = unsafe {
+                    Thunk::new(within.executor, async move {
+                        within
+                            .resolve_typeref(f.return_type, &generics, resolve_within)
+                            .await
+                    })
+                };*/
+
+                let mut parameters = Vec::new();
+
+                for (pname, pty) in f.parameters.clone() {
+                    let tid = within
+                        .resolve_typeref(pty, &self.generics, resolve_within)
+                        .await;
+
+                    parameters.push(tid);
+                }
+
+                let returns = within
+                    .resolve_typeref(f.return_type, &self.generics, resolve_within)
+                    .await;
 
                 InstanceOf::Func(InstanceOfFn {
                     parameters: vec![],

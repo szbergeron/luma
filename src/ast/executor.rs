@@ -344,6 +344,8 @@ pub enum SendError {
     AlreadyCompleted(),
 }
 
+/// A None `computation` means that the computation has already been started,
+/// and the result will show up in `value`
 pub struct Thunk<T: Clone + Debug + 'static> {
     value: Rc<UnsafeAsyncCompletable<T>>,
     compute_within: &'static Executor,
@@ -353,7 +355,9 @@ pub struct Thunk<T: Clone + Debug + 'static> {
 impl<T: Clone + Debug + 'static> Thunk<T> {
     pub async fn extract(&self) -> T {
         //self.computation.as_ref();
+        tracing::warn!("extract was called");
         if let Some(v) = unsafe { self.computation.as_ref().get().as_mut().unwrap().take() } {
+            tracing::info!("there was a value, starting the computation...");
             let to_complete = self.value.clone();
             unsafe {
                 self.compute_within.install(
@@ -368,6 +372,8 @@ impl<T: Clone + Debug + 'static> Thunk<T> {
                     "lazy thunk computation",
                 )
             };
+        } else {
+            tracing::info!("someone else must already be running it");
         }
 
         unsafe { self.value.clone().wait().await }

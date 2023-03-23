@@ -14,7 +14,7 @@ use crate::{
     compile::per_module::{
         Content, ControlMessage, ConversationContext, Destination, Earpiece, Message, Service,
     },
-    cst::{ExpressionWrapper, ScopedName, SyntacticTypeReferenceInner, SyntacticTypeReferenceRef},
+    cst::{ExpressionWrapper, ScopedName, SyntacticTypeReferenceInner, SyntacticTypeReferenceRef, Span, self},
     helper::interner::{IStr, Internable},
     mir::{expressions::{AnyExpression, Bindings, Composite, ExpressionContext, Literal, VarID}, transponster::InstanceOf},
 };
@@ -27,7 +27,13 @@ use super::{
 use super::transponster::InstanceID;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct TypeID(uuid::Uuid);
+pub struct TypeID(uuid::Uuid, cst::Span);
+
+impl TypeID {
+    pub fn span(&self) -> Span {
+        self.1
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct TypeError {
@@ -60,7 +66,7 @@ pub struct Quark {
 
     once_know: RefCell<HashMap<TypeID, Vec<Action>>>,
 
-    once_know_ctx: RefCell<HashMap<TypeID, Rc<UnsafeAsyncCompletable<CtxID>>>>,
+    //once_know_ctx: RefCell<HashMap<TypeID, Rc<UnsafeAsyncCompletable<CtxID>>>>,
 
     sender: local_channel::mpsc::Sender<Message>,
 
@@ -96,6 +102,7 @@ pub enum Action {
 impl Quark {
     pub fn add_unify<R: Into<IStr>>(&self, from: TypeID, into: TypeID, reason: R) {
         let reason: IStr = reason.into();
+        tracing::debug!("unifies {from:?} into {into:?} because {reason}");
         let mut refm = self.instances.borrow_mut();
         let mut resulting_unifies = Vec::new();
 
@@ -118,62 +125,6 @@ impl Quark {
         }
 
         tracing::debug!("New status for sets:");
-        //tracing::debug!("{:#?}", refm);
-
-        /*(let root_inst = refm.v_for(from);
-        if let Some(root_inst) = root_inst {
-            tracing::debug!("we had a root inst");
-            if let Some(v) = root_inst.instantiated_from {
-                panic!("woot");
-                // we know what base this is, so can notify the dependents
-                for peer in refm.peers_of(from) {
-                    unsafe {
-                        let useme = self
-                            .once_know_ctx
-                            .borrow_mut()
-                            .entry(peer)
-                            .or_insert_with(|| UnsafeAsyncCompletable::new())
-                            .complete(v);
-                    };
-                }
-            }
-        }*/
-    }
-
-    pub fn action(&self, once: ExpressionID, has_tid: TypeID, apply: Action) {
-        //todo!("apply actions")
-        //let type_of = self.type_of.borrow_mut().get(&once).copied().unwrap();
-
-        let completable = unsafe {
-            self.once_know_ctx
-                .borrow_mut()
-                .entry(has_tid)
-                .or_insert_with(|| UnsafeAsyncCompletable::new())
-                .clone()
-                .wait()
-        };
-
-        /*unsafe {
-            self.executor.install(
-                async move {
-
-                    // have transponster notify us when they figure out the type of the field
-                    // ...or could ask the instance?
-                    let is_at = completable.await;
-
-                    match apply {
-                        Action::LoadFieldInto(field, val) => todo!(),
-                        Action::StoreFieldFrom(field, val) => todo!(),
-                        Action::CallWith(_, _) => todo!(),
-                        Action::CastTo(_) => todo!(),
-                        Action::ResolveUsage(_, _) => todo!(),
-                    }
-                },
-                "do an action once we know the ctx of an expr",
-            )
-        };*/
-
-        tracing::error!("apply actions!");
     }
 
     fn as_dest(&self) -> Destination {
@@ -195,7 +146,7 @@ impl Quark {
         with_generics: &HashMap<IStr, TypeID>,
         from_base: CtxID,
     ) -> TypeID {
-        match &tr.resolve().unwrap().inner {
+        match tr.resolve().unwrap().inner {
             SyntacticTypeReferenceInner::Single { name } => {
                 // we are maybe an instance of a type? or some node? so figure out which one it
                 // is
@@ -220,9 +171,11 @@ impl Quark {
                         // don't set an accessed_from for this, since it's a plain function
                         // (shouldn't have a propagated `self`)
 
-                        let tid = self.new_tid();
+                        //let tid = self.new_tid();
 
-                        self.instance_for(tid, instance);
+                        let tid = self.introduce_instance(instance);
+
+                        tracing::debug!("introduced {tid:?}");
 
                         tid
                     }
@@ -246,7 +199,7 @@ impl Quark {
             SyntacticTypeReferenceInner::Generic { label } => {
                 let existing_tid = self
                     .generics
-                    .get(label)
+                    .get(&label)
                     .expect("got a generic that didn't mean anything in the context");
                 *existing_tid
             }
@@ -289,7 +242,7 @@ impl Quark {
 
             self.add_unify(new_tid, tid, "identity unify since no instance existed for that tid");
 
-            let mut refm = self.instances.borrow_mut();
+            let refm = self.instances.borrow_mut();
             let v = f(refm.v_for(new_tid).unwrap());
 
             v
@@ -299,19 +252,8 @@ impl Quark {
         // refm drops
     }
 
-    /*
-    /// Creates a full instance for the TypeID,
-    /// one that can be asked for fields and such
-    pub fn instantiated(&self, tid: TypeID) -> TypeID {
-        let instance = Instance::plain_instance(self);
-
-        self.instance_for(tid, instance);
-
-        todo!()
-    }*/
-
     /// Returns the direct TID for the instance once unified with the base tid
-    pub fn instance_for(&self, tid: TypeID, instance: Instance) -> TypeID {
+    pub fn assign_instance(&self, tid: TypeID, instance: Instance) -> TypeID {
         // make a new tid inst here since the regular one automatically adds it to unifier
         let instance_tid = TypeID(uuid::Uuid::new_v4());
 
@@ -324,11 +266,10 @@ impl Quark {
         self.add_unify(
             tid,
             instance_tid,
-            "unify because of trivial add instance".intern(),
+            format!("we added an instance for {tid:?}"),
         );
 
         instance_tid
-        //assert!(was_there.is_none(), "instance already assigned for tid");
     }
 
     /// Use this to introduce an instance with a completely untethered TID
@@ -390,24 +331,16 @@ impl Quark {
         }
 
         Self {
-            //allocations: Vec::new(),
-            //allocation_references: HashMap::new(),
-            //variables: Vec::new(),
-            //frames: Vec::new(),
             sender,
             node_id,
             acting_on: RefCell::new(ExpressionContext::new_empty()),
-            //type_of: RefCell::new(HashMap::new()),
             type_of_var: RefCell::new(HashMap::new()),
             executor,
-            //typer: TypeContext::fresh(),
             dynfield_notifies: RefCell::new(HashMap::new()),
             instances: RefCell::new(Unifier::new()),
             once_know: RefCell::new(HashMap::new()),
             conversations: unsafe { ConversationContext::new(cs) },
             generics: Rc::new(generics),
-            once_know_ctx: RefCell::new(HashMap::new()),
-            //specializations: todo!(),
         }
     }
 
@@ -421,12 +354,6 @@ impl Quark {
     /// lval is true if we are being assigned into, otherwise we can be treated as an rval
     pub fn do_the_thing_rec(&'static self, on_id: ExpressionID, is_lval: bool) -> TypeID {
         tracing::info!("do_the_thing_rec on id: {on_id}");
-
-        /*let e_ty_id: TypeID = self.typer.register_type(TypeVar {
-            within: self.node_id,
-            referees: Vec::new(),
-            current: TypeType::Unknown(),
-        });*/
 
         match self.acting_on.borrow().get(on_id).clone() {
             AnyExpression::Block(b) => {
@@ -494,17 +421,19 @@ impl Quark {
                 unsafe {
                     // the type of the thing we're calling (could be field
                     // or function ref, could even be a function/closure literal)
-                    //let callable_tid = self.new_tid();
 
                     let fn_tid = self.do_the_thing_rec(i.target_fn, is_lval);
 
-                    let mut ptypes = vec![fn_tid]; // we're assuming things are methods for now
+                    //let mut ptypes = vec![fn_tid]; // we're assuming things are methods for now
+                    let mut ptypes = Vec::new();
 
                     for arg in i.args {
                         let atid = self.do_the_thing_rec(arg, false);
                         tracing::info!("looked at an arg {arg:?}, got tid: {atid:?}");
                         ptypes.push(atid);
                     }
+
+                    tracing::info!("Got ptypes, they are: {ptypes:?}");
 
                     self.executor.install(async move {
                         let fctx = self.with_instance(fn_tid, |instance| instance.notify.clone().wait()).await;
@@ -520,12 +449,14 @@ impl Quark {
                             Ok(unifies) => {
                                 /*let call_inst_tid = self.introduce_instance(inst);*/
 
+                                tracing::info!("starting thunks");
                                 for thunk in unifies {
                                     //panic!("thunking");
                                     let Unify { from, into } = thunk.to_unify().await;
                                     //panic!("thunkd");
                                     self.add_unify(from, into, "instance of a call told us to");
                                 }
+
 
                                 // unify the call inst with the actual func inst
 
@@ -539,32 +470,7 @@ impl Quark {
                         }
 
                         tracing::debug!("function got unified? maybe?");
-                        //todo!("fctx known");
                     }, "verify function call is with the right params");
-
-                    /*self.executor.install(
-                        async move {
-                            let completable = self
-                                .once_know_ctx
-                                .borrow_mut()
-                                .entry(fn_tid)
-                                .or_insert_with(|| UnsafeAsyncCompletable::new())
-                                .clone()
-                                .wait();
-
-                            tracing::debug!("made the completable, now waiting for the ctx of what we're called on to resolve");
-
-                            let base_ctx = completable.await;
-                            let inst = Instance::as_call(base_ctx, ptypes, vec![], self);
-
-                            todo!("dog caught the car");
-                            // need to do something with resulting_type_id,
-                            // like eventually resolve it or something with our new instance
-
-                            //let fid: FieldID = todo!();
-                        },
-                        "find type for an invocation, waiting on resolving the type of the base",
-                    )*/
                 }
 
                 resulting_type_id
@@ -584,14 +490,69 @@ impl Quark {
 
                         let base_ctx = fut.await;
 
+                        //panic!("got base ctx for sa");
+
                         // the base *must* have resolved at this point, so we can just use it and
                         // ask for the field!
 
-                        match self.with_instance(src_ty, |instance| {
+                        let (as_field, as_method) = self.with_instance(src_ty, |instance| {
                             tracing::info!("the iid of the one we got back is {:?}", instance.id);
                             match &instance.of {
                                 InstanceOf::Type(t) => {
-                                    let f = t.regular_fields.get(&sa.field);
+                                    let f = t.regular_fields.get(&sa.field).cloned();
+                                    let m = t.methods.get(&sa.field).cloned();
+
+                                    (f, m)
+                                }
+                                InstanceOf::Func(f) =>{ 
+                                    panic!("user tried to access a field on a function");
+                                }
+                                InstanceOf::Generic(g) => {
+                                    panic!("generic? {g}");
+                                },
+                                InstanceOf::Unknown() => {
+                                    panic!("stop");
+                                }
+                            }
+                        });
+
+                        let rtid = match (as_field, as_method) {
+                            (None, None) => {
+                                            tracing::error!("Field is: {}", sa.field);
+                                            panic!("user tried to access a field that didn't exist on the type")
+                            }
+                            (None, Some(m)) => {
+                                tracing::info!("it was a method");
+
+                                let mtid = m.extract().await;
+
+                                Some(mtid)
+                            },
+                            (Some(f), None) => {
+                                let ftid = f.extract().await;
+
+                                Some(ftid)
+                            },
+                            (Some(_), Some(_)) => todo!(),
+                        };
+
+                        match rtid {
+                            Some(tid) => {
+                                self.add_unify(tid, result_ty, "the field's type unifies with the result of its usage");
+                            },
+                            None => {
+                                tracing::error!("no tid?");
+                            }
+                        }
+                        /*{
+                            Some(tid) => {
+                                self.add_unify(tid, result_ty, "the field's type unifies with the result of its usage");
+                            },
+                            None => {
+                            }
+                        }*/
+
+                        /*
 
                                     match f {
                                         None => {
@@ -604,24 +565,7 @@ impl Quark {
                                             Some(*tid)
                                         }
                                     }
-                                }
-                                InstanceOf::Func(f) =>{ 
-                                    panic!("user tried to access a field on a function");
-                                }
-                                InstanceOf::Generic(g) => {
-                                    panic!("generic? {g}");
-                                },
-                                InstanceOf::Unknown() => {
-                                    panic!("stop");
-                                }
-                            }
-                        }) {
-                            Some(tid) => {
-                                self.add_unify(tid, result_ty, "the field's type unifies with the result of its usage");
-                            },
-                            None => {
-                            }
-                        }
+                                    */
 
                         tracing::info!("we unified a field type!");
 
@@ -670,6 +614,8 @@ impl Quark {
                             let ltid = self
                                 .resolve_typeref(has_type, &hm, self.search_within())
                                 .await;
+
+                            //panic!("got literal type");
 
                             self.add_unify(
                                 typeof_literal,
@@ -746,7 +692,7 @@ impl Quark {
                                 &self,
                             ).await;
 
-                            self.instance_for(typeof_composite, inst);
+                            self.assign_instance(typeof_composite, inst);
 
                             for Unify { from, into } in unifies {
                                 self.add_unify(from, into, "the instance said to!".intern());

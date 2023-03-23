@@ -88,7 +88,7 @@ impl Watchdog {
     }
 
     pub async fn run(self) {
-        let mut sent_fuse = true;
+        let mut sent_fuse = false;
         println!("about to send heartbeat");
         while self.postal.send_heartbeat() {
             println!("sent heartbeat");
