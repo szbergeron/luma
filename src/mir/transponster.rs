@@ -5,11 +5,12 @@ use std::{
 };
 
 use fixed::traits::ToFixed;
+use itertools::Itertools;
 use tracing::warn;
 
 use crate::{
     ast::{
-        executor::{Executor, UnsafeAsyncCompletable},
+        executor::{Executor, UnsafeAsyncCompletable, UnsafeAsyncCompletableFuture},
         resolver2::NameResolver,
         tree::{CtxID, NodeUnion},
         types::StructuralDataDefinition,
@@ -94,21 +95,22 @@ pub enum UsageDirection {
 /// This is basically our new TypeVar
 #[derive(Clone, Debug)]
 pub struct Instance {
-    id: InstanceID,
+    pub id: InstanceID,
 
     /// The Ctx
-    instantiated_in: CtxID,
+    pub instantiated_in: CtxID,
 
-    instantiated_from: Option<CtxID>,
-
+    //pub instantiated_from: Option<CtxID>,
     /// If this was a field/method, this stores the
     /// expression that it was accessed on,
     /// for use later when determining how the function call works
-    accessed_from: Option<ExpressionID>,
+    pub accessed_from: Option<ExpressionID>,
 
-    of: InstanceOf,
+    pub of: InstanceOf,
 
-    generics: HashMap<IStr, TypeID>,
+    pub generics: HashMap<IStr, TypeID>,
+
+    pub notify: Rc<UnsafeAsyncCompletable<CtxID>>, // when we resolve our base, notify this
 }
 
 #[derive(Clone, Debug)]
@@ -131,6 +133,9 @@ pub enum InstanceOf {
 #[derive(Clone, Debug)]
 pub struct InstanceOfType {
     //regular_fields: Rc<HashMap<IStr, SyntacticTypeReferenceRef>>,
+
+    // since fields type can't be used to j
+    from: CtxID,
     regular_fields: HashMap<IStr, TypeID>,
     //methods: HashMap<>
 }
@@ -139,12 +144,19 @@ pub struct InstanceOfType {
 pub struct InstanceOfFn {
     parameters: Vec<TypeID>,
     returns: TypeID,
+
+    from: Option<CtxID>,
 }
 
 #[derive(Clone, Debug)]
 pub struct Unify {
     pub from: TypeID,
     pub into: TypeID,
+}
+
+pub struct Constrain {
+    pub ty: TypeID,
+    pub is_a: SyntacticTypeReferenceRef,
 }
 
 impl Instance {
@@ -168,7 +180,11 @@ impl Instance {
     }
 
     pub async fn typeof_regular_field(&self, field: IStr, within: &mut Quark) -> Option<TypeID> {
-        if let InstanceOf::Type(InstanceOfType { regular_fields }) = &self.of {
+        if let InstanceOf::Type(InstanceOfType {
+            regular_fields,
+            from,
+        }) = &self.of
+        {
             match regular_fields.get(&field) {
                 None => None,
                 Some(&tid) => Some(tid),
@@ -195,10 +211,8 @@ impl Instance {
 
         match &self.of {
             InstanceOf::Type(t) => {
-                if let Some(v) = self.instantiated_from {
-                    todo!("we know??")
-                }
                 if let Some(&field_type) = t.regular_fields.get(&field) {
+                    todo!("neat");
                     let u = match direction {
                         UsageDirection::Load() => Unify {
                             from: field_type,
@@ -223,7 +237,7 @@ impl Instance {
             InstanceOf::Generic(g) => {
                 todo!("what now?")
             }
-            InstanceOf::Unknown() => todo!(),
+            InstanceOf::Unknown() => todo!("rip"),
         }
     }
 
@@ -239,27 +253,107 @@ impl Instance {
         todo!()
     }
 
-    pub fn construct_instance(
+    /*pub fn use_field(
+        &self,
+        name: IStr,
+    ) -> UnsafeAsyncCompletableFuture<T> {
+    }*/
+
+    pub async fn construct_instance(
         base: CtxID,
         field_values: HashMap<IStr, TypeID>,
         provided_generics: Vec<TypeID>,
-    ) -> Self {
-        todo!()
+        within: &Quark,
+    ) -> (Self, Vec<Unify>) {
+        let mut unifies = Vec::new();
+
+        let n = base.resolve();
+        //let mut generic_map = HashMap::new();
+
+        let origin = Self::infer_instance(Some(base), within).await;
+
+        if !provided_generics.is_empty() {
+            for gen in origin
+                .generics
+                .clone()
+                .into_iter()
+                .zip_longest(provided_generics)
+            {
+                let ((origin_gen_name, origin_tid), given_tid) = gen
+                    .both()
+                    .expect("more/fewer generics provided for instance than target type contains");
+
+                unifies.push(Unify {
+                    from: given_tid,
+                    into: origin_tid,
+                });
+
+                //let base = within.resolve_typeref(syntr, , from_base)
+
+                //generic_map.insert(their_name, our_type);
+            }
+        }
+
+        if let InstanceOf::Type(t) = &origin.of {
+            let all_keys: HashSet<IStr> = t
+                .regular_fields
+                .keys()
+                .copied()
+                .chain(field_values.keys().copied())
+                .collect();
+
+            for key in all_keys {
+                let inst_field_tid = t
+                    .regular_fields
+                    .get(&key)
+                    .copied()
+                    .expect("user provided an extra key");
+                let provided_field_tid =
+                    field_values.get(&key).copied().expect("user omitted a key");
+
+                unifies.push(Unify {
+                    from: provided_field_tid,
+                    into: inst_field_tid,
+                });
+            }
+
+            (origin, unifies)
+        } else {
+            todo!("uhhh")
+        }
     }
 
     pub async fn infer_instance(base: Option<CtxID>, within: &Quark) -> Self {
+        let mut inst = Self::plain_instance(within);
 
-        let mut inst = Instance {
+        if let Some(v) = base {
+            inst.resolve_base(v, within).await;
+        }
+
+        inst
+    }
+
+    pub fn plain_instance(within: &Quark) -> Self {
+        let inst = Instance {
             id: InstanceID(uuid::Uuid::new_v4()),
-            instantiated_from: base,
+            //instantiated_from: base,
             instantiated_in: within.node_id,
             of: InstanceOf::Unknown(), // need to figure this out from what we're based on
             generics: HashMap::new(),
             accessed_from: None,
+            notify: unsafe { UnsafeAsyncCompletable::new() },
         };
 
-        if let Some(v) = base {
-            inst.resolve_base(v, within).await;
+        unsafe {
+            let canary = inst.notify.clone().wait();
+            within.executor.install(
+                async move {
+                    let v = canary.await;
+
+                    tracing::error!("got a base?? it is: {v:?}");
+                },
+                "waiting for canary to fire",
+            )
         }
 
         inst
@@ -286,12 +380,17 @@ impl Instance {
                     let fname = field.name;
                     let ty = field.has_type.unwrap();
 
-                    let tid = within.resolve_typeref(ty, &self.generics, inst.parent.unwrap()).await;
+                    let tid = within
+                        .resolve_typeref(ty, &self.generics, inst.parent.unwrap())
+                        .await;
 
                     inst_fields.insert(fname, tid);
                 }
 
-                InstanceOf::Type(InstanceOfType { regular_fields: inst_fields })
+                InstanceOf::Type(InstanceOfType {
+                    regular_fields: inst_fields,
+                    from: base,
+                })
             }
             NodeUnion::Function(f, i) => {
                 todo!("huh")
@@ -304,6 +403,8 @@ impl Instance {
         self.of = of;
 
         self.generics = gens_for_type;
+
+        let _ = unsafe { self.notify.complete(base) };
     }
 
     /// allows us to unify two things of known base and say they are the "same type"
@@ -314,19 +415,25 @@ impl Instance {
         stores_into: Instance,
         within: &Quark,
     ) -> Result<(Instance, Vec<Unify>), TypeError> {
+        //panic!("wooo");
+
         tracing::info!("unifying two instances!");
 
         assert!(self.instantiated_in == stores_into.instantiated_in);
 
-        if self.instantiated_from != stores_into.instantiated_from {
-            tracing::error!(
-                "we don't allow typeclasses yet, so treat unequal ctx for assignment as type error"
-            );
-            return Err(TypeError {
-                components: todo!(),
-                complaint: todo!(),
-            });
-        }
+        /*if let (Some(a), Some(b)) = (self.instantiated_from, stores_into.instantiated_from) {
+            if self.instantiated_from != stores_into.instantiated_from {
+                tracing::error!(
+                    "we don't allow typeclasses yet, so treat unequal ctx for assignment as type error, if this changes make sure to update below so we compare all fields"
+                );
+                return Err(TypeError {
+                    components: todo!(),
+                    complaint: todo!(),
+                });
+            }
+        }*/
+
+        tracing::error!("typeclass doohickey");
 
         let all_generic_keys: HashSet<IStr> = self
             .generics
@@ -365,7 +472,15 @@ impl Instance {
         let new_of = match (self.of, stores_into.of) {
             (InstanceOf::Type(ta), InstanceOf::Type(tb)) => {
                 // unify two type instances
-                todo!("unify two structural types")
+                //let field_keys = ta.regular_fields.keys().copied().chain(tb.regular_fields.keys().copied()).collect();
+                for k in self.generics.keys() {
+                    let from = self.generics.get(k).copied().unwrap();
+                    let into = stores_into.generics.get(k).copied().unwrap();
+
+                    all_generic_unifies.push(Unify { from, into });
+                }
+
+                InstanceOf::Type(ta)
             }
 
             (InstanceOf::Func(fa), InstanceOf::Func(fb)) => {
@@ -405,14 +520,35 @@ impl Instance {
             }
         };
 
+        /*let notify_wait = unsafe { self.notify.clone().wait() };
+        unsafe {
+            within.executor.install(
+                async move {
+                    let v = notify_wait.await;
+                    let _ = stores_into.notify.complete(v);
+                },
+                "once unify notifies we should notify the other",
+            )
+        }*/
+
+        let (conflicted, notify) = unsafe {
+            UnsafeAsyncCompletable::combine(
+                within.executor,
+                self.notify,
+                stores_into.notify,
+                |va, vb| todo!("aaa"),
+            )
+        };
+
         let i = Instance {
             id: InstanceID(uuid::Uuid::new_v4()),
-            instantiated_from: self.instantiated_from,
+            //instantiated_from: self.instantiated_from,
             instantiated_in: self.instantiated_in,
             //regular_fields: self.regular_fields.clone(),
             generics: unified_generics,
             of: new_of,
             accessed_from,
+            notify,
         };
 
         Ok((i, all_generic_unifies))

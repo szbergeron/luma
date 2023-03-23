@@ -9,11 +9,7 @@ use std::{
 };
 
 use futures::future::{FutureExt, LocalBoxFuture};
-use std::{
-    future::Future,
-    sync::Arc,
-    task::Context,
-};
+use std::{future::Future, sync::Arc, task::Context};
 use tracing::{debug, info};
 
 use uuid::Uuid;
@@ -230,9 +226,17 @@ pub struct UnsafeAsyncCompletable<T: Clone> {
     waiters: UnsafeCell<Vec<std::task::Waker>>,
 }
 
-impl<T: Clone + std::fmt::Debug> UnsafeAsyncCompletable<T> {
-    pub unsafe fn complete(&self, val: T) -> Result<(), SendError> {
+impl<T: Clone + std::fmt::Debug> std::fmt::Debug for UnsafeAsyncCompletable<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UnsafeAsyncCompletable")
+            .field("value", &self.value)
+            .field("waiters", &self.waiters)
+            .finish()
+    }
+}
 
+impl<T: Clone + std::fmt::Debug + 'static> UnsafeAsyncCompletable<T> {
+    pub unsafe fn complete(&self, val: T) -> Result<(), SendError> {
         let mref = self.value.get().as_mut().expect("unsafecell being dumb");
 
         if mref.is_some() {
@@ -267,11 +271,71 @@ impl<T: Clone + std::fmt::Debug> UnsafeAsyncCompletable<T> {
         }
     }
 
+    pub unsafe fn try_get(&self) -> Option<T> {
+        self.value.get().as_ref().unwrap().clone()
+    }
+
     pub unsafe fn new() -> Rc<Self> {
         Rc::new(Self {
             value: UnsafeCell::new(None),
             waiters: UnsafeCell::new(Vec::new()),
         })
+    }
+
+    /// CONTRACT: should never complete a or b directly after this, should only ever complete
+    /// through the returned future if it exists
+    pub unsafe fn combine<F, R>(
+        within: &'static Executor,
+        a: Rc<Self>,
+        b: Rc<Self>,
+        if_conflict: F,
+    ) -> (Option<R>, Rc<Self>)
+    where
+        F: FnOnce(T, T) -> R,
+    {
+        unsafe {
+            let v_1 = a.try_get();
+            let v_2 = b.try_get();
+
+            match (v_1, v_2) {
+                (None, None) => {
+                    // we could reuse one, but instead just make a new one that asserts that it is the
+                    // only one to complete a and b
+
+                    let nc = Self::new();
+
+                    let ncf = nc.clone().wait();
+                    let nf = within.install(
+                        async move {
+                            let v = ncf.await;
+
+                            a.complete(v.clone()).unwrap();
+                            b.complete(v).unwrap();
+                        },
+                        "unify two async completables that were incomplete at time of unify",
+                    );
+
+                    (None, nc)
+                }
+                (None, Some(v)) => {
+                    // notify a using b
+                    a.complete(v).unwrap();
+
+                    (None, a)
+                }
+                (Some(v), None) => {
+                    b.complete(v).unwrap();
+
+                    (None, a)
+                }
+                (Some(va), Some(vb)) => {
+                    let v = if_conflict(va, vb);
+                    // would already be complete, so just return a
+                    (Some(v), a)
+                }
+                //
+            }
+        }
     }
 }
 

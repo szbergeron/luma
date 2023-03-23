@@ -100,7 +100,7 @@ pub struct FieldMember {
     pub initialization: Option<cst::expressions::ExpressionWrapper>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct StructuralDataDefinition {
     pub fields: Vec<FieldMember>,
     pub methods: HashMap<IStr, CtxID>,

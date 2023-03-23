@@ -3,6 +3,11 @@ struct S {
 
     fn foo() -> std::primitive::i64 { 5 },
 
+    /*fn boo(self: S) {
+        //5 = other
+        5
+    }*/
+
     fn operator[_+_](self: S, other: S) -> S {
         struct S { a: self.foo() + other.foo() }
     }

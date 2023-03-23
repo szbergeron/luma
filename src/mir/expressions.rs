@@ -43,7 +43,7 @@ impl ExpressionContext {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct VarID(usize);
 
 /// If we have two operands but want to know which direction
@@ -447,7 +447,9 @@ impl AnyExpression {
                     generics: generics.clone(),
                 })).0
             },
-            ExpressionWrapper::Statement(_) => todo!(),
+            ExpressionWrapper::Statement(_) => {
+                todo!()
+            },
             ExpressionWrapper::While(_) => todo!(),
             ExpressionWrapper::Tuple(_) => todo!(),
             ExpressionWrapper::Return(_) => todo!(),

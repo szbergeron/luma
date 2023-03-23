@@ -3,6 +3,7 @@ use std::{cell::RefCell, collections::HashMap, pin::Pin, rc::Rc};
 //use itertools::Itertools;
 
 use tracing::{info, warn};
+use uuid::Uuid;
 
 use crate::{
     ast::{
@@ -15,7 +16,7 @@ use crate::{
     compile::per_module::{
         Content, ControlMessage, ConversationContext, Destination, Earpiece, Message, Service,
     },
-    cst::{ExpressionWrapper, SyntacticTypeReferenceInner, SyntacticTypeReferenceRef, ScopedName},
+    cst::{ExpressionWrapper, ScopedName, SyntacticTypeReferenceInner, SyntacticTypeReferenceRef},
     helper::interner::{IStr, Internable},
     mir::expressions::{AnyExpression, Bindings, Composite, ExpressionContext, Literal, VarID},
 };
@@ -60,7 +61,8 @@ pub struct Quark {
     //frames: Vec<usize>,
     acting_on: RefCell<ExpressionContext>,
 
-    type_of: RefCell<HashMap<ExpressionID, TypeID>>,
+    //type_of: RefCell<HashMap<ExpressionID, TypeID>>,
+    type_of_var: RefCell<HashMap<VarID, TypeID>>,
 
     //specializations: Vec<HashMap<IStr, ResolvedType>>,
 
@@ -80,7 +82,7 @@ pub struct Quark {
 
     sender: local_channel::mpsc::Sender<Message>,
 
-    executor: &'static Executor,
+    pub executor: &'static Executor,
 
     generics: Rc<HashMap<IStr, TypeID>>,
 
@@ -110,12 +112,14 @@ pub enum Action {
 }
 
 impl Quark {
-    pub fn add_unify(&self, a: TypeID, b: TypeID, reason: IStr) {
+    pub fn add_unify<R: Into<IStr>>(&self, from: TypeID, into: TypeID, reason: R) {
+        let reason: IStr = reason.into();
         let mut refm = self.instances.borrow_mut();
         let mut resulting_unifies = Vec::new();
 
         let res = refm
-            .unify(a, b, |a, b| {
+            .unify(from, into, |a, b| {
+                tracing::info!("having to merge two instances");
                 let original_a = a.clone();
                 match a.unify_with(b, self) {
                     Ok((v, u)) => {
@@ -130,16 +134,62 @@ impl Quark {
         for Unify { from, into } in resulting_unifies {
             self.add_unify(from, into, "resulting unify from an instance add".intern());
         }
+
+        tracing::debug!("New status for sets:");
+        tracing::debug!("{:#?}", refm);
+
+        /*(let root_inst = refm.v_for(from);
+        if let Some(root_inst) = root_inst {
+            tracing::debug!("we had a root inst");
+            if let Some(v) = root_inst.instantiated_from {
+                panic!("woot");
+                // we know what base this is, so can notify the dependents
+                for peer in refm.peers_of(from) {
+                    unsafe {
+                        let useme = self
+                            .once_know_ctx
+                            .borrow_mut()
+                            .entry(peer)
+                            .or_insert_with(|| UnsafeAsyncCompletable::new())
+                            .complete(v);
+                    };
+                }
+            }
+        }*/
     }
 
-    pub fn action(&self, once: ExpressionID, apply: Action) {
+    pub fn action(&self, once: ExpressionID, has_tid: TypeID, apply: Action) {
         //todo!("apply actions")
-        let type_of = self.type_of.borrow_mut().get(&once).copied().unwrap();
-        self.once_know
-            .borrow_mut()
-            .entry(type_of)
-            .or_insert(Vec::new())
-            .push(apply);
+        //let type_of = self.type_of.borrow_mut().get(&once).copied().unwrap();
+
+        let completable = unsafe {
+            self.once_know_ctx
+                .borrow_mut()
+                .entry(has_tid)
+                .or_insert_with(|| UnsafeAsyncCompletable::new())
+                .clone()
+                .wait()
+        };
+
+        /*unsafe {
+            self.executor.install(
+                async move {
+
+                    // have transponster notify us when they figure out the type of the field
+                    // ...or could ask the instance?
+                    let is_at = completable.await;
+
+                    match apply {
+                        Action::LoadFieldInto(field, val) => todo!(),
+                        Action::StoreFieldFrom(field, val) => todo!(),
+                        Action::CallWith(_, _) => todo!(),
+                        Action::CastTo(_) => todo!(),
+                        Action::ResolveUsage(_, _) => todo!(),
+                    }
+                },
+                "do an action once we know the ctx of an expr",
+            )
+        };*/
 
         tracing::error!("apply actions!");
     }
@@ -182,6 +232,8 @@ impl Quark {
                     Ok(cid) => {
                         tracing::info!("constructs an instance for single {name:?}, and it pointed to {cid:?} for a simple typeref");
                         let instance = Instance::infer_instance(Some(cid), self).await;
+
+                        tracing::debug!("tr base is: {:?}", instance.of);
 
                         // don't set an accessed_from for this, since it's a plain function
                         // (shouldn't have a propagated `self`)
@@ -240,7 +292,42 @@ impl Quark {
         }
     }
 
-    pub fn instance_for(&self, tid: TypeID, instance: Instance) {
+    pub fn with_instance<F, R>(&self, tid: TypeID, f: F) -> R where F: FnOnce(&Instance) -> R {
+        let mut refm = self.instances.borrow_mut();
+        if let Some(v) = refm.v_for(tid) {
+            f(v)
+        } else {
+            let new_tid = TypeID(Uuid::new_v4());
+            let instance = Instance::plain_instance(self);
+
+            refm.add_kv(new_tid, instance);
+            let v = f(refm.v_for(new_tid).unwrap());
+
+            // unify needs to borrow instances
+            std::mem::drop(refm);
+
+            self.add_unify(new_tid, tid, "identity unify since no instance existed for that tid");
+
+            v
+
+        }
+
+        // refm drops
+    }
+
+    /*
+    /// Creates a full instance for the TypeID,
+    /// one that can be asked for fields and such
+    pub fn instantiated(&self, tid: TypeID) -> TypeID {
+        let instance = Instance::plain_instance(self);
+
+        self.instance_for(tid, instance);
+
+        todo!()
+    }*/
+
+    /// Returns the direct TID for the instance once unified with the base tid
+    pub fn instance_for(&self, tid: TypeID, instance: Instance) -> TypeID {
         // make a new tid inst here since the regular one automatically adds it to unifier
         let instance_tid = TypeID(uuid::Uuid::new_v4());
 
@@ -256,6 +343,7 @@ impl Quark {
             "unify because of trivial add instance".intern(),
         );
 
+        instance_tid
         //assert!(was_there.is_none(), "instance already assigned for tid");
     }
 
@@ -263,6 +351,8 @@ impl Quark {
         let tid = TypeID(uuid::Uuid::new_v4());
 
         self.instances.borrow_mut().add_k(tid);
+
+        tracing::debug!("creates tid {tid:?}");
 
         tid
     }
@@ -276,7 +366,13 @@ impl Quark {
 
     pub fn search_within(&self) -> CtxID {
         if self.is_method() {
-            self.node_id.resolve().parent.unwrap().resolve().parent.unwrap()
+            self.node_id
+                .resolve()
+                .parent
+                .unwrap()
+                .resolve()
+                .parent
+                .unwrap()
         } else {
             self.node_id.resolve().parent.unwrap()
         }
@@ -306,7 +402,8 @@ impl Quark {
             sender,
             node_id,
             acting_on: RefCell::new(ExpressionContext::new_empty()),
-            type_of: RefCell::new(HashMap::new()),
+            //type_of: RefCell::new(HashMap::new()),
+            type_of_var: RefCell::new(HashMap::new()),
             executor,
             //typer: TypeContext::fresh(),
             dynfield_notifies: RefCell::new(HashMap::new()),
@@ -319,13 +416,15 @@ impl Quark {
         }
     }
 
-    pub async fn do_the_thing(&'static self, on_id: ExpressionID) {
-        let root_type_id = self.new_tid();
-        self.do_the_thing_rec(on_id, root_type_id, false);
+    pub fn do_the_thing(&'static self, on_id: ExpressionID) -> TypeID {
+        //let root_type_id = self.new_tid();
+        let root_type_id = self.do_the_thing_rec(on_id, false);
+
+        root_type_id
     }
 
     /// lval is true if we are being assigned into, otherwise we can be treated as an rval
-    pub fn do_the_thing_rec(&'static self, on_id: ExpressionID, use_tid: TypeID, is_lval: bool) {
+    pub fn do_the_thing_rec(&'static self, on_id: ExpressionID, is_lval: bool) -> TypeID {
         tracing::info!("do_the_thing_rec on id: {on_id}");
 
         /*let e_ty_id: TypeID = self.typer.register_type(TypeVar {
@@ -334,38 +433,43 @@ impl Quark {
             current: TypeType::Unknown(),
         });*/
 
-        let e_ty_id = use_tid;
-
         match self.acting_on.borrow().get(on_id).clone() {
             AnyExpression::Block(b) => {
+                let block_ty = self.new_tid();
+
+                let mut last_expr_tid = None;
+
                 for &eid in b.expressions.iter() {
-                    let c_ty = self.new_tid();
-                    let fut = self.do_the_thing_rec(eid, c_ty, false);
+                    //let c_ty = self.new_tid();
+                    tracing::info!("handling an expr in a block, has eid {eid:?}");
+                    let e_ty = self.do_the_thing_rec(eid, false);
+
+                    last_expr_tid = Some(e_ty);
 
                     //self.type_of[&eid] = c_ty;
-                    self.type_of.borrow_mut().insert(eid, c_ty);
+                    //self.type_of.borrow_mut().insert(eid, e_ty);
                 }
 
-                match b.expressions.last() {
+                match last_expr_tid {
                     None => {
                         todo!("block has type unit")
                     }
-                    Some(eid) => {
+                    Some(tid) => {
                         self.add_unify(
-                            e_ty_id,
-                            self.type_of.borrow().get(eid).copied().unwrap(),
+                            //self.type_of.borrow().get(eid).copied().unwrap(),
+                            tid,
+                            block_ty,
                             "a block returns the same type as the last expression in it".intern(),
                         );
                     }
                 }
+
+                block_ty
             }
             AnyExpression::Assign(a) => {
-                let lhs_tid = self.new_tid();
-                let rhs_tid = self.new_tid();
-
-                self.do_the_thing_rec(a.lhs, lhs_tid, true); // assignment happening, so we
-                                                             // must be an lval
-                self.do_the_thing_rec(a.rhs, rhs_tid, false);
+                let lhs_tid = self.do_the_thing_rec(a.lhs, true); // assignment happening, so we
+                                                                  // must be an lval
+                let rhs_tid = self.do_the_thing_rec(a.rhs, false);
 
                 self.add_unify(
                     rhs_tid,
@@ -373,11 +477,7 @@ impl Quark {
                     "left and ride hand side of an assignment should be the same type".intern(),
                 );
 
-                self.add_unify(
-                    e_ty_id,
-                    lhs_tid,
-                    "an assignment returns the type of the LHS".intern(),
-                );
+                rhs_tid // for now, we assign straight through, so don't re-take the value
             }
             AnyExpression::Convert(c) => todo!(),
             AnyExpression::While(_) => todo!(),
@@ -389,57 +489,99 @@ impl Quark {
                     tracing::error!("uhhhh, a func was an lval? need references?");
                 }
 
-                unsafe {
-                    let resulting_type_id = e_ty_id;
+                tracing::info!("it's an invocation: {i:#?}");
 
+                let resulting_type_id = self.new_tid();
+                tracing::info!(
+                    "creates result type id for the invocation of {resulting_type_id:?}"
+                );
+
+                unsafe {
                     // the type of the thing we're calling (could be field
                     // or function ref, could even be a function/closure literal)
-                    let callable_tid = self.new_tid();
+                    //let callable_tid = self.new_tid();
 
-                    self.do_the_thing_rec(i.target_fn, callable_tid, is_lval);
+                    let fn_tid = self.do_the_thing_rec(i.target_fn, is_lval);
 
-                    let mut ptypes = vec![callable_tid]; // we're assuming things are methods for now
+                    let mut ptypes = vec![fn_tid]; // we're assuming things are methods for now
 
                     for arg in i.args {
-                        let atid = self.new_tid();
-                        self.do_the_thing_rec(arg, atid, false);
+                        let atid = self.do_the_thing_rec(arg, false);
+                        tracing::info!("looked at an arg {arg:?}, got tid: {atid:?}");
                         ptypes.push(atid);
                     }
 
                     self.executor.install(
                         async move {
-                            let base_ctx = self
+                            let completable = self
                                 .once_know_ctx
                                 .borrow_mut()
-                                .entry(callable_tid)
+                                .entry(fn_tid)
                                 .or_insert_with(|| UnsafeAsyncCompletable::new())
                                 .clone()
-                                .wait()
-                                .await;
+                                .wait();
+
+                            tracing::debug!("made the completable, now waiting for the ctx of what we're called on to resolve");
+
+                            let base_ctx = completable.await;
                             let inst = Instance::as_call(base_ctx, ptypes, vec![], self);
 
                             todo!("dog caught the car");
+                            // need to do something with resulting_type_id,
+                            // like eventually resolve it or something with our new instance
 
                             //let fid: FieldID = todo!();
                         },
                         "find type for an invocation, waiting on resolving the type of the base",
                     )
                 }
+
+                resulting_type_id
             }
             AnyExpression::StaticAccess(sa) => {
-                let field_src_tid = e_ty_id; // if we're used as an lval, then we must allow the
-                                             // "src" type to assign into us
+                let result_ty = self.new_tid();
+                tracing::info!("static accessing: {sa:?}");
+                //let field_src_tid = e_ty_id; // if we're used as an lval, then we must allow the
+                // "src" type to assign into us
 
-                self.type_of.borrow_mut().insert(sa.on, self.new_tid());
+                //todo!("static access: {sa:?}");
 
-                match is_lval {
-                    true => {
-                        self.action(sa.on, Action::StoreFieldFrom(sa.field, field_src_tid));
-                    }
-                    false => {
-                        self.action(sa.on, Action::LoadFieldInto(sa.field, field_src_tid));
-                    }
+                // the type of the base that we're accessing the field on
+                let src_ty = self.do_the_thing_rec(sa.on, false);
+
+                unsafe {
+                    self.executor.install(async move {
+                        let fut = self.with_instance(src_ty, |instance| { instance.notify.clone().wait() });
+
+                        // wait for that instance to notify, since that means we've resolved the
+                        // base
+
+                        let base_ctx = fut.await;
+
+                        todo!("now figure out field type since we have the base");
+                    }, "wait for a resolution on the base of an access")
                 }
+
+                /*unsafe { self.executor.install(async move {
+                }, "if we find out more about a field because of unifies,
+                send that info along to the base for the field") };
+
+
+                unsafe { self.executor.install(async move {
+                    match is_lval {
+                        true => {
+                            self.action(sa.on, src_ty, Action::StoreFieldFrom(sa.field, result_ty));
+                        }
+                        false => {
+                            self.action(sa.on, src_ty, Action::LoadFieldInto(sa.field, result_ty));
+                        }
+                    }
+                }, "resolve the type of a field once we know what it's being accessed on") };*/
+
+
+                result_ty
+
+                //todo!("have transponster let us know when we know the type of the field");
 
                 //self.action(sa.on, Action::
             }
@@ -447,7 +589,18 @@ impl Quark {
                 todo!("no syntactic meaning to dynamic access anymore")
             }
             AnyExpression::Variable(v) => {
+                //self.type_of.borrow_mut().insert(k, v)
                 // here we also care if we're an lval or an rval
+                let vt = self.type_of_var.borrow().get(&v).copied().unwrap();
+
+                tracing::info!("it's on a variable: {v:?}");
+                /*self.add_unify(
+                    vt,
+                    e_ty_id,
+                    "a variable should be the same type everywhere".intern(),
+                );*/
+
+                vt
             }
             AnyExpression::Literal(l) => {
                 // YOOOOOOOOOOOOOOOOOOOOOOo we can now add a direct,
@@ -455,20 +608,28 @@ impl Quark {
                 if is_lval {
                     panic!("user tried to assign into a literal");
                 }
+                tracing::info!("got a literal: {l:?}");
+
+                let typeof_literal = self.new_tid();
 
                 unsafe {
                     self.executor.install(
                         async move {
+                            tracing::info!("resolving the type of a literal");
                             let Literal { has_type, value } = l;
                             let hm = HashMap::new();
 
                             //panic!("going to resolve: {:?}", has_type.resolve().unwrap().value());
 
-                            let ltid = self.resolve_typeref(has_type, &hm, self.search_within()).await;
+                            let ltid = self
+                                .resolve_typeref(has_type, &hm, self.search_within())
+                                .await;
 
-                            //panic!("aaaaaaa");
-
-                            self.add_unify(e_ty_id, ltid, "a literal should unify with the type it acts as".intern());
+                            self.add_unify(
+                                typeof_literal,
+                                ltid,
+                                "a literal should unify with the type it acts as".intern(),
+                            );
 
                             tracing::error!("we now have the type of a literal, should resolve it");
                         },
@@ -478,6 +639,7 @@ impl Quark {
 
                 tracing::info!("leaving behind a literal to go do other things");
 
+                typeof_literal
             }
             AnyExpression::Composite(c) => {
                 let Composite {
@@ -485,6 +647,8 @@ impl Quark {
                     generics,
                     fields,
                 } = c;
+
+                let typeof_composite = self.new_tid();
 
                 unsafe {
                     self.executor.install(
@@ -513,7 +677,7 @@ impl Quark {
 
                             for (fname, fexp) in fields {
                                 let fty = self.new_tid();
-                                self.do_the_thing_rec(fexp, use_tid, false); // not lval as we load from it
+                                self.do_the_thing_rec(fexp, false); // not lval as we load from it
 
                                 inst_fields.insert(fname, fty);
                             }
@@ -529,25 +693,32 @@ impl Quark {
                             }
 
                             //let base_id = self.resolve_typeref(c.base_type, self.type_args, self.node_id).await;
-                            let inst = Instance::construct_instance(
+                            let (inst, unifies) = Instance::construct_instance(
                                 ctx_for_base,
                                 inst_fields,
                                 inst_generics,
-                            );
+                                &self,
+                            ).await;
 
-                            self.instance_for(e_ty_id, inst);
+                            self.instance_for(typeof_composite, inst);
+
+                            for Unify { from, into } in unifies {
+                                self.add_unify(from, into, "the instance said to!".intern());
+                            }
 
                             //self.instances.borrow_mut().insert(e_ty_id, inst);
                         },
                         "composite resolution block",
                     );
                 }
+
+                typeof_composite
             }
         }
     }
 
     #[allow(unused_mut)]
-    pub async fn descend<'func>(
+    pub async fn lower_to_mir<'func>(
         &'static self,
         f: &'func ast::types::FunctionDefinition,
         imp: &'func mut ExpressionWrapper,
@@ -557,18 +728,15 @@ impl Quark {
 
         for (param_name, param_type) in f.parameters.clone() {
             let ptype = self
-                .resolve_typeref(
-                    param_type,
-                    self.generics.as_ref(),
-                    self.search_within(),
-                )
+                .resolve_typeref(param_type, self.generics.as_ref(), self.search_within())
                 .await;
 
             let vid = self.acting_on.borrow_mut().next_var();
 
+            self.type_of_var.borrow_mut().insert(vid, ptype);
+
             binding_scope.add_binding(param_name, vid);
         }
-
 
         let ae = AnyExpression::from_ast(&mut self.acting_on.borrow_mut(), imp, &mut binding_scope);
 
@@ -707,10 +875,23 @@ impl Quark {
             }),
         });*/
 
-        let aeid = self.descend(&f, imp).await;
+        let aeid = self.lower_to_mir(&f, imp).await;
 
-        self.do_the_thing(aeid).await;
+        let root_tid = self.do_the_thing(aeid);
 
+        //let return_ty = f.return_type.resolve().unwrap().clone();
+
+        let return_ty = self
+            .resolve_typeref(f.return_type, &self.generics.as_ref(), self.search_within())
+            .await;
+
+        self.add_unify(
+            root_tid,
+            return_ty,
+            "the function block expr must return the type requested".intern(),
+        );
+
+        //yiel
         // start walking the function tree now? or do later?
 
         //self.thread_stage_2(f).await;

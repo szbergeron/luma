@@ -1,10 +1,16 @@
 mod primitive {
 
     struct i64 {
-        fn operator[_+_](self: std::primitive::i64, other: std::primitive::i64) -> i64 {
-            3
+        fn operator[_+_](self: std::primitive::i64, other: std::primitive::i64) -> std::primitive::i64 {
+            self + other
         }
     }
+
+    /*struct i32 {
+        fn operator[_-_](self: std::primitive::i32, other: std::primitive::i32) -> std::primitive::i32 {
+            other + self
+        }
+    }*/
 }
 
 mod pointers {

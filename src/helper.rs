@@ -9,10 +9,11 @@ use std::sync::{Arc, RwLock};
 
 use smallvec::SmallVec;
 
-
-
 pub mod interner {
-    use std::{fmt::{Debug, Display}, path::Path};
+    use std::{
+        fmt::{Debug, Display},
+        path::Path,
+    };
 
     #[derive(Copy, Clone, Hash, Eq, PartialEq)]
     pub struct IStr {
@@ -47,6 +48,19 @@ pub mod interner {
         }
     }
 
+    impl<'a> From<&'a str> for IStr {
+        fn from(value: &'a str) -> Self {
+            value.intern()
+        }
+    }
+
+    impl<S> From<S> for IStr where S: Into<String> {
+        default fn from(value: S) -> Self {
+            let s: String = value.into();
+            s.intern()
+        }
+    }
+
     pub trait InternedModPath {
         fn into_parts(self) -> Result<Vec<IStr>, IStr>;
     }
@@ -59,17 +73,25 @@ pub mod interner {
 
             let mut failed = false;
 
-            let parts = s.split("::").map(|part| {
-                if !s.chars().all(|c| c.is_alphabetic()) {
-                    failed = true;
-                }
+            let parts = s
+                .split("::")
+                .map(|part| {
+                    if !s.chars().all(|c| c.is_alphabetic()) {
+                        failed = true;
+                    }
 
-                intern(s)
-            }).collect();
+                    intern(s)
+                })
+                .collect();
 
             match failed {
                 false => Ok(parts),
-                true => Err(intern(format!("an invalid modpath was passed to into_parts, the given string was: {s}").as_str()))
+                true => Err(intern(
+                    format!(
+                        "an invalid modpath was passed to into_parts, the given string was: {s}"
+                    )
+                    .as_str(),
+                )),
             }
             //Ok(parts)
         }
@@ -207,7 +229,11 @@ pub mod interner {
 
     impl Internable for Path {
         fn intern(&self) -> IStr {
-            self.canonicalize().map(|canonicalized| canonicalized.to_str().map(|s| s.intern())).ok().flatten().unwrap_or(intern(self.to_str().unwrap_or("<unserializable path>")))
+            self.canonicalize()
+                .map(|canonicalized| canonicalized.to_str().map(|s| s.intern()))
+                .ok()
+                .flatten()
+                .unwrap_or(intern(self.to_str().unwrap_or("<unserializable path>")))
         }
     }
 
@@ -743,19 +769,20 @@ pub struct InternedRef<T> {
     inner: once_cell::sync::OnceCell<InternedRefInner<T>>,
 }
 
-impl<T> InternedRef<T> {
-}
+impl<T> InternedRef<T> {}
 
 pub enum Never {}
 
-pub enum CompilationError {
-}
+pub enum CompilationError {}
 
 pub trait CopyMethod: Copy {
     fn copied(self) -> Self;
 }
 
-impl<T> CopyMethod for T where T: Copy {
+impl<T> CopyMethod for T
+where
+    T: Copy,
+{
     fn copied(self) -> Self {
         self
     }
@@ -769,4 +796,4 @@ pub trait SwapWith: Sized {
     }
 }
 
-impl<T: Sized> SwapWith for T { }
+impl<T: Sized> SwapWith for T {}

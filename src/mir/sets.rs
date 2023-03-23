@@ -1,11 +1,12 @@
 use std::{collections::HashMap, fmt::Debug};
 
-pub struct Unifier<K, T> {
+#[derive(Debug)]
+pub struct Unifier<K: std::fmt::Debug, T: std::fmt::Debug> {
     //_p: PhantomData<(T, K)>,
     elements: HashMap<K, Entry<K, T>>,
 }
 
-impl<T: Clone, K: Eq + PartialEq + std::hash::Hash + Copy + Debug> Unifier<K, T> {
+impl<T: Clone + Debug, K: Eq + PartialEq + std::hash::Hash + Copy + Debug> Unifier<K, T> {
     pub fn root_for(&self, mut elem_id: K) -> K {
         loop {
             let v = self.elements.get(&elem_id).unwrap();
@@ -84,6 +85,23 @@ impl<T: Clone, K: Eq + PartialEq + std::hash::Hash + Copy + Debug> Unifier<K, T>
         }
     }
 
+    /*pub fn v_for_or_insert_with<F>(&mut self, k: K, v: F) -> &T where F: FnOnce() -> T {
+        if let Some(v) = self.v_for(k) {
+            v
+        } else {
+            self.
+        }
+    }*/
+
+    pub fn v_for(&self, k: K) -> Option<&T> {
+        let root = self.root_for(k);
+        if let Some(EntryInner::Root(v)) = self.elements.get(&k).map(|e| &e.inner) {
+            Some(v)
+        } else {
+            None
+        }
+    }
+
     pub fn peers_of(&self, of: K) -> Vec<K> {
         let root_of = self.root_for(of);
 
@@ -107,15 +125,15 @@ impl<T: Clone, K: Eq + PartialEq + std::hash::Hash + Copy + Debug> Unifier<K, T>
     }
 }
 
-#[derive(Clone)]
-pub enum EntryInner<K, T> {
+#[derive(Clone, Debug)]
+pub enum EntryInner<K: Debug, T: Debug> {
     Root(T),
     Refers(K),
     Free(),
 }
 
-#[derive(Clone)]
-pub struct Entry<K, T> {
+#[derive(Clone, Debug)]
+pub struct Entry<K: Debug, T: Debug> {
     ref_from: smallvec::SmallVec<[K; 3]>,
 
     keyed: K,

@@ -31,6 +31,7 @@
     box_patterns,
     default_free_fn,
     map_many_mut,
+    is_some_and
 )]
 #![allow(irrefutable_let_patterns)]
 #![allow(dead_code)]
@@ -60,6 +61,9 @@ extern crate lazy_static;
 
 use std::env;
 
+use tracing::{dispatcher, span, Dispatch, Level, Subscriber};
+use tracing_subscriber::FmtSubscriber;
+
 pub mod ast;
 pub mod avec;
 pub mod build_expr;
@@ -74,7 +78,7 @@ pub mod lir;
 pub mod llvm;
 pub mod lowered;
 pub mod mir; // just until we fix lowering, reduce error count
-//pub mod mid_repr;
+             //pub mod mid_repr;
 pub mod parse;
 pub mod traits;
 pub mod types;
@@ -82,7 +86,22 @@ pub mod types;
 
 fn main() {
     //console_subscriber::init();
-    tracing_subscriber::fmt::init();
+    //tracing_subscriber::EnvFilter::builder().
+    let ds = tracing_subscriber::fmt().finish();
+
+    let ms = MySub {
+        intsub: Box::new(ds),
+    };
+
+    let limit = true;
+    if limit {
+        dispatcher::set_global_default(Dispatch::new(ms)).unwrap();
+    } else {
+        //tracing::
+
+        tracing_subscriber::fmt::init();
+    }
+
     let args: Vec<String> = env::args().collect();
     println!("Args: {:?}", args);
     let sliced: Vec<&str> = args.iter().map(|s| &s[..]).collect();
@@ -91,4 +110,43 @@ fn main() {
     println!("stripped args: {:?}", sliced);
 
     compile::launch(sliced);
+}
+
+unsafe impl Sync for MySub {}
+unsafe impl Send for MySub {}
+
+pub struct MySub {
+    intsub: Box<dyn Subscriber>,
+}
+
+impl Subscriber for MySub {
+    fn enabled(&self, metadata: &tracing::Metadata<'_>) -> bool {
+        metadata.file().is_some_and(|f| {
+            f.contains("quark") || f.contains("transponster") || f.contains("sets")
+        }) //|| metadata.level() > &Level::WARN
+    }
+
+    fn new_span(&self, span: &span::Attributes<'_>) -> span::Id {
+        self.intsub.new_span(span)
+    }
+
+    fn record(&self, span: &span::Id, values: &span::Record<'_>) {
+        self.intsub.record(span, values)
+    }
+
+    fn record_follows_from(&self, span: &span::Id, follows: &span::Id) {
+        self.intsub.record_follows_from(span, follows)
+    }
+
+    fn event(&self, event: &tracing::Event<'_>) {
+        self.intsub.event(event)
+    }
+
+    fn enter(&self, span: &span::Id) {
+        self.intsub.enter(span)
+    }
+
+    fn exit(&self, span: &span::Id) {
+        self.intsub.exit(span)
+    }
 }

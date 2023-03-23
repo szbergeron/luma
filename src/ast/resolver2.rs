@@ -235,13 +235,13 @@ impl Resolver {
         );
         let mut message_to_send: Option<Message> = None;
 
-        println!("query for do_single to node, has children:");
+        tracing::info!("query for do_single to node, has children:");
 
         for child in self.for_ctx.resolve().children.iter() {
-            println!("child ({}, {:?})", child.key(), child.value());
+            tracing::info!("child ({}, {:?})", child.key(), child.value());
         }
 
-        println!("possible is: {:?}", self.inner.lock().unwrap().possibles);
+        tracing::info!("possible is: {:?}", self.inner.lock().unwrap().possibles);
 
         if within == self.for_ctx && !self.with_inner(|inner| inner.possibles.contains(&single)) {
             tracing::error!("returns a failure immediately, as it wasn't even a possible");
