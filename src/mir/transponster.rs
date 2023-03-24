@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    fmt::{Debug, format},
+    fmt::{format, Debug},
     rc::Rc,
     sync::Arc,
 };
@@ -19,7 +19,8 @@ use crate::{
     },
     compile::per_module::{Content, ConversationContext, Destination, Earpiece, Message, Service},
     cst::{NodeInfo, SyntacticTypeReferenceRef},
-    helper::interner::IStr,
+    errors::{self, TypeUnificationError},
+    helper::interner::{IStr, Internable},
 };
 
 use super::{
@@ -199,6 +200,16 @@ pub struct Constrain {
     pub is_a: SyntacticTypeReferenceRef,
 }
 
+#[derive(Clone, Debug)]
+pub struct ArgConversionError {
+    pub argument: Option<TypeID>,
+    pub parameter: Option<(TypeID, IStr)>,
+
+    pub for_function: CtxID,
+
+    pub comment: IStr,
+}
+
 impl Instance {
     pub fn as_call(
         &self,
@@ -206,33 +217,58 @@ impl Instance {
         expected_return: TypeID,
         generics: Vec<TypeID>,
         within: &Quark,
-    ) -> Result<Vec<UnifyThunk>, TypeError> {
+    ) -> (
+        Vec<UnifyThunk>,
+        Option<TypeUnificationError>,
+        Vec<ArgConversionError>,
+    ) {
         // if we are generic, then we need to check whether those generics propagate
         // through to our result, or if our result can be instantiated
         //
         // if we aren't callable, then we should return None
 
         match &self.of {
-            InstanceOf::Type(t) => Err(TypeError {
-                components: todo!(),
-                complaint: todo!(),
-            }),
+            InstanceOf::Type(t) => (
+                Vec::new(),
+                Some(TypeUnificationError {
+                    from: todo!(),
+                    from_peers: todo!(),
+                    into: todo!(),
+                    into_peers: todo!(),
+                    for_expression: todo!(),
+                    context: todo!(),
+                    reason_for_unification: todo!(),
+                    reason_for_failure: todo!(),
+                }),
+                Vec::new(),
+            ),
             InstanceOf::Func(f) => {
                 let mut unify = Vec::new();
+                let mut errors = Vec::new();
 
                 for eb in f.parameters.iter().zip_longest(args.iter()) {
                     match eb {
                         itertools::EitherOrBoth::Both(param, arg) => {
-                            panic!("making a unify");
+                            //panic!("making a unify");
                             unify.push(UnifyThunk {
                                 from: ValueOrThunk::Value(*arg),
                                 into: ValueOrThunk::Value(*param),
                             })
                         }
-                        itertools::EitherOrBoth::Left(param) => todo!(),
-                        itertools::EitherOrBoth::Right(arg) => {
-                            tracing::error!("aaaa");
-                        }
+                        itertools::EitherOrBoth::Left(param) => {
+                            errors.push(ArgConversionError {
+                                argument: None,
+                                parameter: Some((*param, "unknown".intern())),
+                                for_function: f.from.unwrap(),
+                                comment: "the function had a parameter for which an argument was not supplied".intern()
+                            })
+                        },
+                        itertools::EitherOrBoth::Right(arg) => errors.push(ArgConversionError {
+                            for_function: f.from.unwrap(),
+                            argument: Some(*arg),
+                            parameter: None,
+                            comment: "the function did not have any additional parameters, this argument is extraneous".intern(),
+                        }),
                     }
                 }
 
@@ -241,7 +277,7 @@ impl Instance {
                     from: ValueOrThunk::Value(expected_return),
                 });
 
-                Ok(unify)
+                (unify, None, errors)
             }
             InstanceOf::Generic(_) => todo!("can't call generic"),
             InstanceOf::Unknown() => todo!("tried to interpret an unsolved with an of"),
@@ -551,7 +587,7 @@ impl Instance {
                     .await;
 
                 InstanceOf::Func(InstanceOfFn {
-                    parameters: vec![],
+                    parameters,
                     returns,
                     from: Some(base),
                 })

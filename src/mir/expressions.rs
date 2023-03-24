@@ -101,7 +101,7 @@ pub enum AnyExpression {
     DynamicAccess(DynamicAccess),
 
     /// A variable, looks up a value and has type equal to the binding
-    Variable(VarID),
+    Variable(VarID, NodeInfo),
 
     /// Subject to some level of type inference, represents
     /// only a regular literal such as a str, i#, u#, f#, or ()
@@ -469,7 +469,7 @@ impl AnyExpression {
 
                 let vid = bindings.binding_for(*ident).expect("variable was not in scope");
 
-                within.add(AnyExpression::Variable(vid)).0
+                within.add(AnyExpression::Variable(vid, *node_info)).0
             },
             ExpressionWrapper::FunctionCall(fc) => {
                 let FunctionCall { node_info, function, args } = fc;

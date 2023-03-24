@@ -63,7 +63,7 @@ pub struct Quark {
 
     /// If we've resolved a type far enough to know that it is an Instance,
     /// it is recorded here so we can do field analysis on it
-    instances: RefCell<Unifier<TypeID, Instance>>,
+    pub instances: RefCell<Unifier<TypeID, Instance>>,
 
     once_know: RefCell<HashMap<TypeID, Vec<Action>>>,
 
@@ -122,6 +122,7 @@ impl Quark {
             //.expect("user did a type error");
         match res {
             Err(e) => {
+                let TypeError { components, complaint } = e;
                 // collect the peers of each component
                 let e = TypeUnificationError {
                     from,
@@ -130,6 +131,7 @@ impl Quark {
                     into_peers: refm.peers_of(into),
                     for_expression: NodeInfo::Builtin,
                     reason_for_unification: reason,
+                    reason_for_failure: complaint.intern(),
                     context: Vec::new(),
                 };
 
@@ -143,7 +145,7 @@ impl Quark {
                     content: Content::Error(e),
                 };
 
-                self.sender.send(msg);
+                let _ = self.sender.send(msg);
 
                 return; // don't attempt any malformed descendent unifies
             },
@@ -471,36 +473,31 @@ impl Quark {
                     self.executor.install(async move {
                         let fctx = self.with_instance(fn_tid, |instance| instance.notify.clone().wait()).await;
 
-                        let as_call_res = self.with_instance(fn_tid, |instance| {
+                        let (unifies, unify_error, arg_errors) = self.with_instance(fn_tid, |instance| {
                             let as_call_res = instance.as_call(ptypes, resulting_type_id, vec![], self);
 
                             as_call_res
                         });
 
-
-                        match as_call_res {
-                            Ok(unifies) => {
-                                /*let call_inst_tid = self.introduce_instance(inst);*/
-
-                                tracing::info!("starting thunks");
-                                for thunk in unifies {
-                                    //panic!("thunking");
-                                    let Unify { from, into } = thunk.to_unify().await;
-                                    //panic!("thunkd");
-                                    self.add_unify(from, into, "instance of a call told us to");
-                                }
-
-
-                                // unify the call inst with the actual func inst
-
-                                //self.add_unify(fn_tid, call_inst_tid, "calling a function requires args are able to be passed into it");
-                                //todo!("unified a call");
-
-                            },
-                            Err(e) => {
-                                todo!("error things")
-                            }
+                        tracing::info!("starting thunks");
+                        for thunk in unifies {
+                            //panic!("thunking");
+                            let Unify { from, into } = thunk.to_unify().await;
+                            //panic!("thunkd");
+                            self.add_unify(from, into, "instance of a call told us to");
                         }
+
+                        for error in arg_errors {
+                            let _ = self.sender.send(Message {
+                                to: Destination::nil(),
+                                from: self.as_dest(),
+                                send_reply_to: Destination::nil(),
+                                conversation: Uuid::nil(),
+                                content: Content::Error(CompilationError::ArgConversionError(error))
+                            });
+
+                        }
+
 
                         tracing::debug!("function got unified? maybe?");
                     }, "verify function call is with the right params");
@@ -611,10 +608,14 @@ impl Quark {
             AnyExpression::DynamicAccess(_) => {
                 todo!("no syntactic meaning to dynamic access anymore")
             }
-            AnyExpression::Variable(v) => {
+            AnyExpression::Variable(v, n) => {
                 //self.type_of.borrow_mut().insert(k, v)
                 // here we also care if we're an lval or an rval
-                let vt = self.type_of_var.borrow().get(&v).copied().unwrap();
+                let ovt = self.type_of_var.borrow().get(&v).copied().unwrap();
+
+                let vt = self.new_tid(n);
+
+                self.add_unify(ovt, vt, "a variable has the type of its binding");
 
                 tracing::info!("it's on a variable: {v:?}");
 

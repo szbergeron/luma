@@ -470,7 +470,7 @@ impl<'lexer> Parser<'lexer> {
             Token::Dot => {
                 // doing a member access
                 let ident = t
-                    .take(Token::Identifier)
+                    .take_in(&[Token::Identifier, Token::FnOperator])
                     .hint("Any dot access should be followed by a member name")
                     .join()?;
 

@@ -123,7 +123,7 @@ pub struct MySub {
 impl Subscriber for MySub {
     fn enabled(&self, metadata: &tracing::Metadata<'_>) -> bool {
         metadata.file().is_some_and(|f| {
-            f.contains("quark") || f.contains("transponster") || f.contains("sets")
+            (f.contains("quark") || f.contains("transponster") || f.contains("sets")) && (false)
         }) //|| metadata.level() > &Level::WARN
     }
 

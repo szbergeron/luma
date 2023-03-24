@@ -1,9 +1,12 @@
+use std::fmt::format;
+
 use colored::*;
 use itertools::Itertools;
 
 #[derive(Clone, Debug)]
 pub enum CompilationError {
     TypeError(TypeUnificationError),
+    ArgConversionError(ArgConversionError),
 }
 
 #[derive(Clone, Debug)]
@@ -19,6 +22,8 @@ pub struct TypeUnificationError {
     pub context: Vec<String>,
 
     pub reason_for_unification: IStr,
+
+    pub reason_for_failure: IStr,
 }
 
 impl CompilationError {
@@ -27,6 +32,7 @@ impl CompilationError {
 
         match self {
             CompilationError::TypeError(te) => {
+                ep.new_error("Type Unification Error");
                 let TypeUnificationError {
                     from,
                     from_peers,
@@ -35,6 +41,7 @@ impl CompilationError {
                     for_expression,
                     context,
                     reason_for_unification,
+                    reason_for_failure,
                 } = te;
 
                 let from_printed = ep.contextualize(
@@ -50,6 +57,28 @@ impl CompilationError {
                 );
 
                 ep.note_line(format!("The reason the unification was attempted is: {reason_for_unification}"));
+                ep.note_line(format!("The reason the unification failed was: {reason_for_failure}"));
+            }
+            CompilationError::ArgConversionError(ace) => {
+                ep.new_error("Argument Conversion Error");
+                let ArgConversionError { argument, parameter, comment, for_function } = ace;
+
+                ep.quick_function(for_function, files);
+
+                if let Some(v) = argument {
+                    ep.contextualize(v.span(), files, "took this argument".intern());
+                } else {
+                    ep.line("did not take any argument".to_owned());
+                }
+
+                if let Some((v, n)) = parameter {
+                    ep.contextualize(v.span(), files, "and tried to apply it to this parameter".intern());
+                } else {
+                    ep.line("but did not accept any parameter at that position".to_owned());
+                }
+
+                ep.line(format!("That was the cause of this error: {comment}"));
+
             }
         }
     }
@@ -62,14 +91,33 @@ use crate::{
     cst::NodeInfo,
     helper::interner::{IStr, Internable, SpurHelper},
     lex::CodeLocation,
-    mir::quark::TypeID,
+    mir::{quark::TypeID, transponster::ArgConversionError}, ast::tree::{CtxID, NodeUnion},
 };
 
 impl ErrorPrinter {
-    pub fn note_line(&self, line: String) {
-        println!("{}", "This additional information was given for solving the issue:".yellow().bold());
-        println!("   {} {}", ">".bright_blue().bold(), line.bright_yellow().bold());
+    pub fn new_error(&self, description: &str) {
+        println!();
+        println!();
+        println!("{}: {}", "error".bold().bright_red(), description.bold().bright_red());
     }
+    pub fn quick_function(&self, ctid: CtxID, files: &FileRegistry) {
+        match &ctid.resolve().inner {
+            NodeUnion::Function(fd, _) => {
+                self.contextualize(fd.info, files, "this function vvvv".intern());
+            },
+            _ => unreachable!()
+        }
+    }
+
+    pub fn note_line(&self, line: String) {
+        println!("{}", "This additional information was given for solving the issue:".bright_yellow());
+        println!("   {} {}", ">".bright_blue().bold(), line.blue().bold());
+    }
+
+    pub fn line(&self, line: String) {
+        println!("   {} {}", ">".bright_blue().bold(), line.yellow());
+    }
+
     pub fn contextualize(&self, near: NodeInfo, files: &FileRegistry, if_solve: IStr) -> bool {
         if let NodeInfo::Parsed(p) = near && let Some(f) = p.span.start.file_id() {
             let handle = files.open_id(f).expect("couldn't open a file");
@@ -79,7 +127,7 @@ impl ErrorPrinter {
 
             let lines = contents.as_str().unwrap().lines().collect_vec();
 
-            println!("{}: {}:", "error".bold().bright_red(), if_solve.resolve().bold().bright_yellow());
+            println!(" {}:", if_solve.resolve().yellow());
 
             self.print_context(p.span.start, p.span.end, &lines, file.to_str().expect("weird"));
 
