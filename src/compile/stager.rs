@@ -1,4 +1,5 @@
 //use crate::ast::resolver::ResolverWorker;
+use crate::errors::CompilationError;
 use crate::ast::tree::{Contexts, CtxID};
 use crate::compile::parse_tree::ParseTreeNode;
 //use crate::ast;
@@ -37,9 +38,9 @@ pub fn parse_source_file<'file>(
     // of things
     // TODO: eval if this even matters
 
-    let contents = handle.contents().unwrap();
+    let contents_handle = handle.contents().unwrap();
 
-    let content_str = contents.as_str().unwrap();
+    let content_str = contents_handle.0.as_str().unwrap();
 
     //let base_path = handle.path();
     let file_id = handle.id();
@@ -236,7 +237,17 @@ async fn async_launch(args: ArgResult) {
     //ResolverWorker::new(ids).resolve().await; // fix types up
     let cu = CompilationUnit::new(ids);
 
-    cu.launch().await;
+    let (es, mut er) = tokio::sync::mpsc::unbounded_channel();
+
+    tokio::spawn(async move {
+        while let Some(v) = er.recv().await {
+            let v: CompilationError = v;
+            // need to break down the error
+            let s = v.with_file_context(&files);
+        }
+    });
+
+    cu.launch(es).await;
     //todo!("spawn all the network stuff");
 
     // convert AST to MIR

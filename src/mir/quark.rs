@@ -1,3 +1,4 @@
+use crate::errors::{CompilationError, TypeUnificationError};
 use std::{cell::RefCell, collections::HashMap, pin::Pin, rc::Rc};
 
 use tracing::{info, warn};
@@ -6,7 +7,7 @@ use uuid::Uuid;
 use crate::{
     ast::{
         self,
-        executor::{Executor, UnsafeAsyncCompletable},
+        executor::Executor,
         resolver2::NameResolver,
         tree::CtxID,
         types::FunctionDefinition,
@@ -14,7 +15,7 @@ use crate::{
     compile::per_module::{
         Content, ControlMessage, ConversationContext, Destination, Earpiece, Message, Service,
     },
-    cst::{ExpressionWrapper, ScopedName, SyntacticTypeReferenceInner, SyntacticTypeReferenceRef, Span, self},
+    cst::{ExpressionWrapper, ScopedName, SyntacticTypeReferenceInner, SyntacticTypeReferenceRef, self, NodeInfo},
     helper::interner::{IStr, Internable},
     mir::{expressions::{AnyExpression, Bindings, Composite, ExpressionContext, Literal, VarID}, transponster::InstanceOf},
 };
@@ -27,10 +28,10 @@ use super::{
 use super::transponster::InstanceID;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct TypeID(uuid::Uuid, cst::Span);
+pub struct TypeID(uuid::Uuid, cst::NodeInfo);
 
 impl TypeID {
-    pub fn span(&self) -> Span {
+    pub fn span(&self) -> NodeInfo {
         self.1
     }
 }
@@ -110,15 +111,46 @@ impl Quark {
             .unify(from, into, |a, b| {
                 tracing::info!("having to merge two instances");
                 let original_a = a.clone();
-                match a.unify_with(b, self) {
+                match a.unify_with(b, Unify { from, into }, self) {
                     Ok((v, u)) => {
                         resulting_unifies = u;
                         Ok(v)
                     }
                     Err(e) => Err(e),
                 }
-            })
-            .expect("user did a type error");
+            });
+            //.expect("user did a type error");
+        match res {
+            Err(e) => {
+                // collect the peers of each component
+                let e = TypeUnificationError {
+                    from,
+                    from_peers: refm.peers_of(from),
+                    into,
+                    into_peers: refm.peers_of(into),
+                    for_expression: NodeInfo::Builtin,
+                    reason_for_unification: reason,
+                    context: Vec::new(),
+                };
+
+                let e = CompilationError::TypeError(e);
+
+                let msg = Message {
+                    to: Destination::nil(),
+                    from: self.as_dest(),
+                    send_reply_to: Destination::nil(),
+                    conversation: Uuid::nil(),
+                    content: Content::Error(e),
+                };
+
+                self.sender.send(msg);
+
+                return; // don't attempt any malformed descendent unifies
+            },
+            Ok(_) => {
+                // do nothing, add the resulting unifies
+            }
+        }
 
         for Unify { from, into } in resulting_unifies {
             self.add_unify(from, into, "resulting unify from an instance add".intern());
@@ -146,7 +178,8 @@ impl Quark {
         with_generics: &HashMap<IStr, TypeID>,
         from_base: CtxID,
     ) -> TypeID {
-        match tr.resolve().unwrap().inner {
+        let trv = tr.resolve().unwrap();
+        match trv.inner {
             SyntacticTypeReferenceInner::Single { name } => {
                 // we are maybe an instance of a type? or some node? so figure out which one it
                 // is
@@ -173,7 +206,7 @@ impl Quark {
 
                         //let tid = self.new_tid();
 
-                        let tid = self.introduce_instance(instance);
+                        let tid = self.introduce_instance(instance, trv.info);
 
                         tracing::debug!("introduced {tid:?}");
 
@@ -184,7 +217,7 @@ impl Quark {
 
                         // once we've propagated the error, we just treat this as unconstrained
                         // to let us find as many errors as possible
-                        let tid = self.new_tid();
+                        let tid = self.new_tid(trv.info);
 
                         tid
                     }
@@ -192,7 +225,7 @@ impl Quark {
             }
             SyntacticTypeReferenceInner::Unconstrained() => {
                 tracing::warn!("constructing completely unconstrained typeref, need to validate that or something");
-                let tid = self.new_tid();
+                let tid = self.new_tid(trv.info);
 
                 tid
             }
@@ -232,7 +265,7 @@ impl Quark {
         if let Some(v) = refm.v_for(tid) {
             f(v)
         } else {
-            let new_tid = TypeID(Uuid::new_v4());
+            let new_tid = TypeID(Uuid::new_v4(), tid.span());
             let instance = Instance::plain_instance(self);
 
             refm.add_kv(new_tid, instance);
@@ -255,7 +288,7 @@ impl Quark {
     /// Returns the direct TID for the instance once unified with the base tid
     pub fn assign_instance(&self, tid: TypeID, instance: Instance) -> TypeID {
         // make a new tid inst here since the regular one automatically adds it to unifier
-        let instance_tid = TypeID(uuid::Uuid::new_v4());
+        let instance_tid = TypeID(uuid::Uuid::new_v4(), tid.span());
 
         let mut refm = self.instances.borrow_mut();
 
@@ -273,8 +306,8 @@ impl Quark {
     }
 
     /// Use this to introduce an instance with a completely untethered TID
-    pub fn introduce_instance(&self, instance: Instance) -> TypeID {
-        let instance_tid = TypeID(Uuid::new_v4());
+    pub fn introduce_instance(&self, instance: Instance, span: NodeInfo) -> TypeID {
+        let instance_tid = TypeID(Uuid::new_v4(), span);
 
         let mut refm = self.instances.borrow_mut();
 
@@ -283,8 +316,8 @@ impl Quark {
         instance_tid
     }
 
-    pub fn new_tid(&self) -> TypeID {
-        let tid = TypeID(uuid::Uuid::new_v4());
+    pub fn new_tid(&self, for_span: NodeInfo) -> TypeID {
+        let tid = TypeID(uuid::Uuid::new_v4(), for_span);
 
         self.instances.borrow_mut().add_k(tid);
 
@@ -325,7 +358,7 @@ impl Quark {
         let mut generics = HashMap::new();
         for (gname, gtype) in node_id.resolve().generics.iter() {
             tracing::error!("ignoring constraints on generics for now");
-            let g_tid = TypeID(uuid::Uuid::new_v4());
+            let g_tid = TypeID(uuid::Uuid::new_v4(), NodeInfo::Builtin);
 
             generics.insert(*gname, g_tid);
         }
@@ -357,7 +390,7 @@ impl Quark {
 
         match self.acting_on.borrow().get(on_id).clone() {
             AnyExpression::Block(b) => {
-                let block_ty = self.new_tid();
+                let block_ty = self.new_tid(b.info);
 
                 let mut last_expr_tid = None;
 
@@ -413,7 +446,7 @@ impl Quark {
 
                 tracing::info!("it's an invocation: {i:#?}");
 
-                let resulting_type_id = self.new_tid();
+                let resulting_type_id = self.new_tid(i.info);
                 tracing::info!(
                     "creates result type id for the invocation of {resulting_type_id:?}"
                 );
@@ -476,7 +509,7 @@ impl Quark {
                 resulting_type_id
             }
             AnyExpression::StaticAccess(sa) => {
-                let result_ty = self.new_tid();
+                let result_ty = self.new_tid(sa.info);
                 tracing::info!("static accessing: {sa:?}");
                 // the type of the base that we're accessing the field on
                 let src_ty = self.do_the_thing_rec(sa.on, false);
@@ -584,11 +617,6 @@ impl Quark {
                 let vt = self.type_of_var.borrow().get(&v).copied().unwrap();
 
                 tracing::info!("it's on a variable: {v:?}");
-                /*self.add_unify(
-                    vt,
-                    e_ty_id,
-                    "a variable should be the same type everywhere".intern(),
-                );*/
 
                 vt
             }
@@ -600,13 +628,13 @@ impl Quark {
                 }
                 tracing::info!("got a literal: {l:?}");
 
-                let typeof_literal = self.new_tid();
+                let typeof_literal = self.new_tid(l.info);
 
                 unsafe {
                     self.executor.install(
                         async move {
                             tracing::info!("resolving the type of a literal");
-                            let Literal { has_type, value } = l;
+                            let Literal { has_type, value, info } = l;
                             let hm = HashMap::new();
 
                             //panic!("going to resolve: {:?}", has_type.resolve().unwrap().value());
@@ -618,8 +646,8 @@ impl Quark {
                             //panic!("got literal type");
 
                             self.add_unify(
-                                typeof_literal,
                                 ltid,
+                                typeof_literal,
                                 "a literal should unify with the type it acts as".intern(),
                             );
 
@@ -638,9 +666,10 @@ impl Quark {
                     base_type,
                     generics,
                     fields,
+                    info,
                 } = c;
 
-                let typeof_composite = self.new_tid();
+                let typeof_composite = self.new_tid(info);
 
                 unsafe {
                     self.executor.install(
@@ -668,8 +697,8 @@ impl Quark {
                             let mut inst_fields = HashMap::new();
 
                             for (fname, fexp) in fields {
-                                let fty = self.new_tid();
-                                self.do_the_thing_rec(fexp, false); // not lval as we load from it
+                                //let fty = self.new_tid();
+                                let fty = self.do_the_thing_rec(fexp, false); // not lval as we load from it
 
                                 inst_fields.insert(fname, fty);
                             }

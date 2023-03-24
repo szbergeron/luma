@@ -133,7 +133,7 @@ pub fn from_roots<'r>(reg: &'r FileRegistry, files: Vec<FileRole>) -> PreParseTr
                 let contents = handle.contents().unwrap();
 
                 println!("Got contents");
-                let content_str = contents.as_str().unwrap();
+                let content_str = contents.0.as_str().unwrap();
 
                 let file_id = handle.id();
 

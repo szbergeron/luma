@@ -9,6 +9,12 @@ use std::sync::{Arc, RwLock};
 
 use smallvec::SmallVec;
 
+use crate::compile::file_tree::FileRegistry;
+use crate::cst::NodeInfo;
+use crate::mir::quark::{TypeError, TypeID};
+
+use self::interner::IStr;
+
 pub mod interner {
     use std::{
         fmt::{Debug, Display},
@@ -54,7 +60,10 @@ pub mod interner {
         }
     }
 
-    impl<S> From<S> for IStr where S: Into<String> {
+    impl<S> From<S> for IStr
+    where
+        S: Into<String>,
+    {
         default fn from(value: S) -> Self {
             let s: String = value.into();
             s.intern()
@@ -772,8 +781,6 @@ pub struct InternedRef<T> {
 impl<T> InternedRef<T> {}
 
 pub enum Never {}
-
-pub enum CompilationError {}
 
 pub trait CopyMethod: Copy {
     fn copied(self) -> Self;

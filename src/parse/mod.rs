@@ -14,6 +14,7 @@ pub use parse_tools::*;
 pub use parse_type::*;
 pub use parse_spec::*;
 
+use crate::errors::ErrorPrinter;
 //use crate::helper::lex_wrap::LookaheadStream;
 //use crate::helper::lex_wrap::{CodeLocation, ParseResultError};
 use crate::helper::interner::*;
@@ -74,102 +75,6 @@ impl<'lexer> Parser<'lexer> {
         r
     }
 
-    pub fn print_fmt_line(
-        &self,
-        line_num: isize,
-        pad: usize,
-        line: &str,
-        highlight: Option<(usize, usize)>,
-    ) {
-        // do indentation
-        println!();
-        print!(" {line:<pad$} | ", line = line_num, pad = pad);
-        print!("{}", line.blue().bold());
-        println!();
-
-        print!(" {line:pad$} | ", line = "", pad = pad);
-        //print!("{}", line.blue().bold());
-        if let Some((start, end)) = highlight {
-            for i in 0..line.len() {
-                if i >= start && i < end {
-                    print!("{}", "^".red());
-                } else {
-                    //print!("{}", "―".red());
-                    print!(" ");
-                }
-            }
-        }
-    }
-
-    //pub fn print_context<'map>(&self, start: usize, end: usize, map: &'map rangemap::RangeMap<usize, (usize, &'a str, usize)>) {
-    pub fn print_context(&self, start: CodeLocation, end: CodeLocation, lines: &Vec<&str>) {
-        // print context lines before
-
-        match (start, end) {
-            (CodeLocation::Parsed(start), CodeLocation::Parsed(end)) => {
-                let start_line = (start.line - 2).max(1);
-                let end_line = (end.line + 2).min(lines.len() as isize);
-                println!("start line: {}, end line: {}", start_line, end_line);
-
-                let mut pad = 0;
-                for line_num in start_line..(end_line + 1) {
-                    //let s: String = line_num.into();
-                    //let s = String::from(line_num as i64);
-                    let s = line_num.to_string();
-                    pad = pad.max(s.len());
-                }
-
-                pad = pad + 4;
-
-                for line_num in start_line..(end_line + 1) {
-                    let line = lines.get(line_num as usize - 1).unwrap_or(&"");
-                    /*println!("|{}", line.blue().bold());
-
-                    //print!("|{
-                    for i in 0..line.len() {
-                        if (i >= start.offset as usize || line_num > start.line)
-                            && (i < end.offset as usize || line_num < end.line)
-                        {
-                            print!("{}", "^".red());
-                        } else {
-                            print!("{}", "―".red());
-                        }
-                    }*/
-
-                    let hl = if line_num >= start.line && line_num <= end.line {
-                        let start = if line_num > start.line {
-                            0
-                        } else {
-                            start.offset as usize
-                        };
-                        let end = if line_num < end.line {
-                            line.len()
-                        } else {
-                            end.offset as usize
-                        };
-                        Some((start, end))
-                    //Some((0, 0))
-                    } else {
-                        None
-                    };
-
-                    self.print_fmt_line(line_num, pad, line, hl);
-                }
-                println!();
-            }
-            _ => {}
-        }
-    }
-
-    pub fn print_bar(&self) {
-        println!();
-        if let Some((w, _)) = term_size::dimensions() {
-            for _ in 0..w {
-                print!("{}", "―".cyan());
-            }
-        }
-        println!();
-    }
 
     /*pub fn build_line_map(&self, input: &'a str) -> rangemap::RangeMap<usize, (usize, &'a str, usize)> {
         let mut index = 0;
@@ -187,7 +92,8 @@ impl<'lexer> Parser<'lexer> {
         map
     }*/
 
-    fn print_err(&self, e: &ParseResultError, lines: &Vec<&str>) {
+    fn print_err(&self, e: &ParseResultError, lines: &Vec<&str>, filename: &str) {
+        let ep = ErrorPrinter {};
         match e {
             ParseResultError::InternalParseIssue => {}
             ParseResultError::EndOfFile => {
@@ -197,7 +103,7 @@ impl<'lexer> Parser<'lexer> {
                 panic!("Programming error, unexplored region of ast has error for us?");
             }
             ParseResultError::UnexpectedToken(t, expected, msg) => {
-                self.print_context(t.start, t.end, &lines);
+                ep.print_context(t.start, t.end, &lines, filename);
                 eprintln!("Got unexpected token of type {:?}. Expected one of {:?}. Token with slice \"{}\" was encountered around ({}, {})",
                         t.token,
                         expected,
@@ -212,7 +118,7 @@ impl<'lexer> Parser<'lexer> {
             }
             ParseResultError::SemanticIssue(issue, start, end) => {
                 //self.print_context(*start, *end, &lines);
-                self.print_context(*start, *end, &lines);
+                ep.print_context(*start, *end, &lines, filename);
                 eprintln!("Encountered a semantic issue: {}. This issue was realized around the character range ({}, {})",
                         issue,
                         start,
@@ -221,7 +127,7 @@ impl<'lexer> Parser<'lexer> {
             }
             ParseResultError::ErrorWithHint { hint, original } => {
                 for e in original.iter() {
-                    self.print_err(e, lines)
+                    self.print_err(e, lines, filename)
                 }
                 eprintln!("Hint: {}", hint);
             }
@@ -229,10 +135,15 @@ impl<'lexer> Parser<'lexer> {
     }
 
     pub fn print_errors(&self, file_handle: FileHandle) {
+        let ep = ErrorPrinter {};
         //let linemap = self.build_line_map(input);
         //let input: std::sync::Arc<String> = handle.get().unwrap();
         //let input = handle.slice().unwrap();
-        let contents = file_handle.contents().unwrap();
+        let handle = file_handle.contents().unwrap();
+
+        let contents = &handle.0;
+        let path = &handle.1;
+
         let input = contents.as_str().unwrap();
         let lines_iter = input.lines();
         //let v: Vec<&str> = lines.collect();
@@ -248,7 +159,7 @@ impl<'lexer> Parser<'lexer> {
             println!("{}", "No errors reported".blue());
         }
 
-        self.print_bar();
+        ep.print_bar();
         println!();
         let errors: HashSet<ParseResultError> = self.errors.clone().into_iter().collect();
 
@@ -263,12 +174,13 @@ impl<'lexer> Parser<'lexer> {
             }).unwrap_or((0, 0))
         });
 
+
         for e in errors.iter() {
             println!();
-            self.print_err(e, &lines);
+            self.print_err(e, &lines, path.to_str().expect("filename shenaniganery"));
             println!();
 
-            self.print_bar();
+            ep.print_bar();
 
             println!();
         }

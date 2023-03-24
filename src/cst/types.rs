@@ -2,11 +2,14 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use dashmap::DashMap;
 use itertools::Itertools;
-use smallvec::{SmallVec, smallvec};
+use smallvec::{smallvec, SmallVec};
 
-use crate::{helper::interner::{IStr, SpurHelper, Internable}, ast::types::AbstractTypeReference};
+use crate::{
+    ast::types::AbstractTypeReference,
+    helper::interner::{IStr, Internable, SpurHelper},
+};
 
-use super::{NodeInfo, CstNode, IntoCstNode, FunctionDefinition, Span};
+use super::{CstNode, FunctionDefinition, IntoCstNode, NodeInfo};
 
 #[derive(Clone, Debug)]
 pub struct StructDefinition {
@@ -108,7 +111,10 @@ impl GenericHandle {
     pub fn new(name: IStr) -> GenericHandle {
         static ID: AtomicUsize = AtomicUsize::new(1);
 
-        GenericHandle { name, id: ID.fetch_add(1, Ordering::SeqCst)}
+        GenericHandle {
+            name,
+            id: ID.fetch_add(1, Ordering::SeqCst),
+        }
     }
 }
 
@@ -129,11 +135,8 @@ impl ScopedNameReference {
 
 impl CstNode for ScopedNameReference {
     fn pretty(&self, f: &mut dyn std::fmt::Write, _depth: usize) {
-        let s: String = Itertools::intersperse(self
-            .scope
-            .iter()
-            .map(|ss| ss.resolve()), "::")
-            .collect();
+        let s: String =
+            Itertools::intersperse(self.scope.iter().map(|ss| ss.resolve()), "::").collect();
         let _ = write!(f, "{}", s);
     }
     fn node_info(&self) -> NodeInfo {
@@ -153,7 +156,10 @@ pub struct ScopedName {
 }
 
 impl ScopedName {
-    pub fn new<S>(s: S) -> ScopedName where S: Into<SmallVec<[IStr; 3]>> {
+    pub fn new<S>(s: S) -> ScopedName
+    where
+        S: Into<SmallVec<[IStr; 3]>>,
+    {
         ScopedName { scope: s.into() }
     }
 
@@ -166,7 +172,9 @@ impl ScopedName {
     }
 
     pub fn from_one(s: IStr) -> ScopedName {
-        ScopedName { scope: smallvec![s] }
+        ScopedName {
+            scope: smallvec![s],
+        }
     }
 }
 
@@ -197,7 +205,13 @@ impl SyntacticTypeReferenceRef {
     }
 
     pub fn resolve(self) -> Option<SyntacticTypeReference> {
-        SYNTACTIC_FROM_REF.get(&self).map(|s| s.value().clone())
+        let v = SYNTACTIC_FROM_REF.get(&self).map(|s| s.value().clone());
+
+        v.map(|mut v| {
+            v.info = self.1;
+
+            v
+        })
     }
 
     /*pub fn resolve_mut(self) -> Option<dashmap::mapref::one::RefMut<'static, Self, SyntacticTypeReference>> {
@@ -222,7 +236,7 @@ impl SyntacticTypeReferenceRef {
         syntr.intern()
     }
 
-    //pub fn resolve_within_context(self, context: &HashMap<IStr, TypeID>) -> 
+    //pub fn resolve_within_context(self, context: &HashMap<IStr, TypeID>) ->
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -238,7 +252,9 @@ impl SyntacticTypeReference {
     pub fn intern(mut self) -> SyntacticTypeReferenceRef {
         self.id = SyntacticTypeReferenceRef::new_nil();
 
-        let ent = SYNTACTIC_TO_REF.entry(self.clone()).or_insert(SyntacticTypeReferenceRef::new_rand());
+        let ent = SYNTACTIC_TO_REF
+            .entry(self.clone())
+            .or_insert(SyntacticTypeReferenceRef::new_rand(self.info));
 
         SYNTACTIC_FROM_REF.entry(*ent.value()).or_insert(self);
 
@@ -258,13 +274,15 @@ impl std::fmt::Debug for SyntacticTypeReference {
                 let base = format!("Tuple{}<{values}>", t.len());
 
                 base
-            },
+            }
             SyntacticTypeReferenceInner::Single { name } => {
                 name.scope.iter().map(|v| v.resolve().to_owned()).join("::")
-            },
+            }
             SyntacticTypeReferenceInner::Generic { label } => label.resolve().to_owned(),
             SyntacticTypeReferenceInner::Parameterized { name, generics } => todo!(),
-            SyntacticTypeReferenceInner::Reference { to, mutable } => format!("&{}<{to:?}>", if *mutable { "mut" } else { "" }),
+            SyntacticTypeReferenceInner::Reference { to, mutable } => {
+                format!("&{}<{to:?}>", if *mutable { "mut" } else { "" })
+            }
             SyntacticTypeReferenceInner::Pointer { to, mutable } => todo!(),
         };
         write!(f, "{inner}")
@@ -272,8 +290,10 @@ impl std::fmt::Debug for SyntacticTypeReference {
 }
 
 lazy_static! {
-    static ref SYNTACTIC_TO_REF: DashMap<SyntacticTypeReference, SyntacticTypeReferenceRef> = DashMap::new();
-    static ref SYNTACTIC_FROM_REF: DashMap<SyntacticTypeReferenceRef, SyntacticTypeReference> = DashMap::new();
+    static ref SYNTACTIC_TO_REF: DashMap<SyntacticTypeReference, SyntacticTypeReferenceRef> =
+        DashMap::new();
+    static ref SYNTACTIC_FROM_REF: DashMap<SyntacticTypeReferenceRef, SyntacticTypeReference> =
+        DashMap::new();
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -284,15 +304,28 @@ pub enum SyntacticTypeReferenceInner {
 
     Tuple(Vec<SyntacticTypeReference>),
 
-    Single { name: ScopedName },
+    Single {
+        name: ScopedName,
+    },
 
-    Generic { label: IStr },
+    Generic {
+        label: IStr,
+    },
 
-    Parameterized { name: ScopedName, generics: Vec<SyntacticTypeReference> },
+    Parameterized {
+        name: ScopedName,
+        generics: Vec<SyntacticTypeReference>,
+    },
 
-    Reference { to: Box<SyntacticTypeReference>, mutable: bool },
+    Reference {
+        to: Box<SyntacticTypeReference>,
+        mutable: bool,
+    },
 
-    Pointer { to: Box<SyntacticTypeReference>, mutable: bool },
+    Pointer {
+        to: Box<SyntacticTypeReference>,
+        mutable: bool,
+    },
 }
 
 impl CstNode for SyntacticTypeReference {
@@ -306,7 +339,6 @@ impl IntoCstNode for SyntacticTypeReference {
         self
     }
 }
-
 
 /*#[derive(Debug, Clone)]
 pub struct SyntaxTypeReference {

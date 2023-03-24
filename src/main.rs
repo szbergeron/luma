@@ -82,6 +82,7 @@ pub mod mir; // just until we fix lowering, reduce error count
 pub mod parse;
 pub mod traits;
 pub mod types;
+pub mod errors;
 //pub mod bump_interner;
 
 fn main() {

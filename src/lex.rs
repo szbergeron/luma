@@ -429,14 +429,14 @@ type LexResult = Result<TokenWrapper, ParseResultError>;
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub enum CodeLocation {
     Parsed(Loc),
-    //Builtin,
+    Builtin,
 }
 
 impl CodeLocation {
-    pub fn file_id(&self) -> Option<isize> {
+    pub fn file_id(&self) -> Option<usize> {
         match self {
             Self::Builtin => None,
-            Self::Parsed(l) => Some(l.file_id as isize),
+            Self::Parsed(l) => Some(l.file_id),
         }
     }
 

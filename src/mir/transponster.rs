@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    fmt::Debug,
+    fmt::{Debug, format},
     rc::Rc,
     sync::Arc,
 };
@@ -18,7 +18,7 @@ use crate::{
         types::StructuralDataDefinition,
     },
     compile::per_module::{Content, ConversationContext, Destination, Earpiece, Message, Service},
-    cst::SyntacticTypeReferenceRef,
+    cst::{NodeInfo, SyntacticTypeReferenceRef},
     helper::interner::IStr,
 };
 
@@ -148,12 +148,7 @@ impl std::fmt::Debug for InstanceOfType {
         f.debug_struct("InstanceOfType")
             .field(
                 "from",
-                &self
-                    .from
-                    .resolve()
-                    .canonical_typeref()
-                    .resolve()
-                    .unwrap(),
+                &self.from.resolve().canonical_typeref().resolve().unwrap(),
             )
             .finish()
     }
@@ -223,13 +218,6 @@ impl Instance {
                 complaint: todo!(),
             }),
             InstanceOf::Func(f) => {
-                // check that the call is compatible
-                /*if f.parameters.len() != args.len() {
-                    return Err(TypeError { components: vec![], complaint: "function was called with a different number of args than it has".to_owned() })
-                }*/
-
-                //panic!("woo");
-
                 let mut unify = Vec::new();
 
                 for eb in f.parameters.iter().zip_longest(args.iter()) {
@@ -249,8 +237,8 @@ impl Instance {
                 }
 
                 unify.push(UnifyThunk {
-                    from: ValueOrThunk::Value(f.returns),
-                    into: ValueOrThunk::Value(expected_return),
+                    into: ValueOrThunk::Value(f.returns),
+                    from: ValueOrThunk::Value(expected_return),
                 });
 
                 Ok(unify)
@@ -459,7 +447,7 @@ impl Instance {
         let gens_for_type = Rc::new(
             inst.generics
                 .iter()
-                .map(|(g, r)| (*g, within.new_tid()))
+                .map(|(g, r)| (*g, within.new_tid(NodeInfo::Builtin)))
                 .collect(),
         );
 
@@ -497,7 +485,7 @@ impl Instance {
                             tracing::warn!("we're inferring the instance for field {mname}");
                             let minst = Self::infer_instance(Some(mref), within).await;
 
-                            let minst_tid = within.introduce_instance(minst);
+                            let minst_tid = within.introduce_instance(minst, NodeInfo::Builtin);
 
                             tracing::warn!("this instantiation of {mname} on {mref:?} was given tid {minst_tid:?}");
 
@@ -584,6 +572,7 @@ impl Instance {
     pub fn unify_with(
         self,
         stores_into: Instance,
+        because: Unify,
         within: &Quark,
     ) -> Result<(Instance, Vec<Unify>), TypeError> {
         //panic!("wooo");
@@ -702,7 +691,18 @@ impl Instance {
                 |va, vb| {
                     tracing::warn!("we're unifying id {va:?} with id {vb:?} in ctx");
                     if va != vb {
-                        panic!("user tried to unify two different types")
+                        //panic!("user tried to unify two different types")
+                        let first = va.resolve().canonical_typeref().resolve().unwrap();
+                        let second = vb.resolve().canonical_typeref().resolve().unwrap();
+
+                        let msg = format!("can not assign a value of type {first:?} into a value of type {second:?}");
+
+                        Err(TypeError {
+                            components: vec![because.from, because.into],
+                            complaint: msg,
+                        })
+                    } else {
+                        Ok(())
                     }
                 },
             )
@@ -717,7 +717,11 @@ impl Instance {
             notify,
         };
 
-        Ok((i, all_generic_unifies))
+        if let Some(Err(e)) = conflicted {
+            Err(e)
+        } else {
+            Ok((i, all_generic_unifies))
+        }
     }
 }
 

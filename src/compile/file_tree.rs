@@ -110,7 +110,7 @@ impl<'a> FileHandle<'a> {
         self.id
     }
 
-    pub fn contents(&self) -> Result<Arc<Contents>, Box<dyn std::error::Error>> {
+    pub fn contents(&self) -> Result<Arc<(Contents, PathBuf)>, Box<dyn std::error::Error>> {
         self.within.open_id(self.id)
     }
 
@@ -140,7 +140,7 @@ impl Hash for FileHandle<'_> {
 #[derive(Clone)]
 enum OpenableFile {
     Closed(Option<String>),
-    Open(Arc<Contents>),
+    Open(Arc<(Contents, PathBuf)>),
 }
 
 pub enum Contents {
@@ -173,11 +173,11 @@ impl OpenedFile {
 }
 
 impl FileRegistry {
-    pub fn open_id(&self, id: usize) -> Result<Arc<Contents>, Box<dyn Error>> {
-        println!("Entering open_id");
+    pub fn open_id(&self, id: usize) -> Result<Arc<(Contents, PathBuf)>, Box<dyn Error>> {
+        //println!("Entering open_id");
         //let entry = self.stored.get(&id);
 
-        println!("Got entry");
+        //println!("Got entry");
 
         let res = self.stored.entry(id).and_modify(|e| {
             //let val = e;
@@ -187,7 +187,7 @@ impl FileRegistry {
                     let v = std::fs::read_to_string(e.acts_as.as_path());
                     match v {
                         Ok(s) => {
-                            let v = Arc::new(Contents::String(s));
+                            let v = Arc::new((Contents::String(s), e.acts_as.as_path().to_owned()));
 
                             let file = File {
                                 contents: OpenableFile::Open(v.clone()),
@@ -214,7 +214,7 @@ impl FileRegistry {
             };
         });
 
-        println!("Did first part");
+        //println!("Did first part");
 
         let res = res.or_insert_with(|| File {
             contents: OpenableFile::Closed(Some(
@@ -270,7 +270,7 @@ impl FileRegistry {
         }
     }
 
-    pub fn open(&self, path: FileRole) -> (FileHandle, Result<Arc<Contents>, Box<dyn Error>>) {
+    pub fn open(&self, path: FileRole) -> (FileHandle, Result<Arc<(Contents, PathBuf)>, Box<dyn Error>>) {
         // just double check if we even need to open it
 
         let handle = self.intern(path);

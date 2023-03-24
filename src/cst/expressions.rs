@@ -898,7 +898,7 @@ impl CstNode for UnaryOperationExpression {
 
 #[derive(Debug, Clone)]
 pub struct CastExpression {
-    node_info: NodeInfo,
+    pub node_info: NodeInfo,
 
     pub subexpr: Box<ExpressionWrapper>,
     //pub typeref: Box<ExpressionWrapper>,

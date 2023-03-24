@@ -7,7 +7,7 @@ use crate::{
     avec::AtomicVec,
     cst::{
         self, CastExpression, ExpressionWrapper, IfThenElseExpression, LetComponentIdentifier,
-        LiteralExpression, MemberAccessExpression, SyntacticTypeReferenceRef, ScopedName, StructLiteralExpression, FunctionCall, IdentifierExpression,
+        LiteralExpression, MemberAccessExpression, SyntacticTypeReferenceRef, ScopedName, StructLiteralExpression, FunctionCall, IdentifierExpression, NodeInfo,
     },
     helper::interner::{IStr, Internable},
 };
@@ -172,10 +172,11 @@ impl AnyExpression {
                     rhs,
                 } = a;
 
-                let rhs_id = Self::from_ast(within, &rhs, bindings);
-                let lhs_id = Self::from_ast(within, &lhs, bindings);
+                let rhs_id = Self::from_ast(within, rhs, bindings);
+                let lhs_id = Self::from_ast(within, lhs, bindings);
 
                 let self_node = AnyExpression::Assign(Assign {
+                    info: *node_info,
                     rhs: rhs_id,
                     lhs: lhs_id,
                 });
@@ -186,7 +187,7 @@ impl AnyExpression {
             }
             ExpressionWrapper::BinaryOperation(bo) => {
                 let cst::BinaryOperationExpression {
-                    node_info: _,
+                    node_info,
                     box lhs,
                     box rhs,
                     operation,
@@ -206,7 +207,7 @@ impl AnyExpression {
                 // for now just have binary expressions be
                 // called on LHS regardless of actual associativity
                 let self_id =
-                    AnyExpression::make_call(within, lhs_id, opstr, vec![lhs_id, rhs_id], vec![]);
+                    AnyExpression::make_call(within, lhs_id, opstr, vec![lhs_id, rhs_id], vec![], *node_info);
 
                 //let (self_id, _self_ref) = within.add(self_node);
 
@@ -214,7 +215,7 @@ impl AnyExpression {
             }
             ExpressionWrapper::UnaryOperation(uo) => {
                 let cst::UnaryOperationExpression {
-                    node_info: _,
+                    node_info,
                     operation,
                     box subexpr,
                 } = uo;
@@ -229,7 +230,7 @@ impl AnyExpression {
                 }
                 .intern();
 
-                let self_id = AnyExpression::make_call(within, on_id, opstr, vec![on_id], vec![]);
+                let self_id = AnyExpression::make_call(within, on_id, opstr, vec![on_id], vec![], *node_info);
 
                 //let (self_id, _self_ref) = within.add(self_node);
 
@@ -237,7 +238,7 @@ impl AnyExpression {
             }
             ExpressionWrapper::Comparison(c) => {
                 let cst::ComparisonOperationExpression {
-                    node_info: _,
+                    node_info,
                     operation,
                     lhs,
                     rhs,
@@ -257,7 +258,7 @@ impl AnyExpression {
                 .intern();
 
                 let self_id =
-                    AnyExpression::make_call(within, lhs_id, opstr, vec![lhs_id, rhs_id], vec![]);
+                    AnyExpression::make_call(within, lhs_id, opstr, vec![lhs_id, rhs_id], vec![], *node_info);
 
                 //let (self_id, _self_ref) = within.add(self_node);
 
@@ -292,6 +293,7 @@ impl AnyExpression {
                             type_specifier,
                         }) => {
                             let b = AnyExpression::Binding(Binding {
+                                info: node_info,
                                 introduced_as: todo!("variable ID'ing"),
                                 name: identifier_string,
                                 has_type: type_specifier.map(|box v| v),
@@ -361,7 +363,7 @@ impl AnyExpression {
                     .map(|box e| AnyExpression::from_ast(within, &e, &mut cs))
                     .collect_vec();
 
-                let ae = AnyExpression::Block(StringBlock { expressions: items });
+                let ae = AnyExpression::Block(StringBlock { expressions: items, info: b.node_info });
 
                 within.add(ae).0
             }
@@ -369,10 +371,12 @@ impl AnyExpression {
                 let CastExpression {
                     box subexpr,
                     box typeref,
-                    ..
+                    node_info,
+                    
                 } = c;
                 within
                     .add(AnyExpression::Convert(Convert {
+                        info: *node_info,
                         source: AnyExpression::from_ast(
                             within,
                             subexpr,
@@ -391,6 +395,7 @@ impl AnyExpression {
                 } = ma;
 
                 let sa = StaticAccess {
+                    info: *node_info,
                     field: *name,
                     on: AnyExpression::from_ast(within, on, &mut bindings.child_scoped()),
                 };
@@ -426,6 +431,7 @@ impl AnyExpression {
                 };
 
                 let li = Literal {
+                    info: *node_info,
                     has_type: value_type,
                     value: li.clone(),
                 };
@@ -442,6 +448,7 @@ impl AnyExpression {
                 }).collect();
 
                 within.add(AnyExpression::Composite(Composite {
+                    info: *info,
                     fields,
                     base_type: struct_tr.clone(),
                     generics: generics.clone(),
@@ -477,7 +484,7 @@ impl AnyExpression {
 
                 let target_fn = Self::from_ast(within, &function, bindings);
 
-                let invocation = Invoke { target_fn, args };
+                let invocation = Invoke { info: *node_info, target_fn, args };
 
                 within.add(AnyExpression::Invoke(invocation)).0
             },
@@ -492,13 +499,14 @@ impl AnyExpression {
         to: IStr,
         args: Vec<ExpressionID>,
         generics: Vec<()>,
+        info: NodeInfo,
     ) -> ExpressionID {
         info!("making a call to {to}");
 
-        let field = AnyExpression::StaticAccess(StaticAccess { field: to, on });
+        let field = AnyExpression::StaticAccess(StaticAccess { field: to, on, info});
         let field_eid = within.add(field);
 
-        let invoke = AnyExpression::Invoke(Invoke { target_fn: field_eid.0, args });
+        let invoke = AnyExpression::Invoke(Invoke { target_fn: field_eid.0, args, info });
 
         let invoke_eid = within.add(invoke);
 
@@ -536,6 +544,8 @@ pub struct MetaData {
 }*/
 #[derive(Clone, Debug)]
 pub struct StringBlock {
+    pub info: NodeInfo,
+
     pub expressions: Vec<ExpressionID>,
 }
 
@@ -546,6 +556,8 @@ pub struct Scope {
 
 #[derive(Clone, Debug)]
 pub struct Assign {
+    pub info: NodeInfo,
+
     //meta: MetaData,
     pub rhs: ExpressionID,
     pub lhs: ExpressionID,
@@ -553,6 +565,8 @@ pub struct Assign {
 
 #[derive(Clone, Debug)]
 pub struct Compare {
+    pub info: NodeInfo,
+
     //meta: MetaData,
     pub rhs: ExpressionID,
     pub lhs: ExpressionID,
@@ -560,6 +574,8 @@ pub struct Compare {
 
 #[derive(Clone, Debug)]
 pub struct Convert {
+    pub info: NodeInfo,
+
     //meta: MetaData,
     pub source: ExpressionID,
     pub target: SyntacticTypeReferenceRef,
@@ -571,6 +587,8 @@ pub struct Convert {
 
 #[derive(Clone, Debug)]
 pub struct Iterate {
+    pub info: NodeInfo,
+
     //meta: MetaData,
     pub iterator: ExpressionID,
 
@@ -579,6 +597,8 @@ pub struct Iterate {
 
 #[derive(Clone, Debug)]
 pub struct Invoke {
+    pub info: NodeInfo,
+
     pub target_fn: ExpressionID,
     pub args: Vec<ExpressionID>,
 }
@@ -648,6 +668,8 @@ pub enum Pattern {
 
 #[derive(Clone, Debug)]
 pub struct Binding {
+    pub info: NodeInfo,
+
     name: IStr,
 
     introduced_as: VarID,
@@ -657,6 +679,8 @@ pub struct Binding {
 
 #[derive(Clone, Debug)]
 pub struct Literal {
+    pub info: NodeInfo,
+
     pub has_type: SyntacticTypeReferenceRef,
 
     pub value: LiteralExpression,
@@ -673,6 +697,7 @@ impl Literal {
 
     pub fn lit_bool(v: bool) -> Self {
         Literal {
+            info: NodeInfo::Builtin,
             has_type: SyntacticTypeReferenceRef::from_std("std::primitive::bool"),
             value: LiteralExpression {
                 node_info: cst::NodeInfo::Builtin,
@@ -683,6 +708,7 @@ impl Literal {
 
     pub fn lit_i32(val: i32) -> Self {
         Literal {
+            info: NodeInfo::Builtin,
             has_type: SyntacticTypeReferenceRef::from_std("std::primitive::i32"),
             value: LiteralExpression {
                 node_info: cst::NodeInfo::Builtin,
@@ -694,6 +720,7 @@ impl Literal {
 
 #[derive(Clone, Debug)]
 pub struct StaticAccess {
+    pub info: NodeInfo,
     pub field: IStr,
     pub on: ExpressionID,
 }
@@ -706,6 +733,8 @@ pub struct DynamicAccess {
 
 #[derive(Clone, Debug)]
 pub struct Composite {
+    pub info: NodeInfo,
+
     pub base_type: ScopedName,
 
     pub generics: Vec<SyntacticTypeReferenceRef>,

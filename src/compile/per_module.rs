@@ -1,3 +1,4 @@
+use crate::errors::CompilationError;
 use futures::future::join_all;
 use local_channel::mpsc::{Receiver as LocalReceiver, Sender as LocalSender};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
@@ -41,7 +42,7 @@ impl CompilationUnit {
         Self { domain }
     }
 
-    pub async fn launch(self) {
+    pub async fn launch(self, errors: UnboundedSender<CompilationError>) {
         info!("launching CompilationUnit across domain {:?}", self.domain);
 
         let mut senders = HashMap::new();
@@ -53,7 +54,7 @@ impl CompilationUnit {
             receivers.insert(*c, recv);
         }
 
-        let postal = Arc::new(Postal::new(senders));
+        let postal = Arc::new(Postal::new(senders, errors));
 
         let v: Vec<Group> = self
             .domain
@@ -114,12 +115,14 @@ impl Watchdog {
 /// A PostalWorker handles sending messages between Resolvers :)
 pub struct Postal {
     senders: HashMap<CtxID, tokio::sync::mpsc::UnboundedSender<Message>>,
+    errors: UnboundedSender<CompilationError>,
     exited: AtomicUsize,
 }
 
 impl Postal {
-    pub fn new(senders: HashMap<CtxID, UnboundedSender<Message>>) -> Self {
+    pub fn new(senders: HashMap<CtxID, UnboundedSender<Message>>, errors: UnboundedSender<CompilationError>) -> Self {
         Self {
+            errors,
             senders,
             exited: AtomicUsize::new(0),
         }
@@ -142,10 +145,14 @@ impl Postal {
     }*/
 
     pub fn send(&self, msg: Message) {
-        match self.senders.get(&msg.to.node) {
-            Some(v) => v.send(msg).expect("couldn't send a message through postal"),
-            None => {
-                tracing::error!("something tried to send to a nil dest! message: {msg:?}");
+        if let Content::Error(e) = msg.content {
+            self.errors.send(e);
+        } else {
+            match self.senders.get(&msg.to.node) {
+                Some(v) => v.send(msg).expect("couldn't send a message through postal"),
+                None => {
+                    tracing::error!("something tried to send to a nil dest! message: {msg:?}");
+                }
             }
         }
     }
@@ -488,6 +495,8 @@ pub enum Content {
     Transponster(Memo),
 
     NameResolution(NameResolutionMessage),
+
+    Error(CompilationError),
 }
 
 #[derive(Debug, Clone)]
