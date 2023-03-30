@@ -7,7 +7,7 @@ use crate::{
     avec::AtomicVec,
     cst::{
         self, CastExpression, ExpressionWrapper, IfThenElseExpression, LetComponentIdentifier,
-        LiteralExpression, MemberAccessExpression, SyntacticTypeReferenceRef, ScopedName, StructLiteralExpression, FunctionCall, IdentifierExpression, NodeInfo,
+        LiteralExpression, MemberAccessExpression, SyntacticTypeReferenceRef, ScopedName, StructLiteralExpression, FunctionCall, IdentifierExpression, NodeInfo, StatementExpression,
     },
     helper::interner::{IStr, Internable},
 };
@@ -454,8 +454,12 @@ impl AnyExpression {
                     generics: generics.clone(),
                 })).0
             },
-            ExpressionWrapper::Statement(_) => {
-                todo!()
+            ExpressionWrapper::Statement(s) => {
+                let StatementExpression { node_info, subexpr } = s;
+
+                let e = Self::from_ast(within, &subexpr, bindings);
+
+                e
             },
             ExpressionWrapper::While(_) => todo!(),
             ExpressionWrapper::Tuple(_) => todo!(),

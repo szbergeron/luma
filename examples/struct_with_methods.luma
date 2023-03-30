@@ -3,7 +3,7 @@ struct S {
 
     fn foo() -> std::primitive::i64 { 5 },
 
-    fn blah() -> std::primitive::i32 { 5 },
+    fn blah() -> std::primitive::i64 { 5 },
 
     /*fn boo(self: S) {
         //5 = other
@@ -14,7 +14,7 @@ struct S {
         struct S { a: self.foo() + other.foo() }
     },
 
-    fn blah(self: S) -> std::primitive::i32 {
+    fn blah(self: S) -> std::primitive::i64 {
         5
-    }
+    },
 }

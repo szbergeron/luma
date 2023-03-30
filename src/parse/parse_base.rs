@@ -518,7 +518,7 @@ impl<'lexer> Parser<'lexer> {
             .parse_function_param_list(&t, &generics)
             .join_hard(&mut t)
             .catch(&mut t)?;
-        t.take(Token::RParen).join()?;
+        let p_end = t.take(Token::RParen).join()?.end;
 
         t.take(Token::ThinArrow).join()?;
         let return_type = self
@@ -533,6 +533,10 @@ impl<'lexer> Parser<'lexer> {
 
         let info = NodeInfo::from_indices(start, end);
 
+        let header_end = return_type.resolve().unwrap().info.as_parsed().map(|ni| ni.span.end).unwrap_or(p_end);
+
+        let header = NodeInfo::from_indices(start, header_end);
+
         t.success(cst::FunctionDefinition {
             info,
             body,
@@ -543,6 +547,7 @@ impl<'lexer> Parser<'lexer> {
             name: function_name.slice,
             public: false,
             generics: inner_generics,
+            header,
         })
     }
 

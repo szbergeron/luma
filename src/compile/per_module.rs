@@ -9,7 +9,10 @@ use std::{
     cell::RefCell,
     collections::HashMap,
     rc::Rc,
-    sync::{atomic::AtomicUsize, Arc},
+    sync::{
+        atomic::{AtomicIsize, AtomicUsize, Ordering},
+        Arc,
+    },
     time::Duration,
 };
 
@@ -56,6 +59,10 @@ impl CompilationUnit {
 
         let postal = Arc::new(Postal::new(senders, errors));
 
+        StalledDog::set_first_wait(self.domain.len()); // there are this many nodes that need to
+                                                       // register before we should be waiting for
+                                                       // a stall
+
         let v: Vec<Group> = self
             .domain
             .into_iter()
@@ -68,8 +75,21 @@ impl CompilationUnit {
             .collect();
 
         println!("about to start watchdog");
-        tokio::spawn(Watchdog::new(postal.clone()).run());
+        //tokio::spawn(Watchdog::new(postal.clone()).run());
         println!("started watchdog");
+
+        std::thread::spawn(|| {
+            //std::thread::sleep(Duration::from_millis(200)); // give things time to boot up and send
+                                                            // initial messages
+            StalledDog::instance().watch();
+        });
+
+        std::thread::spawn(|| {
+            loop {
+                std::thread::sleep(Duration::from_millis(1000));
+                StalledDog::summarize();
+            }
+        });
 
         join_all(v.into_iter().map(|r| {
             info!("going to start cid group {:?}", r.for_node);
@@ -112,6 +132,107 @@ impl Watchdog {
     }
 }
 
+pub struct StalledDog {
+    epoch: AtomicUsize,
+    live_messages: AtomicIsize,
+    awake: AtomicUsize,
+    first_wait: AtomicUsize,
+}
+
+static STALLED_DOG: StalledDog = StalledDog::new();
+
+impl StalledDog {
+    pub const fn new() -> Self {
+        Self {
+            epoch: AtomicUsize::new(1),
+            live_messages: AtomicIsize::new(0),
+            awake: AtomicUsize::new(0),
+            first_wait: AtomicUsize::new(0),
+        }
+    }
+
+    pub fn nudge_epoch() {
+        Self::instance()
+            .epoch
+            .fetch_add(1, std::sync::atomic::Ordering::Release);
+    }
+
+    pub fn message_update(delta: isize) {
+        Self::instance()
+            .live_messages
+            .fetch_add(delta, Ordering::AcqRel);
+    }
+
+    pub fn wake_one() {
+        Self::instance().awake.fetch_add(1, Ordering::AcqRel);
+    }
+
+    pub fn sleep_one() {
+        Self::instance().awake.fetch_sub(1, Ordering::AcqRel);
+    }
+
+    pub fn notify_started() {
+        Self::instance().first_wait.fetch_sub(1, Ordering::Release);
+    }
+
+    pub fn set_first_wait(val: usize) {
+        Self::instance().first_wait.store(val, Ordering::SeqCst);
+    }
+
+    pub fn summarize() {
+        let i = Self::instance();
+        let e = i.epoch.load(Ordering::SeqCst);
+        let l = i.live_messages.load(Ordering::SeqCst);
+        let a = i.awake.load(Ordering::SeqCst);
+
+        println!("Current state: {e} epoch, {l} live, {a} awake");
+    }
+
+    fn watch(&self) {
+        loop {
+            std::thread::sleep(Duration::from_micros(50)); // basically an annoying spinlock
+                                                           //let prior_epoch = self.epoch.load(std::sync::atomic::Ordering::Acquire);
+
+            let nodes_first_run = self.first_wait.load(Ordering::Acquire);
+
+            if nodes_first_run > 0 {
+                continue;
+            }
+
+            let awake = self.awake.load(std::sync::atomic::Ordering::Acquire);
+
+            if awake == 0 {
+                let live = self.live_messages.load(Ordering::Acquire);
+                if live == 0 {
+                    self.check_stalled();
+                }
+            } else {
+                continue;
+            }
+        }
+    }
+
+    /// Our early warning has fired, so we check here with an expensive check cycle
+    /// This means that both the number of messages that are live was zero and in close proximity
+    /// the number of awake nodes was zero
+    fn check_stalled(&self) {
+        let prior_epoch = self.epoch.load(Ordering::SeqCst);
+
+        let awake = self.awake.load(Ordering::SeqCst);
+        let live_messages = self.live_messages.load(Ordering::SeqCst);
+
+        let later_epoch = self.epoch.load(Ordering::SeqCst);
+
+        if awake == 0 && live_messages == 0 && prior_epoch == later_epoch {
+            panic!("system is stalled");
+        }
+    }
+
+    fn instance() -> &'static Self {
+        &STALLED_DOG
+    }
+}
+
 /// A PostalWorker handles sending messages between Resolvers :)
 pub struct Postal {
     senders: HashMap<CtxID, tokio::sync::mpsc::UnboundedSender<Message>>,
@@ -120,7 +241,10 @@ pub struct Postal {
 }
 
 impl Postal {
-    pub fn new(senders: HashMap<CtxID, UnboundedSender<Message>>, errors: UnboundedSender<CompilationError>) -> Self {
+    pub fn new(
+        senders: HashMap<CtxID, UnboundedSender<Message>>,
+        errors: UnboundedSender<CompilationError>,
+    ) -> Self {
         Self {
             errors,
             senders,
@@ -146,10 +270,14 @@ impl Postal {
 
     pub fn send(&self, msg: Message) {
         if let Content::Error(e) = msg.content {
-            self.errors.send(e);
+            let _ = self.errors.send(e);
         } else {
             match self.senders.get(&msg.to.node) {
-                Some(v) => v.send(msg).expect("couldn't send a message through postal"),
+                Some(v) => 
+                {
+                    StalledDog::message_update(1);
+                    v.send(msg).expect("couldn't send a message through postal");
+                }
                 None => {
                     tracing::error!("something tried to send to a nil dest! message: {msg:?}");
                 }
@@ -258,11 +386,7 @@ impl Group {
         // in these futures actually don't care so long as
         // the entire group of them is moved at a time
         let exe = unsafe { Executor::new() };
-        /*let exe_boxed = Box::pin(exe);
-        let exe_ptr = Pin::into_inner(exe_boxed.as_ref()) as *const Executor;
-        let exer = unsafe { exe_ptr.as_ref().unwrap() };*/
         let exer = static_pinned_leaked(exe);
-        //let exer = unsafe { (&exe as *const Executor).as_ref().unwrap() };
 
         let (res_s, res_r) = local_channel::mpsc::channel();
         let (qk_s, qk_r) = local_channel::mpsc::channel();
@@ -337,16 +461,32 @@ impl Group {
                 router.thread(),
                 format!("router for node {:?}", self.for_node),
             );
+            
+            StalledDog::wake_one();
+            StalledDog::notify_started();
 
             //exe.install(bridge.thread());
 
             // we don't use Bridge anymore, since doing the bridge
             // operation actually requires knowing about the executor
             loop {
+
+                while let Ok(m) = self.listen_to.try_recv() {
+                    // we took one out, so push it into router
+                    StalledDog::message_update(-1);
+                    rtr_s.send(m).expect("couldn't push into rtr?");
+                }
+
                 info!("doing a step loop");
                 // we want to wait until everything internal stabilizes,
                 // and then only step one external message at a time
                 let stepped_any = exer.until_stable(); // not async since it is, itself, an executor
+                                                       //
+                if stepped_any {
+                    // we haven't been stalled this round, nudge before sleeping again
+                    //println!("stepped some internally");
+                    StalledDog::nudge_epoch();
+                }
 
                 // now everything is sleeping, so long as the
                 // services are well behaved (we have to assume they are!),
@@ -361,13 +501,20 @@ impl Group {
                 // rely on this to not be a blocking channel
                 info!("sending out all outgoing messages");
                 while let Ok(m) = send_out_r.recv() {
+                    // add 1 live message since we're sending one out
+                    //StalledDog::message_update(1);
                     self.with_postal.send(m);
                 }
 
                 info!("sent all outgoing messages");
 
+                // go to sleep before waiting on new messages
+                StalledDog::sleep_one();
                 match self.listen_to.recv().await {
                     Some(m) => {
+                        StalledDog::wake_one();
+                        // we took one out, so push it into router
+                        StalledDog::message_update(-1);
                         rtr_s.send(m).expect("couldn't push into rtr?");
                     }
                     None => todo!(),

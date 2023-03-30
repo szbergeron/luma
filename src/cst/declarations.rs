@@ -424,6 +424,7 @@ impl TopLevel {
 #[derive(Debug, Clone)]
 pub struct FunctionDefinition {
     pub info: NodeInfo,
+    pub header: NodeInfo,
 
     pub public: bool,
     pub name: IStr,

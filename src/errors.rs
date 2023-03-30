@@ -1,5 +1,3 @@
-use std::fmt::format;
-
 use colored::*;
 use itertools::Itertools;
 
@@ -44,17 +42,23 @@ impl CompilationError {
                     reason_for_failure,
                 } = te;
 
-                let from_printed = ep.contextualize(
-                    from.span(),
-                    files,
-                    "Tried to take a value that was produced here".intern(),
-                );
+                match (from.span(), into.span()) {
+                    (NodeInfo::Builtin, NodeInfo::Builtin) => {
+                        ep.new_error("compiler error: failed unifying builtins?");
+                    },
+                    (NodeInfo::Builtin, p @ NodeInfo::Parsed(_)) => {
+                        ep.contextualize(p, files, "Tried to put a literal of the wrong type into this value:".intern());
+                    },
+                    (p @ NodeInfo::Parsed(_), NodeInfo::Builtin) => {
+                        ep.contextualize(p, files, "Tried to take this value and unify it with a literal of the wrong type:".intern());
+                    },
+                    (p1 @ NodeInfo::Parsed(_), p2 @ NodeInfo::Parsed(_)) => {
+                        ep.new_error("Type Unification Failed");
 
-                let into_printed = ep.contextualize(
-                    into.span(),
-                    files,
-                    "And tried to put it into a value that came from this constraint:".intern(),
-                );
+                        ep.contextualize(p1, files, "Tried to take a value that came from here:".intern());
+                        ep.contextualize(p2, files, "And put it into a value that was resolved near here:".intern());
+                    },
+                }
 
                 ep.note_line(format!("The reason the unification was attempted is: {reason_for_unification}"));
                 ep.note_line(format!("The reason the unification failed was: {reason_for_failure}"));
@@ -103,7 +107,7 @@ impl ErrorPrinter {
     pub fn quick_function(&self, ctid: CtxID, files: &FileRegistry) {
         match &ctid.resolve().inner {
             NodeUnion::Function(fd, _) => {
-                self.contextualize(fd.info, files, "this function vvvv".intern());
+                self.contextualize(fd.header, files, "this function vvvv".intern());
             },
             _ => unreachable!()
         }

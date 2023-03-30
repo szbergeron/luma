@@ -2,11 +2,11 @@ mod primitive {
 
     struct i64 {
         fn operator[_+_](self: std::primitive::i64, other: std::primitive::i64) -> std::primitive::i64 {
-            5
+            self + other
         },
 
         fn operator[_/_](self: std::primitive::i64, other: std::primitive::i64) -> std::primitive::i64 {
-            0 + 2
+            self / other
         },
 
         fn operator[_-_](self: std::primitive::i64, other: std::primitive::i64) -> std::primitive::i64 {
@@ -14,17 +14,29 @@ mod primitive {
         },
     }
 
+    struct Unit {}
+
     struct i32 {
-        fn operator[_*_](self: std::primitive::i32, other: std::primitive::i32) -> std::primitive::i64 {
+        fn operator[_*_](self: std::primitive::i32, other: std::primitive::i32) -> std::primitive::i32 {
             //5 + 3 / 2
             //3 / 2
             //3 + 3 / 2 - 5
-            3.operator[_+_]()
+            //3.operator[_+_]()
+            self * other
         },
 
-        fn foo(a: i32, b: i64) -> std::primitive::i32 {
+        fn incorrect_second_operand_type(a: i32, b: i64) -> std::primitive::i32 {
             a * b
+            //3 / a;
         }
+    }
+
+    struct Wrap<T> {
+        //var f: T,
+    }
+
+    fn w() -> std::primitive::Wrap<std::primitive::i32> {
+        struct std::primitive::Wrap { }
     }
 }
 

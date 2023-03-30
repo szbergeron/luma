@@ -109,6 +109,7 @@ pub struct StructuralDataDefinition {
 #[derive(Debug, Clone)]
 pub struct FunctionDefinition {
     pub info: cst::NodeInfo,
+    pub header: cst::NodeInfo,
     pub name: IStr,
 
     pub is_method: bool,
@@ -130,6 +131,7 @@ impl FunctionDefinition {
             return_type,
             params,
             generics,
+            header,
         } = f;
 
         let generic_names = generics.iter().map(|(name, ty)| *name).collect_vec();
@@ -154,6 +156,7 @@ impl FunctionDefinition {
             implementation: Some(*body),
             return_type,
             parameters,
+            header,
         }
     }
 }

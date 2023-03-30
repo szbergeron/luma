@@ -707,24 +707,30 @@ impl<'lexer> Parser<'lexer> {
                     .hint("Any scoped type requires a typename to follow the scope")
                     .join()?;
 
-                match t.try_take(Token::CmpLessThan) {
+                let generics = match t.try_take(Token::CmpLessThan) {
                     Some(tw) => {
                         // parse a generic
                         let tl = self
                             .parse_type_list(&t, Token::CmpGreaterThan, with_generics)
                             .join_hard(&mut t)
                             .catch(&mut t)?;
-                        todo!("handle parameterization for type constraint")
+
+                        t.take(Token::CmpGreaterThan).join()?;
+                        //todo!("handle parameterization for type constraint")
+                        Some(tl)
                     }
                     None => {
                         // do nothing
+                        None
                     }
-                }
+                };
 
                 scope.scope.push(typename.slice);
 
                 let inner = if let [one] = scope.scope.as_slice() && with_generics.contains(one) {
                     cst::SyntacticTypeReferenceInner::Generic { label: *one }
+                } else if let Some(v) = generics {
+                    cst::SyntacticTypeReferenceInner::Parameterized { name: ScopedName::new(scope.scope), generics: v }
                 } else {
                     cst::SyntacticTypeReferenceInner::Single { name: ScopedName::new(scope.scope) }
                 };

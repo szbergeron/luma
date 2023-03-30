@@ -104,6 +104,7 @@ impl Quark {
     pub fn add_unify<R: Into<IStr>>(&self, from: TypeID, into: TypeID, reason: R) {
         let reason: IStr = reason.into();
         tracing::debug!("unifies {from:?} into {into:?} because {reason}");
+        tracing::warn!("borrows instances for add_unify");
         let mut refm = self.instances.borrow_mut();
         let mut resulting_unifies = Vec::new();
 
@@ -154,6 +155,9 @@ impl Quark {
             }
         }
 
+        // this add_unify could also call it
+        std::mem::drop(refm);
+
         for Unify { from, into } in resulting_unifies {
             self.add_unify(from, into, "resulting unify from an instance add".intern());
         }
@@ -174,6 +178,7 @@ impl Quark {
     /// and try to make them symbolic within some Quark context
     ///
     /// this turns it into either an instance or a TypeID, depending on how well things go
+    #[async_recursion::async_recursion(?Send)]
     pub async fn resolve_typeref(
         &'static self,
         tr: SyntacticTypeReferenceRef,
@@ -242,7 +247,38 @@ impl Quark {
                 todo!("need to actually make tuple types")
             }
             SyntacticTypeReferenceInner::Parameterized { name, generics } => {
-                todo!("handle generics for tr")
+                let base = NameResolver {
+                    name: name.clone(),
+                    based_in: from_base,
+                    reply_to: self.node_id,
+                    service: Service::Quark(),
+                };
+                let base = base.using_context(&self.conversations).await;
+
+                let base = match base {
+                    Err(e) => {
+                        tracing::error!("report import errors");
+                        return self.new_tid(NodeInfo::Builtin);
+                    },
+                    Ok(v) => v,
+                };
+                    
+
+                let mut resolved_generics = Vec::new();
+
+                for generic in generics {
+                    let resolved = self.resolve_typeref(generic.intern(), with_generics, from_base).await;
+
+                    resolved_generics.push(resolved);
+                }
+
+                let (inst, unify) = Instance::with_generics(base, self, resolved_generics).await;
+
+                for Unify { from, into } in unify {
+                    self.add_unify(from, into, "constructing instance with generics made these ties");
+                }
+
+                self.introduce_instance(inst, trv.info)
             }
             SyntacticTypeReferenceInner::Reference { to, mutable } => {
                 let nr = NameResolver {
@@ -263,6 +299,7 @@ impl Quark {
     }
 
     pub fn with_instance<F, R>(&self, tid: TypeID, f: F) -> R where F: FnOnce(&Instance) -> R {
+        tracing::warn!("borrows instances for with_instance");
         let mut refm = self.instances.borrow_mut();
         if let Some(v) = refm.v_for(tid) {
             f(v)
@@ -277,6 +314,7 @@ impl Quark {
 
             self.add_unify(new_tid, tid, "identity unify since no instance existed for that tid");
 
+            tracing::warn!("borrows instances for with_instance after unify");
             let refm = self.instances.borrow_mut();
             let v = f(refm.v_for(new_tid).unwrap());
 
@@ -292,6 +330,7 @@ impl Quark {
         // make a new tid inst here since the regular one automatically adds it to unifier
         let instance_tid = TypeID(uuid::Uuid::new_v4(), tid.span());
 
+        tracing::warn!("borrows instances for assign_instance");
         let mut refm = self.instances.borrow_mut();
 
         refm.add_kv(instance_tid, instance);
@@ -311,6 +350,7 @@ impl Quark {
     pub fn introduce_instance(&self, instance: Instance, span: NodeInfo) -> TypeID {
         let instance_tid = TypeID(Uuid::new_v4(), span);
 
+        tracing::warn!("borrows instances for introduce_instance");
         let mut refm = self.instances.borrow_mut();
 
         refm.add_kv(instance_tid, instance);
@@ -321,6 +361,7 @@ impl Quark {
     pub fn new_tid(&self, for_span: NodeInfo) -> TypeID {
         let tid = TypeID(uuid::Uuid::new_v4(), for_span);
 
+        tracing::warn!("borrows instances for new_tid");
         self.instances.borrow_mut().add_k(tid);
 
         tracing::debug!("creates tid {tid:?}");

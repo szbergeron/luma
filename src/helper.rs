@@ -9,12 +9,6 @@ use std::sync::{Arc, RwLock};
 
 use smallvec::SmallVec;
 
-use crate::compile::file_tree::FileRegistry;
-use crate::cst::NodeInfo;
-use crate::mir::quark::{TypeError, TypeID};
-
-use self::interner::IStr;
-
 pub mod interner {
     use std::{
         fmt::{Debug, Display},

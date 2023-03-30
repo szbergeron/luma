@@ -192,9 +192,9 @@ impl CstNode for WildcardExpression {
 
 #[derive(Debug, Clone)]
 pub struct StatementExpression {
-    node_info: NodeInfo,
+    pub node_info: NodeInfo,
 
-    subexpr: Box<ExpressionWrapper>,
+    pub subexpr: Box<ExpressionWrapper>,
 }
 
 impl StatementExpression {

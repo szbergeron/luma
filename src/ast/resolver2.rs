@@ -787,6 +787,7 @@ pub struct CompositeResolution {
     pub is_at: CtxID,
 }
 
+#[derive(Clone)]
 pub struct NameResolver {
     pub name: ScopedName,
     pub based_in: CtxID,
