@@ -517,12 +517,14 @@ pub enum ParseResultError {
 impl ParseResultError {
     pub fn start(&self) -> Option<CodeLocation> {
         match self {
-                ParseResultError::UnexpectedToken(tw, _, _) => Some(tw.start),
-                ParseResultError::SemanticIssue(_, start, _end) => Some(*start),
-                Self::ErrorWithHint { hint, original } => {
-                    original.iter().find(|e| e.start().is_some()).map(|e| e.start()).unwrap_or(None)
-                },
-                _ => None,
+            ParseResultError::UnexpectedToken(tw, _, _) => Some(tw.start),
+            ParseResultError::SemanticIssue(_, start, _end) => Some(*start),
+            Self::ErrorWithHint { hint, original } => original
+                .iter()
+                .find(|e| e.start().is_some())
+                .map(|e| e.start())
+                .unwrap_or(None),
+            _ => None,
         }
     }
 

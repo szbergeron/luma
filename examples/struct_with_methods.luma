@@ -18,3 +18,11 @@ struct S {
         5
     },
 }
+
+/*struct T<U> {
+    var f: U,
+
+    fn blah() -> std::primitive::i32 {
+        struct T { f: 5 }.f
+    }
+}*/

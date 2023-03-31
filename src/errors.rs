@@ -45,27 +45,48 @@ impl CompilationError {
                 match (from.span(), into.span()) {
                     (NodeInfo::Builtin, NodeInfo::Builtin) => {
                         ep.new_error("compiler error: failed unifying builtins?");
-                    },
+                    }
                     (NodeInfo::Builtin, p @ NodeInfo::Parsed(_)) => {
-                        ep.contextualize(p, files, "Tried to put a literal of the wrong type into this value:".intern());
-                    },
+                        ep.contextualize(
+                            p,
+                            files,
+                            "Tried to put a literal of the wrong type into this value:".intern(),
+                        );
+                    }
                     (p @ NodeInfo::Parsed(_), NodeInfo::Builtin) => {
                         ep.contextualize(p, files, "Tried to take this value and unify it with a literal of the wrong type:".intern());
-                    },
+                    }
                     (p1 @ NodeInfo::Parsed(_), p2 @ NodeInfo::Parsed(_)) => {
                         ep.new_error("Type Unification Failed");
 
-                        ep.contextualize(p1, files, "Tried to take a value that came from here:".intern());
-                        ep.contextualize(p2, files, "And put it into a value that was resolved near here:".intern());
-                    },
+                        ep.contextualize(
+                            p1,
+                            files,
+                            "Tried to take a value that came from here:".intern(),
+                        );
+                        ep.contextualize(
+                            p2,
+                            files,
+                            "And put it into a value that was resolved near here:".intern(),
+                        );
+                    }
                 }
 
-                ep.note_line(format!("The reason the unification was attempted is: {reason_for_unification}"));
-                ep.note_line(format!("The reason the unification failed was: {reason_for_failure}"));
+                ep.note_line(format!(
+                    "The reason the unification was attempted is: {reason_for_unification}"
+                ));
+                ep.note_line(format!(
+                    "The reason the unification failed was: {reason_for_failure}"
+                ));
             }
             CompilationError::ArgConversionError(ace) => {
                 ep.new_error("Argument Conversion Error");
-                let ArgConversionError { argument, parameter, comment, for_function } = ace;
+                let ArgConversionError {
+                    argument,
+                    parameter,
+                    comment,
+                    for_function,
+                } = ace;
 
                 ep.quick_function(for_function, files);
 
@@ -76,13 +97,16 @@ impl CompilationError {
                 }
 
                 if let Some((v, n)) = parameter {
-                    ep.contextualize(v.span(), files, "and tried to apply it to this parameter".intern());
+                    ep.contextualize(
+                        v.span(),
+                        files,
+                        "and tried to apply it to this parameter".intern(),
+                    );
                 } else {
                     ep.line("but did not accept any parameter at that position".to_owned());
                 }
 
                 ep.line(format!("That was the cause of this error: {comment}"));
-
             }
         }
     }
@@ -91,30 +115,38 @@ impl CompilationError {
 pub struct ErrorPrinter {}
 
 use crate::{
+    ast::tree::{CtxID, NodeUnion},
     compile::file_tree::FileRegistry,
     cst::NodeInfo,
     helper::interner::{IStr, Internable, SpurHelper},
     lex::CodeLocation,
-    mir::{quark::TypeID, transponster::ArgConversionError}, ast::tree::{CtxID, NodeUnion},
+    mir::{quark::TypeID, transponster::ArgConversionError},
 };
 
 impl ErrorPrinter {
     pub fn new_error(&self, description: &str) {
         println!();
         println!();
-        println!("{}: {}", "error".bold().bright_red(), description.bold().bright_red());
+        println!(
+            "{}: {}",
+            "error".bold().bright_red(),
+            description.bold().bright_red()
+        );
     }
     pub fn quick_function(&self, ctid: CtxID, files: &FileRegistry) {
         match &ctid.resolve().inner {
             NodeUnion::Function(fd, _) => {
                 self.contextualize(fd.header, files, "this function vvvv".intern());
-            },
-            _ => unreachable!()
+            }
+            _ => unreachable!(),
         }
     }
 
     pub fn note_line(&self, line: String) {
-        println!("{}", "This additional information was given for solving the issue:".bright_yellow());
+        println!(
+            "{}",
+            "This additional information was given for solving the issue:".bright_yellow()
+        );
         println!("   {} {}", ">".bright_blue().bold(), line.blue().bold());
     }
 
@@ -141,7 +173,13 @@ impl ErrorPrinter {
         }
     }
 
-    pub fn print_context(&self, start: CodeLocation, end: CodeLocation, lines: &Vec<&str>, filename: &str) {
+    pub fn print_context(
+        &self,
+        start: CodeLocation,
+        end: CodeLocation,
+        lines: &Vec<&str>,
+        filename: &str,
+    ) {
         // print context lines before
 
         match (start, end) {
@@ -154,7 +192,10 @@ impl ErrorPrinter {
                 let start_char = start.offset;
 
                 let filename = filename.bold();
-                println!("  {} {filename}  starting at {start_line}:{start_char}", "-->".blue().bold());
+                println!(
+                    "  {} {filename}  starting at {start_line}:{start_char}",
+                    "-->".blue().bold()
+                );
 
                 let mut pad = 0;
                 for line_num in start_line..(end_line + 1) {
@@ -171,7 +212,7 @@ impl ErrorPrinter {
                     let line = line.bold();
                     let line = format!("{line}");
                     let line = line.as_str();
-                    //let line = 
+                    //let line =
                     /*println!("|{}", line.blue().bold());
 
                     //print!("|{

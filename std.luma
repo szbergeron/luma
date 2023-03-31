@@ -25,7 +25,7 @@ mod primitive {
             self * other
         },
 
-        fn incorrect_second_operand_type(a: i32, b: i64) -> std::primitive::i32 {
+        fn incorrect_second_operand_type(a: i32, b: i32) -> std::primitive::i32 {
             a * b
             //3 / a;
         }

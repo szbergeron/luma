@@ -13,7 +13,7 @@ use std::{
         atomic::{AtomicIsize, AtomicUsize, Ordering},
         Arc,
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use crate::{
@@ -63,6 +63,16 @@ impl CompilationUnit {
                                                        // register before we should be waiting for
                                                        // a stall
 
+        let postal2 = postal.clone();
+        std::thread::spawn(|| {
+            //std::thread::sleep(Duration::from_millis(200)); // give things time to boot up and send
+            // initial messages
+            //StalledDog::instance().watch();
+
+            let d = Director {};
+            d.entry(postal2);
+        });
+
         let v: Vec<Group> = self
             .domain
             .into_iter()
@@ -78,17 +88,9 @@ impl CompilationUnit {
         //tokio::spawn(Watchdog::new(postal.clone()).run());
         println!("started watchdog");
 
-        std::thread::spawn(|| {
-            //std::thread::sleep(Duration::from_millis(200)); // give things time to boot up and send
-                                                            // initial messages
-            StalledDog::instance().watch();
-        });
-
-        std::thread::spawn(|| {
-            loop {
-                std::thread::sleep(Duration::from_millis(1000));
-                StalledDog::summarize();
-            }
+        std::thread::spawn(|| loop {
+            std::thread::sleep(Duration::from_millis(1000));
+            StalledDog::summarize();
         });
 
         join_all(v.into_iter().map(|r| {
@@ -134,9 +136,13 @@ impl Watchdog {
 
 pub struct StalledDog {
     epoch: AtomicUsize,
+    quark_progress: AtomicUsize,
+    transponster_progress: AtomicUsize,
+
     live_messages: AtomicIsize,
     awake: AtomicUsize,
     first_wait: AtomicUsize,
+    //zero_events: OnceCell<(Sender<()>, Receiver<()>)>,
 }
 
 static STALLED_DOG: StalledDog = StalledDog::new();
@@ -145,6 +151,8 @@ impl StalledDog {
     pub const fn new() -> Self {
         Self {
             epoch: AtomicUsize::new(1),
+            quark_progress: AtomicUsize::new(1),
+            transponster_progress: AtomicUsize::new(1),
             live_messages: AtomicIsize::new(0),
             awake: AtomicUsize::new(0),
             first_wait: AtomicUsize::new(0),
@@ -157,10 +165,31 @@ impl StalledDog {
             .fetch_add(1, std::sync::atomic::Ordering::Release);
     }
 
-    pub fn message_update(delta: isize) {
+    pub fn nudge_quark() {
+        //println!("Quark made progress");
+        Self::instance()
+            .quark_progress
+            .fetch_add(1, std::sync::atomic::Ordering::Release);
+    }
+
+    pub fn nudge_transponster() {
+        Self::instance()
+            .transponster_progress
+            .fetch_add(1, std::sync::atomic::Ordering::Release);
+    }
+
+    fn message_update(delta: isize) {
         Self::instance()
             .live_messages
             .fetch_add(delta, Ordering::AcqRel);
+    }
+
+    pub fn inc_live_message() {
+        Self::message_update(1);
+    }
+
+    pub fn dec_live_message() {
+        Self::message_update(-1);
     }
 
     pub fn wake_one() {
@@ -168,7 +197,14 @@ impl StalledDog {
     }
 
     pub fn sleep_one() {
-        Self::instance().awake.fetch_sub(1, Ordering::AcqRel);
+        let inst = Self::instance();
+        let prior = inst.awake.fetch_sub(1, Ordering::AcqRel);
+
+        let now = prior - 1;
+
+        if now == 0 {
+            // could add code to do a notify through channel on this event
+        }
     }
 
     pub fn notify_started() {
@@ -177,6 +213,19 @@ impl StalledDog {
 
     pub fn set_first_wait(val: usize) {
         Self::instance().first_wait.store(val, Ordering::SeqCst);
+    }
+
+    /// Blocks until node network has booted
+    pub fn wait_node_startup(&self) {
+        loop {
+            let nodes_first_run = self.first_wait.load(Ordering::Acquire);
+
+            if nodes_first_run > 0 {
+                continue;
+            } else {
+                return;
+            }
+        }
     }
 
     pub fn summarize() {
@@ -188,24 +237,23 @@ impl StalledDog {
         println!("Current state: {e} epoch, {l} live, {a} awake");
     }
 
-    fn watch(&self) {
+    fn wait_stalled(&self) {
         loop {
             std::thread::sleep(Duration::from_micros(50)); // basically an annoying spinlock
                                                            //let prior_epoch = self.epoch.load(std::sync::atomic::Ordering::Acquire);
-
-            let nodes_first_run = self.first_wait.load(Ordering::Acquire);
-
-            if nodes_first_run > 0 {
-                continue;
-            }
 
             let awake = self.awake.load(std::sync::atomic::Ordering::Acquire);
 
             if awake == 0 {
                 let live = self.live_messages.load(Ordering::Acquire);
+
                 if live == 0 {
-                    self.check_stalled();
+                    if self.check_stalled() {
+                        break;
+                    }
                 }
+
+                continue;
             } else {
                 continue;
             }
@@ -215,7 +263,7 @@ impl StalledDog {
     /// Our early warning has fired, so we check here with an expensive check cycle
     /// This means that both the number of messages that are live was zero and in close proximity
     /// the number of awake nodes was zero
-    fn check_stalled(&self) {
+    fn check_stalled(&self) -> bool {
         let prior_epoch = self.epoch.load(Ordering::SeqCst);
 
         let awake = self.awake.load(Ordering::SeqCst);
@@ -224,12 +272,87 @@ impl StalledDog {
         let later_epoch = self.epoch.load(Ordering::SeqCst);
 
         if awake == 0 && live_messages == 0 && prior_epoch == later_epoch {
-            panic!("system is stalled");
+            //panic!("system is stalled");
+            return true;
+        } else {
+            return false;
         }
     }
 
     fn instance() -> &'static Self {
         &STALLED_DOG
+    }
+}
+
+struct Director {
+    //
+}
+
+impl Director {
+    pub fn entry(&self, postal: Arc<Postal>) {
+        let begin = Instant::now();
+
+        println!("entry for director");
+        let st = StalledDog::instance();
+        // first, wait for entire network to start up
+        st.wait_node_startup();
+
+        // now, wait for the very first stall and converge
+        st.wait_stalled();
+        println!("finished first stall wait");
+
+        // now enter the bi-phasic wait
+        loop {
+            println!("Starting a loop for phase");
+            let qk_before = st.quark_progress.load(Ordering::SeqCst);
+            let tp_before = st.transponster_progress.load(Ordering::SeqCst);
+
+            // wait for quark to finish phase
+            st.wait_stalled();
+            println!("Quark stalled for phase");
+
+            // send phase change notification
+
+            // wait for transponster to finish phase and elect/unify some field
+            st.wait_stalled();
+            println!("Transponster stalled for phase");
+
+            let qk_after = st.quark_progress.load(Ordering::SeqCst);
+            let tp_after = st.transponster_progress.load(Ordering::SeqCst);
+
+            if qk_before == qk_after && tp_before == tp_after {
+                println!(
+                    "The system has reached a converged final state, tell it to emit any errors"
+                );
+
+                postal.send_broadcast(Message {
+                    to: Destination::nil(),
+                    from: Destination::nil(),
+                    send_reply_to: Destination::nil(),
+                    conversation: Uuid::new_v4(),
+                    content: Content::Quark(Photon::CompilationStalled()),
+                });
+                //
+
+                st.wait_stalled();
+
+                println!("Exiting system");
+
+                let end = Instant::now();
+
+                let delta = end - begin;
+                let micros = delta.as_micros();
+
+                println!("Phase section took {} microseconds", micros);
+
+                // send notifications to all nodes to ask them to emit any late errors
+                std::process::exit(0);
+            } else {
+                //println!("Values for qk and such: {qk_before}, {qk_after}, {tp_before}, {tp_after}");
+            }
+
+            // send message to quark to begin phase
+        }
     }
 }
 
@@ -273,9 +396,8 @@ impl Postal {
             let _ = self.errors.send(e);
         } else {
             match self.senders.get(&msg.to.node) {
-                Some(v) => 
-                {
-                    StalledDog::message_update(1);
+                Some(v) => {
+                    StalledDog::inc_live_message();
                     v.send(msg).expect("couldn't send a message through postal");
                 }
                 None => {
@@ -443,6 +565,10 @@ impl Group {
             // to drop then
             //let pinned = Box::pin(resolver);
 
+            /*exer.install(async {
+                panic!("woo")
+            }, "blah");*/
+
             exer.install(
                 resolver_static_ref.thread(),
                 format!("resolver for node {:?}", self.for_node),
@@ -461,7 +587,7 @@ impl Group {
                 router.thread(),
                 format!("router for node {:?}", self.for_node),
             );
-            
+
             StalledDog::wake_one();
             StalledDog::notify_started();
 
@@ -470,10 +596,9 @@ impl Group {
             // we don't use Bridge anymore, since doing the bridge
             // operation actually requires knowing about the executor
             loop {
-
                 while let Ok(m) = self.listen_to.try_recv() {
                     // we took one out, so push it into router
-                    StalledDog::message_update(-1);
+                    StalledDog::dec_live_message();
                     rtr_s.send(m).expect("couldn't push into rtr?");
                 }
 
@@ -578,6 +703,10 @@ impl Router {
                 // the message is for a local service
                 match v.to.service {
                     Service::Broadcast() => {
+                        //panic!("broadcast?");
+
+                        //StalledDog::dec_live_message(); // we "consume" this message
+
                         info!("it was a broadcast message");
                         for (serv, send) in self.send_on.iter_mut() {
                             if *serv == Service::Router() {
@@ -586,7 +715,13 @@ impl Router {
                                 continue;
                             } else {
                                 info!("sends to dest {:?}", v.from);
-                                let _ = send.send(v.clone());
+                                let res = send.send(v.clone());
+
+                                if let Ok(_) = res {
+                                    // sent a message successfully, so another live one
+                                    // is introduced, but it isn't "on the internode network"
+                                    // so it isn't tracked (really)
+                                }
                             }
                         }
                     }
@@ -653,7 +788,11 @@ pub enum AnnounceMessage {
 
 /// How Quarks qtalk to each other :P
 #[derive(Debug, Clone)]
-pub enum Photon {}
+pub enum Photon {
+    /// After this point, if any typevars are Free(),
+    /// they will never be unified so the program does not typecheck
+    CompilationStalled(),
+}
 
 #[derive(Debug, Clone)]
 pub enum ControlMessage {

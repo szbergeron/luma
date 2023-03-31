@@ -154,7 +154,7 @@ impl<'r> ParseTreeNode<'r> {
                     let e = e.into_panic();
                     //std::panic::resume_unwind(e);
                 })
-                    .unwrap()
+                .unwrap()
             })
             .collect();
         //let parsed = parsed.into_iter().map(|r| r.unwrap()).collect();

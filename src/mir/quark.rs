@@ -1,4 +1,7 @@
-use crate::errors::{CompilationError, TypeUnificationError};
+use crate::{
+    compile::per_module::StalledDog,
+    errors::{CompilationError, TypeUnificationError},
+};
 use std::{cell::RefCell, collections::HashMap, pin::Pin, rc::Rc};
 
 use tracing::{info, warn};
@@ -6,26 +9,28 @@ use uuid::Uuid;
 
 use crate::{
     ast::{
-        self,
-        executor::Executor,
-        resolver2::NameResolver,
-        tree::CtxID,
-        types::FunctionDefinition,
+        self, executor::Executor, resolver2::NameResolver, tree::CtxID, types::FunctionDefinition,
     },
     compile::per_module::{
         Content, ControlMessage, ConversationContext, Destination, Earpiece, Message, Service,
     },
-    cst::{ExpressionWrapper, ScopedName, SyntacticTypeReferenceInner, SyntacticTypeReferenceRef, self, NodeInfo},
+    cst::{
+        self, ExpressionWrapper, NodeInfo, ScopedName, SyntacticTypeReferenceInner,
+        SyntacticTypeReferenceRef,
+    },
     helper::interner::{IStr, Internable},
-    mir::{expressions::{AnyExpression, Bindings, Composite, ExpressionContext, Literal, VarID}, transponster::InstanceOf},
+    mir::{
+        expressions::{AnyExpression, Bindings, Composite, ExpressionContext, Literal, VarID},
+        transponster::InstanceOf,
+    },
 };
 
+use super::transponster::InstanceID;
 use super::{
     expressions::ExpressionID,
     sets::Unifier,
     transponster::{Instance, Unify, UsageHandle},
 };
-use super::transponster::InstanceID;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct TypeID(uuid::Uuid, cst::NodeInfo);
@@ -68,7 +73,6 @@ pub struct Quark {
     once_know: RefCell<HashMap<TypeID, Vec<Action>>>,
 
     //once_know_ctx: RefCell<HashMap<TypeID, Rc<UnsafeAsyncCompletable<CtxID>>>>,
-
     sender: local_channel::mpsc::Sender<Message>,
 
     pub executor: &'static Executor,
@@ -77,7 +81,29 @@ pub struct Quark {
 
     pub node_id: CtxID,
 
+    pub type_errors: RefCell<ErrorState>,
+
     conversations: ConversationContext,
+}
+
+pub struct ErrorState {
+    pub is_tainted: bool,
+
+    pub errors_to_be_flushed: Vec<CompilationError>,
+}
+
+impl ErrorState {
+    pub fn new() -> Self {
+        Self {
+            is_tainted: false,
+            errors_to_be_flushed: vec![],
+        }
+    }
+
+    pub fn push(&mut self, e: CompilationError) {
+        self.is_tainted = true;
+        self.errors_to_be_flushed.push(e);
+    }
 }
 
 pub enum Action {
@@ -102,28 +128,34 @@ pub enum Action {
 
 impl Quark {
     pub fn add_unify<R: Into<IStr>>(&self, from: TypeID, into: TypeID, reason: R) {
+        // this could be batched later for perf improvement, but for now just
+        // do an increment every time
+        StalledDog::nudge_quark();
+
         let reason: IStr = reason.into();
         tracing::debug!("unifies {from:?} into {into:?} because {reason}");
         tracing::warn!("borrows instances for add_unify");
         let mut refm = self.instances.borrow_mut();
         let mut resulting_unifies = Vec::new();
 
-        let res = refm
-            .unify(from, into, |a, b| {
-                tracing::info!("having to merge two instances");
-                let original_a = a.clone();
-                match a.unify_with(b, Unify { from, into }, self) {
-                    Ok((v, u)) => {
-                        resulting_unifies = u;
-                        Ok(v)
-                    }
-                    Err(e) => Err(e),
+        let res = refm.unify(from, into, |a, b| {
+            tracing::info!("having to merge two instances");
+            let original_a = a.clone();
+            match a.unify_with(b, Unify { from, into }, self) {
+                Ok((v, u)) => {
+                    resulting_unifies = u;
+                    Ok(v)
                 }
-            });
-            //.expect("user did a type error");
+                Err(e) => Err(e),
+            }
+        });
+        //.expect("user did a type error");
         match res {
             Err(e) => {
-                let TypeError { components, complaint } = e;
+                let TypeError {
+                    components,
+                    complaint,
+                } = e;
                 // collect the peers of each component
                 let e = TypeUnificationError {
                     from,
@@ -138,18 +170,10 @@ impl Quark {
 
                 let e = CompilationError::TypeError(e);
 
-                let msg = Message {
-                    to: Destination::nil(),
-                    from: self.as_dest(),
-                    send_reply_to: Destination::nil(),
-                    conversation: Uuid::nil(),
-                    content: Content::Error(e),
-                };
-
-                let _ = self.sender.send(msg);
+                self.type_errors.borrow_mut().push(e);
 
                 return; // don't attempt any malformed descendent unifies
-            },
+            }
             Ok(_) => {
                 // do nothing, add the resulting unifies
             }
@@ -163,6 +187,35 @@ impl Quark {
         }
 
         tracing::debug!("New status for sets:");
+    }
+
+    /// When each quark phase completes we get one message here to flush errors
+    /// before switching over to Transponster
+    fn end_one_phase(&self) {
+        let errors = self.type_errors.borrow_mut();
+
+        if errors.is_tainted {}
+    }
+
+    /// If compilation fully stalls then this is called,
+    /// to let us emit final errors or prepare Scribe to output our
+    /// monomorphizations
+    fn end_last_phase(&self) {
+        let errors = self.type_errors.borrow_mut();
+
+        if errors.is_tainted {
+            // we got a type error, so we shouldn't
+            // emit any complaints about un-restrained variables
+        } else {
+            let free_vars = self.instances.borrow().gather_free();
+
+            if free_vars.len() > 0 {
+                let b = self.instances.borrow();
+
+                //println!("Instances: {b:#?}");
+                println!("Unrestricted vars: {}", free_vars.len());
+            }
+        }
     }
 
     fn as_dest(&self) -> Destination {
@@ -237,8 +290,9 @@ impl Quark {
                 tid
             }
             SyntacticTypeReferenceInner::Generic { label } => {
-                let existing_tid = self
-                    .generics
+                //async_backtrace::
+                println!("Generics: {:?}", with_generics);
+                let existing_tid = with_generics
                     .get(&label)
                     .expect("got a generic that didn't mean anything in the context");
                 *existing_tid
@@ -259,15 +313,16 @@ impl Quark {
                     Err(e) => {
                         tracing::error!("report import errors");
                         return self.new_tid(NodeInfo::Builtin);
-                    },
+                    }
                     Ok(v) => v,
                 };
-                    
 
                 let mut resolved_generics = Vec::new();
 
                 for generic in generics {
-                    let resolved = self.resolve_typeref(generic.intern(), with_generics, from_base).await;
+                    let resolved = self
+                        .resolve_typeref(generic.intern(), with_generics, from_base)
+                        .await;
 
                     resolved_generics.push(resolved);
                 }
@@ -275,7 +330,11 @@ impl Quark {
                 let (inst, unify) = Instance::with_generics(base, self, resolved_generics).await;
 
                 for Unify { from, into } in unify {
-                    self.add_unify(from, into, "constructing instance with generics made these ties");
+                    self.add_unify(
+                        from,
+                        into,
+                        "constructing instance with generics made these ties",
+                    );
                 }
 
                 self.introduce_instance(inst, trv.info)
@@ -298,7 +357,10 @@ impl Quark {
         }
     }
 
-    pub fn with_instance<F, R>(&self, tid: TypeID, f: F) -> R where F: FnOnce(&Instance) -> R {
+    pub fn with_instance<F, R>(&self, tid: TypeID, f: F) -> R
+    where
+        F: FnOnce(&Instance) -> R,
+    {
         tracing::warn!("borrows instances for with_instance");
         let mut refm = self.instances.borrow_mut();
         if let Some(v) = refm.v_for(tid) {
@@ -312,14 +374,17 @@ impl Quark {
             // unify needs to borrow instances
             std::mem::drop(refm);
 
-            self.add_unify(new_tid, tid, "identity unify since no instance existed for that tid");
+            self.add_unify(
+                new_tid,
+                tid,
+                "identity unify since no instance existed for that tid",
+            );
 
             tracing::warn!("borrows instances for with_instance after unify");
             let refm = self.instances.borrow_mut();
             let v = f(refm.v_for(new_tid).unwrap());
 
             v
-
         }
 
         // refm drops
@@ -407,6 +472,7 @@ impl Quark {
         }
 
         Self {
+            type_errors: RefCell::new(ErrorState::new()),
             sender,
             node_id,
             acting_on: RefCell::new(ExpressionContext::new_empty()),
@@ -511,37 +577,38 @@ impl Quark {
 
                     tracing::info!("Got ptypes, they are: {ptypes:?}");
 
-                    self.executor.install(async move {
-                        let fctx = self.with_instance(fn_tid, |instance| instance.notify.clone().wait()).await;
+                    self.executor.install(
+                        async move {
+                            let fctx = self
+                                .with_instance(fn_tid, |instance| instance.notify.clone().wait())
+                                .await;
 
-                        let (unifies, unify_error, arg_errors) = self.with_instance(fn_tid, |instance| {
-                            let as_call_res = instance.as_call(ptypes, resulting_type_id, vec![], self);
+                            let (unifies, unify_error, arg_errors) =
+                                self.with_instance(fn_tid, |instance| {
+                                    let as_call_res =
+                                        instance.as_call(ptypes, resulting_type_id, vec![], self);
 
-                            as_call_res
-                        });
+                                    as_call_res
+                                });
 
-                        tracing::info!("starting thunks");
-                        for thunk in unifies {
-                            //panic!("thunking");
-                            let Unify { from, into } = thunk.to_unify().await;
-                            //panic!("thunkd");
-                            self.add_unify(from, into, "instance of a call told us to");
-                        }
+                            tracing::info!("starting thunks");
+                            for thunk in unifies {
+                                //panic!("thunking");
+                                let Unify { from, into } = thunk.to_unify().await;
+                                //panic!("thunkd");
+                                self.add_unify(from, into, "instance of a call told us to");
+                            }
 
-                        for error in arg_errors {
-                            let _ = self.sender.send(Message {
-                                to: Destination::nil(),
-                                from: self.as_dest(),
-                                send_reply_to: Destination::nil(),
-                                conversation: Uuid::nil(),
-                                content: Content::Error(CompilationError::ArgConversionError(error))
-                            });
+                            for error in arg_errors {
+                                self.type_errors
+                                    .borrow_mut()
+                                    .push(CompilationError::ArgConversionError(error))
+                            }
 
-                        }
-
-
-                        tracing::debug!("function got unified? maybe?");
-                    }, "verify function call is with the right params");
+                            tracing::debug!("function got unified? maybe?");
+                        },
+                        "verify function call is with the right params",
+                    );
                 }
 
                 resulting_type_id
@@ -575,7 +642,7 @@ impl Quark {
 
                                     (f, m)
                                 }
-                                InstanceOf::Func(f) =>{ 
+                                InstanceOf::Func(f) => {
                                     panic!("user tried to access a field on a function");
                                 }
                                 InstanceOf::Generic(g) => {
@@ -676,7 +743,11 @@ impl Quark {
                     self.executor.install(
                         async move {
                             tracing::info!("resolving the type of a literal");
-                            let Literal { has_type, value, info } = l;
+                            let Literal {
+                                has_type,
+                                value,
+                                info,
+                            } = l;
                             let hm = HashMap::new();
 
                             //panic!("going to resolve: {:?}", has_type.resolve().unwrap().value());
@@ -852,7 +923,19 @@ impl Quark {
                     tracing::info!("got a message for quark, forwarding to conversations...");
                     let remainder = sref.conversations.dispatch(v);
                     if let Some(v) = remainder {
-                        tracing::error!("unhandled message? it is: {:#?}", v);
+                        //tracing::error!("unhandled message? it is: {:#?}", v);
+                        match v.content {
+                            Content::Quark(photon) => match photon {
+                                crate::compile::per_module::Photon::CompilationStalled() => {
+                                    sref.end_last_phase()
+                                }
+                            },
+                            Content::Control(_) => todo!(),
+                            Content::Announce(_) => todo!(),
+                            Content::Transponster(_) => todo!(),
+                            Content::NameResolution(_) => todo!(),
+                            Content::Error(_) => todo!(),
+                        }
                     }
                 }
 

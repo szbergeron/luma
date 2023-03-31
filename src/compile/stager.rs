@@ -1,7 +1,7 @@
 //use crate::ast::resolver::ResolverWorker;
-use crate::errors::CompilationError;
 use crate::ast::tree::{Contexts, CtxID};
 use crate::compile::parse_tree::ParseTreeNode;
+use crate::errors::CompilationError;
 //use crate::ast;
 
 use crate::compile::per_module::CompilationUnit;
@@ -161,19 +161,34 @@ fn print_from_root(root: CtxID, indent: usize, named: IStr) {
     let inner = match &node.inner {
         ast::tree::NodeUnion::Type(t) => {
             let t = t.lock().unwrap();
-            let fields = t.fields.clone().into_iter().map(|fm| (fm.name, fm.has_type.map(|syntrr| syntrr.resolve().unwrap().clone()))).collect_vec();
+            let fields = t
+                .fields
+                .clone()
+                .into_iter()
+                .map(|fm| {
+                    (
+                        fm.name,
+                        fm.has_type.map(|syntrr| syntrr.resolve().unwrap().clone()),
+                    )
+                })
+                .collect_vec();
             format!("type with fields: {:?}", fields)
-        },
+        }
         ast::tree::NodeUnion::Function(fd, e) => {
             let name = fd.name;
-            let args = fd.parameters.clone().into_iter().map(|(name, strr)| (name, strr.resolve().unwrap().clone())).collect_vec();
+            let args = fd
+                .parameters
+                .clone()
+                .into_iter()
+                .map(|(name, strr)| (name, strr.resolve().unwrap().clone()))
+                .collect_vec();
             let rtype = fd.return_type.resolve().unwrap().clone();
             format!("fn {name}({args:?}) -> {rtype:?}")
-        },
+        }
         ast::tree::NodeUnion::Global(_) => todo!(),
         ast::tree::NodeUnion::Empty() => {
             format!("module")
-        },
+        }
     };
 
     println!("{indents}== node {root:?} with name {named}");
@@ -196,7 +211,12 @@ async fn async_launch(args: ArgResult) {
     // build the initial module tree based on file locations
     let usr_node = crate::compile::preparse_tree::from_roots(&files, roles);
 
-    let std_node = crate::compile::preparse_tree::from_roots(&files, vec![FileRole::Source(SourceFile { location: PathBuf::from_str("./std.luma").unwrap() })]);
+    let std_node = crate::compile::preparse_tree::from_roots(
+        &files,
+        vec![FileRole::Source(SourceFile {
+            location: PathBuf::from_str("./std.luma").unwrap(),
+        })],
+    );
 
     println!("Built node");
 
@@ -208,15 +228,28 @@ async fn async_launch(args: ArgResult) {
     println!("usr node: {usr_node:#?}");
     println!("std node: {std_node:#?}");
 
-
-    let true_root = ast::tree::Node::new("root".intern(), Vec::new(), None, None, ast::tree::NodeUnion::Empty(), false, Vec::new());
+    let true_root = ast::tree::Node::new(
+        "root".intern(),
+        Vec::new(),
+        None,
+        None,
+        ast::tree::NodeUnion::Empty(),
+        false,
+        Vec::new(),
+    );
     // convert CST to initial AST
     let usr_root = ast::tree::Node::from_parse(usr_node, "usr".intern(), true_root, true_root);
 
     let std_root = ast::tree::Node::from_parse(std_node, "std".intern(), true_root, true_root);
 
-    true_root.resolve().children.insert("std".intern(), std_root);
-    true_root.resolve().children.insert("usr".intern(), usr_root);
+    true_root
+        .resolve()
+        .children
+        .insert("std".intern(), std_root);
+    true_root
+        .resolve()
+        .children
+        .insert("usr".intern(), usr_root);
 
     println!("true root is ctx {true_root:?}");
 

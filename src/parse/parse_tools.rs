@@ -472,7 +472,7 @@ impl<V, J: join::Joinable, B: bubble::Bubbling, D> GuardedResult<V, J, catch::Un
                     _c: Default::default(),
                     ..self
                 }
-            },
+            }
 
             // don't need to catch since this is a success!
             SolutionClass::Success { index: _ } => GuardedResult {
@@ -489,7 +489,10 @@ impl<V, J: join::Joinable, B: bubble::Bubbling, D> GuardedResult<V, J, catch::Un
                 solution_unit_id,
                 range_discarded: _,
             } => {
-                println!("SolvedFailure bubbling, has unit id {solution_unit_id} while provided was {}", t.unit_rules.id);
+                println!(
+                    "SolvedFailure bubbling, has unit id {solution_unit_id} while provided was {}",
+                    t.unit_rules.id
+                );
 
                 let caught = t.provides(solution_unit_id).max(self.caught);
 
@@ -562,11 +565,18 @@ impl<V, D> std::ops::Try for GuardedResult<V, join::Joined, catch::Caught, bubbl
 
     type Residual = GuardedResult<Infallible, join::Unjoined, catch::Uncaught, bubble::All, D>;
 
-    fn from_output(_output: GuardedResult<V, join::Unjoined, catch::Uncaught, bubble::All, D>) -> Self {
+    fn from_output(
+        _output: GuardedResult<V, join::Unjoined, catch::Uncaught, bubble::All, D>,
+    ) -> Self {
         panic!("A GuardedResult can not be safely rebuilt from its output")
     }
 
-    fn branch(self) -> std::ops::ControlFlow<Self::Residual, GuardedResult<V, join::Unjoined, catch::Uncaught, bubble::All, D>> {
+    fn branch(
+        self,
+    ) -> std::ops::ControlFlow<
+        Self::Residual,
+        GuardedResult<V, join::Unjoined, catch::Uncaught, bubble::All, D>,
+    > {
         println!("OnlyNotMine bubbling, solution is: {:?}", self.solution);
         match (self.solution, self.caught) {
             (SolutionClass::Success { .. }, _) => ControlFlow::Continue(GuardedResult {
@@ -783,13 +793,13 @@ pub type JoinedResult<V, D = ()> = GuardedResult<V, join::Joined, catch::Caught,
  */
 pub mod schema {
 
-    use std::{convert::Infallible, ops::ControlFlow, collections::VecDeque};
+    use std::{collections::VecDeque, convert::Infallible, ops::ControlFlow};
 
     use smallvec::{smallvec, SmallVec};
 
     use crate::{
         cst::Span,
-        helper::interner::{SpurHelper, Internable},
+        helper::interner::{Internable, SpurHelper},
         lex::{ErrorSet, LookaheadHandle, ParseResultError, Token, TokenWrapper},
     };
 
@@ -1158,7 +1168,12 @@ pub mod schema {
                 a
             });
 
-            println!("Error context: {} {} {}", before.as_str().normal().dimmed(), "|".red(), after.as_str().normal().dimmed());
+            println!(
+                "Error context: {} {} {}",
+                before.as_str().normal().dimmed(),
+                "|".red(),
+                after.as_str().normal().dimmed()
+            );
         }
 
         pub fn search(&self, lh: &LookaheadHandle) -> Option<SolutionClass> {
@@ -1196,7 +1211,10 @@ pub mod schema {
             }
 
             let sol = candidates.iter().min_by_key(|e| e.0 as i64).map(|o| o.1);
-            println!("Chooses solution: {}", sol.map(|s| format!("{s}")).unwrap_or("no solution".into()));
+            println!(
+                "Chooses solution: {}",
+                sol.map(|s| format!("{s}")).unwrap_or("no solution".into())
+            );
 
             /*let bt = Backtrace::capture();
             let frames = bt.frames();
@@ -1509,7 +1527,7 @@ pub mod schema {
                 } else {
                     // reset what we just tried
                     self.lh.seek_to(start);
-                    return None
+                    return None;
                 }
             }
 

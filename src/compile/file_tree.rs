@@ -270,7 +270,10 @@ impl FileRegistry {
         }
     }
 
-    pub fn open(&self, path: FileRole) -> (FileHandle, Result<Arc<(Contents, PathBuf)>, Box<dyn Error>>) {
+    pub fn open(
+        &self,
+        path: FileRole,
+    ) -> (FileHandle, Result<Arc<(Contents, PathBuf)>, Box<dyn Error>>) {
         // just double check if we even need to open it
 
         let handle = self.intern(path);

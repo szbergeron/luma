@@ -1,7 +1,10 @@
 use std::{assert_matches::debug_assert_matches, fmt::Debug, io::Write};
 
 use crate::{
-    helper::{interner::{IStr, SpurHelper}, CopyMethod},
+    helper::{
+        interner::{IStr, SpurHelper},
+        CopyMethod,
+    },
     lowered::LoweredType,
 };
 use futures::never::Never;
@@ -360,7 +363,6 @@ impl std::ops::FnOnce<()> for CMPFlag {
 
 impl std::fmt::Display for CMPFlag {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-
         let s = match self {
             Self::i_eq => "eq",
             Self::i_ne => "ne",
@@ -863,7 +865,8 @@ impl std::fmt::Debug for LLVMType {
         writeln!(
             f,
             "depth {} to inner {}",
-            self.reference_depth.copied(), self.inner_type.copied()
+            self.reference_depth.copied(),
+            self.inner_type.copied()
         )
     }
 }

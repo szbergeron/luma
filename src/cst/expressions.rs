@@ -3,9 +3,9 @@ use std::fmt::Debug;
 use smallvec::smallvec;
 use smallvec::SmallVec;
 
+use super::cst_traits::*;
 use super::ScopedName;
 use super::SyntacticTypeReferenceRef;
-use super::cst_traits::*;
 
 use crate::helper::VecOps;
 /*use super::base::*;
@@ -78,7 +78,9 @@ impl ExpressionWrapper {
             ExpressionWrapper::Comparison(e) => smallvec![&*e.lhs, &*e.rhs],
             ExpressionWrapper::Cast(e) => smallvec![&*e.subexpr],
             ExpressionWrapper::Literal(e) => smallvec![],
-            ExpressionWrapper::StructLiteral(e) => e.bind_from.iter().map(|e| e.1.as_ref()).collect(),
+            ExpressionWrapper::StructLiteral(e) => {
+                e.bind_from.iter().map(|e| e.1.as_ref()).collect()
+            }
             ExpressionWrapper::MemberAccess(e) => smallvec![&*e.on],
             ExpressionWrapper::Statement(e) => smallvec![&*e.subexpr],
             ExpressionWrapper::Block(e) => e.contents.iter().map(|e| e.as_ref()).collect(),
@@ -106,7 +108,9 @@ impl ExpressionWrapper {
             ExpressionWrapper::Comparison(e) => smallvec![e.lhs.as_mut(), e.rhs.as_mut()],
             ExpressionWrapper::Cast(e) => smallvec![e.subexpr.as_mut()],
             ExpressionWrapper::Literal(e) => smallvec![],
-            ExpressionWrapper::StructLiteral(e) => e.bind_from.iter_mut().map(|e| e.1.as_mut()).collect(),
+            ExpressionWrapper::StructLiteral(e) => {
+                e.bind_from.iter_mut().map(|e| e.1.as_mut()).collect()
+            }
             ExpressionWrapper::MemberAccess(e) => smallvec![e.on.as_mut()],
             ExpressionWrapper::Statement(e) => smallvec![e.subexpr.as_mut()],
             ExpressionWrapper::Block(e) => e.contents.iter_mut().map(|e| e.as_mut()).collect(),
@@ -120,7 +124,9 @@ impl ExpressionWrapper {
             ExpressionWrapper::Wildcard(e) => smallvec![],
             ExpressionWrapper::LLVMLiteral(e) => todo!(),
             ExpressionWrapper::Identifier(e) => smallvec![],
-            ExpressionWrapper::FunctionCall(e) => e.args.children_mut().appended(e.function.as_mut()),
+            ExpressionWrapper::FunctionCall(e) => {
+                e.args.children_mut().appended(e.function.as_mut())
+            }
             ExpressionWrapper::ImplementationModification(_) => todo!(),
             ExpressionWrapper::DynamicMember(_) => todo!(),
         }
@@ -1046,8 +1052,8 @@ pub struct IdentifierExpression {
     //pub name: &'a str,
     //pub context: Box<ScopedName>,
     pub ident: ScopedName, // allows including additional scope info
-    //pub node_type: Option<types::TypeReference>,
-    //pub span: Span,
+                           //pub node_type: Option<types::TypeReference>,
+                           //pub span: Span,
 }
 
 impl IdentifierExpression {

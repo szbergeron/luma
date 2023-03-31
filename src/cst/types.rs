@@ -281,7 +281,7 @@ impl std::fmt::Debug for SyntacticTypeReference {
             SyntacticTypeReferenceInner::Generic { label } => label.resolve().to_owned(),
             SyntacticTypeReferenceInner::Parameterized { name, generics } => {
                 format!("{name:?}<{generics:?}")
-            },
+            }
             SyntacticTypeReferenceInner::Reference { to, mutable } => {
                 format!("&{}<{to:?}>", if *mutable { "mut" } else { "" })
             }

@@ -1,6 +1,6 @@
 use super::{expressions::ExpressionWrapper, ScopedName};
 
-use crate::cst as cst;
+use crate::cst;
 
 //use crate::ast::tree::GenericHandle;
 /*use super::EnumDefinition;
@@ -15,11 +15,9 @@ use super::TypeReference;*/
 use std::fmt::Debug;
 //use std::io::Write;
 
-
 /*use crate::types::GlobalCtxNode;
 use crate::types::Import;
 use crate::types::Resolution;*/
-
 
 use super::cst_traits::*;
 //use std::rc::Rc;

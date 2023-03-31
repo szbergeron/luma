@@ -512,7 +512,6 @@ impl<'lexer> Parser<'lexer> {
             generics.push(*inner);
         }
 
-
         t.take(Token::LParen).join()?;
         let params = self
             .parse_function_param_list(&t, &generics)
@@ -527,13 +526,22 @@ impl<'lexer> Parser<'lexer> {
             .catch(&mut t)?
             .intern();
 
-        let body = self.parse_expr(&t, &generics).join_hard(&mut t).catch(&mut t)?;
+        let body = self
+            .parse_expr(&t, &generics)
+            .join_hard(&mut t)
+            .catch(&mut t)?;
 
         let end = body.as_node().start().expect("Some(_) body has None end");
 
         let info = NodeInfo::from_indices(start, end);
 
-        let header_end = return_type.resolve().unwrap().info.as_parsed().map(|ni| ni.span.end).unwrap_or(p_end);
+        let header_end = return_type
+            .resolve()
+            .unwrap()
+            .info
+            .as_parsed()
+            .map(|ni| ni.span.end)
+            .unwrap_or(p_end);
 
         let header = NodeInfo::from_indices(start, header_end);
 

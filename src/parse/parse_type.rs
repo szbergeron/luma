@@ -151,7 +151,10 @@ impl<'lexer> Parser<'lexer> {
         t.take(Token::LBrace).join()?;
 
         //while let Ok(Token::Var) = t.lh.la(0).map(|tw| tw.token) {
-        while let next = t.take_in(&[Token::Var, Token::RBrace, Token::Function]).join()? {
+        while let next = t
+            .take_in(&[Token::Var, Token::RBrace, Token::Function])
+            .join()?
+        {
             match next.token {
                 Token::RBrace => {
                     println!("Got a brace");
@@ -778,9 +781,15 @@ impl<'lexer> Parser<'lexer> {
             Some(tw) if tw.token.matches(Token::Ampersand) => {
                 let is_mut = t.try_take(Token::Mutable);
 
-                let inner = self.parse_type_specifier(&t, with_generics).join_hard(&mut t).catch(&mut t)?;
+                let inner = self
+                    .parse_type_specifier(&t, with_generics)
+                    .join_hard(&mut t)
+                    .catch(&mut t)?;
 
-                let tr = cst::SyntacticTypeReferenceInner::Reference { to: Box::new(inner), mutable: is_mut.is_some() };
+                let tr = cst::SyntacticTypeReferenceInner::Reference {
+                    to: Box::new(inner),
+                    mutable: is_mut.is_some(),
+                };
 
                 let tr = cst::SyntacticTypeReference {
                     id: SyntacticTypeReferenceRef::new_nil(),

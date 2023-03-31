@@ -1,4 +1,4 @@
-use std::{sync::RwLock, collections::HashMap};
+use std::{collections::HashMap, sync::RwLock};
 
 //use dashmap::lock::RwLock;
 
@@ -117,7 +117,7 @@ pub struct FunctionDefinition {
     pub parameters: Vec<(IStr, SyntacticTypeReferenceRef)>,
     pub return_type: SyntacticTypeReferenceRef,
     pub implementation: Option<cst::expressions::ExpressionWrapper>, // quark removes this to do
-                                                                    // stuff on, drops it "early"
+                                                                     // stuff on, drops it "early"
 }
 
 impl FunctionDefinition {

@@ -1,4 +1,4 @@
-use crate::{helper::interner::IStr, ast::tree::CtxID, compile::per_module::Earpiece};
+use crate::{ast::tree::CtxID, compile::per_module::Earpiece, helper::interner::IStr};
 
 struct GlobalContext {
     //
@@ -31,11 +31,9 @@ pub struct Oracle {
 }
 
 impl Oracle {
-    pub fn for_node(node_id: CtxID, earpiece: Earpiece) {
-    }
+    pub fn for_node(node_id: CtxID, earpiece: Earpiece) {}
 
-    pub fn thread(self) {
-    }
+    pub fn thread(self) {}
 
     /// Tell the Oracle the full set of units to wait for
     pub fn init(&mut self, units: Vec<usize>) {

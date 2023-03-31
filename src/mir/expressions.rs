@@ -6,8 +6,10 @@ use tracing::info;
 use crate::{
     avec::AtomicVec,
     cst::{
-        self, CastExpression, ExpressionWrapper, IfThenElseExpression, LetComponentIdentifier,
-        LiteralExpression, MemberAccessExpression, SyntacticTypeReferenceRef, ScopedName, StructLiteralExpression, FunctionCall, IdentifierExpression, NodeInfo, StatementExpression,
+        self, CastExpression, ExpressionWrapper, FunctionCall, IdentifierExpression,
+        IfThenElseExpression, LetComponentIdentifier, LiteralExpression, MemberAccessExpression,
+        NodeInfo, ScopedName, StatementExpression, StructLiteralExpression,
+        SyntacticTypeReferenceRef,
     },
     helper::interner::{IStr, Internable},
 };
@@ -206,8 +208,14 @@ impl AnyExpression {
 
                 // for now just have binary expressions be
                 // called on LHS regardless of actual associativity
-                let self_id =
-                    AnyExpression::make_call(within, lhs_id, opstr, vec![lhs_id, rhs_id], vec![], *node_info);
+                let self_id = AnyExpression::make_call(
+                    within,
+                    lhs_id,
+                    opstr,
+                    vec![lhs_id, rhs_id],
+                    vec![],
+                    *node_info,
+                );
 
                 //let (self_id, _self_ref) = within.add(self_node);
 
@@ -230,7 +238,8 @@ impl AnyExpression {
                 }
                 .intern();
 
-                let self_id = AnyExpression::make_call(within, on_id, opstr, vec![on_id], vec![], *node_info);
+                let self_id =
+                    AnyExpression::make_call(within, on_id, opstr, vec![on_id], vec![], *node_info);
 
                 //let (self_id, _self_ref) = within.add(self_node);
 
@@ -257,8 +266,14 @@ impl AnyExpression {
                 }
                 .intern();
 
-                let self_id =
-                    AnyExpression::make_call(within, lhs_id, opstr, vec![lhs_id, rhs_id], vec![], *node_info);
+                let self_id = AnyExpression::make_call(
+                    within,
+                    lhs_id,
+                    opstr,
+                    vec![lhs_id, rhs_id],
+                    vec![],
+                    *node_info,
+                );
 
                 //let (self_id, _self_ref) = within.add(self_node);
 
@@ -275,10 +290,7 @@ impl AnyExpression {
                 //let mut cs = bindings.child_scoped();
 
                 // a let expression operates on the parent scope
-                bindings.add_binding(
-                    todo!("break down primary_component"),
-                    within.next_var()
-                );
+                bindings.add_binding(todo!("break down primary_component"), within.next_var());
 
                 let from_exp_id = Self::from_ast(within, expression, &mut bindings.child_scoped());
 
@@ -363,7 +375,10 @@ impl AnyExpression {
                     .map(|box e| AnyExpression::from_ast(within, &e, &mut cs))
                     .collect_vec();
 
-                let ae = AnyExpression::Block(StringBlock { expressions: items, info: b.node_info });
+                let ae = AnyExpression::Block(StringBlock {
+                    expressions: items,
+                    info: b.node_info,
+                });
 
                 within.add(ae).0
             }
@@ -372,7 +387,6 @@ impl AnyExpression {
                     box subexpr,
                     box typeref,
                     node_info,
-                    
                 } = c;
                 within
                     .add(AnyExpression::Convert(Convert {
@@ -439,28 +453,38 @@ impl AnyExpression {
                 within.add(AnyExpression::Literal(li)).0
             }
             ExpressionWrapper::StructLiteral(sl) => {
-                let StructLiteralExpression { info, bind_from, struct_base: struct_tr, generics } = sl;
+                let StructLiteralExpression {
+                    info,
+                    bind_from,
+                    struct_base: struct_tr,
+                    generics,
+                } = sl;
 
-                let fields = bind_from.into_iter().map(|(name, ew)| {
-                    let eid = Self::from_ast(within, ew, bindings);
+                let fields = bind_from
+                    .into_iter()
+                    .map(|(name, ew)| {
+                        let eid = Self::from_ast(within, ew, bindings);
 
-                    (*name, eid)
-                }).collect();
+                        (*name, eid)
+                    })
+                    .collect();
 
-                within.add(AnyExpression::Composite(Composite {
-                    info: *info,
-                    fields,
-                    base_type: struct_tr.clone(),
-                    generics: generics.clone(),
-                })).0
-            },
+                within
+                    .add(AnyExpression::Composite(Composite {
+                        info: *info,
+                        fields,
+                        base_type: struct_tr.clone(),
+                        generics: generics.clone(),
+                    }))
+                    .0
+            }
             ExpressionWrapper::Statement(s) => {
                 let StatementExpression { node_info, subexpr } = s;
 
                 let e = Self::from_ast(within, &subexpr, bindings);
 
                 e
-            },
+            }
             ExpressionWrapper::While(_) => todo!(),
             ExpressionWrapper::Tuple(_) => todo!(),
             ExpressionWrapper::Return(_) => todo!(),
@@ -469,14 +493,24 @@ impl AnyExpression {
             ExpressionWrapper::Identifier(id) => {
                 let IdentifierExpression { node_info, ident } = id;
 
-                let ident = if let [one] = ident.scope.as_slice() { one } else { todo!("scoped ident?") };
+                let ident = if let [one] = ident.scope.as_slice() {
+                    one
+                } else {
+                    todo!("scoped ident?")
+                };
 
-                let vid = bindings.binding_for(*ident).expect("variable was not in scope");
+                let vid = bindings
+                    .binding_for(*ident)
+                    .expect("variable was not in scope");
 
                 within.add(AnyExpression::Variable(vid, *node_info)).0
-            },
+            }
             ExpressionWrapper::FunctionCall(fc) => {
-                let FunctionCall { node_info, function, args } = fc;
+                let FunctionCall {
+                    node_info,
+                    function,
+                    args,
+                } = fc;
 
                 let dt = if let box ExpressionWrapper::Tuple(t) = args {
                     t.expressions.clone()
@@ -484,14 +518,21 @@ impl AnyExpression {
                     unreachable!("dumbness")
                 };
 
-                let args = dt.into_iter().map(|box e| Self::from_ast(within, &e, bindings)).collect_vec();
+                let args = dt
+                    .into_iter()
+                    .map(|box e| Self::from_ast(within, &e, bindings))
+                    .collect_vec();
 
                 let target_fn = Self::from_ast(within, &function, bindings);
 
-                let invocation = Invoke { info: *node_info, target_fn, args };
+                let invocation = Invoke {
+                    info: *node_info,
+                    target_fn,
+                    args,
+                };
 
                 within.add(AnyExpression::Invoke(invocation)).0
-            },
+            }
             ExpressionWrapper::ImplementationModification(_) => todo!(),
             ExpressionWrapper::DynamicMember(_) => todo!(),
         }
@@ -507,10 +548,18 @@ impl AnyExpression {
     ) -> ExpressionID {
         info!("making a call to {to}");
 
-        let field = AnyExpression::StaticAccess(StaticAccess { field: to, on, info});
+        let field = AnyExpression::StaticAccess(StaticAccess {
+            field: to,
+            on,
+            info,
+        });
         let field_eid = within.add(field);
 
-        let invoke = AnyExpression::Invoke(Invoke { target_fn: field_eid.0, args, info });
+        let invoke = AnyExpression::Invoke(Invoke {
+            target_fn: field_eid.0,
+            args,
+            info,
+        });
 
         let invoke_eid = within.add(invoke);
 

@@ -377,7 +377,15 @@ impl Node {
 
                 let inner = NodeUnion::Type(Mutex::new(td));
 
-                let node = Self::new(name, generics, Some(parent), Some(global), inner, public, vec![]);
+                let node = Self::new(
+                    name,
+                    generics,
+                    Some(parent),
+                    Some(global),
+                    inner,
+                    public,
+                    vec![],
+                );
 
                 let mut method_pairs = HashMap::new();
 
@@ -474,12 +482,7 @@ impl Node {
         node
     }
 
-    pub fn from_parse(
-        n: ParseTreeNode,
-        name: IStr,
-        parent: CtxID,
-        global: CtxID,
-    ) -> CtxID {
+    pub fn from_parse(n: ParseTreeNode, name: IStr, parent: CtxID, global: CtxID) -> CtxID {
         let ParseTreeNode {
             files,
             parsed,
@@ -508,18 +511,11 @@ impl Node {
 
         let aggregate = cst::OuterScope::new(cst::NodeInfo::Builtin, aggregate);
 
-        let s = Self::from_outer(
-            aggregate,
-            name,
-            vec![],
-            Some(parent),
-            global,
-            true,
-        ); // TODO:
-           // public
-           // markers
-           // for
-           // nodes
+        let s = Self::from_outer(aggregate, name, vec![], Some(parent), global, true); // TODO:
+                                                                                       // public
+                                                                                       // markers
+                                                                                       // for
+                                                                                       // nodes
 
         /*let global = match global {
             Some(v) => Some(v),

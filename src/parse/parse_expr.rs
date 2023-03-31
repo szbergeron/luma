@@ -193,7 +193,9 @@ impl<'lexer> Parser<'lexer> {
             cst::SyntacticTypeReferenceInner::Tuple(_) => todo!("no"),
             cst::SyntacticTypeReferenceInner::Single { name } => (name, vec![]),
             cst::SyntacticTypeReferenceInner::Generic { label } => todo!("no"),
-            cst::SyntacticTypeReferenceInner::Parameterized { name, generics } => (name, generics.into_iter().map(|g| g.intern()).collect_vec()),
+            cst::SyntacticTypeReferenceInner::Parameterized { name, generics } => {
+                (name, generics.into_iter().map(|g| g.intern()).collect_vec())
+            }
             cst::SyntacticTypeReferenceInner::Reference { to, mutable } => todo!("huh"),
             cst::SyntacticTypeReferenceInner::Pointer { to, mutable } => todo!("wheee"),
         };

@@ -4,6 +4,7 @@ use std::{
     fmt::Debug,
     marker::PhantomData,
     mem::ManuallyDrop,
+    panic::AssertUnwindSafe,
     pin::Pin,
     rc::Rc,
     task::{RawWaker, RawWakerVTable, Wake},
@@ -174,17 +175,38 @@ impl Executor {
             let mut context = Context::from_waker(&waker);
 
             debug!("starts poll for {next_id} named '{named}'");
-            let res = mref.poll_unpin(&mut context);
+            let resw = std::panic::catch_unwind(AssertUnwindSafe(|| {
+                let res = AssertUnwindSafe(mref)
+                    .catch_unwind()
+                    .poll_unpin(&mut context);
+
+                res
+            }));
             debug!("finishes poll for {next_id} named '{named}', it yielded back to us");
 
-            match res {
-                std::task::Poll::Ready(()) => {
-                    // do nothing, the task is just done now
-                    // so remove it from the task set
-                    unsafe { self.futures.get().as_mut().unwrap().remove(&next_id) };
+            match resw {
+                Ok(res) => {
+                    match res {
+                        std::task::Poll::Ready(res) => {
+                            // do nothing, the task is just done now
+                            // so remove it from the task set
+                            unsafe { self.futures.get().as_mut().unwrap().remove(&next_id) };
+
+                            match res {
+                                Ok(_) => (),
+                                Err(e) => {
+                                    println!("Panicking prop in until_stable?");
+                                    std::panic::resume_unwind(e);
+                                }
+                            }
+                        }
+                        std::task::Poll::Pending => {
+                            // keep it here I guess?
+                        }
+                    }
                 }
-                std::task::Poll::Pending => {
-                    // keep it here I guess?
+                Err(e) => {
+                    println!("How did we get here even?");
                 }
             }
         }

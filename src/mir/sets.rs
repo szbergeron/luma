@@ -21,12 +21,10 @@ impl<T: Debug, K: Eq + PartialEq + std::hash::Hash + Copy + Debug> Unifier<K, T>
         }
     }
 
-    pub fn unify<F, E>(
-        &mut self,
-        a: K,
-        b: K,
-        with_values: F,
-    ) -> Result<(), E> where F: FnOnce(T, T) -> Result<T, E> {
+    pub fn unify<F, E>(&mut self, a: K, b: K, with_values: F) -> Result<(), E>
+    where
+        F: FnOnce(T, T) -> Result<T, E>,
+    {
         let root_a = self.root_for(a);
         let root_b = self.root_for(b);
         if root_a == root_b {
@@ -38,7 +36,9 @@ impl<T: Debug, K: Eq + PartialEq + std::hash::Hash + Copy + Debug> Unifier<K, T>
                 .get_many_mut([&root_a, &root_b])
                 .expect("should have been allowed");
 
-            tracing::info!("unifies {root_a:?} and {root_b:?} because {a:?} and {b:?} were unified");
+            tracing::info!(
+                "unifies {root_a:?} and {root_b:?} because {a:?} and {b:?} were unified"
+            );
 
             let ta = std::mem::take(&mut ar.inner);
             let tb = std::mem::take(&mut br.inner);
@@ -71,12 +71,26 @@ impl<T: Debug, K: Eq + PartialEq + std::hash::Hash + Copy + Debug> Unifier<K, T>
     }
 
     pub fn add_k(&mut self, k: K) {
-        let prior = self.elements.insert(k, Entry { ref_from: smallvec::SmallVec::new(), keyed: k, inner: EntryInner::Free() });
+        let prior = self.elements.insert(
+            k,
+            Entry {
+                ref_from: smallvec::SmallVec::new(),
+                keyed: k,
+                inner: EntryInner::Free(),
+            },
+        );
         assert!(prior.is_none(), "tried to overwrite a k");
     }
 
     pub fn add_kv(&mut self, k: K, v: T) {
-        let prior = self.elements.insert(k, Entry { ref_from: smallvec::SmallVec::new(), keyed: k, inner: EntryInner::Root(v) });
+        let prior = self.elements.insert(
+            k,
+            Entry {
+                ref_from: smallvec::SmallVec::new(),
+                keyed: k,
+                inner: EntryInner::Root(v),
+            },
+        );
         assert!(prior.is_none(), "tried to overwrite a k");
     }
 
@@ -86,6 +100,20 @@ impl<T: Debug, K: Eq + PartialEq + std::hash::Hash + Copy + Debug> Unifier<K, T>
             EntryInner::Free() => false,
             _ => unreachable!(),
         }
+    }
+
+    pub fn gather_free(&self) -> Vec<K> {
+        let mut free = Vec::new();
+
+        for (k, e) in self.elements.iter() {
+            match &e.inner {
+                EntryInner::Root(_) => (),
+                EntryInner::Refers(_) => (),
+                EntryInner::Free() => free.push(*k),
+            }
+        }
+
+        free
     }
 
     /*pub fn v_for_or_insert_with<F>(&mut self, k: K, v: F) -> &T where F: FnOnce() -> T {
@@ -124,7 +152,9 @@ impl<T: Debug, K: Eq + PartialEq + std::hash::Hash + Copy + Debug> Unifier<K, T>
     }
 
     pub fn new() -> Self {
-        Self { elements: HashMap::new() }
+        Self {
+            elements: HashMap::new(),
+        }
     }
 }
 
@@ -132,7 +162,7 @@ impl<T: Debug, K: Eq + PartialEq + std::hash::Hash + Copy + Debug> Unifier<K, T>
 pub enum EntryInner<K: Debug, T: Debug> {
     Root(T),
     Refers(K),
-    
+
     Free(),
 }
 

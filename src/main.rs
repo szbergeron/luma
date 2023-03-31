@@ -32,7 +32,7 @@
     default_free_fn,
     map_many_mut,
     is_some_and,
-    async_iterator,
+    async_iterator
 )]
 #![allow(irrefutable_let_patterns)]
 #![allow(dead_code)]
@@ -79,10 +79,10 @@ pub mod llvm;
 pub mod lowered;
 pub mod mir; // just until we fix lowering, reduce error count
              //pub mod mid_repr;
+pub mod errors;
 pub mod parse;
 pub mod traits;
 pub mod types;
-pub mod errors;
 //pub mod bump_interner;
 
 fn main() {

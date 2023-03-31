@@ -4,7 +4,7 @@ use std::{
     marker::PhantomData,
     mem::MaybeUninit,
     ptr::{addr_of_mut, null_mut},
-    sync::atomic::{AtomicPtr, AtomicUsize, fence},
+    sync::atomic::{fence, AtomicPtr, AtomicUsize},
 };
 
 struct ChunkEntry<T> {
@@ -456,7 +456,11 @@ impl AtomicVecIndex {
     /// Yields an "invalid" index that will panic on index op for
     /// any atomicvec
     pub fn nil() -> Self {
-        Self { chunk: -1, idx: -1, self_key: usize::MAX }
+        Self {
+            chunk: -1,
+            idx: -1,
+            self_key: usize::MAX,
+        }
     }
 }
 

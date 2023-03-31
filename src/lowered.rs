@@ -5,8 +5,7 @@ use smallstr::SmallString;
 use crate::{
     helper::interner::IStr,
     llvm::{
-        LLVMArg, LLVMBlob, LLVMChunk, LLVMFunctionBlock, LLVMPrimitive,
-        LLVMType, LoweredTypeID,
+        LLVMArg, LLVMBlob, LLVMChunk, LLVMFunctionBlock, LLVMPrimitive, LLVMType, LoweredTypeID,
     },
 };
 
@@ -133,7 +132,12 @@ impl LoweredType {
         //Some((chunk, has_member))
     }
 
-    pub fn bitfield_set(&self, self_ref: LLVMArg, tag: ConstValue, val: bool) -> Option<LLVMChunk<10>> {
+    pub fn bitfield_set(
+        &self,
+        self_ref: LLVMArg,
+        tag: ConstValue,
+        val: bool,
+    ) -> Option<LLVMChunk<10>> {
         let bit_index = *self.dynmem_lookup.get(&tag)?;
 
         let mut chunk = LLVMChunk::empty();

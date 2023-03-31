@@ -32,10 +32,16 @@ pub enum NameResolutionMessage {
     },
 
     /// Asks if a node has a given symbol as a direct refer
-    DoYouHave { symbol: IStr, within: CtxID },
+    DoYouHave {
+        symbol: IStr,
+        within: CtxID,
+    },
 
     /// A reply to a DoYouHave saying we don't
-    IDontHave { symbol: IStr, within: CtxID },
+    IDontHave {
+        symbol: IStr,
+        within: CtxID,
+    },
 
     /// A reply to a DoYouHave that says that symbol is at the given CtxID
     /// Also states whether it is public
@@ -74,7 +80,7 @@ pub enum NameResolutionMessage {
     },
 
     ListLocals {
-        in_node: CtxID
+        in_node: CtxID,
     },
 
     LocalsAre {
@@ -496,7 +502,9 @@ impl Resolver {
                 Content::Control(ControlMessage::ShouldFuseNames()) => {
                     self.fuse();
                 }
-                _ => todo!("don't have others yet"),
+                _ => {
+                    tracing::error!("don't have others yet");
+                }
             }
         }
     }
@@ -616,7 +624,14 @@ impl Resolver {
             self.for_ctx.resolve().use_statements.len(),
         ));
 
-        for ud in self.for_ctx.resolve().use_statements.clone().into_iter().chain(additional_imports.into_iter()) {
+        for ud in self
+            .for_ctx
+            .resolve()
+            .use_statements
+            .clone()
+            .into_iter()
+            .chain(additional_imports.into_iter())
+        {
             let named = format!(
                 "do_use task that uses UD {ud:?} within node {:?}",
                 self.for_ctx

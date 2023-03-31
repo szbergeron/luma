@@ -439,15 +439,25 @@ impl Instance {
         }
     }
 
-    pub async fn with_generics(base: CtxID, within: &'static Quark, generics: Vec<TypeID>) -> (Self, Vec<Unify>) {
+    pub async fn with_generics(
+        base: CtxID,
+        within: &'static Quark,
+        generics: Vec<TypeID>,
+    ) -> (Self, Vec<Unify>) {
         let v = Self::infer_instance(Some(base), within).await;
 
         let mut unifies = Vec::new();
 
         for (tid, (name, syntr)) in generics.into_iter().zip(base.resolve().generics.iter()) {
-            let tid_of_node = v.generics.get(name).expect("should be unreachable, these are made here after all");
+            let tid_of_node = v
+                .generics
+                .get(name)
+                .expect("should be unreachable, these are made here after all");
 
-            unifies.push(Unify { from: tid, into: *tid_of_node });
+            unifies.push(Unify {
+                from: tid,
+                into: *tid_of_node,
+            });
         }
 
         (v, unifies)
@@ -1249,6 +1259,7 @@ impl Transponster {
             }
             _other => {
                 warn!("Transponster shuts down since this node type wasn't a Type")
+                //
             }
         }
 
