@@ -1,6 +1,8 @@
+use crate::mir::transponster::Memo;
 use crate::{
     compile::per_module::StalledDog,
     errors::{CompilationError, TypeUnificationError},
+    helper::SwapWith,
 };
 use std::{cell::RefCell, collections::HashMap, pin::Pin, rc::Rc};
 
@@ -25,11 +27,10 @@ use crate::{
     },
 };
 
-use super::transponster::InstanceID;
 use super::{
     expressions::ExpressionID,
     sets::Unifier,
-    transponster::{Instance, Unify, UsageHandle},
+    transponster::{Instance, Unify},
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -64,13 +65,13 @@ pub struct Quark {
 
     /// If we resolve a TypeID from here, we should tell any usages/instances
     /// that there is a new direct
-    dynfield_notifies: RefCell<HashMap<TypeID, Vec<(InstanceID, UsageHandle)>>>,
+    //dynfield_notifies: RefCell<HashMap<TypeID, Vec<(InstanceID, UsageHandle)>>>,
 
     /// If we've resolved a type far enough to know that it is an Instance,
     /// it is recorded here so we can do field analysis on it
     pub instances: RefCell<Unifier<TypeID, Instance>>,
 
-    once_know: RefCell<HashMap<TypeID, Vec<Action>>>,
+    //once_know: RefCell<HashMap<TypeID, Vec<Action>>>,
 
     //once_know_ctx: RefCell<HashMap<TypeID, Rc<UnsafeAsyncCompletable<CtxID>>>>,
     sender: local_channel::mpsc::Sender<Message>,
@@ -118,12 +119,13 @@ pub enum Action {
     /// This doesn't really give us a *lot* of back-info,
     /// but does allow us to verify the cast at this time
     CastTo(TypeID),
-
+    /*
     /// Says that we should take the resolution
     /// we got for the given TypeID and give it to
     /// this Instance which may open up additional opportunities
     /// to resolve things
     ResolveUsage(InstanceID, UsageHandle),
+    */
 }
 
 impl Quark {
@@ -151,26 +153,28 @@ impl Quark {
         });
         //.expect("user did a type error");
         match res {
-            Err(e) => {
-                let TypeError {
-                    components,
-                    complaint,
-                } = e;
-                // collect the peers of each component
-                let e = TypeUnificationError {
-                    from,
-                    from_peers: refm.peers_of(from),
-                    into,
-                    into_peers: refm.peers_of(into),
-                    for_expression: NodeInfo::Builtin,
-                    reason_for_unification: reason,
-                    reason_for_failure: complaint.intern(),
-                    context: Vec::new(),
-                };
+            Err(es) => {
+                for e in es {
+                    let TypeError {
+                        components,
+                        complaint,
+                    } = e;
+                    // collect the peers of each component
+                    let e = TypeUnificationError {
+                        from,
+                        from_peers: refm.peers_of(from),
+                        into,
+                        into_peers: refm.peers_of(into),
+                        for_expression: NodeInfo::Builtin,
+                        reason_for_unification: reason,
+                        reason_for_failure: complaint.intern(),
+                        context: Vec::new(),
+                    };
 
-                let e = CompilationError::TypeError(e);
+                    let e = CompilationError::TypeError(e);
 
-                self.type_errors.borrow_mut().push(e);
+                    self.type_errors.borrow_mut().push(e);
+                }
 
                 return; // don't attempt any malformed descendent unifies
             }
@@ -187,14 +191,27 @@ impl Quark {
         }
 
         tracing::debug!("New status for sets:");
+
+        let b = self.instances.borrow();
+        //tracing::debug!("{:#?}", b);
     }
 
     /// When each quark phase completes we get one message here to flush errors
     /// before switching over to Transponster
     fn end_one_phase(&self) {
-        let errors = self.type_errors.borrow_mut();
+        let mut errors = self.type_errors.borrow_mut();
 
-        if errors.is_tainted {}
+        if errors.is_tainted {
+            for error in errors.errors_to_be_flushed.swap_with(vec![]).into_iter() {
+                let _ = self.sender.send(Message {
+                    to: Destination::nil(),
+                    from: Destination::nil(),
+                    send_reply_to: Destination::nil(),
+                    conversation: Uuid::new_v4(),
+                    content: Content::Error(error),
+                });
+            }
+        }
     }
 
     /// If compilation fully stalls then this is called,
@@ -258,6 +275,8 @@ impl Quark {
                     Ok(cid) => {
                         tracing::info!("constructs an instance for single {name:?}, and it pointed to {cid:?} for a simple typeref");
                         let instance = Instance::infer_instance(Some(cid), self).await;
+
+                        //panic!("got an instance");
 
                         tracing::debug!("tr base is: {:?}", instance.of);
 
@@ -478,9 +497,9 @@ impl Quark {
             acting_on: RefCell::new(ExpressionContext::new_empty()),
             type_of_var: RefCell::new(HashMap::new()),
             executor,
-            dynfield_notifies: RefCell::new(HashMap::new()),
+            //dynfield_notifies: RefCell::new(HashMap::new()),
             instances: RefCell::new(Unifier::new()),
-            once_know: RefCell::new(HashMap::new()),
+            //once_know: RefCell::new(HashMap::new()),
             conversations: unsafe { ConversationContext::new(cs) },
             generics: Rc::new(generics),
         }
@@ -520,7 +539,6 @@ impl Quark {
                     }
                     Some(tid) => {
                         self.add_unify(
-                            //self.type_of.borrow().get(eid).copied().unwrap(),
                             tid,
                             block_ty,
                             "a block returns the same type as the last expression in it".intern(),
@@ -580,7 +598,7 @@ impl Quark {
                     self.executor.install(
                         async move {
                             let fctx = self
-                                .with_instance(fn_tid, |instance| instance.notify.clone().wait())
+                                .with_instance(fn_tid, |instance| instance.once_base.clone().wait())
                                 .await;
 
                             let (unifies, unify_error, arg_errors) =
@@ -621,14 +639,12 @@ impl Quark {
 
                 unsafe {
                     self.executor.install(async move {
-                        let fut = self.with_instance(src_ty, |instance| { instance.notify.clone().wait() });
+                        let fut = self.with_instance(src_ty, |instance| { instance.once_base.clone().wait() });
 
                         // wait for that instance to notify, since that means we've resolved the
                         // base
 
                         let base_ctx = fut.await;
-
-                        //panic!("got base ctx for sa");
 
                         // the base *must* have resolved at this point, so we can just use it and
                         // ask for the field!
@@ -656,8 +672,67 @@ impl Quark {
 
                         let rtid = match (as_field, as_method) {
                             (None, None) => {
-                                            tracing::error!("Field is: {}", sa.field);
-                                            panic!("user tried to access a field that didn't exist on the type")
+                                // it's a dynamic field
+
+                                let fname = sa.field;
+
+                                self.executor.install(async move {
+                                    let direct = self.with_instance(result_ty, |instance| { instance.once_resolved.clone().wait() }).await;
+
+                                    //panic!("we got the type of the ret!");
+
+                                    //let inst: Instance = Instance::from_resolved(direct_resolved);
+
+                                    tracing::warn!("sends a wait for on a NotifyDirectUsage");
+
+                                    // tell the related type about the direct
+                                    let resp = self.conversations.wait_for(
+                                        Message {
+                                            to: Destination { node: base_ctx, service: Service::Transponster() },
+                                            from: self.as_dest(),
+                                            send_reply_to: self.as_dest(),
+                                            conversation: Uuid::new_v4(),
+                                            content: Content::Transponster( crate::mir::transponster::Memo::NotifyDirectUsage { of: fname, as_ty: direct } )
+                                        }
+                                    ).await;
+
+                                }, "once we know the type of a dynfield from usages, we should add a direct");
+
+                                self.executor.install(async move {
+                                    tracing::warn!("sends a wait for on a NotifyIndirectUsage");
+                                    // tell the dest type that we have an indirect usage
+                                    let resp = self.conversations.wait_for(
+                                        Message {
+                                            to: Destination { node: base_ctx, service: Service::Transponster() },
+                                            from: self.as_dest(),
+                                            send_reply_to: self.as_dest(),
+                                            conversation: Uuid::new_v4(),
+                                            content: Content::Transponster( crate::mir::transponster::Memo::NotifyIndirectUsage { of: fname } )
+                                        }
+                                    ).await;
+
+                                    todo!("we heard back about an indirect?");
+
+                                    let resolve_ty = match resp.content {
+                                        Content::Transponster(Memo::ResolveIndirectUsage { field, commits_to }) => {
+                                            commits_to
+                                        },
+                                        _ => unreachable!(),
+                                    };
+
+                                    let (inst, unify) = Instance::from_resolved(resolve_ty, self).await;
+
+                                    for Unify { from, into } in unify {
+                                        self.add_unify(from, into, "creating an instance from a resolved type caused this");
+                                    }
+
+                                    let tid = self.introduce_instance(inst, NodeInfo::Builtin);
+
+                                    self.add_unify(tid, result_ty,
+                                                   "a dynamic field should be compatible with its usages after resolution");
+                                }, "once we get a resolved notification back from the dynfield, we should unify that value");
+
+                                None
                             }
                             (None, Some(m)) => {
                                 tracing::info!("it was a method");
@@ -671,7 +746,7 @@ impl Quark {
 
                                 Some(ftid)
                             },
-                            (Some(_), Some(_)) => todo!(),
+                            (Some(_), Some(_)) => todo!("what? they were both a field and a method?"),
                         };
 
                         match rtid {
@@ -682,32 +757,8 @@ impl Quark {
                                 tracing::error!("no tid?");
                             }
                         }
-                        /*{
-                            Some(tid) => {
-                                self.add_unify(tid, result_ty, "the field's type unifies with the result of its usage");
-                            },
-                            None => {
-                            }
-                        }*/
-
-                        /*
-
-                                    match f {
-                                        None => {
-                                            tracing::error!("Field is: {}", sa.field);
-                                            tracing::error!("All fields are: {:?}", t.regular_fields);
-                                            panic!("user tried to access a field that didn't exist on the type")
-                                        },
-                                        Some(tid) => {
-                                            tracing::info!("user got a valid field!");
-                                            Some(*tid)
-                                        }
-                                    }
-                                    */
 
                         tracing::info!("we unified a field type!");
-
-                        //todo!("now figure out field type since we have the base");
                     }, "wait for a resolution on the base of an access")
                 }
 
@@ -805,12 +856,9 @@ impl Quark {
                                 Err(ie) => todo!("handle import error"),
                             };
 
-                            //.expect("couldn't resolve base tyep");
-
                             let mut inst_fields = HashMap::new();
 
                             for (fname, fexp) in fields {
-                                //let fty = self.new_tid();
                                 let fty = self.do_the_thing_rec(fexp, false); // not lval as we load from it
 
                                 inst_fields.insert(fname, fty);
@@ -826,7 +874,6 @@ impl Quark {
                                 inst_generics.push(ty);
                             }
 
-                            //let base_id = self.resolve_typeref(c.base_type, self.type_args, self.node_id).await;
                             let (inst, unifies) = Instance::construct_instance(
                                 ctx_for_base,
                                 inst_fields,
@@ -839,8 +886,6 @@ impl Quark {
                             for Unify { from, into } in unifies {
                                 self.add_unify(from, into, "the instance said to!".intern());
                             }
-
-                            //self.instances.borrow_mut().insert(e_ty_id, inst);
                         },
                         "composite resolution block",
                     );
@@ -857,7 +902,6 @@ impl Quark {
         f: &'func ast::types::FunctionDefinition,
         imp: &'func mut ExpressionWrapper,
     ) -> ExpressionID {
-        //let mut ec = ExpressionContext::new_empty();
         let mut binding_scope = Bindings::fresh();
 
         for (param_name, param_type) in f.parameters.clone() {
@@ -876,14 +920,9 @@ impl Quark {
 
         tracing::info!("expressions in quark:");
 
-        //for e in self.acting_on.borrow().expressions.
-
         tracing::info!("done with from_ast for node {:?}", self.node_id);
 
-        //todo!("descend completed?");
         ae
-
-        //rec(&mut f.implementation).await;
     }
 
     pub async fn thread(self, mut ep: Earpiece) {
@@ -915,8 +954,6 @@ impl Quark {
                         async move { sref.entry(cloned, &mut imp).await },
                         "quark worker thread".to_owned(),
                     )
-
-                    //while let Some(v) =
                 }
 
                 while let Ok(v) = ep.wait().await {
@@ -929,6 +966,12 @@ impl Quark {
                                 crate::compile::per_module::Photon::CompilationStalled() => {
                                     sref.end_last_phase()
                                 }
+                                crate::compile::per_module::Photon::EndPhase() => {
+                                    sref.end_one_phase()
+                                }
+                                crate::compile::per_module::Photon::BeginPhase() => {
+                                    tracing::warn!("beginphase not handled yet");
+                                }
                             },
                             Content::Control(_) => todo!(),
                             Content::Announce(_) => todo!(),
@@ -940,8 +983,6 @@ impl Quark {
                 }
 
                 unreachable!()
-
-                //self.thread_stage_2(f).await;
             }
             _ => {
                 // we don't do anything in the other cases, we only make sense in the case of being
@@ -979,47 +1020,6 @@ impl Quark {
         let parent_id = self.node_id.resolve().parent.unwrap();
 
         tracing::error!("need to properly uh...handle generics for stuff");
-        /*for (name, tr) in f.parameters.iter_mut() {
-            SymbolResolver {
-                node_id: self.node_id,
-                earpiece: &mut self.earpiece,
-                for_service: Service::Quark(),
-            }
-            .resolve(tr)
-            .await;
-
-            //println!("resolved a param type");
-        }
-
-        let tres = SymbolResolver {
-            node_id: self.node_id,
-            earpiece: &mut self.earpiece,
-            for_service: Service::Quark(),
-        }
-        .resolve(&mut f.return_type)
-        .await;*/
-        //tres.resolve_typeref(&mut f.return_type).await;
-
-        // this is all we need to do for now
-        // to let the local transponster know how to answer call queries
-        // and instantiations
-        /*let _ = self.earpiece.cloned_sender().send(Message {
-            to: Destination::transponster(self.node_id),
-            from: self.as_dest(),
-            send_reply_to: Destination::nil(),
-            conversation: Uuid::new_v4(),
-            content: Content::Transponster(Memo::NotifySelfCallable {
-                generics: self
-                    .node_id
-                    .resolve()
-                    .generics
-                    .clone()
-                    .into_iter()
-                    .collect(),
-                params: f.parameters.clone(),
-                returns: f.return_type.clone(),
-            }),
-        });*/
 
         let aeid = self.lower_to_mir(&f, imp).await;
 
@@ -1036,16 +1036,11 @@ impl Quark {
             return_ty,
             "the function block expr must return the type requested".intern(),
         );
-
-        //yiel
-        // start walking the function tree now? or do later?
-
-        //self.thread_stage_2(f).await;
     }
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct ResolvedType {
-    node: CtxID,
-    generics: Vec<ResolvedType>,
+    pub node: CtxID,
+    pub generics: Vec<ResolvedType>,
 }

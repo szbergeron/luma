@@ -1,5 +1,16 @@
 mod primitive {
 
+    struct Unit {}
+
+    struct i64 {
+        fn dyn_fields() -> std::primitive::i64 {
+            42.dynf
+        },
+    }
+}
+
+/*
+
     struct i64 {
         fn operator[_+_](self: std::primitive::i64, other: std::primitive::i64) -> std::primitive::i64 {
             self + other
@@ -14,8 +25,6 @@ mod primitive {
         },
     }
 
-    struct Unit {}
-
     struct i32 {
         fn operator[_*_](self: std::primitive::i32, other: std::primitive::i32) -> std::primitive::i32 {
             //5 + 3 / 2
@@ -25,10 +34,11 @@ mod primitive {
             self * other
         },
 
-        fn incorrect_second_operand_type(a: i32, b: i32) -> std::primitive::i32 {
+        fn incorrect_second_operand_type(a: std::primitive::i32, b: std::primitive::i32) -> std::primitive::i32 {
             a * b
             //3 / a;
-        }
+        },
+
     }
 
     struct Wrap<T> {
@@ -38,10 +48,11 @@ mod primitive {
     fn w() -> std::primitive::Wrap<std::primitive::i32> {
         struct std::primitive::Wrap { }
     }
-}
+
 
 mod pointers {
     struct reference<T> {
         var v: T,
     }
 }
+*/

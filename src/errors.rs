@@ -5,6 +5,7 @@ use itertools::Itertools;
 pub enum CompilationError {
     TypeError(TypeUnificationError),
     ArgConversionError(ArgConversionError),
+    FieldAccessError(FieldAccessError),
 }
 
 #[derive(Clone, Debug)]
@@ -22,6 +23,14 @@ pub struct TypeUnificationError {
     pub reason_for_unification: IStr,
 
     pub reason_for_failure: IStr,
+}
+
+#[derive(Clone, Debug)]
+pub struct FieldAccessError {
+    //pub base_expression:
+    pub base_expr_span: NodeInfo,
+    pub field_span: NodeInfo,
+    pub error_info: String,
 }
 
 impl CompilationError {
@@ -57,7 +66,7 @@ impl CompilationError {
                         ep.contextualize(p, files, "Tried to take this value and unify it with a literal of the wrong type:".intern());
                     }
                     (p1 @ NodeInfo::Parsed(_), p2 @ NodeInfo::Parsed(_)) => {
-                        ep.new_error("Type Unification Failed");
+                        //ep.new_error("Type Unification Failed");
 
                         ep.contextualize(
                             p1,
@@ -107,6 +116,21 @@ impl CompilationError {
                 }
 
                 ep.line(format!("That was the cause of this error: {comment}"));
+            }
+            CompilationError::FieldAccessError(fae) => {
+                ep.new_error("Field Access Error");
+
+                let FieldAccessError {
+                    base_expr_span,
+                    field_span,
+                    error_info,
+                } = fae;
+
+                ep.contextualize(
+                    field_span,
+                    files,
+                    "This field did not exist on the base expression type:".intern(),
+                );
             }
         }
     }

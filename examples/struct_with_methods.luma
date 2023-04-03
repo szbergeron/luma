@@ -10,7 +10,7 @@ struct S {
         5
     }*/
 
-    fn operator[_+_](self: S, other: S) -> S {
+    fn operator[_+_](self: S, other: std::primitive::i64) -> S {
         struct S { a: self.foo() + other.foo() }
     },
 

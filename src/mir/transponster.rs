@@ -1,4 +1,5 @@
 use std::{
+    cell::RefCell,
     collections::{HashMap, HashSet},
     fmt::Debug,
     rc::Rc,
@@ -24,7 +25,7 @@ use crate::{
 };
 
 use super::{
-    expressions::{AssignmentDirection, ExpressionID},
+    expressions::ExpressionID,
     quark::{Quark, ResolvedType, TypeError, TypeID},
 };
 
@@ -66,11 +67,10 @@ pub struct Transponster {
     //resolutions: HashMap<FieldID, >,
 
     //assignments: HashMap<FieldID, Vec<TypeVar>>,
-    dynamic_field_contexts: HashMap<FieldID, FieldContext>,
-
+    //dynamic_field_contexts: HashMap<FieldID, FieldContext>,
     /// If it's in here, then we've committed to a type for that
     /// variant/field and it can be used for inference
-    dynamic_fields: HashMap<FieldID, Rc<UnsafeAsyncCompletable<PortableTypeVar>>>,
+    dynamic_fields: RefCell<HashMap<IStr, DynFieldInfo>>,
 
     notify_when_resolved: HashMap<FieldID, Vec<(Destination, FieldID)>>,
 
@@ -83,6 +83,96 @@ pub struct Transponster {
     //// and Quark only has to handle detecting value flow and doing function
     //// type unification
     //instances: HashMap<InstanceID, Instance>,
+}
+
+pub type Score = fixed::types::I16F16;
+
+pub struct DynFieldInfo {
+    directs: RefCell<Vec<ResolvedType>>,
+
+    indirects: RefCell<usize>,
+
+    committed_type: Rc<UnsafeAsyncCompletable<ResolvedType>>,
+}
+
+impl std::default::Default for DynFieldInfo {
+    fn default() -> Self {
+        Self {
+            directs: Default::default(),
+            indirects: RefCell::new(0),
+            committed_type: unsafe { UnsafeAsyncCompletable::new() },
+        }
+    }
+}
+
+pub enum ScoreInfo {
+    /// This should not be committed in its current state
+    Never(),
+
+    /// This should be immediately committed
+    Now(),
+
+    /// This is a bid, but is not eligible for immediate commit
+    Maybe(Score),
+}
+
+impl DynFieldInfo {
+    pub fn current_score(&self) -> ScoreInfo {
+        if self.is_committed() {
+            ScoreInfo::Never()
+        } else if self.directs.borrow().is_empty() {
+            ScoreInfo::Never()
+        } else {
+            let indirects = *self.indirects.borrow();
+            let directs_count = self.directs.borrow().len();
+
+            if indirects == directs_count {
+                ScoreInfo::Now() // no indirects, some directs, this can be committed *now*
+            } else {
+                todo!("need to compute the *real* score")
+            }
+        }
+    }
+
+    pub fn is_committed(&self) -> bool {
+        unsafe { self.committed_type.is_complete() }
+    }
+
+    pub fn commit_to(&self, ty: ResolvedType) {
+        unsafe {
+            self.committed_type
+                .complete(ty)
+                .expect("already committed?")
+        };
+    }
+
+    pub fn commit(&self) {
+        let mut counts = HashMap::new();
+
+        for ty in self.directs.borrow().clone().into_iter() {
+            let ent = counts.entry(ty).or_insert(Score::from_num(1.0));
+            *ent = *ent + Score::from_num(1.0);
+        }
+
+        if counts.len() > 1 {
+            todo!("type error when conflicting field types");
+        }
+
+        let mut ordered = counts.into_iter().collect_vec();
+        ordered.sort_by_key(|(ty, count)| *count);
+
+        let (commits_to, _count) = ordered.last().cloned().expect("it was just here");
+
+        self.commit_to(commits_to);
+    }
+
+    pub fn add_indirect(&self) {
+        self.indirects.borrow_mut().checked_add(1).expect("boooo");
+    }
+
+    pub fn add_direct(&self, ty: ResolvedType) {
+        self.directs.borrow_mut().push(ty);
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -113,7 +203,9 @@ pub struct Instance {
 
     pub generics: Rc<HashMap<IStr, TypeID>>,
 
-    pub notify: Rc<UnsafeAsyncCompletable<CtxID>>, // when we resolve our base, notify this
+    pub once_base: Rc<UnsafeAsyncCompletable<CtxID>>, // when we resolve our base, notify this
+
+    pub once_resolved: Rc<UnsafeAsyncCompletable<ResolvedType>>,
 }
 
 #[derive(Clone, Debug)]
@@ -211,6 +303,27 @@ pub struct ArgConversionError {
 }
 
 impl Instance {
+    #[async_recursion::async_recursion(?Send)]
+    pub async fn from_resolved(rty: ResolvedType, within: &'static Quark) -> (Self, Vec<Unify>) {
+        let mut generics = Vec::new();
+
+        let mut unify = Vec::new();
+
+        for rt in rty.generics {
+            let (inst, mut additional_unify) = Instance::from_resolved(rt, within).await;
+            let tid = within.introduce_instance(inst, NodeInfo::Builtin);
+            generics.push(tid);
+
+            unify.append(&mut additional_unify);
+        }
+
+        let (inst, mut additional_unify) = Self::with_generics(rty.node, within, generics).await;
+
+        unify.append(&mut additional_unify);
+
+        (inst, unify)
+    }
+
     pub fn as_call(
         &self,
         args: Vec<TypeID>,
@@ -288,93 +401,6 @@ impl Instance {
             complaint: format!("tried to call a type/value that was not callable"),
         })*/
     }
-
-    /*
-    pub async fn typeof_regular_field(&self, field: IStr, within: &mut Quark) -> Option<TypeID> {
-        if let InstanceOf::Type(InstanceOfType {
-            regular_fields,
-            methods: regular_methods,
-            from,
-        }) = &self.of
-        {
-            match &regular_fields.get(&field) {
-                None => None,
-                Some(tid) => Some(tid.clone().extract().await),
-            }
-        } else {
-            todo!("user tried to get a field on a function type")
-        }
-    }
-
-    /// If we already have a type for the DynField, then return it here
-    pub fn typeof_dynamic_field(&self, field: IStr) -> Option<ResolvedType> {
-        todo!()
-    }*/
-
-    /*
-
-    /// the direction here says, if Load then "the field is loaded from into something of TID
-    /// <with_tid>, and the inverse if direction is Store
-    pub fn use_field(
-        &self,
-        field: IStr,
-        with_tid: TypeID,
-        direction: UsageDirection,
-    ) -> (UsageHandle, Vec<Unify>) {
-        let mut unify = Vec::new();
-
-        match &self.of {
-            InstanceOf::Type(t) => {
-                if let Some(&field_type) = t.regular_fields.get(&field) {
-                    todo!("neat");
-                    let u = match direction {
-                        UsageDirection::Load() => Unify {
-                            from: field_type,
-                            into: with_tid,
-                        },
-                        UsageDirection::Store() => Unify {
-                            from: with_tid,
-                            into: field_type,
-                        },
-                    };
-
-                    unify.push(u);
-
-                    (UsageHandle(uuid::Uuid::new_v4()), unify)
-                //} else if let Some(pair) = t.m
-                } else {
-                    // this is a dynamic field
-                    todo!("dynamic fields")
-                }
-            }
-            InstanceOf::Func(f) => todo!("unify function calls"),
-            InstanceOf::Generic(g) => {
-                todo!("what now?")
-            }
-            InstanceOf::Unknown() => todo!("rip"),
-        }
-    }
-
-    /// allows us to add a direct
-    /// if the field was already resolved, this returns a TypeError describing the
-    /// mismatch
-    pub fn resolve_usage(
-        &self,
-        usage: UsageHandle,
-        direction: UsageDirection,
-        to_type: ResolvedType,
-    ) -> Result<(), TypeError> {
-        todo!()
-    }
-
-    /*pub fn use_field(
-        &self,
-        name: IStr,
-    ) -> UnsafeAsyncCompletableFuture<T> {
-    }*/
-
-*/
-
     pub async fn construct_instance(
         base: CtxID,
         field_values: HashMap<IStr, TypeID>,
@@ -481,11 +507,12 @@ impl Instance {
             of: InstanceOf::Unknown(), // need to figure this out from what we're based on
             generics: Rc::new(HashMap::new()),
             accessed_from: None,
-            notify: unsafe { UnsafeAsyncCompletable::new() },
+            once_base: unsafe { UnsafeAsyncCompletable::new() },
+            once_resolved: unsafe { UnsafeAsyncCompletable::new() },
         };
 
         unsafe {
-            let canary = inst.notify.clone().wait();
+            let canary = inst.once_base.clone().wait();
             within.executor.install(
                 async move {
                     let v = canary.await;
@@ -510,6 +537,38 @@ impl Instance {
                 .map(|(g, r)| (*g, within.new_tid(NodeInfo::Builtin)))
                 .collect(),
         );
+
+        unsafe {
+            let resolved = self.once_resolved.clone();
+
+            let once_base = self.once_base.clone();
+
+            let generics_unresolved = self.generics.clone();
+
+            within.executor.install(
+                async move {
+                    let mut generics = Vec::new();
+                    for (generic_name, generic_tid) in generics_unresolved.iter() {
+                        let gen_ty = within.with_instance(*generic_tid, |instance| {
+                            instance.once_resolved.clone().wait()
+                        });
+                        generics.push(gen_ty.await);
+                    }
+
+                    let base = once_base.wait().await;
+
+                    let resolved_ty = ResolvedType {
+                        node: base,
+                        generics,
+                    };
+
+                    resolved.complete(resolved_ty).unwrap();
+                },
+                "once we know the full type of a var, finish its once_resolved",
+            );
+        };
+
+        //panic!();
 
         let of = match &inst.inner {
             NodeUnion::Type(t) => {
@@ -556,8 +615,8 @@ impl Instance {
                     inst_methods.insert(mname, minst_thunk);
                 }
 
-                let _ = unsafe { self.notify.complete(base) }; // we don't yield yet, so this is
-                                                               // fine until ret
+                let _ = unsafe { self.once_base.complete(base) }; // we don't yield yet, so this is
+                                                                  // fine until ret
 
                 InstanceOf::Type(InstanceOfType {
                     regular_fields: inst_fields,
@@ -576,7 +635,7 @@ impl Instance {
                 };
 
                 tracing::warn!("make function res better");
-                let _ = unsafe { self.notify.complete(base) };
+                let _ = unsafe { self.once_base.complete(base) };
 
                 /*let parameters = f.parameters.clone().into_iter().map(|(pname, pty)| unsafe {
                     let generics = self.generics.clone();
@@ -634,7 +693,7 @@ impl Instance {
         stores_into: Instance,
         because: Unify,
         within: &Quark,
-    ) -> Result<(Instance, Vec<Unify>), TypeError> {
+    ) -> Result<(Instance, Vec<Unify>), Vec<TypeError>> {
         //panic!("wooo");
 
         tracing::info!(
@@ -743,11 +802,11 @@ impl Instance {
             }
         };
 
-        let (conflicted, notify) = unsafe {
+        let (conflicted_a, once_base) = unsafe {
             UnsafeAsyncCompletable::combine(
                 within.executor,
-                self.notify,
-                stores_into.notify,
+                self.once_base,
+                stores_into.once_base,
                 |va, vb| {
                     tracing::warn!("we're unifying id {va:?} with id {vb:?} in ctx");
                     if va != vb {
@@ -768,99 +827,45 @@ impl Instance {
             )
         };
 
+        let (conflicted_b, once_resolved) = unsafe {
+            UnsafeAsyncCompletable::combine(
+                within.executor,
+                self.once_resolved,
+                stores_into.once_resolved,
+                |va, vb| {
+                    tracing::warn!("we're unifying id {va:?} with id {vb:?} in ctx");
+                    if va != vb {
+                        let msg = format!(
+                            "can not assign a value of type {va:?} into a value of type {vb:?}"
+                        );
+
+                        Err(TypeError {
+                            components: vec![because.from, because.into],
+                            complaint: msg,
+                        })
+                    } else {
+                        Ok(())
+                    }
+                },
+            )
+        };
+
         let i = Instance {
             id: InstanceID(uuid::Uuid::new_v4()),
             instantiated_in: self.instantiated_in,
             generics: Rc::new(unified_generics),
             of: new_of,
             accessed_from,
-            notify,
+            once_base,
+            once_resolved, // since this is all dependent on the sets, we don't need to
+                           // do any fancy unify and can just pick one
         };
 
-        if let Some(Err(e)) = conflicted {
-            Err(e)
-        } else {
-            Ok((i, all_generic_unifies))
+        match (conflicted_a, conflicted_b) {
+            (Some(Err(a)), Some(Err(b))) => Err(vec![a, b]),
+            (Some(Err(e)), _) | (_, Some(Err(e))) => Err(vec![e]),
+            _ => Ok((i, all_generic_unifies)),
         }
-    }
-}
-
-#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug)]
-pub struct UsageHandle(uuid::Uuid);
-
-/// We can potentially extend this into supporting HKTs
-/// by allowing generics to be provided on an opaque TypeID
-///
-/// though, that will make actually doing the stepped
-/// dyn field solve a lottttt harder
-#[derive(Debug, Clone)]
-pub enum PortableTypeVar {
-    UnPortable(TypeID),
-    /// a free type that should be matched to a new TypeID within the solver system
-    Free(),
-    Instantiation(Arc<Instantiation>),
-}
-
-#[derive(Debug, Clone)]
-pub struct Instantiation {
-    /// eventually will make this support constraints as alternatives on it
-    /// instead of just either a TypeID that was passed through or fully
-    /// unconstrained
-    generics: HashMap<IStr, PortableTypeVar>,
-
-    of_base: CtxID,
-}
-
-struct FieldContext {
-    for_field: FieldID,
-
-    //// map of <Origin, Recipient>
-    //forwarded_broadcasts: HashMap<FieldID, HashSet<FieldID>>,
-    //// Map<Origin Field, Map<Local Field, (Received Count, Decided Type, Decision Weights)>>
-    //received_broadcasts: HashMap<FieldID, HashMap<FieldID, (usize, ResolvedType, Vec<(f32, ResolvedType)>)>>,
-    received_broadcasts: HashSet<Arc<AnnounceCommit>>,
-
-    usages: HashSet<UsageHandle>,
-
-    resolutions: HashMap<UsageHandle, ResolvedType>,
-}
-
-impl FieldContext {
-    pub fn new_for_field(for_field: FieldID) -> Self {
-        Self {
-            for_field,
-            received_broadcasts: HashSet::new(),
-            usages: HashSet::new(),
-            resolutions: HashMap::new(),
-        }
-    }
-
-    /// After any given pass, this takes what we know
-    /// about the usage of this field and tries to
-    /// put a number on how sure we are that
-    /// we are the type we think, and thus how good a
-    /// candidate we are for committing
-    ///
-    /// Any number over 0.95 should imply we are a candidate
-    /// for immediate commit, without trying to do an election
-    pub fn calculate_certainty(&self) -> fixed::types::I16F16 {
-        // simply take how many direct usages we have and compare that
-        // to how many unknowns we have, for now
-        //
-        // we may want to include an additional biasing operation later
-        // where we get more confident with more directs even
-        // with a lower ratio
-        let usage_count = self.usages.len() as f64;
-        let resolution_count = self.resolutions.len() as f64;
-
-        let ratio = if usage_count > 0.0 {
-            resolution_count / usage_count
-        } else {
-            // if we have no usages, we have no certainty and no type we could possibly be
-            0.0
-        };
-
-        ratio.to_fixed()
     }
 }
 
@@ -873,13 +878,18 @@ pub enum Memo {
         for_field: FieldID,
     },
 
-    AskFieldType {
-        instantiation: Arc<Instantiation>,
-        field: FieldID,
+    NotifyIndirectUsage {
+        of: IStr,
     },
 
-    ReplyFieldType {
-        new_instantiation: Arc<Instantiation>,
+    ResolveIndirectUsage {
+        field: IStr,
+        commits_to: ResolvedType,
+    },
+
+    NotifyDirectUsage {
+        of: IStr,
+        as_ty: ResolvedType,
     },
 
     /// If you are sent this, it means you asked a while ago
@@ -887,7 +897,9 @@ pub enum Memo {
     ///
     /// We now know the type, or know that it can not be resolved, so
     /// you can ask us again for more information
-    CheckAgain { field: FieldID },
+    CheckAgain {
+        field: FieldID,
+    },
 
     /// A quark can tell the transponster for its own node that
     /// it is a callable, so the transponster can respond to call
@@ -929,81 +941,27 @@ impl Transponster {
 
         let cc_send = earpiece.cloned_sender();
 
+        let generics = node_id
+            .resolve()
+            .generics
+            .clone()
+            .into_iter()
+            .map(|(a, b)| a)
+            .collect_vec();
+
         Self {
             for_ctx: node_id,
             earpiece,
 
-            dynamic_field_contexts: HashMap::new(),
-            dynamic_fields: HashMap::new(),
+            //dynamic_field_contexts: HashMap::new(),
+            dynamic_fields: RefCell::new(HashMap::new()),
 
             notify_when_resolved: HashMap::new(),
 
             regular_fields,
-            generics: Vec::new(),
+            generics,
             conversations: unsafe { ConversationContext::new(cc_send) },
             //instances: todo!(), // TODO: generics
-        }
-    }
-
-    pub fn is_regular_field(&self, field: IStr) -> bool {
-        self.regular_fields.contains_key(&field)
-    }
-
-    /// If the instantiation didn't
-    /// allow us to resolve the type of the field directly,
-    /// then we return the determining TypeID
-    ///
-    /// We may wait to resolve until we have committed to a type
-    /// in the case that we will *eventually* have enough information
-    /// to make that determination
-    pub async fn wait_solve_field(
-        &mut self,
-        field: IStr,
-        on: Arc<Instantiation>,
-    ) -> PortableTypeVar {
-        if let Some(v) = self.regular_fields.get(&field) {
-            // turn the STR into a lowered form according to the types in the Instantiation
-            match v.resolve().unwrap().inner.clone() {
-                crate::cst::SyntacticTypeReferenceInner::Single { name } => {
-                    if let [one] = name.scope.as_slice() && self.generics.contains(one) {
-                        //PortableTypeVar::UnPortable(on.generics[one].clone())
-                        on.generics[one].clone()
-                    } else {
-                        let nr = NameResolver {
-                            name,
-                            based_in: self.for_ctx.resolve().parent.unwrap(),
-                            reply_to: self.for_ctx,
-                            service: Service::Oracle()
-                        };
-
-                        let resolved = nr
-                            .using_context(&self.conversations)
-                            .await;
-                        let resolved = resolved.expect("need to handle unresolved names");
-
-                        // no generics since this is just a single (the other ones get more
-                        // complicated)
-                        PortableTypeVar::Instantiation(Arc::new(Instantiation {
-                            generics: HashMap::new(),
-                            of_base: resolved,
-                        }))
-                    }
-                }
-                _ => todo!("other kinds of STR"),
-            }
-        } else {
-            // could be a dynamic field, so this is a new usage
-            unsafe {
-                let f = self
-                    .dynamic_fields
-                    .entry(FieldID {
-                        name: field,
-                        on: self.for_ctx,
-                    })
-                    .or_insert(UnsafeAsyncCompletable::new());
-
-                f.clone().wait().await
-            }
         }
     }
 
@@ -1011,14 +969,6 @@ impl Transponster {
         let parent_id = self.for_ctx.resolve().parent.unwrap();
 
         for field in sd.fields.iter_mut() {
-            /*let tres = SymbolResolver {
-                node_id: self.for_ctx,
-                earpiece: &mut self.earpiece,
-                for_service: crate::compile::per_module::Service::Oracle(),
-            }
-            .resolve(field.has_type.as_mut().unwrap())
-            .await;*/
-            //let ft = field.has_type.as_ref().expect("no type?");
             self.regular_fields.insert(
                 field.name,
                 field.has_type.expect("field didn't have a type?"),
@@ -1033,209 +983,37 @@ impl Transponster {
                 .insert(name, child.resolve().canonical_typeref());
         }
 
+        while let Ok(m) = self.earpiece.wait().await {
+            if let Some(m) = self.conversations.dispatch(m) {
+                match m.content {
+                    Content::Transponster(memo) => match memo {
+                        Memo::NotifyIndirectUsage { of } => {
+                            self.dynamic_fields
+                                .borrow_mut()
+                                .entry(of)
+                                .or_default()
+                                .add_indirect();
+                        }
+                        Memo::NotifyDirectUsage { of, as_ty } => {
+                            self.dynamic_fields
+                                .borrow_mut()
+                                .entry(of)
+                                .or_default()
+                                .add_direct(as_ty);
+                        }
+                        Memo::ResolveIndirectUsage { field, commits_to } => {
+                            unreachable!("shouldn't get this ourselves")
+                        }
+                        _ => todo!(),
+                    },
+                    Content::Quark(_) => todo!(),
+                    _ => unreachable!("shouldn't receive anything else"),
+                }
+            }
+        }
+
         tracing::error!("add iter of methods/children of the type");
     }
-
-    fn field_handle_mut(
-        fields: &mut HashMap<FieldID, FieldContext>,
-        field: FieldID,
-    ) -> &mut FieldContext {
-        fields.entry(field.clone()).or_insert(FieldContext {
-            for_field: field,
-            received_broadcasts: HashSet::new(),
-            usages: HashSet::new(),
-            resolutions: HashMap::new(),
-        })
-    }
-
-    fn field_handle(&mut self, field: FieldID) -> &FieldContext {
-        self.dynamic_field_contexts
-            .entry(field.clone())
-            .or_insert(FieldContext {
-                for_field: field,
-                received_broadcasts: HashSet::new(),
-                usages: HashSet::new(),
-                resolutions: HashMap::new(),
-            })
-    }
-
-    /*pub async fn wait_for(&mut self, field: FieldID) -> Result<TypeVar, !> {
-        todo!()
-    }*/
-
-    pub async fn use_field(&mut self, field: FieldID) -> UsageHandle {
-        assert!(field.on == self.for_ctx, "not our field");
-
-        if let Some(v) = self.regular_fields.get(&field.name) {
-            // we had a regular field for it, maybe tie in generics here?
-            todo!()
-        } else {
-            // it must be a generic field then
-            let usage_id = UsageHandle(uuid::Uuid::new_v4());
-
-            usage_id
-        }
-    }
-
-    pub async fn resolve_usage(
-        &mut self,
-        field: FieldID,
-        usage: UsageHandle,
-        value_type: ResolvedType,
-    ) {
-        assert!(
-            field.on == self.for_ctx,
-            "if it isn't on self, then it isn't a direct"
-        );
-
-        let field_context = Self::field_handle_mut(&mut self.dynamic_field_contexts, field);
-
-        assert!(
-            field_context.usages.contains(&usage),
-            "we don't have a matching usage for this"
-        );
-
-        let prior = field_context.resolutions.insert(usage, value_type);
-
-        assert!(
-            prior.is_none(),
-            "they already resolved this usage, why are they doing it again"
-        );
-    }
-
-    /*pub fn receive_broadcast(&mut self, ac: Arc<AnnounceCommit>, for_field: FieldID) {
-        let sd = self.as_dest();
-        let fc = Self::field_handle_mut(&mut self.dynamic_field_contexts, for_field);
-
-        let already_received = fc.received_broadcasts.insert(ac.clone());
-
-        if !already_received {
-            // we then forward it along
-            for f in fc.assigns_into.iter() {
-                Self::send_announce_to(sd, &mut self.earpiece, ac.clone(), f.clone());
-            }
-        }
-    }*/
-
-    pub fn send_announce_to(
-        from: Destination,
-        ep: &mut Earpiece,
-        ac: Arc<AnnounceCommit>,
-        to: FieldID,
-    ) {
-        ep.send(Message {
-            to: Destination::transponster(to.on),
-            from,
-            send_reply_to: from,
-            conversation: uuid::Uuid::new_v4(),
-            content: Content::Transponster(Memo::AnnounceCommit {
-                original: ac,
-                for_field: to,
-            }),
-        })
-    }
-
-    pub async fn emit_broadcasts(&mut self) {
-        let self_as_dest = self.as_dest();
-
-        for (fid, fc) in self.dynamic_field_contexts.iter_mut() {
-            let directs = fc.resolutions.iter();
-
-            let mut counts: HashMap<ResolvedType, fixed::types::I16F16> = HashMap::new();
-
-            for (usage, resolution) in directs {
-                *counts.entry(resolution.clone()).or_insert(0.0.to_fixed()) +=
-                    (1.0).to_fixed::<fixed::types::I16F16>();
-            }
-
-            let mut weights = Vec::new();
-
-            let len = counts.len() as f32;
-
-            for (ty, count) in counts.into_iter() {
-                // this can't be a div by zero since len must have been > 0 to get into this loop
-                weights.push((count / len.to_fixed::<fixed::types::I16F16>(), ty));
-            }
-
-            if weights.len() > 1 {
-                todo!("emit a type error, we have conflicting assignments");
-            }
-
-            if !weights.is_empty() {
-                // we get to choose one and do a broadcast
-                //weights.sort_unstable_by_key(|(a, b)| *a);
-                let (weight, ty) = weights
-                    .iter()
-                    .max_by_key(|(a, b)| *a)
-                    .expect("wasn't empty, but no max?")
-                    .clone();
-
-                tracing::info!("node {:?} commits to type {ty:?}", self.for_ctx);
-
-                let announce = Arc::new(AnnounceCommit {
-                    from_source: *fid,
-                    commits_to: ty,
-                    weights,
-                });
-
-                for (dest, target_field) in
-                    self.notify_when_resolved.remove(fid).unwrap_or(Vec::new())
-                {
-                    let m = Memo::AnnounceCommit {
-                        original: announce.clone(),
-                        for_field: target_field,
-                    };
-
-                    let m = Message {
-                        to: dest,
-                        from: self_as_dest,
-                        send_reply_to: Destination::nil(),
-                        conversation: uuid::Uuid::new_v4(),
-                        content: Content::Transponster(m),
-                    };
-
-                    self.earpiece.send(m);
-                }
-
-                // now the last one
-            }
-        }
-    }
-
-    /*pub async fn add_usage(&mut self, field: FieldID, value_type: TypeVar) {
-        assert!(
-            field.on == self.for_ctx,
-            "can only add a usage where the field is on self, otherwise it's nonsense"
-        );
-
-        match value_type.current {
-            TypeType::Resolved(box rt) => {
-                //self.add_direct(field, rt).await;
-                let fc = self.dynamic_field_contexts.entry(field).or_insert(FieldContext::new_for_field(field));
-
-                fc.resolutions
-            }
-            TypeType::Symbolic(box sy) => {
-                // we need to add an indirect here and set a waiter on it
-            }
-            TypeType::Refer(_) => {
-                panic!("transponster was given a refer but should have been given a root")
-            }
-            TypeType::Unknown() => {
-                panic!("what")
-            }
-        }
-    }*/
-
-    /// Takes a field on self and says
-    pub async fn add_indirect(
-        &mut self,
-        on_self: FieldID,
-        on_other: FieldID,
-        _direction: AssignmentDirection,
-    ) {
-    }
-
     /// Called every time the quark phase finishes, so for each field we have
     /// that isn't yet sealed that we have new directs on, we can seal them
     /// and commit to a type
@@ -1255,7 +1033,8 @@ impl Transponster {
 
         match node {
             crate::ast::tree::NodeUnion::Type(t) => {
-                self.entry(executor, &mut t.lock().unwrap()).await;
+                let mut sdd = t.lock().unwrap().clone();
+                self.entry(executor, &mut sdd).await;
             }
             _other => {
                 warn!("Transponster shuts down since this node type wasn't a Type")
@@ -1264,13 +1043,5 @@ impl Transponster {
         }
 
         tracing::error!("possible memory corruption risk, should not get here");
-    }
-
-    pub async fn ask_type_of(
-        &mut self,
-        field: FieldID,
-        notify_later: Destination,
-    ) -> Result<!, ()> {
-        todo!()
     }
 }

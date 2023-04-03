@@ -215,6 +215,10 @@ impl Executor {
     }
 }
 
+pub struct JoinHandle {
+    todo: !,
+}
+
 pub struct UnsafeAsyncCompletableFuture<T: Clone> {
     _phantom: PhantomData<T>,
     refers: std::rc::Rc<UnsafeAsyncCompletable<T>>,
@@ -296,6 +300,10 @@ impl<T: Clone + std::fmt::Debug + 'static> UnsafeAsyncCompletable<T> {
 
     pub unsafe fn try_get(&self) -> Option<T> {
         self.value.get().as_ref().unwrap().clone()
+    }
+
+    pub unsafe fn is_complete(&self) -> bool {
+        self.value.get().as_ref().unwrap().is_some()
     }
 
     pub unsafe fn new() -> Rc<Self> {

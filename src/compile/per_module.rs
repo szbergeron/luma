@@ -307,11 +307,14 @@ impl Director {
             let qk_before = st.quark_progress.load(Ordering::SeqCst);
             let tp_before = st.transponster_progress.load(Ordering::SeqCst);
 
+            postal.send_broadcast_to(Service::Quark(), Content::Quark(Photon::BeginPhase()));
+
             // wait for quark to finish phase
             st.wait_stalled();
             println!("Quark stalled for phase");
 
             // send phase change notification
+            postal.send_broadcast_to(Service::Quark(), Content::Quark(Photon::EndPhase()));
 
             // wait for transponster to finish phase and elect/unify some field
             st.wait_stalled();
@@ -325,16 +328,14 @@ impl Director {
                     "The system has reached a converged final state, tell it to emit any errors"
                 );
 
-                postal.send_broadcast(Message {
-                    to: Destination::nil(),
-                    from: Destination::nil(),
-                    send_reply_to: Destination::nil(),
-                    conversation: Uuid::new_v4(),
-                    content: Content::Quark(Photon::CompilationStalled()),
-                });
-                //
+                postal.send_broadcast_to(
+                    Service::Quark(),
+                    Content::Quark(Photon::CompilationStalled()),
+                );
 
                 st.wait_stalled();
+
+                std::thread::sleep(Duration::from_secs(10));
 
                 println!("Exiting system");
 
@@ -447,6 +448,26 @@ impl Postal {
         }
     }
 
+    pub fn send_broadcast_to(&self, service: Service, content: Content) {
+        for (cid, send) in self.senders.iter() {
+            let msg = Message {
+                to: Destination {
+                    node: *cid,
+                    service,
+                },
+                from: Destination {
+                    node: CtxID(AtomicVecIndex::nil()),
+                    service: Service::Broadcast(),
+                },
+                send_reply_to: Destination::nil(),
+                conversation: Uuid::new_v4(),
+                content: content.clone(),
+            };
+
+            self.send(msg);
+        }
+    }
+
     pub fn exited(&self) -> bool {
         self.exited.load(std::sync::atomic::Ordering::SeqCst) == self.senders.len()
     }
@@ -540,7 +561,7 @@ impl Group {
             rtr_r,
             vec![
                 (Service::Resolver(), res_s),
-                (Service::Oracle(), ocl_s),
+                (Service::Transponster(), ocl_s),
                 (Service::Quark(), qk_s),
                 (Service::Router(), rtr_s.clone()),
             ],
@@ -789,6 +810,17 @@ pub enum AnnounceMessage {
 /// How Quarks qtalk to each other :P
 #[derive(Debug, Clone)]
 pub enum Photon {
+    /// terminate the current phase,
+    /// and collect and emit related errors
+    EndPhase(),
+
+    /// Start using inputs from new facts to do
+    /// type resolution--this doesn't
+    /// do a whole lot directly,
+    /// but is a counterpart to the Transponster
+    /// version of the same Begin/End pair
+    BeginPhase(),
+
     /// After this point, if any typevars are Free(),
     /// they will never be unified so the program does not typecheck
     CompilationStalled(),
@@ -836,7 +868,7 @@ impl Destination {
     pub fn transponster(node: CtxID) -> Self {
         Self {
             node,
-            service: Service::Oracle(),
+            service: Service::Transponster(),
         }
     }
 }
@@ -897,7 +929,7 @@ pub enum Service {
     Resolver(),
     Quark(),
     Router(),
-    Oracle(),
+    Transponster(),
 
     /// A message specifically for the controller on a node,
     /// used for things like upward phase announcements
