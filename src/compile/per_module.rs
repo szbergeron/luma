@@ -1,6 +1,7 @@
 use crate::errors::CompilationError;
 use futures::future::join_all;
 use local_channel::mpsc::{Receiver as LocalReceiver, Sender as LocalSender};
+use once_cell::sync::OnceCell;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tracing::{info, warn};
 use uuid::Uuid;
@@ -58,6 +59,10 @@ impl CompilationUnit {
         }
 
         let postal = Arc::new(Postal::new(senders, errors));
+
+        let static_postal = postal.clone();
+
+        POSTAL.set(static_postal).expect("couldn't set postal");
 
         StalledDog::set_first_wait(self.domain.len()); // there are this many nodes that need to
                                                        // register before we should be waiting for
@@ -358,6 +363,7 @@ impl Director {
 }
 
 /// A PostalWorker handles sending messages between Resolvers :)
+#[derive(Debug)]
 pub struct Postal {
     senders: HashMap<CtxID, tokio::sync::mpsc::UnboundedSender<Message>>,
     errors: UnboundedSender<CompilationError>,
@@ -497,6 +503,8 @@ impl Postal {
         }
     }
 }
+
+const POSTAL: OnceCell<Arc<Postal>> = OnceCell::new();
 
 pub struct Group {
     listen_to: UnboundedReceiver<Message>,
@@ -930,6 +938,8 @@ pub enum Service {
     Quark(),
     Router(),
     Transponster(),
+
+    Mediator(),
 
     /// A message specifically for the controller on a node,
     /// used for things like upward phase announcements

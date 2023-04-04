@@ -34,10 +34,18 @@ mod primitive {
             self * other
         },
 
-        fn incorrect_second_operand_type(a: std::primitive::i32, b: std::primitive::i32) -> std::primitive::i32 {
+        fn incorrect_second_operand_type(a: std::primitive::i32, b: std::primitive::i64) -> std::primitive::i32 {
             a * b
             //3 / a;
         },
+
+        fn foo(a: std::primitive::i32, b: std::primitive::i32) -> std::primitive::i32 {
+            a.foo(b)
+        }
+
+        fn incorrect_return_type(a: std::primitive::i32, b: std::primitive::i32) -> std::primitive::i64 {
+            a.foo(b)
+        }
 
     }
 

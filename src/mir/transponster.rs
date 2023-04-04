@@ -6,6 +6,7 @@ use std::{
     sync::Arc,
 };
 
+use dashmap::{DashSet, DashMap};
 use fixed::traits::ToFixed;
 use futures::future::join;
 use itertools::Itertools;
@@ -18,6 +19,7 @@ use crate::{
         tree::{CtxID, NodeUnion},
         types::StructuralDataDefinition,
     },
+    avec::AtomicVecIndex,
     compile::per_module::{Content, ConversationContext, Destination, Earpiece, Message, Service},
     cst::{NodeInfo, SyntacticTypeReferenceRef},
     errors::TypeUnificationError,
@@ -146,7 +148,7 @@ impl DynFieldInfo {
         };
     }
 
-    pub fn commit(&self) {
+    pub fn commit(&self) -> ResolvedType {
         let mut counts = HashMap::new();
 
         for ty in self.directs.borrow().clone().into_iter() {
@@ -163,7 +165,9 @@ impl DynFieldInfo {
 
         let (commits_to, _count) = ordered.last().cloned().expect("it was just here");
 
-        self.commit_to(commits_to);
+        self.commit_to(commits_to.clone());
+
+        commits_to
     }
 
     pub fn add_indirect(&self) {
@@ -931,9 +935,89 @@ pub struct FieldID {
     //parameterized_by: Vec<ResolvedType>,
 }
 
+lazy_static! {
+    static ref MEDIATOR: Mediator = Mediator::new();
+}
+
+pub struct Mediator {
+    pub candidates: DashMap<CtxID, Vec<(IStr, ScoreInfo)>>,
+}
+
+impl Mediator {
+    pub fn new() -> Self {
+        Self { candidates: DashMap::new() }
+    }
+    pub fn start_phase(&self) {
+        self.candidates.clear();
+    }
+
+    /// If this commits anything, then true is returned
+    pub fn run_election(&self) -> bool {
+        let mut immediate = Vec::new();
+        let mut otherwise = Vec::new();
+
+        for pair in self.candidates.iter() {
+
+            let (&ctx, candidates) = pair.pair();
+
+            for (fname, score) in candidates.iter() {
+                match score {
+                    ScoreInfo::Never() => unreachable!("we got a candidate that is useless"),
+                    ScoreInfo::Now() => immediate.push((ctx, *fname)),
+                    ScoreInfo::Maybe(v) => {
+                        otherwise.push((ctx, *fname, *v));
+                    },
+                }
+            }
+        }
+
+        if !immediate.is_empty() {
+            // we have immediates we can apply
+
+        } else {
+        }
+
+        todo!()
+    }
+
+    /*pub fn as_dest() -> Destination {
+        Destination {
+            node: CtxID(AtomicVecIndex::nil()),
+            service: Service::Mediator(),
+        }
+    }*/
+}
+
 impl Transponster {
     pub fn as_dest(&self) -> Destination {
         Destination::transponster(self.for_ctx)
+    }
+
+    pub fn get_candidates(&self) -> Vec<(IStr, ScoreInfo)> {
+        let mut immediates = Vec::new();
+        let mut suboptimals = Vec::new();
+
+        for (&name, field) in self.dynamic_fields.borrow().iter() {
+            let score = field.current_score();
+
+            match score {
+                ScoreInfo::Never() => {
+                    // do nothing yet, these will eventually be a hard error on stall
+                }
+                ScoreInfo::Now() => {
+                    immediates.push((name, score));
+                }
+                ScoreInfo::Maybe(_) => {
+                    suboptimals.push((name, score));
+                }
+            }
+        }
+
+        if !immediates.is_empty() {
+            immediates
+        } else {
+            suboptimals
+        }
     }
 
     pub fn for_node(node_id: CtxID, earpiece: Earpiece) -> Self {
