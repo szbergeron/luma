@@ -6,11 +6,12 @@ use std::{
     sync::Arc,
 };
 
-use dashmap::{DashSet, DashMap};
+use dashmap::{DashMap, DashSet};
 use fixed::traits::ToFixed;
 use futures::future::join;
 use itertools::Itertools;
 use tracing::warn;
+use uuid::Uuid;
 
 use crate::{
     ast::{
@@ -20,10 +21,15 @@ use crate::{
         types::StructuralDataDefinition,
     },
     avec::AtomicVecIndex,
-    compile::per_module::{Content, ConversationContext, Destination, Earpiece, Message, Service},
+    compile::per_module::{
+        Content, ConversationContext, Destination, Earpiece, Message, Postal, Service,
+    },
     cst::{NodeInfo, SyntacticTypeReferenceRef},
     errors::TypeUnificationError,
-    helper::interner::{IStr, Internable},
+    helper::{
+        interner::{IStr, Internable},
+        SwapWith,
+    },
 };
 
 use super::{
@@ -90,22 +96,25 @@ pub struct Transponster {
 pub type Score = fixed::types::I16F16;
 
 pub struct DynFieldInfo {
+    name: IStr,
+
     directs: RefCell<Vec<ResolvedType>>,
 
-    indirects: RefCell<usize>,
+    /// Holds a list of conversation handles to reply to once we resolve the indirects
+    indirects: RefCell<Vec<(Destination, Uuid)>>,
 
     committed_type: Rc<UnsafeAsyncCompletable<ResolvedType>>,
 }
 
-impl std::default::Default for DynFieldInfo {
+/*impl std::default::Default for DynFieldInfo {
     fn default() -> Self {
         Self {
             directs: Default::default(),
-            indirects: RefCell::new(0),
+            indirects: RefCell::new(Vec::new()),
             committed_type: unsafe { UnsafeAsyncCompletable::new() },
         }
     }
-}
+}*/
 
 pub enum ScoreInfo {
     /// This should not be committed in its current state
@@ -125,14 +134,49 @@ impl DynFieldInfo {
         } else if self.directs.borrow().is_empty() {
             ScoreInfo::Never()
         } else {
-            let indirects = *self.indirects.borrow();
+            let indirects = self.indirects.borrow();
             let directs_count = self.directs.borrow().len();
 
-            if indirects == directs_count {
+            if indirects.len() == directs_count {
                 ScoreInfo::Now() // no indirects, some directs, this can be committed *now*
             } else {
-                todo!("need to compute the *real* score")
+                println!(
+                    "have {directs_count} directs and {} indirects",
+                    indirects.len()
+                );
+
+                let mut distinct_directs = HashMap::new();
+
+                for direct in self.directs.borrow().iter().cloned() {
+                    *distinct_directs.entry(direct).or_insert(0) += 1;
+                }
+
+                let mut flat = distinct_directs.into_iter().collect_vec();
+                flat.sort_by_key(|(rty, count)| *count);
+
+                let indirect_count = indirects.len() as f64;
+                let total_directs = self.directs.borrow().len() as f64;
+
+                let commit_to_direct_count = flat.last().as_ref().expect("no last?").1 as f64;
+
+                let disagreeing_direct_count = (total_directs - commit_to_direct_count) as f64;
+
+                let score = (commit_to_direct_count * 2.0)
+                    - (indirect_count - disagreeing_direct_count * 2.0);
+
+                let score = Score::from_num(score);
+
+                ScoreInfo::Maybe(score)
             }
+        }
+    }
+
+    pub fn new(name: IStr) -> Self {
+        Self {
+            name,
+            directs: RefCell::new(Vec::new()),
+            indirects: RefCell::new(Vec::new()),
+            committed_type: unsafe { UnsafeAsyncCompletable::new() },
         }
     }
 
@@ -143,9 +187,22 @@ impl DynFieldInfo {
     pub fn commit_to(&self, ty: ResolvedType) {
         unsafe {
             self.committed_type
-                .complete(ty)
+                .complete(ty.clone())
                 .expect("already committed?")
         };
+
+        for (dest, conversation) in (&mut *self.indirects.borrow_mut()).swap_with(Vec::new()) {
+            Postal::instance().send(Message {
+                to: dest,
+                from: Destination::mediator(),
+                send_reply_to: Destination::nil(),
+                conversation,
+                content: Content::Transponster(Memo::ResolveIndirectUsage {
+                    field: self.name,
+                    commits_to: ty.clone(),
+                }),
+            })
+        }
     }
 
     pub fn commit(&self) -> ResolvedType {
@@ -170,8 +227,10 @@ impl DynFieldInfo {
         commits_to
     }
 
-    pub fn add_indirect(&self) {
-        self.indirects.borrow_mut().checked_add(1).expect("boooo");
+    pub fn add_indirect(&self, from: Destination, conversation: Uuid) {
+        self.indirects.borrow_mut().push((from, conversation));
+        /*let mut b = self.indirects.borrow_mut();
+         *b = *b + 1;*/
     }
 
     pub fn add_direct(&self, ty: ResolvedType) {
@@ -521,7 +580,7 @@ impl Instance {
                 async move {
                     let v = canary.await;
 
-                    tracing::error!("got a base?? it is: {v:?}");
+                    tracing::info!("got a base?? it is: {v:?}");
                 },
                 "waiting for canary to fire",
             )
@@ -566,7 +625,7 @@ impl Instance {
                         generics,
                     };
 
-                    resolved.complete(resolved_ty).unwrap();
+                    resolved.complete(resolved_ty);
                 },
                 "once we know the full type of a var, finish its once_resolved",
             );
@@ -896,6 +955,15 @@ pub enum Memo {
         as_ty: ResolvedType,
     },
 
+    /// Tells us to commit a field that we gave as a candidate
+    InstructCommit {
+        field: IStr,
+    },
+
+    /// When Quark stalls and the system settles,
+    /// we need to collaborate and run an election on a field to commit
+    BeginPhase(),
+
     /// If you are sent this, it means you asked a while ago
     /// about a field and we didn't know what type it was
     ///
@@ -944,10 +1012,24 @@ pub struct Mediator {
 }
 
 impl Mediator {
-    pub fn new() -> Self {
-        Self { candidates: DashMap::new() }
+    pub fn instance() -> &'static Self {
+        &MEDIATOR
     }
-    pub fn start_phase(&self) {
+
+    fn new() -> Self {
+        Self {
+            candidates: DashMap::new(),
+        }
+    }
+
+    pub fn add_candidate(&self, from: CtxID, field: IStr, score: ScoreInfo) {
+        self.candidates
+            .entry(from)
+            .or_default()
+            .push((field, score));
+    }
+
+    pub fn reset(&self) {
         self.candidates.clear();
     }
 
@@ -957,7 +1039,6 @@ impl Mediator {
         let mut otherwise = Vec::new();
 
         for pair in self.candidates.iter() {
-
             let (&ctx, candidates) = pair.pair();
 
             for (fname, score) in candidates.iter() {
@@ -966,18 +1047,47 @@ impl Mediator {
                     ScoreInfo::Now() => immediate.push((ctx, *fname)),
                     ScoreInfo::Maybe(v) => {
                         otherwise.push((ctx, *fname, *v));
-                    },
+                    }
                 }
             }
         }
 
+        self.reset();
+
         if !immediate.is_empty() {
             // we have immediates we can apply
+            for (cid, name) in immediate {
+                println!("Committing immediate {name} in {cid:?}");
+                Postal::instance().send(Message {
+                    to: Destination::transponster(cid),
+                    from: Destination::mediator(),
+                    send_reply_to: Destination::nil(),
+                    conversation: Uuid::new_v4(),
+                    content: Content::Transponster(Memo::InstructCommit { field: name }),
+                })
+            }
 
+            true
+        } else if !otherwise.is_empty() {
+            otherwise.sort_by_key(|(cid, name, score)| *score);
+
+            let (cid, field, _) = otherwise
+                .last()
+                .expect("otherwise should be nonempty")
+                .clone();
+
+            Postal::instance().send(Message {
+                to: Destination::transponster(cid),
+                from: Destination::mediator(),
+                send_reply_to: Destination::nil(),
+                conversation: Uuid::new_v4(),
+                content: Content::Transponster(Memo::InstructCommit { field }),
+            });
+
+            true
         } else {
+            false
         }
-
-        todo!()
     }
 
     /*pub fn as_dest() -> Destination {
@@ -1075,18 +1185,30 @@ impl Transponster {
                             self.dynamic_fields
                                 .borrow_mut()
                                 .entry(of)
-                                .or_default()
-                                .add_indirect();
+                                .or_insert_with(|| DynFieldInfo::new(of))
+                                .add_indirect(m.send_reply_to, m.conversation);
                         }
                         Memo::NotifyDirectUsage { of, as_ty } => {
                             self.dynamic_fields
                                 .borrow_mut()
                                 .entry(of)
-                                .or_default()
+                                .or_insert_with(|| DynFieldInfo::new(of))
                                 .add_direct(as_ty);
                         }
                         Memo::ResolveIndirectUsage { field, commits_to } => {
                             unreachable!("shouldn't get this ourselves")
+                        }
+                        Memo::BeginPhase {} => {
+                            self.run_phase();
+                        }
+                        Memo::InstructCommit { field } => {
+                            //panic!("committing field {field}");
+                            let rty = self
+                                .dynamic_fields
+                                .borrow()
+                                .get(&field)
+                                .expect("got a commit instruction for a field we don't know about")
+                                .commit();
                         }
                         _ => todo!(),
                     },
@@ -1098,10 +1220,14 @@ impl Transponster {
 
         tracing::error!("add iter of methods/children of the type");
     }
-    /// Called every time the quark phase finishes, so for each field we have
-    /// that isn't yet sealed that we have new directs on, we can seal them
-    /// and commit to a type
-    pub async fn end_quark_phase(&mut self) {}
+
+    pub fn run_phase(&mut self) {
+        let candidates = self.get_candidates();
+
+        for (field, score) in candidates {
+            Mediator::instance().add_candidate(self.for_ctx, field, score);
+        }
+    }
 
     /// If a certainty for the field *can* be computed,
     /// then a set of the typevars that it could be are returned, each

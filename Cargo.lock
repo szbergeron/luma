@@ -1070,6 +1070,7 @@ dependencies = [
  "ouroboros",
  "pretty",
  "rayon",
+ "rustc-hash",
  "smallstr",
  "smallvec 1.9.0",
  "staged-builder",

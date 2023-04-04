@@ -221,9 +221,11 @@ impl Quark {
         let errors = self.type_errors.borrow_mut();
 
         if errors.is_tainted {
+            tracing::warn!("not emitting errors since already tainted");
             // we got a type error, so we shouldn't
             // emit any complaints about un-restrained variables
         } else {
+            tracing::warn!("going to emit any errors...");
             let free_vars = self.instances.borrow().gather_free();
 
             if free_vars.len() > 0 {
@@ -711,7 +713,7 @@ impl Quark {
                                         }
                                     ).await;
 
-                                    todo!("we heard back about an indirect?");
+                                    tracing::error!("we heard back about an indirect?");
 
                                     let resolve_ty = match resp.content {
                                         Content::Transponster(Memo::ResolveIndirectUsage { field, commits_to }) => {
@@ -719,6 +721,8 @@ impl Quark {
                                         },
                                         _ => unreachable!(),
                                     };
+
+                                    tracing::error!("got ty: {resolve_ty:?}");
 
                                     let (inst, unify) = Instance::from_resolved(resolve_ty, self).await;
 

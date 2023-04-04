@@ -6,6 +6,14 @@ mod primitive {
         fn dyn_fields() -> std::primitive::i64 {
             42.dynf
         },
+
+        fn more_dyn_fields() -> std::primitive::Unit {
+            42.dynf * 3
+        },
+
+        fn operator[_*_](self: std::primitive::i64, other: std::primitive::i64) -> std::primitive::i64 {
+            self * other
+        },
     }
 }
 

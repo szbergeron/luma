@@ -249,6 +249,7 @@ impl<T: Clone + std::fmt::Debug> Future for UnsafeAsyncCompletableFuture<T> {
 }
 
 pub struct UnsafeAsyncCompletable<T: Clone> {
+    id: uuid::Uuid,
     value: UnsafeCell<Option<T>>,
     waiters: UnsafeCell<Vec<std::task::Waker>>,
 }
@@ -308,6 +309,7 @@ impl<T: Clone + std::fmt::Debug + 'static> UnsafeAsyncCompletable<T> {
 
     pub unsafe fn new() -> Rc<Self> {
         Rc::new(Self {
+            id: Uuid::new_v4(),
             value: UnsafeCell::new(None),
             waiters: UnsafeCell::new(Vec::new()),
         })
@@ -324,6 +326,11 @@ impl<T: Clone + std::fmt::Debug + 'static> UnsafeAsyncCompletable<T> {
     where
         F: FnOnce(T, T) -> R,
     {
+        if a.id == b.id {
+            tracing::error!("tried to combine some completable with itself");
+            return (None, a)
+        }
+
         unsafe {
             let v_1 = a.try_get();
             let v_2 = b.try_get();
@@ -340,7 +347,7 @@ impl<T: Clone + std::fmt::Debug + 'static> UnsafeAsyncCompletable<T> {
                         async move {
                             let v = ncf.await;
 
-                            a.complete(v.clone()).unwrap();
+                            a.complete(v.clone()).expect("a shouldn't be complete");
                             b.complete(v).unwrap();
                         },
                         "unify two async completables that were incomplete at time of unify",

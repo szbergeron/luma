@@ -1,4 +1,4 @@
-use crate::errors::CompilationError;
+use crate::{errors::CompilationError, mir::transponster::Mediator};
 use futures::future::join_all;
 use local_channel::mpsc::{Receiver as LocalReceiver, Sender as LocalSender};
 use once_cell::sync::OnceCell;
@@ -11,7 +11,7 @@ use std::{
     collections::HashMap,
     rc::Rc,
     sync::{
-        atomic::{AtomicIsize, AtomicUsize, Ordering},
+        atomic::{fence, AtomicIsize, AtomicUsize, Ordering},
         Arc,
     },
     time::{Duration, Instant},
@@ -62,13 +62,18 @@ impl CompilationUnit {
 
         let static_postal = postal.clone();
 
-        POSTAL.set(static_postal).expect("couldn't set postal");
+        //POSTAL.set(static_postal).expect("couldn't set postal");
+
+        Postal::set_instance(static_postal);
+
+        fence(Ordering::SeqCst); // make sure that postal is set before director sees
 
         StalledDog::set_first_wait(self.domain.len()); // there are this many nodes that need to
                                                        // register before we should be waiting for
                                                        // a stall
 
         let postal2 = postal.clone();
+
         std::thread::spawn(|| {
             //std::thread::sleep(Duration::from_millis(200)); // give things time to boot up and send
             // initial messages
@@ -174,12 +179,6 @@ impl StalledDog {
         //println!("Quark made progress");
         Self::instance()
             .quark_progress
-            .fetch_add(1, std::sync::atomic::Ordering::Release);
-    }
-
-    pub fn nudge_transponster() {
-        Self::instance()
-            .transponster_progress
             .fetch_add(1, std::sync::atomic::Ordering::Release);
     }
 
@@ -321,14 +320,30 @@ impl Director {
             // send phase change notification
             postal.send_broadcast_to(Service::Quark(), Content::Quark(Photon::EndPhase()));
 
+            st.wait_stalled();
+
+            postal.send_broadcast_to(
+                Service::Transponster(),
+                Content::Transponster(Memo::BeginPhase()),
+            );
+
             // wait for transponster to finish phase and elect/unify some field
+            st.wait_stalled();
+
+            // commit any fields that exist
+            let committed_fields = Mediator::instance().run_election();
+
+            if committed_fields {
+                println!("wooo! committed a field");
+            }
+
+            // wait for transponster to deal with the commits
             st.wait_stalled();
             println!("Transponster stalled for phase");
 
             let qk_after = st.quark_progress.load(Ordering::SeqCst);
-            let tp_after = st.transponster_progress.load(Ordering::SeqCst);
 
-            if qk_before == qk_after && tp_before == tp_after {
+            if qk_before == qk_after && !committed_fields {
                 println!(
                     "The system has reached a converged final state, tell it to emit any errors"
                 );
@@ -340,7 +355,7 @@ impl Director {
 
                 st.wait_stalled();
 
-                std::thread::sleep(Duration::from_secs(10));
+                //std::thread::sleep(Duration::from_secs(10));
 
                 println!("Exiting system");
 
@@ -502,9 +517,19 @@ impl Postal {
             true
         }
     }
+
+    pub fn set_instance(v: Arc<Self>) {
+        POSTAL.try_insert(v).expect("couldn't set postal");
+    }
+
+    pub fn instance() -> Arc<Self> {
+        POSTAL.get().unwrap().clone()
+    }
 }
 
-const POSTAL: OnceCell<Arc<Postal>> = OnceCell::new();
+lazy_static! {
+    static ref POSTAL: OnceCell<Arc<Postal>> = OnceCell::new();
+}
 
 pub struct Group {
     listen_to: UnboundedReceiver<Message>,
@@ -877,6 +902,13 @@ impl Destination {
         Self {
             node,
             service: Service::Transponster(),
+        }
+    }
+
+    pub fn mediator() -> Self {
+        Destination {
+            service: Service::Mediator(),
+            ..Self::nil()
         }
     }
 }
