@@ -122,8 +122,11 @@ pub struct MySub {
 
 impl Subscriber for MySub {
     fn enabled(&self, metadata: &tracing::Metadata<'_>) -> bool {
+        let allow_all = false;
+        let allow_any = false;
+
         metadata.file().is_some_and(|f| {
-            (f.contains("quark") || f.contains("transponster") || f.contains("sets")) || false
+            ((f.contains("quark") || f.contains("transponster") || f.contains("sets") || f.contains("per_module")) || allow_all) && allow_any
         }) //|| metadata.level() > &Level::WARN
     }
 

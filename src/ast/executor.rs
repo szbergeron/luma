@@ -347,8 +347,21 @@ impl<T: Clone + std::fmt::Debug + 'static> UnsafeAsyncCompletable<T> {
                         async move {
                             let v = ncf.await;
 
-                            a.complete(v.clone()).expect("a shouldn't be complete");
-                            b.complete(v).unwrap();
+                            let a_complete_r = a.complete(v.clone());
+                            let b_complete_r = b.complete(v);
+
+                            match (a_complete_r, b_complete_r) {
+                                (Err(_), Err(_)) => {
+                                    // we run into a collision with both?
+                                    tracing::error!("what? both were complete");
+                                },
+                                (Err(_), _) | (_, Err(_)) => {
+                                    tracing::error!("one was already complete");
+                                },
+                                (_, _) => {
+                                    tracing::info!("completed with neither already complete");
+                                }
+                            }
                         },
                         "unify two async completables that were incomplete at time of unify",
                     );

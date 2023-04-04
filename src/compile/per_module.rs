@@ -296,18 +296,18 @@ impl Director {
     pub fn entry(&self, postal: Arc<Postal>) {
         let begin = Instant::now();
 
-        println!("entry for director");
+        tracing::info!("entry for director");
         let st = StalledDog::instance();
         // first, wait for entire network to start up
         st.wait_node_startup();
 
         // now, wait for the very first stall and converge
         st.wait_stalled();
-        println!("finished first stall wait");
+        tracing::info!("finished first stall wait");
 
         // now enter the bi-phasic wait
         loop {
-            println!("Starting a loop for phase");
+            tracing::info!("Starting a loop for phase");
             let qk_before = st.quark_progress.load(Ordering::SeqCst);
             let tp_before = st.transponster_progress.load(Ordering::SeqCst);
 
@@ -315,7 +315,7 @@ impl Director {
 
             // wait for quark to finish phase
             st.wait_stalled();
-            println!("Quark stalled for phase");
+            tracing::info!("Quark stalled for phase");
 
             // send phase change notification
             postal.send_broadcast_to(Service::Quark(), Content::Quark(Photon::EndPhase()));
@@ -334,17 +334,17 @@ impl Director {
             let committed_fields = Mediator::instance().run_election();
 
             if committed_fields {
-                println!("wooo! committed a field");
+                tracing::info!("wooo! committed a field");
             }
 
             // wait for transponster to deal with the commits
             st.wait_stalled();
-            println!("Transponster stalled for phase");
+            tracing::info!("Transponster stalled for phase");
 
             let qk_after = st.quark_progress.load(Ordering::SeqCst);
 
             if qk_before == qk_after && !committed_fields {
-                println!(
+                tracing::info!(
                     "The system has reached a converged final state, tell it to emit any errors"
                 );
 
@@ -357,12 +357,14 @@ impl Director {
 
                 //std::thread::sleep(Duration::from_secs(10));
 
-                println!("Exiting system");
+                tracing::info!("Exiting system");
 
                 let end = Instant::now();
 
                 let delta = end - begin;
                 let micros = delta.as_micros();
+
+                std::thread::sleep(Duration::from_millis(200));
 
                 println!("Phase section took {} microseconds", micros);
 

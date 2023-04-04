@@ -4,6 +4,7 @@ use crate::{
     errors::{CompilationError, TypeUnificationError},
     helper::SwapWith,
 };
+use std::fmt::Debug;
 use std::{cell::RefCell, collections::HashMap, pin::Pin, rc::Rc};
 
 use tracing::{info, warn};
@@ -1043,8 +1044,18 @@ impl Quark {
     }
 }
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Hash, PartialEq, Eq)]
 pub struct ResolvedType {
     pub node: CtxID,
     pub generics: Vec<ResolvedType>,
+}
+
+impl Debug for ResolvedType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let stref = self.node.resolve().canonical_typeref().resolve().unwrap();
+        match self.generics.as_slice() {
+            [] => write!(f, "{:?}", stref),
+            other => write!(f, "{:?}<{:?}>", stref, other),
+        }
+    }
 }

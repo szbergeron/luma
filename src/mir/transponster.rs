@@ -925,7 +925,7 @@ impl Instance {
         };
 
         match (conflicted_a, conflicted_b) {
-            (Some(Err(a)), Some(Err(b))) => Err(vec![a, b]),
+            (Some(Err(a)), Some(Err(b))) => Err(vec![b]),
             (Some(Err(e)), _) | (_, Some(Err(e))) => Err(vec![e]),
             _ => Ok((i, all_generic_unifies)),
         }

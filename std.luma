@@ -7,7 +7,7 @@ mod primitive {
             42.dynf
         },
 
-        fn more_dyn_fields() -> std::primitive::Unit {
+        fn err_dyn_fields_1() -> std::primitive::Unit {
             42.dynf * 3
         },
 
