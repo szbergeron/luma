@@ -2,19 +2,40 @@ mod primitive {
 
     struct Unit {}
 
-    struct i64 {
-        fn dyn_fields() -> std::primitive::i64 {
-            42.dynf
-        },
+    struct Parameterized<T> {
+        var v: T,
+    }
 
-        fn err_dyn_fields_1() -> std::primitive::Unit {
-            42.dynf * 3
-        },
+    struct i64 {
+        /*fn dyn_fields() -> std::primitive::i64 {
+            42.dynf
+        },*/
+
+        /*fn err_dyn_fields_1() -> std::primitive::Unit {
+            let b = 42.dynf;
+            struct Unit {};
+
+            let c = b * 3;
+
+            c
+        },*/
 
         fn operator[_*_](self: std::primitive::i64, other: std::primitive::i64) -> std::primitive::i64 {
             self * other
         },
     }
+
+    fn construction() -> std::primitive::Parameterized<std::primitive::i64> {
+        struct std::primitive::Parameterized { v: 42.dynf }
+    }
+
+    fn construction2() -> std::primitive::Parameterized<std::primitive::i64> {
+        struct std::primitive::Parameterized { v: 42.dynf }
+    }
+
+    fn err_dyn_fields_2() -> std::primitive::Unit {
+        42.dynf
+    },
 }
 
 /*

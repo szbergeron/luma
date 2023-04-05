@@ -9,7 +9,7 @@ use crate::{
         self, CastExpression, ExpressionWrapper, FunctionCall, IdentifierExpression,
         IfThenElseExpression, LetComponentIdentifier, LiteralExpression, MemberAccessExpression,
         NodeInfo, ScopedName, StatementExpression, StructLiteralExpression,
-        SyntacticTypeReferenceRef,
+        SyntacticTypeReferenceRef, LetComponent,
     },
     helper::interner::{IStr, Internable},
 };
@@ -290,13 +290,23 @@ impl AnyExpression {
                 //let mut cs = bindings.child_scoped();
 
                 // a let expression operates on the parent scope
-                bindings.add_binding(todo!("break down primary_component"), within.next_var());
+                //bindings.add_binding(todo!("break down primary_component"), within.next_var());
+                /*let ident = match primary_component {
+                    LetComponent::ScopedDestructure(_) => todo!(),
+                    LetComponent::Tuple(_) => todo!(),
+                    LetComponent::Identifier(id) => id.identifier_string,
+                    LetComponent::Discard(_) => todo!(),
+                };*/
+
+                //bindings.add_binding(ident, within.next_var());
 
                 let from_exp_id = Self::from_ast(within, expression, &mut bindings.child_scoped());
 
                 fn let_recursive(
                     primary_component: cst::LetComponent,
                     within: &mut ExpressionContext,
+                    from_exp_id: crate::avec::AtomicVecIndex,
+                    bindings: &mut Bindings,
                 ) -> ExpressionID {
                     let binding = match primary_component {
                         cst::LetComponent::Identifier(LetComponentIdentifier {
@@ -304,12 +314,18 @@ impl AnyExpression {
                             identifier_string,
                             type_specifier,
                         }) => {
+                            let var_id = within.next_var();
                             let b = AnyExpression::Binding(Binding {
                                 info: node_info,
-                                introduced_as: todo!("variable ID'ing"),
+                                introduced_as: var_id,
                                 name: identifier_string,
                                 has_type: type_specifier.map(|box v| v),
+                                from_source: from_exp_id, // for now, do destructuring later
                             });
+
+                            //
+
+                            bindings.add_binding(identifier_string, var_id);
 
                             b
                         }
@@ -330,7 +346,7 @@ impl AnyExpression {
                     id
                 }
 
-                let self_id = let_recursive(primary_component.clone(), within);
+                let self_id = let_recursive(primary_component.clone(), within, from_exp_id, bindings);
 
                 self_id
             }
@@ -723,11 +739,13 @@ pub enum Pattern {
 pub struct Binding {
     pub info: NodeInfo,
 
-    name: IStr,
+    pub name: IStr,
 
-    introduced_as: VarID,
+    pub introduced_as: VarID,
 
-    has_type: Option<SyntacticTypeReferenceRef>,
+    pub has_type: Option<SyntacticTypeReferenceRef>,
+
+    pub from_source: ExpressionID,
 }
 
 #[derive(Clone, Debug)]

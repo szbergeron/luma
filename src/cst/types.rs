@@ -249,6 +249,10 @@ pub struct SyntacticTypeReference {
 }
 
 impl SyntacticTypeReference {
+    pub fn unconstrained() -> SyntacticTypeReference {
+        Self { id: SyntacticTypeReferenceRef::new_nil(), info: NodeInfo::Builtin, inner: SyntacticTypeReferenceInner::Unconstrained() }
+    }
+
     pub fn intern(mut self) -> SyntacticTypeReferenceRef {
         self.id = SyntacticTypeReferenceRef::new_nil();
 

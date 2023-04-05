@@ -1,3 +1,4 @@
+use crate::mir::expressions::Binding;
 use crate::mir::transponster::Memo;
 use crate::{
     compile::per_module::StalledDog,
@@ -567,7 +568,17 @@ impl Quark {
             AnyExpression::Convert(c) => todo!(),
             AnyExpression::While(_) => todo!(),
             AnyExpression::Branch(_) => todo!(),
-            AnyExpression::Binding(_) => todo!(),
+            AnyExpression::Binding(b) => {
+                let Binding { info, name, introduced_as, has_type, from_source } = b;
+
+                let src_tid = self.do_the_thing_rec(from_source, false);
+
+                let var_tid = *self.type_of_var.borrow_mut().entry(introduced_as).or_insert(self.new_tid(info));
+
+                self.add_unify(src_tid, var_tid, "assigning into a variable means the variable has the type of the source".intern());
+
+                src_tid
+            },
             AnyExpression::Invoke(i) => {
                 //todo!("for an invocation, we need to figure out specifically what it's on");
                 if is_lval {

@@ -214,7 +214,7 @@ impl DynFieldInfo {
         }
 
         if counts.len() > 1 {
-            todo!("type error when conflicting field types");
+            tracing::error!("type error when conflicting field types");
         }
 
         let mut ordered = counts.into_iter().collect_vec();
@@ -631,12 +631,16 @@ impl Instance {
             );
         };
 
+        self.generics = gens_for_type;
+
         //panic!();
 
         let of = match &inst.inner {
             NodeUnion::Type(t) => {
                 let mut inst_fields = HashMap::new();
                 let mut inst_methods = HashMap::new();
+
+                // add generics since we didn't already
 
                 let fields = t.lock().unwrap().fields.clone();
 
@@ -745,7 +749,6 @@ impl Instance {
 
         self.of = of;
 
-        self.generics = gens_for_type;
     }
 
     /// allows us to unify two things of known base and say they are the "same type"
@@ -819,6 +822,7 @@ impl Instance {
                 // unify two type instances
                 //let field_keys = ta.regular_fields.keys().copied().chain(tb.regular_fields.keys().copied()).collect();
                 for k in self.generics.keys() {
+                    tracing::info!("looking at generic {k}");
                     let from = self.generics.get(k).copied().unwrap();
                     let into = stores_into.generics.get(k).copied().unwrap();
 

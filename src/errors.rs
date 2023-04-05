@@ -81,6 +81,26 @@ impl CompilationError {
                     }
                 }
 
+                for t in from_peers {
+                    if [from, into].contains(&t) {
+                        continue;
+                    }
+
+                    if let p @ NodeInfo::Parsed(_) = t.span() {
+                        ep.contextualize(p, files, "this was evaluated when forming the 'from' chain".intern());
+                    }
+                }
+
+                for t in into_peers {
+                    if [from, into].contains(&t) {
+                        continue;
+                    }
+
+                    if let p @ NodeInfo::Parsed(_) = t.span() {
+                        ep.contextualize(p, files, "this was evaluated when forming the 'into' chain".intern());
+                    }
+                }
+
                 ep.note_line(format!(
                     "The reason the unification was attempted is: {reason_for_unification}"
                 ));
@@ -208,7 +228,7 @@ impl ErrorPrinter {
 
         match (start, end) {
             (CodeLocation::Parsed(start), CodeLocation::Parsed(end)) => {
-                let start_line = (start.line - 2).max(1);
+                let start_line = (start.line - 2).max(0);
                 let end_line = (end.line + 2).min(lines.len() as isize);
                 //println!("start line: {}, end line: {}", start_line, end_line);
 

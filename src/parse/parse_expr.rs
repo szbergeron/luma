@@ -1,5 +1,5 @@
 //use crate::ast;
-use crate::cst::{self, StructLiteralExpression};
+use crate::cst::{self, StructLiteralExpression, SyntacticTypeReference};
 use crate::lex::{CodeLocation, ParseResultError, Token};
 use either::Either;
 use itertools::Itertools;
@@ -237,7 +237,7 @@ impl<'lexer> Parser<'lexer> {
             node_info: NodeInfo::from_indices(start, end),
             primary_component: binding,
             expression: expr,
-            constrained_to: todo!(),
+            constrained_to: SyntacticTypeReference::unconstrained().intern(),
         };
 
         //todo!("Let expression parsing not yet complete")
