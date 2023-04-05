@@ -59,7 +59,7 @@ impl<'lexer> Parser<'lexer> {
         t: &TokenProvider,
         with_generics: &Vec<IStr>,
     ) -> ParseResult<cst::Field> {
-        println!("Parsing a field");
+        tracing::info!("Parsing a field");
         let mut t = parse_header!(t);
 
         let start = t.take(Token::Var).join()?.start;
@@ -157,12 +157,12 @@ impl<'lexer> Parser<'lexer> {
         {
             match next.token {
                 Token::RBrace => {
-                    println!("Got a brace");
+                    tracing::info!("Got a brace");
                     break;
                 }
                 Token::Var => {
                     t.lh.backtrack();
-                    println!("getting a var");
+                    tracing::info!("getting a var");
 
                     let field = self
                         .parse_field(&t, &generics_as_list_istr)
@@ -179,7 +179,7 @@ impl<'lexer> Parser<'lexer> {
                 }
                 Token::Function => {
                     t.lh.backtrack();
-                    println!("getting a method");
+                    tracing::info!("getting a method");
 
                     let method = self
                         .parse_function_declaration(&t, &generics_as_list_istr, true)
@@ -520,7 +520,7 @@ impl<'lexer> Parser<'lexer> {
                     break;
                 }
                 other => {
-                    println!("Offending input token: {:?}", other);
+                    tracing::info!("Offending input token: {:?}", other);
                     panic!("Got a token that should not be there after synchronization")
                 }
             }

@@ -38,14 +38,14 @@ pub fn print_stack(t: &TokenProvider) {
             .ok()
             .map(|tw| (tw.slice.resolve(), tw.token))
             .unwrap_or(("{none}", Token::Error));
-    println!("== idx: {}, tok: {:?}", t.lh.index(), tok);
-    println!("+ Parse stack:");
+    tracing::info!("== idx: {}, tok: {:?}", t.lh.index(), tok);
+    tracing::info!("+ Parse stack:");
     print_stack_inner(&t.unit_rules);
 }
 
 fn print_stack_inner(t: &schema::RuleUnit) {
     t.parent.map(|p| print_stack_inner(p));
-    println!(
+    tracing::info!(
         "| {}:{} => {:?}",
         t.id,
         t.owner.unwrap_or("{unknown}"),
@@ -390,7 +390,7 @@ impl<V, C: catch::Catchable, B: bubble::Bubbling, D> GuardedResult<V, join::Unjo
 
         match &mut j {
             JoinMethod::Hard(t) | JoinMethod::Handled(t) => {
-                println!("Adds errors: {:?}", self.e.errors);
+                tracing::info!("Adds errors: {:?}", self.e.errors);
                 t.add_errors(&mut self.e.errors);
                 self.e.errors = t.errors();
 
@@ -464,7 +464,7 @@ impl<V, J: join::Joinable, B: bubble::Bubbling, D> GuardedResult<V, J, catch::Un
         let s = match self.solution {
             // if no solution, this is uncatchable
             SolutionClass::UnsolvedFailure { index: _ } => {
-                println!("UnsolvedFailure bubbling!");
+                tracing::info!("UnsolvedFailure bubbling!");
                 //panic!();
                 GuardedResult {
                     caught: true,
@@ -489,7 +489,7 @@ impl<V, J: join::Joinable, B: bubble::Bubbling, D> GuardedResult<V, J, catch::Un
                 solution_unit_id,
                 range_discarded: _,
             } => {
-                println!(
+                tracing::info!(
                     "SolvedFailure bubbling, has unit id {solution_unit_id} while provided was {}",
                     t.unit_rules.id
                 );
@@ -497,7 +497,7 @@ impl<V, J: join::Joinable, B: bubble::Bubbling, D> GuardedResult<V, J, catch::Un
                 let caught = t.provides(solution_unit_id).max(self.caught);
 
                 if caught {
-                    println!("Caught an exception! index is {index}");
+                    tracing::info!("Caught an exception! index is {index}");
                 }
 
                 GuardedResult {
@@ -549,7 +549,7 @@ impl<V, D> GuardedResult<V, join::Joined, catch::Caught, bubble::All, D> {
         match (self.solution, self.value) {
             (SolutionClass::Success { index: _ }, Some(v)) => v,
             _ => {
-                println!("GuardedResult contains only errors: {:?}", self.e.errors);
+                tracing::info!("GuardedResult contains only errors: {:?}", self.e.errors);
                 //println!("Error is: {:?}", self.e.root_error);
                 panic!("{}", s)
             }
@@ -577,7 +577,7 @@ impl<V, D> std::ops::Try for GuardedResult<V, join::Joined, catch::Caught, bubbl
         Self::Residual,
         GuardedResult<V, join::Unjoined, catch::Uncaught, bubble::All, D>,
     > {
-        println!("OnlyNotMine bubbling, solution is: {:?}", self.solution);
+        tracing::info!("OnlyNotMine bubbling, solution is: {:?}", self.solution);
         match (self.solution, self.caught) {
             (SolutionClass::Success { .. }, _) => ControlFlow::Continue(GuardedResult {
                 _b: PhantomData::default(),
@@ -657,7 +657,7 @@ impl<V, B: bubble::Bubbling, D> GuardedResult<V, join::Unjoined, catch::Uncaught
     }
 
     pub fn from_ok(e: ErrorSet, v: V, s: SolutionClass, d: D) -> Self {
-        println!("from_ok given errors: {:?}", e);
+        tracing::info!("from_ok given errors: {:?}", e);
         Self {
             value: Some(v),
             e: GuardedError { errors: e },
@@ -1168,7 +1168,7 @@ pub mod schema {
                 a
             });
 
-            println!(
+            tracing::info!(
                 "Error context: {} {} {}",
                 before.as_str().normal().dimmed(),
                 "|".red(),
@@ -1177,7 +1177,7 @@ pub mod schema {
         }
 
         pub fn search(&self, lh: &LookaheadHandle) -> Option<SolutionClass> {
-            println!(
+            tracing::info!(
                 "Search called with lh index {}, which has token {:?}",
                 lh.index(),
                 lh.la(0).unwrap_or(TokenWrapper::error())
@@ -1185,7 +1185,7 @@ pub mod schema {
 
             self.print_error_loc(lh);
 
-            println!("Lookahead at this point is:");
+            tracing::info!("Lookahead at this point is:");
             self.print_lookahead();
 
             let mut candidates = Vec::new();
@@ -1202,16 +1202,16 @@ pub mod schema {
                 }
             }
 
-            println!("Solutions proposed:");
+            tracing::info!("Solutions proposed:");
             for (cost, solution) in candidates.iter() {
-                println!(
+                tracing::info!(
                     "Cost: {cost}, solution: {solution}, jumps to {}",
                     lh.at(solution.index()).unwrap().slice.resolve()
                 );
             }
 
             let sol = candidates.iter().min_by_key(|e| e.0 as i64).map(|o| o.1);
-            println!(
+            tracing::info!(
                 "Chooses solution: {}",
                 sol.map(|s| format!("{s}")).unwrap_or("no solution".into())
             );
@@ -1225,7 +1225,7 @@ pub mod schema {
             if let Some(sol) = sol {
                 if sol.index() == 63 {
                     //panic!();
-                    println!("Weirdness!");
+                    tracing::info!("Weirdness!");
                 }
             }
             //println!("Bt: {bt:#?}");
@@ -1236,7 +1236,7 @@ pub mod schema {
         pub fn print_lookahead(&self) {
             let mut t = self.tokens.clone();
             t.reverse();
-            println!(
+            tracing::info!(
                 "Rules with id {} from function '{}' has next {:?}",
                 self.id,
                 self.owner.unwrap_or("{unknown}"),
@@ -1570,7 +1570,7 @@ pub mod schema {
         }
 
         pub fn take_in<'a>(&'a mut self, t: &[Token]) -> TokenResult<'a, 'parent, 'tokens> {
-            println!("take_in called with {:?}", t);
+            tracing::info!("take_in called with {:?}", t);
             match self.peek_for_in(t) {
                 Some(tw) => GuardedResult::from_ok(
                     smallvec![],
@@ -1581,7 +1581,7 @@ pub mod schema {
                     self,
                 ),
                 None => {
-                    println!("Found a bad token with take_in:");
+                    tracing::info!("Found a bad token with take_in:");
                     let solution = self.unit_rules.search(&self.lh).unwrap_or(
                         SolutionClass::UnsolvedFailure {
                             index: self.lh.index() as isize,
@@ -1601,19 +1601,19 @@ pub mod schema {
                         _ => panic!("Should be unreachable!"),
                     };
 
-                    println!("Solution token is: {solution_token:?}");
+                    tracing::info!("Solution token is: {solution_token:?}");
 
                     let mut es = self.errors();
-                    println!("Pushing error from take_in: {error:?}");
+                    tracing::info!("Pushing error from take_in: {error:?}");
                     es.push(error);
 
                     if let Some(tok) = solution_token && t.contains(&tok.token) {
-                        println!("Take_in found a way to resync the input stream! Solution: {:?}, {:?}", solution.index(), self.lh.at(solution.index()).unwrap().token);
+                        tracing::info!("Take_in found a way to resync the input stream! Solution: {:?}, {:?}", solution.index(), self.lh.at(solution.index()).unwrap().token);
                         let solution = SolutionClass::Success { index: solution.index() + 1 };
 
                         GuardedResult::from_ok(es, tok, solution, self)
                     } else {
-                        println!("Take_in couldn't sync the stream, solution is: {solution:?}");
+                        tracing::info!("Take_in couldn't sync the stream, solution is: {solution:?}");
                         GuardedResult::from_err(es, solution, self)
                     }
                     /*
@@ -1633,7 +1633,7 @@ pub mod schema {
                         Ok(tw) => {
                             // it didn't directly match one of the requested tokens,
                             // so we should start a bubbling cascade
-                            println!("Encountered an error, was looking for {:?} but the next tw was {:?}", t, tw);
+                            tracing::info!("Encountered an error, was looking for {:?} but the next tw was {:?}", t, tw);
                             let solution = self.unit_rules.search(&self.lh).unwrap_or(
                                 SolutionClass::UnsolvedFailure {
                                     index: self.lh.index() as isize,
@@ -1645,7 +1645,7 @@ pub mod schema {
                                 .map(|id| self.provides(id))
                                 .unwrap_or(false);
 
-                            println!("Solution: {:?}", solution);
+                            tracing::info!("Solution: {:?}", solution);
 
                             let e = ParseResultError::UnexpectedToken(tw, t.to_vec(), None);
 
@@ -1684,7 +1684,7 @@ pub mod schema {
         }
 
         pub fn owner(mut self, o: &'static str) -> Self {
-            println!("\tSets owner to: {o}");
+            tracing::info!("\tSets owner to: {o}");
             self.unit_rules.set_owner(o);
             self
         }

@@ -6,8 +6,7 @@ use std::{
     sync::Arc,
 };
 
-use dashmap::{DashMap, DashSet};
-use fixed::traits::ToFixed;
+use dashmap::DashMap;
 use futures::future::join;
 use itertools::Itertools;
 use tracing::warn;
@@ -16,13 +15,11 @@ use uuid::Uuid;
 use crate::{
     ast::{
         executor::{Executor, Thunk, UnsafeAsyncCompletable},
-        resolver2::NameResolver,
         tree::{CtxID, NodeUnion},
         types::StructuralDataDefinition,
     },
-    avec::AtomicVecIndex,
     compile::per_module::{
-        Content, ConversationContext, Destination, Earpiece, Message, Postal, Service,
+        Content, ConversationContext, Destination, Earpiece, Message, Postal,
     },
     cst::{NodeInfo, SyntacticTypeReferenceRef},
     errors::TypeUnificationError,

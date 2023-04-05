@@ -62,7 +62,7 @@ pub fn parse_source_file<'file>(
 
     let (v, es, s) = p.open_anyway();
 
-    println!("v: {v:?}, es: {es:?}");
+    tracing::debug!("v: {v:?}, es: {es:?}");
 
     for e in es.clone() {
         println!("Error: {:?}", e);
@@ -252,10 +252,6 @@ async fn async_launch(args: ArgResult) {
         .insert("usr".intern(), usr_root);
 
     println!("true root is ctx {true_root:?}");
-
-    println!("{:#?}", usr_root.to_ref());
-    println!("{:#?}", std_root.to_ref());
-    println!("{:#?}", true_root.to_ref());
 
     println!("roots:");
     print_from_root(true_root, 0, "root".intern());

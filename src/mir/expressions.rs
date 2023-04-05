@@ -9,7 +9,7 @@ use crate::{
         self, CastExpression, ExpressionWrapper, FunctionCall, IdentifierExpression,
         IfThenElseExpression, LetComponentIdentifier, LiteralExpression, MemberAccessExpression,
         NodeInfo, ScopedName, StatementExpression, StructLiteralExpression,
-        SyntacticTypeReferenceRef, LetComponent,
+        SyntacticTypeReferenceRef,
     },
     helper::interner::{IStr, Internable},
 };

@@ -572,7 +572,7 @@ impl<'a> TokenStream<'a> {
 
     pub fn advance(&mut self) -> () {
         let tok = self.lexer.next();
-        println!("got tok in advance: {tok:?}");
+        tracing::info!("got tok in advance: {tok:?}");
         match tok {
             Some(tok) => {
                 let (startloc, endloc) = match tok {
@@ -655,7 +655,7 @@ impl<'a> TokenStream<'a> {
                                 break 'llvm_collector;
                             }
                             other => {
-                                println!("llvm pushes token {:?} with slice {}", other, itw.slice);
+                                tracing::info!("llvm pushes token {:?} with slice {}", other, itw.slice);
                                 llvm_rest.push_str(itw.slice.resolve());
                             }
                         }
@@ -702,13 +702,13 @@ impl<'a> TokenStream<'a> {
                 v.push(tw);
             }
         }
-        println!("Tokens:");
+        tracing::info!("Tokens:");
 
         for tok in v.iter() {
-            print!("{:?}({}) ", tok.token, tok.slice);
+            tracing::info!("{:?}({}) ", tok.token, tok.slice);
         }
 
-        println!();
+        tracing::info!("");
 
         v
     }

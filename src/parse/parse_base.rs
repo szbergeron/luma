@@ -30,12 +30,12 @@ impl<'lexer> Parser<'lexer> {
         let start = t.lh.la(0).map_or(CodeLocation::Builtin, |tw| tw.start);
 
         //let mut failed = false;
-        println!("At entry, idx: {}", t.lh.index());
+        tracing::info!("At entry, idx: {}", t.lh.index());
 
         //while let Ok(tw) = t.sync().la(0) {
         loop {
             if t.lh.la(0).is_err() && is_file {
-                println!("breaks out of entry since hit end of file");
+                tracing::info!("breaks out of entry since hit end of file");
                 break; // no decs left in file
             }
 
@@ -52,12 +52,12 @@ impl<'lexer> Parser<'lexer> {
                 ])
                 .join()?;
 
-            println!("Entry: got a tw {:?}", tw);
+            tracing::info!("Entry: got a tw {:?}", tw);
             match tw.token {
                 Token::RBrace => {
                     //t.take(Token::RBrace).join()?;
                     if !is_file || t.sync().la(0).is_err() {
-                        println!("Ending entry since found }}");
+                        tracing::info!("Ending entry since found }}");
                     } else {
                         //
                         let e = ParseResultError::UnexpectedToken(
@@ -65,18 +65,18 @@ impl<'lexer> Parser<'lexer> {
                             vec![],
                             Some("Found trailing input at end of file"),
                         );
-                        println!("{e:?}");
+                        tracing::info!("{e:?}");
                         t.add_error(e);
                         //panic!();
                     }
-                    println!("exits from entry since got closing brace");
+                    tracing::info!("exits from entry since got closing brace");
                     //panic!();
                     break;
                 }
                 _ => {
                     t.lh.backtrack();
 
-                    println!("Trying for a global dec");
+                    tracing::info!("Trying for a global dec");
                     //let r = self.parse_global_declaration(&t);
 
                     let r = self
@@ -85,27 +85,27 @@ impl<'lexer> Parser<'lexer> {
                         .catch(&mut t)
                         .handle_here()?;
 
-                    println!("Got global dec");
+                    tracing::info!("Got global dec");
 
-                    println!("___");
+                    tracing::info!("___");
                     for e in r.errors().iter() {
-                        println!("{:?}", e);
+                        tracing::info!("{:?}", e);
                     }
 
                     let (v, mut _es, _s) = r.update_solution(&t).open();
-                    println!("Opened the value");
+                    tracing::info!("Opened the value");
 
                     //t.sync_with_solution(s);
 
-                    println!("T errors:");
+                    tracing::info!("T errors:");
                     for e in t.errors() {
-                        println!("{e:?}");
+                        tracing::info!("{e:?}");
                     }
 
                     let _ = match v {
                         None => (),
                         Some(ok) => {
-                            println!("Ok");
+                            tracing::info!("Ok");
                             declarations.push(ok);
                         }
                     };
@@ -199,7 +199,7 @@ impl<'lexer> Parser<'lexer> {
     #[allow(non_upper_case_globals)]
     //const first_global: [Token; 3] = [Token::Module, Token::Function, Token::Struct];
     pub fn parse_global_declaration(&mut self, t: &TokenProvider) -> ParseResult<cst::TopLevel> {
-        println!("Parsing global declaration, idx: {}", t.lh.index());
+        tracing::info!("Parsing global declaration, idx: {}", t.lh.index());
 
         //let mut t = parse_header!(t, [Token::Module => 1.0, Token::Function => 1.0, Token::Struct => 1.0, Token::Use => 1.0, Token::DExpression => 10.0]);
 
@@ -286,27 +286,27 @@ impl<'lexer> Parser<'lexer> {
                     cst::TopLevel::UseDeclaration(ud)
                 }
                 Token::DExpression => {
-                    println!("Taking dexpr");
+                    tracing::info!("Taking dexpr");
                     //let _ = t.take(Token::DExpression).join()?;
 
                     t.predict_next((Token::Semicolon, 10.0));
 
-                    println!("Parsing dbg expr, got first tok");
+                    tracing::info!("Parsing dbg expr, got first tok");
                     let e = self
                         .parse_expr(&t, &Vec::new())
                         .join_hard(&mut t)
                         .catch(&mut t)
                         .handle_here()?;
-                    println!("Got expr");
+                    tracing::info!("Got expr");
                     let _ = t.take(Token::Semicolon).join()?;
-                    println!("Took semi");
-                    println!("Errors in e: {:?}", e.errors());
+                    tracing::info!("Took semi");
+                    tracing::info!("Errors in e: {:?}", e.errors());
                     //println!("Took semi");
                     //println!("{:?}", e);
                     //println!("E: {:?}", e);
-                    println!("About to update solution for e, idx is {}", t.lh.index());
+                    tracing::info!("About to update solution for e, idx is {}", t.lh.index());
                     let e = e.update_solution(&t)?;
-                    println!("Value of e: {e:#?}");
+                    tracing::info!("Value of e: {e:#?}");
                     cst::TopLevel::ExpressionDeclaration(e)
                 }
 
@@ -321,9 +321,9 @@ impl<'lexer> Parser<'lexer> {
                 }),*/
                 tw => {
                     // may be expression?
-                    println!("Token was not as expected for a global declaration");
+                    tracing::info!("Token was not as expected for a global declaration");
 
-                    println!("Token was: {tw:?}");
+                    tracing::info!("Token was: {tw:?}");
                     panic!("bad take")
 
                     /*return t.failure(ParseResultError::UnexpectedToken(
@@ -350,24 +350,24 @@ impl<'lexer> Parser<'lexer> {
 
     //const first_namespace: [Token; 1] = [Token::Module];
     pub fn parse_namespace(&mut self, t: &TokenProvider) -> ParseResult<cst::NamespaceDefinition> {
-        println!("Parsing a namespace");
+        tracing::info!("Parsing a namespace");
 
         //let mut t = t.child().predict(&[(Token::Module, 10.0), (Token::Identifier, 0.01), (Token::LBrace, 0.5), (Token::RBrace, 0.5)]);
         let mut t = parse_header!(t, [Token::Module => 10.0, Token::Identifier => 0.01, Token::LBrace => 0.5, Token::RBrace => 0.5]);
 
         //let start = t.la(0).join_hard(&mut t).catch(&mut t).try_get().map_or(CodeLocation::Builtin, |tw| tw.start);
 
-        println!("Idx is: {}", t.lh.index());
+        tracing::info!("Idx is: {}", t.lh.index());
 
         let start = t.take(Token::Module).join()?.start;
 
-        println!("Idx is: {}", t.lh.index());
+        tracing::info!("Idx is: {}", t.lh.index());
 
-        println!("Pulled a mod");
+        tracing::info!("Pulled a mod");
         let id = t.take(Token::Identifier).join()?.slice;
-        println!("Pulled an id");
+        tracing::info!("Pulled an id");
         t.take(Token::LBrace).join()?;
-        println!("Pulling entry");
+        tracing::info!("Pulling entry");
 
         let pu = self.entry(&t, false).join_hard(&mut t).catch(&mut t)?;
 

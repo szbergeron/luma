@@ -270,7 +270,7 @@ impl Node {
     }
 
     pub fn from_decl(decl: TopLevel, parent: CtxID, global: CtxID) -> Option<CtxID> {
-        println!("Got a decl: {decl:?}");
+        tracing::debug!("Got a decl: {decl:?}");
         match decl {
             TopLevel::Namespace(n) => {
                 let cst::NamespaceDefinition {

@@ -565,7 +565,7 @@ impl<'lexer> Parser<'lexer> {
                 t.success(e)
             }
             other => {
-                println!("Got other token: {other:?}");
+                tracing::info!("Got other token: {other:?}");
                 unreachable!()
             }
         }
@@ -944,7 +944,7 @@ impl<'lexer> Parser<'lexer> {
             // patterns, and literals (operands)
             tok if tok.is_operand_base() => {
                 /*let ae = self.atomic_expression(&t).join_hard(&mut t).catch(&mut t)?;
-                println!("ae is: {ae:?}");
+                tracing::info!("ae is: {ae:?}");
                 ae*/
                 let operand = self
                     .parse_operand(&t, with_generics)
@@ -975,7 +975,7 @@ impl<'lexer> Parser<'lexer> {
                 lhs = cst::CastExpression::new_expr(node_info, lhs, Box::new(typeref.intern()));
                 continue;
             } else if let Some(_arrow) = t.try_take(Token::ThinArrowLeft) {
-                println!("Parsing implementation expression");
+                tracing::info!("Parsing implementation expression");
                 let v = self
                     .parse_implementation_expression(&t, lhs)
                     .join_hard(&mut t)
@@ -1039,7 +1039,7 @@ impl<'lexer> Parser<'lexer> {
             //Token::Let => LetExpression::new_expr(node_info, lhs),
             Token::Return => t.success(cst::ReturnExpression::new_expr(node_info, lhs)),
             _ => {
-                println!("got unexpected token {:?}", token);
+                tracing::info!("got unexpected token {:?}", token);
                 panic!("Programming error: no way to build unary expression from given token");
             }
         }
@@ -1071,7 +1071,7 @@ impl<'lexer> Parser<'lexer> {
                 node_info, token, lhs, rhs,
             )),
             tok => {
-                eprintln!("got unexpected token {:?}", token);
+                tracing::info!("got unexpected token {:?}", token);
                 let start = lhs.as_node().node_info().as_parsed().unwrap().span.start;
                 let end = rhs.as_node().node_info().as_parsed().unwrap().span.end;
                 let msg = format!(
