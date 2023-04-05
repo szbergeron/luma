@@ -25,7 +25,7 @@ mod primitive {
         },
     }
 
-    fn construction() -> std::primitive::Parameterized<std::primitive::i64> {
+    /*fn construction() -> std::primitive::Parameterized<std::primitive::i64> {
         struct std::primitive::Parameterized { v: 42.dynf }
     }
 
@@ -35,13 +35,26 @@ mod primitive {
 
     fn err_dyn_fields_2() -> std::primitive::Unit {
         42.dynf
-    }
+    }*/
 
-    fn assignment() -> std::primitive::Unit {
+    /*fn assignment() -> std::primitive::Unit {
         let b = 5;
 
         b = struct std::primitive::Unit {};
-    }
+    }*/
+
+    fn funky_dyn_fields(a: std::primitive::i64) -> std::primitive::i64 {
+        //a.def = a.def;
+        a.abc = 5;
+        a.abc = 5 * a.abc;
+
+
+        a.def = struct std::primitive::Unit {};
+
+        a.def = a.abc;
+
+        a.abc
+    },
 }
 
 /*

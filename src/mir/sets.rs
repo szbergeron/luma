@@ -1,5 +1,7 @@
 use std::{collections::HashMap, fmt::Debug};
 
+use itertools::Itertools;
+
 #[derive(Debug)]
 pub struct Unifier<K: std::fmt::Debug, T: std::fmt::Debug> {
     //_p: PhantomData<(T, K)>,
@@ -27,10 +29,14 @@ impl<T: Debug, K: Eq + PartialEq + std::hash::Hash + Copy + Debug> Unifier<K, T>
     {
         let root_a = self.root_for(a);
         let root_b = self.root_for(b);
+
         if root_a == root_b {
             // already unified
             Ok(())
         } else {
+            debug_assert!(!self.children_of(root_a).into_iter().contains(&root_b));
+            debug_assert!(!self.children_of(root_b).into_iter().contains(&root_a));
+
             let [ar, br] = self
                 .elements
                 .get_many_mut([&root_a, &root_b])
@@ -116,6 +122,30 @@ impl<T: Debug, K: Eq + PartialEq + std::hash::Hash + Copy + Debug> Unifier<K, T>
         free
     }
 
+    pub fn map_roots<F, R>(&self, mut f: F) -> Vec<R>
+    where
+        F: FnMut(&K, &T) -> R,
+    {
+        let mut out = Vec::new();
+        for (k, e) in self.elements.iter() {
+            match &e.inner {
+                EntryInner::Root(r) => {
+                    out.push(f(&e.keyed, &r));
+                }
+                _ => {
+                    // do nothing
+                }
+            }
+        }
+        out
+    }
+
+    pub fn reduce_roots<F, R>(&self, f: F) -> Vec<R> where F: FnMut(&K, &T) -> Option<R> {
+        let iter = self.map_roots(f).into_iter().filter_map(|e| e);
+
+        iter.collect_vec()
+    }
+
     /*pub fn v_for_or_insert_with<F>(&mut self, k: K, v: F) -> &T where F: FnOnce() -> T {
         if let Some(v) = self.v_for(k) {
             v
@@ -136,9 +166,13 @@ impl<T: Debug, K: Eq + PartialEq + std::hash::Hash + Copy + Debug> Unifier<K, T>
     pub fn peers_of(&self, of: K) -> Vec<K> {
         let root_of = self.root_for(of);
 
+        self.children_of(root_of)
+    }
+
+    fn children_of(&self, of: K) -> Vec<K> {
         let mut peers = Vec::new();
 
-        self.rec_children_of(root_of, &mut peers);
+        self.rec_children_of(of, &mut peers);
 
         peers
     }

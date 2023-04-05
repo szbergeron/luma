@@ -6,6 +6,13 @@ pub enum CompilationError {
     TypeError(TypeUnificationError),
     ArgConversionError(ArgConversionError),
     FieldAccessError(FieldAccessError),
+    UnrestrictedTypeError(UnrestrictedTypeError),
+}
+
+#[derive(Clone, Debug)]
+pub struct UnrestrictedTypeError {
+    pub tid: TypeID,
+    pub peers: Vec<TypeID>,
 }
 
 #[derive(Clone, Debug)]
@@ -107,7 +114,11 @@ impl CompilationError {
                     }
 
                     if let p @ NodeInfo::Parsed(_) = t.span() {
-                        ep.contextualize(p, files, "this was evaluated when forming the 'from' chain".intern());
+                        ep.contextualize(
+                            p,
+                            files,
+                            "this was evaluated when forming the 'from' chain".intern(),
+                        );
                     }
                 }
 
@@ -117,7 +128,11 @@ impl CompilationError {
                     }
 
                     if let p @ NodeInfo::Parsed(_) = t.span() {
-                        ep.contextualize(p, files, "this was evaluated when forming the 'into' chain".intern());
+                        ep.contextualize(
+                            p,
+                            files,
+                            "this was evaluated when forming the 'into' chain".intern(),
+                        );
                     }
                 }
 
@@ -172,6 +187,29 @@ impl CompilationError {
                     "This field did not exist on the base expression type:".intern(),
                 );
             }
+            CompilationError::UnrestrictedTypeError(ute) => {
+                let UnrestrictedTypeError { tid, peers } = ute;
+
+                ep.new_error("Unconstrained Type");
+
+                ep.contextualize(
+                    tid.span(),
+                    files,
+                    "This type could not be resolved".intern(),
+                );
+
+                for peer in peers {
+                    if peer.is_root() || true {
+                        ep.contextualize(
+                            peer.span(),
+                            files,
+                            "This was found in the 'same-as' chain".intern(),
+                        );
+                        ep.note_line("This was probably caused by a dynamic field not resolving,
+                                     so the related instances are of unknown type".to_owned());
+                    }
+                }
+            }
         }
     }
 }
@@ -184,7 +222,7 @@ use crate::{
     cst::NodeInfo,
     helper::interner::{IStr, Internable, SpurHelper},
     lex::CodeLocation,
-    mir::{quark::TypeID, transponster::ArgConversionError},
+    mir::{instance::ArgConversionError, quark::TypeID},
 };
 
 impl ErrorPrinter {

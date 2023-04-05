@@ -1,3 +1,5 @@
+use crate::compile::per_module::Photon;
+use crate::errors::{FieldAccessError, UnrestrictedTypeError};
 use crate::mir::expressions::Binding;
 use crate::mir::transponster::Memo;
 use crate::{
@@ -25,14 +27,14 @@ use crate::{
     helper::interner::{IStr, Internable},
     mir::{
         expressions::{AnyExpression, Bindings, Composite, ExpressionContext, Literal, VarID},
-        transponster::InstanceOf,
+        instance::InstanceOf,
     },
 };
 
 use super::{
     expressions::ExpressionID,
+    instance::{Instance, Unify},
     sets::Unifier,
-    transponster::{Instance, Unify},
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -53,6 +55,7 @@ impl TypeID {
 pub struct TypeError {
     pub components: Vec<TypeID>,
     pub complaint: String,
+    pub because_unify: Unify,
 }
 
 /// Quark instances are provided a single
@@ -136,7 +139,7 @@ pub enum Action {
 }
 
 impl Quark {
-    pub fn add_unify<R: Into<IStr>>(&self, from: TypeID, into: TypeID, reason: R) {
+    pub fn add_unify<R: Into<IStr>>(&'static self, from: TypeID, into: TypeID, reason: R) {
         // this could be batched later for perf improvement, but for now just
         // do an increment every time
         StalledDog::nudge_quark();
@@ -147,48 +150,16 @@ impl Quark {
         let mut refm = self.instances.borrow_mut();
         let mut resulting_unifies = Vec::new();
 
-        let res = refm.unify(from, into, |a, b| {
+        refm.unify(from, into, |a, b| -> Result<Instance, !> {
             tracing::info!("having to merge two instances");
             let original_a = a.clone();
-            match a.unify_with(b, Unify { from, into }, self) {
-                Ok((v, u)) => {
-                    resulting_unifies = u;
-                    Ok(v)
-                }
-                Err(e) => Err(e),
-            }
+            let (v, u) = a.unify_with(b, Unify { from, into }, reason, self);
+            resulting_unifies = u;
+
+            Ok(v)
         });
+
         //.expect("user did a type error");
-        match res {
-            Err(es) => {
-                for e in es {
-                    let TypeError {
-                        components,
-                        complaint,
-                    } = e;
-                    // collect the peers of each component
-                    let e = TypeUnificationError {
-                        from,
-                        from_peers: refm.peers_of(from),
-                        into,
-                        into_peers: refm.peers_of(into),
-                        for_expression: NodeInfo::Builtin,
-                        reason_for_unification: reason,
-                        reason_for_failure: complaint.intern(),
-                        context: Vec::new(),
-                    };
-
-                    let e = CompilationError::TypeError(e);
-
-                    self.type_errors.borrow_mut().push(e);
-                }
-
-                return; // don't attempt any malformed descendent unifies
-            }
-            Ok(_) => {
-                // do nothing, add the resulting unifies
-            }
-        }
 
         // this add_unify could also call it
         std::mem::drop(refm);
@@ -221,11 +192,43 @@ impl Quark {
         }
     }
 
+    pub fn add_error(&self, e: CompilationError) {
+        self.type_errors.borrow_mut().push(e);
+    }
+
+    pub fn add_type_error(&self, e: TypeError) {
+        let refm = self.instances.borrow();
+
+        let TypeError {
+            because_unify,
+            components,
+            complaint,
+        } = e;
+
+        let Unify { from, into } = because_unify;
+
+        let e = TypeUnificationError {
+            from,
+            from_peers: refm.peers_of(from),
+            into,
+            into_peers: refm.peers_of(into),
+            for_expression: NodeInfo::Builtin,
+            reason_for_unification: "todo".intern(),
+            reason_for_failure: complaint.intern(),
+            context: Vec::new(),
+        };
+
+        self.add_error(CompilationError::TypeError(e));
+    }
+
     /// If compilation fully stalls then this is called,
     /// to let us emit final errors or prepare Scribe to output our
     /// monomorphizations
     fn end_last_phase(&self) {
-        let errors = self.type_errors.borrow_mut();
+        let mut errors = self.type_errors.borrow_mut();
+
+        tracing::debug!("Ending last phase, current unification state:");
+        //tracing::debug!("{:#?}", self.instances.borrow());
 
         if errors.is_tainted {
             tracing::warn!("not emitting errors since already tainted");
@@ -235,13 +238,38 @@ impl Quark {
             tracing::warn!("going to emit any errors...");
             let free_vars = self.instances.borrow().gather_free();
 
+            let unresolved_insts = self.instances.borrow().reduce_roots(|tid, inst| {
+                if unsafe { !inst.once_resolved.is_complete() } {
+                    Some(*tid)
+                } else {
+                    None
+                }
+            });
+
+            if !unresolved_insts.is_empty() {}
+
+            println!("Unresolved insts: {}", unresolved_insts.len());
+
+            for tid in unresolved_insts {
+                errors.push(CompilationError::UnrestrictedTypeError(
+                    UnrestrictedTypeError {
+                        tid,
+                        peers: self.instances.borrow().peers_of(tid),
+                    },
+                ))
+            }
+
             if free_vars.len() > 0 {
                 let b = self.instances.borrow();
 
                 //println!("Instances: {b:#?}");
-                println!("Unrestricted vars: {}", free_vars.len());
             }
+            println!("Unrestricted vars: {}", free_vars.len());
         }
+
+        std::mem::drop(errors);
+
+        self.end_one_phase();
     }
 
     fn as_dest(&self) -> Destination {
@@ -386,7 +414,7 @@ impl Quark {
         }
     }
 
-    pub fn with_instance<F, R>(&self, tid: TypeID, f: F) -> R
+    pub fn with_instance<F, R>(&'static self, tid: TypeID, f: F) -> R
     where
         F: FnOnce(&Instance) -> R,
     {
@@ -420,7 +448,7 @@ impl Quark {
     }
 
     /// Returns the direct TID for the instance once unified with the base tid
-    pub fn assign_instance(&self, tid: TypeID, instance: Instance) -> TypeID {
+    pub fn assign_instance(&'static self, tid: TypeID, instance: Instance) -> TypeID {
         // make a new tid inst here since the regular one automatically adds it to unifier
         let instance_tid = TypeID(uuid::Uuid::new_v4(), tid.span(), false);
 
@@ -441,7 +469,12 @@ impl Quark {
     }
 
     /// Use this to introduce an instance with a completely untethered TID
-    pub fn introduce_instance(&self, instance: Instance, span: NodeInfo, is_root: bool) -> TypeID {
+    pub fn introduce_instance(
+        &'static self,
+        instance: Instance,
+        span: NodeInfo,
+        is_root: bool,
+    ) -> TypeID {
         let instance_tid = TypeID(Uuid::new_v4(), span, is_root);
 
         tracing::warn!("borrows instances for introduce_instance");
@@ -575,16 +608,31 @@ impl Quark {
             AnyExpression::While(_) => todo!(),
             AnyExpression::Branch(_) => todo!(),
             AnyExpression::Binding(b) => {
-                let Binding { info, name, introduced_as, has_type, from_source } = b;
+                let Binding {
+                    info,
+                    name,
+                    introduced_as,
+                    has_type,
+                    from_source,
+                } = b;
 
                 let src_tid = self.do_the_thing_rec(from_source, false);
 
-                let var_tid = *self.type_of_var.borrow_mut().entry(introduced_as).or_insert(self.new_tid(info, true));
+                let var_tid = *self
+                    .type_of_var
+                    .borrow_mut()
+                    .entry(introduced_as)
+                    .or_insert(self.new_tid(info, true));
 
-                self.add_unify(src_tid, var_tid, "assigning into a variable means the variable has the type of the source".intern());
+                self.add_unify(
+                    src_tid,
+                    var_tid,
+                    "assigning into a variable means the variable has the type of the source"
+                        .intern(),
+                );
 
                 src_tid
-            },
+            }
             AnyExpression::Invoke(i) => {
                 //todo!("for an invocation, we need to figure out specifically what it's on");
                 if is_lval {
@@ -656,6 +704,7 @@ impl Quark {
                 tracing::info!("static accessing: {sa:?}");
                 // the type of the base that we're accessing the field on
                 let src_ty = self.do_the_thing_rec(sa.on, false);
+                //let src_span = self.acting_on.borrow().get(sa.on).
 
                 unsafe {
                     self.executor.install(async move {
@@ -742,16 +791,26 @@ impl Quark {
 
                                     tracing::error!("got ty: {resolve_ty:?}");
 
-                                    let (inst, unify) = Instance::from_resolved(resolve_ty, self).await;
+                                    if let Some(ty)= resolve_ty {
 
-                                    for Unify { from, into } in unify {
-                                        self.add_unify(from, into, "creating an instance from a resolved type caused this");
+                                        let (inst, unify) = Instance::from_resolved(ty, self).await;
+
+                                        for Unify { from, into } in unify {
+                                            self.add_unify(from, into, "creating an instance from a resolved type caused this");
+                                        }
+
+                                        let tid = self.introduce_instance(inst, sa.info, true);
+
+                                        self.add_unify(result_ty, tid,
+                                                       "a dynamic field should be compatible with its usages after resolution");
+                                    } else {
+                                        self.add_error(CompilationError::FieldAccessError(
+                                                FieldAccessError {
+                                                    base_expr_span: sa.info,
+                                                    field_span: sa.info,
+                                                    error_info: format!("this field did not exist, and its dynamic property type could not be successfully inferred"),
+                                                }))
                                     }
-
-                                    let tid = self.introduce_instance(inst, sa.info, true);
-
-                                    self.add_unify(tid, result_ty,
-                                                   "a dynamic field should be compatible with its usages after resolution");
                                 }, "once we get a resolved notification back from the dynfield, we should unify that value");
 
                                 None
@@ -928,7 +987,12 @@ impl Quark {
 
         for (param_name, param_type) in f.parameters.clone() {
             let ptype = self
-                .resolve_typeref(param_type, self.generics.as_ref(), self.search_within(), true)
+                .resolve_typeref(
+                    param_type,
+                    self.generics.as_ref(),
+                    self.search_within(),
+                    true,
+                )
                 .await;
 
             let vid = self.acting_on.borrow_mut().next_var();
@@ -985,14 +1049,13 @@ impl Quark {
                         //tracing::error!("unhandled message? it is: {:#?}", v);
                         match v.content {
                             Content::Quark(photon) => match photon {
-                                crate::compile::per_module::Photon::CompilationStalled() => {
-                                    sref.end_last_phase()
-                                }
-                                crate::compile::per_module::Photon::EndPhase() => {
-                                    sref.end_one_phase()
-                                }
-                                crate::compile::per_module::Photon::BeginPhase() => {
+                                Photon::CompilationStalled() => sref.end_last_phase(),
+                                Photon::EndPhase() => sref.end_one_phase(),
+                                Photon::BeginPhase() => {
                                     tracing::warn!("beginphase not handled yet");
+                                }
+                                Photon::StartCodeGen() => {
+                                    tracing::error!("Codegen not implemented yet");
                                 }
                             },
                             Content::Control(_) => todo!(),
@@ -1050,7 +1113,12 @@ impl Quark {
         //let return_ty = f.return_type.resolve().unwrap().clone();
 
         let return_ty = self
-            .resolve_typeref(f.return_type, &self.generics.as_ref(), self.search_within(), true)
+            .resolve_typeref(
+                f.return_type,
+                &self.generics.as_ref(),
+                self.search_within(),
+                true,
+            )
             .await;
 
         self.add_unify(

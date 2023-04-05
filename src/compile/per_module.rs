@@ -355,6 +355,14 @@ impl Director {
 
                 st.wait_stalled();
 
+                postal.send_broadcast_to(Service::Transponster(), Content::Transponster(Memo::CompilationStalled()));
+
+                st.wait_stalled();
+
+                // now, if no errors, start codegen
+
+                postal.send_broadcast_to(Service::Quark(), Content::Quark(Photon::StartCodeGen()));
+
                 //std::thread::sleep(Duration::from_secs(10));
 
                 tracing::info!("Exiting system");
@@ -369,6 +377,7 @@ impl Director {
                 println!("Phase section took {} microseconds", micros);
 
                 // send notifications to all nodes to ask them to emit any late errors
+                std::thread::sleep(Duration::from_secs(2));
                 std::process::exit(0);
             } else {
                 //println!("Values for qk and such: {qk_before}, {qk_after}, {tp_before}, {tp_after}");
@@ -859,6 +868,8 @@ pub enum Photon {
     /// After this point, if any typevars are Free(),
     /// they will never be unified so the program does not typecheck
     CompilationStalled(),
+
+    StartCodeGen(),
 }
 
 #[derive(Debug, Clone)]

@@ -17,4 +17,5 @@ pub mod quark;
 pub mod oracle;
 pub mod sets;
 pub mod transponster;
+pub mod instance;
 //mod resolve;

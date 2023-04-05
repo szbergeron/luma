@@ -10,6 +10,7 @@ use crate::parse::schema::TokenProvider;
 use crate::parse::Parser;
 use std::collections::HashSet;
 use std::str::FromStr;
+use std::time::Duration;
 
 use crate::{ast, cst};
 use std::path::{Path, PathBuf};
@@ -269,6 +270,7 @@ async fn async_launch(args: ArgResult) {
     let (es, mut er) = tokio::sync::mpsc::unbounded_channel();
 
     tokio::spawn(async move {
+        std::thread::sleep(Duration::from_secs(1));
         while let Some(v) = er.recv().await {
             let v: CompilationError = v;
             // need to break down the error

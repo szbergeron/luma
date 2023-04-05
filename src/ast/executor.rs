@@ -317,75 +317,43 @@ impl<T: Clone + std::fmt::Debug + 'static> UnsafeAsyncCompletable<T> {
 
     /// CONTRACT: should never complete a or b directly after this, should only ever complete
     /// through the returned future if it exists
-    pub unsafe fn combine<F, R>(
+    pub unsafe fn combine<F>(
         within: &'static Executor,
         a: Rc<Self>,
         b: Rc<Self>,
         if_conflict: F,
-    ) -> (Option<R>, Rc<Self>)
+    ) -> Rc<Self>
     where
-        F: FnOnce(T, T) -> R,
+        F: Fn(T, T) + 'static + Copy,
     {
         if a.id == b.id {
             tracing::error!("tried to combine some completable with itself");
-            return (None, a)
+            return a
         }
 
-        unsafe {
-            let v_1 = a.try_get();
-            let v_2 = b.try_get();
+        let a1 = a.clone();
+        let b1 = b.clone();
+        within.install(async move {
+            let a1v = a1.clone().wait().await;
+            let e = b1.complete(a1v);
 
-            match (v_1, v_2) {
-                (None, None) => {
-                    // we could reuse one, but instead just make a new one that asserts that it is the
-                    // only one to complete a and b
-
-                    let nc = Self::new();
-
-                    let ncf = nc.clone().wait();
-                    let nf = within.install(
-                        async move {
-                            let v = ncf.await;
-
-                            let a_complete_r = a.complete(v.clone());
-                            let b_complete_r = b.complete(v);
-
-                            match (a_complete_r, b_complete_r) {
-                                (Err(_), Err(_)) => {
-                                    // we run into a collision with both?
-                                    tracing::error!("what? both were complete");
-                                },
-                                (Err(_), _) | (_, Err(_)) => {
-                                    tracing::error!("one was already complete");
-                                },
-                                (_, _) => {
-                                    tracing::info!("completed with neither already complete");
-                                }
-                            }
-                        },
-                        "unify two async completables that were incomplete at time of unify",
-                    );
-
-                    (None, nc)
-                }
-                (None, Some(v)) => {
-                    // notify a using b
-                    a.complete(v).unwrap();
-
-                    (None, a)
-                }
-                (Some(v), None) => {
-                    b.complete(v).unwrap();
-
-                    (None, a)
-                }
-                (Some(va), Some(vb)) => {
-                    let v = if_conflict(va, vb);
-                    // would already be complete, so just return a
-                    (Some(v), a)
-                } //
+            if let Err(e) = e {
+                if_conflict(a1.try_get().unwrap(), b1.try_get().unwrap());
             }
-        }
+        }, "combine a into b");
+
+        let a2 = a.clone();
+        let b2 = b.clone();
+        within.install(async move {
+            let b2v = b2.clone().wait().await;
+            let e = a2.complete(b2v);
+
+            if let Err(e) = e {
+                if_conflict(a2.try_get().unwrap(), b2.try_get().unwrap());
+            }
+        }, "combine a into b");
+
+        a // reuse handle, no need for additional "things"
     }
 }
 
