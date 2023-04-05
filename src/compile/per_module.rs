@@ -348,6 +348,10 @@ impl Director {
                     "The system has reached a converged final state, tell it to emit any errors"
                 );
 
+                postal.send_broadcast_to(Service::Transponster(), Content::Transponster(Memo::CompilationStalled()));
+
+                st.wait_stalled();
+
                 postal.send_broadcast_to(
                     Service::Quark(),
                     Content::Quark(Photon::CompilationStalled()),
@@ -355,9 +359,6 @@ impl Director {
 
                 st.wait_stalled();
 
-                postal.send_broadcast_to(Service::Transponster(), Content::Transponster(Memo::CompilationStalled()));
-
-                st.wait_stalled();
 
                 // now, if no errors, start codegen
 

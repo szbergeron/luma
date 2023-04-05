@@ -271,10 +271,14 @@ async fn async_launch(args: ArgResult) {
 
     tokio::spawn(async move {
         std::thread::sleep(Duration::from_secs(1));
+        let mut so_far = HashSet::new();
         while let Some(v) = er.recv().await {
             let v: CompilationError = v;
+
+            if so_far.insert(v.clone()) {
             // need to break down the error
-            let s = v.with_file_context(&files);
+                let s = v.with_file_context(&files);
+            }
         }
     });
 

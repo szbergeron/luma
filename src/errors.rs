@@ -1,7 +1,9 @@
+use std::collections::HashSet;
+
 use colored::*;
 use itertools::Itertools;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum CompilationError {
     TypeError(TypeUnificationError),
     ArgConversionError(ArgConversionError),
@@ -9,13 +11,13 @@ pub enum CompilationError {
     UnrestrictedTypeError(UnrestrictedTypeError),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct UnrestrictedTypeError {
     pub tid: TypeID,
     pub peers: Vec<TypeID>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct TypeUnificationError {
     pub from: TypeID,
     pub from_peers: Vec<TypeID>,
@@ -32,7 +34,7 @@ pub struct TypeUnificationError {
     pub reason_for_failure: IStr,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct FieldAccessError {
     //pub base_expression:
     pub base_expr_span: NodeInfo,
@@ -108,31 +110,32 @@ impl CompilationError {
                     }
                 }
 
-                for t in from_peers {
-                    if [from, into].contains(&t) || !t.is_root() {
-                        continue;
-                    }
+                let mut already_printed = HashSet::new();
 
-                    if let p @ NodeInfo::Parsed(_) = t.span() {
-                        ep.contextualize(
-                            p,
-                            files,
-                            "this was evaluated when forming the 'from' chain".intern(),
-                        );
+                already_printed.insert(from.span());
+                already_printed.insert(into.span());
+
+                for t in from_peers {
+                    if already_printed.insert(t.span()) && t.is_root() {
+                        if let p @ NodeInfo::Parsed(_) = t.span() {
+                            ep.contextualize(
+                                p,
+                                files,
+                                "this was evaluated when forming the 'from' chain".intern(),
+                            );
+                        }
                     }
                 }
 
                 for t in into_peers {
-                    if [from, into].contains(&t) || !t.is_root() {
-                        continue;
-                    }
-
-                    if let p @ NodeInfo::Parsed(_) = t.span() {
-                        ep.contextualize(
-                            p,
-                            files,
-                            "this was evaluated when forming the 'into' chain".intern(),
-                        );
+                    if already_printed.insert(t.span()) && t.is_root() {
+                        if let p @ NodeInfo::Parsed(_) = t.span() {
+                            ep.contextualize(
+                                p,
+                                files,
+                                "this was evaluated when forming the 'into' chain".intern(),
+                            );
+                        }
                     }
                 }
 
@@ -205,8 +208,11 @@ impl CompilationError {
                             files,
                             "This was found in the 'same-as' chain".intern(),
                         );
-                        ep.note_line("This was probably caused by a dynamic field not resolving,
-                                     so the related instances are of unknown type".to_owned());
+                        ep.note_line(
+                            "This was probably caused by a dynamic field not resolving,
+                                     so the related instances are of unknown type"
+                                .to_owned(),
+                        );
                     }
                 }
             }

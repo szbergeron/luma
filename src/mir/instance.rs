@@ -152,7 +152,7 @@ pub struct Constrain {
     pub is_a: SyntacticTypeReferenceRef,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ArgConversionError {
     pub argument: Option<TypeID>,
     pub parameter: Option<(TypeID, IStr)>,

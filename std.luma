@@ -53,6 +53,8 @@ mod primitive {
 
         a.def = a.abc;
 
+        a.g = a.g;
+
         a.abc
     },
 }
