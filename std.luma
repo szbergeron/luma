@@ -36,6 +36,12 @@ mod primitive {
     fn err_dyn_fields_2() -> std::primitive::Unit {
         42.dynf
     },
+
+    fn assignment() -> std::primitive::Unit {
+        let b = 5;
+
+        b = struct std::primitive::Unit {};
+    }
 }
 
 /*

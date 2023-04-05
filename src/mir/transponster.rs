@@ -374,7 +374,7 @@ impl Instance {
 
         for rt in rty.generics {
             let (inst, mut additional_unify) = Instance::from_resolved(rt, within).await;
-            let tid = within.introduce_instance(inst, NodeInfo::Builtin);
+            let tid = within.introduce_instance(inst, NodeInfo::Builtin, false);
             generics.push(tid);
 
             unify.append(&mut additional_unify);
@@ -597,7 +597,7 @@ impl Instance {
         let gens_for_type = Rc::new(
             inst.generics
                 .iter()
-                .map(|(g, r)| (*g, within.new_tid(NodeInfo::Builtin)))
+                .map(|(g, r)| (*g, within.new_tid(NodeInfo::Builtin, false)))
                 .collect(),
         );
 
@@ -653,7 +653,7 @@ impl Instance {
                     let thunk = unsafe {
                         Thunk::new(within.executor, async move {
                             let tid = within
-                                .resolve_typeref(ty, &generics, inst.parent.unwrap())
+                                .resolve_typeref(ty, &generics, inst.parent.unwrap(), false)
                                 .await;
 
                             tid
@@ -671,7 +671,7 @@ impl Instance {
                             tracing::warn!("we're inferring the instance for field {mname}");
                             let minst = Self::infer_instance(Some(mref), within).await;
 
-                            let minst_tid = within.introduce_instance(minst, NodeInfo::Builtin);
+                            let minst_tid = within.introduce_instance(minst, NodeInfo::Builtin, false);
 
                             tracing::warn!("this instantiation of {mname} on {mref:?} was given tid {minst_tid:?}");
 
@@ -726,14 +726,14 @@ impl Instance {
 
                 for (pname, pty) in f.parameters.clone() {
                     let tid = within
-                        .resolve_typeref(pty, &self.generics, resolve_within)
+                        .resolve_typeref(pty, &self.generics, resolve_within, false)
                         .await;
 
                     parameters.push(tid);
                 }
 
                 let returns = within
-                    .resolve_typeref(f.return_type, &self.generics, resolve_within)
+                    .resolve_typeref(f.return_type, &self.generics, resolve_within, false)
                     .await;
 
                 InstanceOf::Func(InstanceOfFn {

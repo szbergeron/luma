@@ -51,7 +51,27 @@ impl CompilationError {
                     reason_for_failure,
                 } = te;
 
-                match (from.span(), into.span()) {
+                let real_from = if from.is_root() {
+                    from
+                } else {
+                    if let Some(t) = from_peers.iter().find(|t| t.is_root()) {
+                        *t
+                    } else {
+                        from // it isn't a root, but it'll have to do
+                    }
+                };
+
+                let real_into = if into.is_root() {
+                    into
+                } else {
+                    if let Some(t) = into_peers.iter().find(|t| t.is_root()) {
+                        *t
+                    } else {
+                        into // it isn't a root, but it'll have to do
+                    }
+                };
+
+                match (real_from.span(), real_into.span()) {
                     (NodeInfo::Builtin, NodeInfo::Builtin) => {
                         ep.new_error("compiler error: failed unifying builtins?");
                     }
@@ -82,7 +102,7 @@ impl CompilationError {
                 }
 
                 for t in from_peers {
-                    if [from, into].contains(&t) {
+                    if [from, into].contains(&t) || !t.is_root() {
                         continue;
                     }
 
@@ -92,7 +112,7 @@ impl CompilationError {
                 }
 
                 for t in into_peers {
-                    if [from, into].contains(&t) {
+                    if [from, into].contains(&t) || !t.is_root() {
                         continue;
                     }
 
@@ -228,11 +248,12 @@ impl ErrorPrinter {
 
         match (start, end) {
             (CodeLocation::Parsed(start), CodeLocation::Parsed(end)) => {
-                let start_line = (start.line - 2).max(0);
-                let end_line = (end.line + 2).min(lines.len() as isize);
+                //println!("start: {start:?}, end: {end:?}");
+                let start_line = (start.line - 1).max(0);
+                let end_line = (end.line + 1).min(lines.len() as isize);
                 //println!("start line: {}, end line: {}", start_line, end_line);
 
-                let start_line = start.line;
+                //let start_line = start.line;
                 let start_char = start.offset;
 
                 let filename = filename.bold();
@@ -253,6 +274,7 @@ impl ErrorPrinter {
 
                 for line_num in start_line..(end_line + 1) {
                     let line = lines.get(line_num as usize - 1).unwrap_or(&"");
+                    //println!("line_num: {line_num}, line: {line}");
                     let line = line.bold();
                     let line = format!("{line}");
                     let line = line.as_str();
