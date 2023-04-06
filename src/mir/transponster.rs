@@ -3,13 +3,14 @@ use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
     rc::Rc,
-    sync::Arc,
+    sync::Arc, pin::Pin,
 };
 
 use dashmap::DashMap;
 use either::Either;
 use futures::future::join;
 use itertools::Itertools;
+use local_channel::mpsc::Sender;
 use tracing::warn;
 use uuid::Uuid;
 
@@ -65,7 +66,8 @@ use super::{
 /// information for dependents
 pub struct Transponster {
     for_ctx: CtxID,
-    earpiece: Earpiece,
+    //earpiece: Earpiece,
+    sender: local_channel::mpsc::Sender<Message>,
 
     generics: Vec<IStr>,
 
@@ -81,7 +83,7 @@ pub struct Transponster {
 
     regular_fields: HashMap<IStr, SyntacticTypeReferenceRef>,
 
-    monomorphizations: HashSet<Monomorphization>,
+    monomorphizations: RefCell<HashSet<Monomorphization>>,
 
     conversations: ConversationContext,
     //// When we get a new instance of something in Quark, we put
@@ -471,10 +473,10 @@ impl Transponster {
         }
     }
 
-    pub fn for_node(node_id: CtxID, earpiece: Earpiece) -> Self {
+    pub fn for_node(node_id: CtxID, sender: Sender<Message>) -> Self {
         let regular_fields = HashMap::new();
 
-        let cc_send = earpiece.cloned_sender();
+        //let cc_send = earpiece.cloned_sender();
 
         let generics = node_id
             .resolve()
@@ -486,7 +488,8 @@ impl Transponster {
 
         Self {
             for_ctx: node_id,
-            earpiece,
+
+            sender: sender.clone(),
 
             //dynamic_field_contexts: HashMap::new(),
             dynamic_fields: RefCell::new(HashMap::new()),
@@ -495,13 +498,13 @@ impl Transponster {
 
             regular_fields,
             generics,
-            conversations: unsafe { ConversationContext::new(cc_send) },
+            conversations: unsafe { ConversationContext::new(sender) },
             monomorphizations: Default::default(),
             //instances: todo!(), // TODO: generics
         }
     }
 
-    pub async fn entry(mut self, executor: &'static Executor, sd: &mut StructuralDataDefinition) {
+    pub async fn entry(mut self, executor: &'static Executor, sd: &mut StructuralDataDefinition, mut ep: Earpiece) {
         let parent_id = self.for_ctx.resolve().parent.unwrap();
 
         for field in sd.fields.iter_mut() {
@@ -519,12 +522,17 @@ impl Transponster {
                 .insert(name, child.resolve().canonical_typeref());
         }
 
-        while let Ok(m) = self.earpiece.wait().await {
-            if let Some(m) = self.conversations.dispatch(m) {
+        let boxed = Box::pin(self); // put ourselves into the heap in a definitely known location
+                                    // to avoid dumb shenaniganery
+        let sptr: *const Transponster = Pin::into_inner(boxed.as_ref()) as *const _;
+        let sref: &'static Transponster = unsafe { sptr.as_ref().unwrap() };
+
+        while let Ok(m) = ep.wait().await {
+            if let Some(m) = sref.conversations.dispatch(m) {
                 match m.content {
                     Content::Transponster(memo) => match memo {
                         Memo::NotifyIndirectUsage { of } => {
-                            let mut refm = self.dynamic_fields.borrow_mut();
+                            let mut refm = sref.dynamic_fields.borrow_mut();
                             let ent = refm
                                 .entry(of)
                                 .or_insert_with(|| DynFieldInfo::new(of, executor));
@@ -532,7 +540,7 @@ impl Transponster {
                             ent.add_indirect(m.send_reply_to, m.conversation);
                         }
                         Memo::NotifyDirectUsage { of, as_ty } => {
-                            let mut refm = self.dynamic_fields.borrow_mut();
+                            let mut refm = sref.dynamic_fields.borrow_mut();
                             let ent = refm
                                 .entry(of)
                                 .or_insert_with(|| DynFieldInfo::new(of, executor));
@@ -542,11 +550,11 @@ impl Transponster {
                             unreachable!("shouldn't get this ourselves")
                         }
                         Memo::BeginPhase {} => {
-                            self.run_phase();
+                            sref.run_phase();
                         }
                         Memo::InstructCommit { field } => {
                             //panic!("committing field {field}");
-                            let rty = self
+                            let rty = sref
                                 .dynamic_fields
                                 .borrow()
                                 .get(&field)
@@ -554,7 +562,7 @@ impl Transponster {
                                 .commit();
                         }
                         Memo::CompilationStalled() => {
-                            for (name, info) in self.dynamic_fields.borrow().iter() {
+                            for (name, info) in sref.dynamic_fields.borrow().iter() {
                                 if !info.is_committed() {
                                     info.commit_fail();
                                 }
@@ -563,13 +571,14 @@ impl Transponster {
                         _ => todo!(),
                     },
                     Content::Monomorphization(m) => {
-                        self.monomorphizations.insert(m);
+                        sref.monomorphizations.borrow_mut().insert(m);
                     }
                     Content::StartCodeGen() => {
-                        let monos = self.monomorphizations.clone();
+                        let monos = sref.monomorphizations.borrow().clone();
                         for m in monos {
-                            let mut s = Scribe::new(Either::Right(&self), m);
-                            s.codegen();
+                            let mut s = Scribe::new(Either::Right(&sref), m);
+
+                            s.codegen().await;
                         }
                     }
                     Content::Quark(_) => todo!(),
@@ -581,7 +590,7 @@ impl Transponster {
         tracing::error!("add iter of methods/children of the type");
     }
 
-    pub fn run_phase(&mut self) {
+    pub fn run_phase(&self) {
         tracing::debug!("running a transponster phase");
 
         let candidates = self.get_candidates();
@@ -599,7 +608,7 @@ impl Transponster {
         todo!("probably not using this approach in particular");
     }
 
-    pub async fn thread(self, executor: &'static Executor) {
+    pub async fn thread(self, executor: &'static Executor, ep: Earpiece) {
         warn!("starting transponster");
 
         let node = &self.for_ctx.resolve().inner;
@@ -607,7 +616,7 @@ impl Transponster {
         match node {
             crate::ast::tree::NodeUnion::Type(t) => {
                 let mut sdd = t.lock().unwrap().clone();
-                self.entry(executor, &mut sdd).await;
+                self.entry(executor, &mut sdd, ep).await;
             }
             _other => {
                 warn!("Transponster shuts down since this node type wasn't a Type")

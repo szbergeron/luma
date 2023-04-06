@@ -629,9 +629,10 @@ impl Group {
             self.for_node,
         );
 
+        let ocl_ep = Earpiece::new(rtr_s.clone(), ocl_r, self.for_node);
         let oracle = Transponster::for_node(
             self.for_node,
-            Earpiece::new(rtr_s.clone(), ocl_r, self.for_node),
+            ocl_ep.cloned_sender()
         );
 
         unsafe {
@@ -658,7 +659,7 @@ impl Group {
                 format!("quark for node {:?}", self.for_node),
             );
             exer.install(
-                oracle.thread(exer),
+                oracle.thread(exer, ocl_ep),
                 format!("oracle for node {:?}", self.for_node),
             );
 
@@ -952,10 +953,10 @@ impl Destination {
 }
 
 pub struct Earpiece {
-    listen: local_channel::mpsc::Receiver<Message>,
+    pub listen: local_channel::mpsc::Receiver<Message>,
 
     //shout: Arc<Postal>,
-    talk: local_channel::mpsc::Sender<Message>,
+    pub talk: local_channel::mpsc::Sender<Message>,
 
     within: CtxID,
 }

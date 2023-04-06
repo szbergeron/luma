@@ -1,3 +1,4 @@
+use crate::avec::AtomicVecIndex;
 use crate::compile::per_module::Photon;
 use crate::errors::{FieldAccessError, UnrestrictedTypeError};
 use crate::mir::expressions::Binding;
@@ -12,6 +13,7 @@ use std::collections::HashSet;
 use std::fmt::Debug;
 use std::{cell::RefCell, collections::HashMap, pin::Pin, rc::Rc};
 
+use once_cell::unsync::OnceCell;
 use tracing::{info, warn};
 use uuid::Uuid;
 
@@ -96,9 +98,9 @@ impl TypeMap {
 /// while outputs are references to actual Nodes
 /// with IDs and filled in generics
 pub struct Quark {
-    acting_on: RefCell<ExpressionContext>,
+    pub acting_on: RefCell<ExpressionContext>,
 
-    type_of_var: RefCell<HashMap<VarID, TypeID>>,
+    pub type_of_var: RefCell<HashMap<VarID, TypeID>>,
 
     /// If we resolve a TypeID from here, we should tell any usages/instances
     /// that there is a new direct
@@ -117,13 +119,18 @@ pub struct Quark {
 
     pub executor: &'static Executor,
 
-    generics: Rc<HashMap<IStr, TypeID>>,
+    pub generics: Rc<HashMap<IStr, TypeID>>,
 
     pub node_id: CtxID,
 
     pub type_errors: RefCell<ErrorState>,
 
     conversations: ConversationContext,
+
+    pub returns: OnceCell<TypeID>,
+    pub params: OnceCell<Vec<(IStr, TypeID)>>,
+
+    pub entry_id: OnceCell<ExpressionID>,
 
     monomorphizations: RefCell<HashSet<Monomorphization>>,
 }
@@ -203,6 +210,12 @@ impl Quark {
 
         let b = self.instances.borrow();
         //tracing::debug!("{:#?}", b);
+    }
+
+    pub async fn resolved_type_of(&'static self, t: TypeID) -> ResolvedType {
+        self.with_instance(t, |inst| unsafe {
+            inst.once_resolved.clone().wait()
+        }).await
     }
 
     /// When each quark phase completes we get one message here to flush errors
@@ -589,6 +602,9 @@ impl Quark {
             generics: Rc::new(generics),
             typeofs: TypeMap::new(),
             monomorphizations: Default::default(),
+            returns: Default::default(),
+            params: Default::default(),
+            entry_id: Default::default(),
         }
     }
 
@@ -1033,6 +1049,8 @@ impl Quark {
     ) -> ExpressionID {
         let mut binding_scope = Bindings::fresh();
 
+        let mut params = Vec::new();
+
         for (param_name, param_type) in f.parameters.clone() {
             let ptype = self
                 .resolve_typeref(
@@ -1048,7 +1066,11 @@ impl Quark {
             self.type_of_var.borrow_mut().insert(vid, ptype);
 
             binding_scope.add_binding(param_name, vid);
+
+            params.push((param_name, ptype));
         }
+
+        self.params.set(params).unwrap();
 
         let ae = AnyExpression::from_ast(&mut self.acting_on.borrow_mut(), imp, &mut binding_scope);
 
@@ -1113,7 +1135,14 @@ impl Quark {
                                 for mono in sref.monomorphizations.borrow().iter() {
                                     let mut s =
                                         Scribe::new(either::Either::Left(sref), mono.clone());
-                                    s.codegen();
+                                    unsafe {
+                                        sref.executor.install(
+                                            async move {
+                                                s.codegen().await;
+                                            },
+                                            "do codegen for function",
+                                        )
+                                    }
                                 }
                             }
                             Content::Control(_) => todo!(),
@@ -1166,6 +1195,8 @@ impl Quark {
 
         let aeid = self.lower_to_mir(&f, imp).await;
 
+        self.entry_id.set(aeid).unwrap();
+
         let root_tid = self.do_the_thing(aeid);
 
         //let return_ty = f.return_type.resolve().unwrap().clone();
@@ -1184,6 +1215,8 @@ impl Quark {
             return_ty,
             "the function block expr must return the type requested".intern(),
         );
+
+        self.returns.set(return_ty).unwrap();
     }
 }
 
