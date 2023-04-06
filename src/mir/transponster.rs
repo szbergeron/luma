@@ -7,6 +7,7 @@ use std::{
 };
 
 use dashmap::DashMap;
+use either::Either;
 use futures::future::join;
 use itertools::Itertools;
 use tracing::warn;
@@ -18,18 +19,19 @@ use crate::{
         tree::{CtxID, NodeUnion},
         types::StructuralDataDefinition,
     },
+    avec::AtomicVecIndex,
     compile::per_module::{Content, ConversationContext, Destination, Earpiece, Message, Postal},
     cst::{NodeInfo, SyntacticTypeReferenceRef},
-    errors::TypeUnificationError,
+    errors::{TypeUnificationError, CompilationError, FieldResolutionError},
     helper::{
         interner::{IStr, Internable},
         SwapWith,
-    },
+    }, mir::scribe::Scribe,
 };
 
 use super::{
     expressions::ExpressionID,
-    quark::{Quark, ResolvedType, TypeError, TypeID},
+    quark::{Quark, ResolvedType, TypeError, TypeID}, scribe::Monomorphization,
 };
 
 /// Yes, it's a reference, and no, it's not a good one
@@ -73,11 +75,13 @@ pub struct Transponster {
     //dynamic_field_contexts: HashMap<FieldID, FieldContext>,
     /// If it's in here, then we've committed to a type for that
     /// variant/field and it can be used for inference
-    dynamic_fields: RefCell<HashMap<IStr, DynFieldInfo>>,
+    pub dynamic_fields: RefCell<HashMap<IStr, DynFieldInfo>>,
 
     notify_when_resolved: HashMap<FieldID, Vec<(Destination, FieldID)>>,
 
     regular_fields: HashMap<IStr, SyntacticTypeReferenceRef>,
+
+    monomorphizations: HashSet<Monomorphization>,
 
     conversations: ConversationContext,
     //// When we get a new instance of something in Quark, we put
@@ -98,7 +102,7 @@ pub struct DynFieldInfo {
     /// Holds a list of conversation handles to reply to once we resolve the indirects
     indirects: RefCell<Vec<(Destination, Uuid)>>,
 
-    committed_type: Rc<UnsafeAsyncCompletable<Option<ResolvedType>>>,
+    pub committed_type: Rc<UnsafeAsyncCompletable<Option<ResolvedType>>>,
 
     executor: &'static Executor,
 }
@@ -196,7 +200,19 @@ impl DynFieldInfo {
     }
 
     pub fn commit_fail(&self) {
-        unsafe { self.committed_type.complete(None).expect("tried to commit fail a completed field") };
+        unsafe {
+            self.committed_type
+                .complete(None)
+                .expect("tried to commit fail a completed field")
+        };
+
+        Postal::instance().send(Message {
+            to: Destination::nil(),
+            from: Destination::transponster(CtxID(AtomicVecIndex::nil())),
+            send_reply_to: Destination::nil(),
+            conversation: Uuid::new_v4(),
+            content: Content::Error(CompilationError::FieldResolutionError(FieldResolutionError { name: self.name })),
+        })
     }
 
     pub fn commit(&self) -> ResolvedType {
@@ -480,6 +496,7 @@ impl Transponster {
             regular_fields,
             generics,
             conversations: unsafe { ConversationContext::new(cc_send) },
+            monomorphizations: Default::default(),
             //instances: todo!(), // TODO: generics
         }
     }
@@ -508,13 +525,17 @@ impl Transponster {
                     Content::Transponster(memo) => match memo {
                         Memo::NotifyIndirectUsage { of } => {
                             let mut refm = self.dynamic_fields.borrow_mut();
-                            let ent = refm.entry(of).or_insert_with(|| DynFieldInfo::new(of, executor));
+                            let ent = refm
+                                .entry(of)
+                                .or_insert_with(|| DynFieldInfo::new(of, executor));
 
                             ent.add_indirect(m.send_reply_to, m.conversation);
                         }
                         Memo::NotifyDirectUsage { of, as_ty } => {
                             let mut refm = self.dynamic_fields.borrow_mut();
-                            let ent = refm.entry(of).or_insert_with(|| DynFieldInfo::new(of, executor));
+                            let ent = refm
+                                .entry(of)
+                                .or_insert_with(|| DynFieldInfo::new(of, executor));
                             ent.add_direct(as_ty);
                         }
                         Memo::ResolveIndirectUsage { field, commits_to } => {
@@ -541,6 +562,16 @@ impl Transponster {
                         }
                         _ => todo!(),
                     },
+                    Content::Monomorphization(m) => {
+                        self.monomorphizations.insert(m);
+                    }
+                    Content::StartCodeGen() => {
+                        let monos = self.monomorphizations.clone();
+                        for m in monos {
+                            let mut s = Scribe::new(Either::Right(&self), m);
+                            s.codegen();
+                        }
+                    }
                     Content::Quark(_) => todo!(),
                     _ => unreachable!("shouldn't receive anything else"),
                 }

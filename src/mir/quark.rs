@@ -1,12 +1,14 @@
 use crate::compile::per_module::Photon;
 use crate::errors::{FieldAccessError, UnrestrictedTypeError};
 use crate::mir::expressions::Binding;
+use crate::mir::scribe::Scribe;
 use crate::mir::transponster::Memo;
 use crate::{
     compile::per_module::StalledDog,
     errors::{CompilationError, TypeUnificationError},
     helper::SwapWith,
 };
+use std::collections::HashSet;
 use std::fmt::Debug;
 use std::{cell::RefCell, collections::HashMap, pin::Pin, rc::Rc};
 
@@ -31,6 +33,7 @@ use crate::{
     },
 };
 
+use super::scribe::Monomorphization;
 use super::{
     expressions::ExpressionID,
     instance::{Instance, Unify},
@@ -58,6 +61,30 @@ pub struct TypeError {
     pub because_unify: Unify,
 }
 
+pub struct TypeMap {
+    primary: RefCell<HashMap<ExpressionID, TypeID>>,
+}
+
+impl TypeMap {
+    pub fn set(&self, eid: ExpressionID, to: TypeID) {
+        self.primary.borrow_mut().insert(eid, to);
+    }
+
+    pub fn get(&self, eid: ExpressionID) -> TypeID {
+        self.primary
+            .borrow()
+            .get(&eid)
+            .copied()
+            .expect("eid tid wasn't set")
+    }
+
+    pub fn new() -> Self {
+        Self {
+            primary: RefCell::new(HashMap::new()),
+        }
+    }
+}
+
 /// Quark instances are provided a single
 /// function context to try to resolve within,
 /// and convert that function into a fully
@@ -81,6 +108,8 @@ pub struct Quark {
     /// it is recorded here so we can do field analysis on it
     pub instances: RefCell<Unifier<TypeID, Instance>>,
 
+    pub typeofs: TypeMap,
+
     //once_know: RefCell<HashMap<TypeID, Vec<Action>>>,
 
     //once_know_ctx: RefCell<HashMap<TypeID, Rc<UnsafeAsyncCompletable<CtxID>>>>,
@@ -95,6 +124,8 @@ pub struct Quark {
     pub type_errors: RefCell<ErrorState>,
 
     conversations: ConversationContext,
+
+    monomorphizations: RefCell<HashSet<Monomorphization>>,
 }
 
 pub struct ErrorState {
@@ -150,10 +181,10 @@ impl Quark {
         let mut refm = self.instances.borrow_mut();
         let mut resulting_unifies = Vec::new();
 
-        refm.unify(from, into, |a, b| -> Result<Instance, !> {
+        let _useme = refm.unify(from, into, |from_inst, into_inst| -> Result<Instance, !> {
             tracing::info!("having to merge two instances");
-            let original_a = a.clone();
-            let (v, u) = a.unify_with(b, Unify { from, into }, reason, self);
+            let original_a = from_inst.clone();
+            let (v, u) = from_inst.unify_with(into_inst, Unify { from, into }, reason, self);
             resulting_unifies = u;
 
             Ok(v)
@@ -237,6 +268,12 @@ impl Quark {
         } else {
             tracing::warn!("going to emit any errors...");
             let free_vars = self.instances.borrow().gather_free();
+
+            self.instances.borrow().map_roots(|tid, inst| {
+                if unsafe { inst.once_resolved.is_complete() } {
+                    inst.notify_monomorphizations();
+                }
+            });
 
             let unresolved_insts = self.instances.borrow().reduce_roots(|tid, inst| {
                 if unsafe { !inst.once_resolved.is_complete() } {
@@ -448,9 +485,14 @@ impl Quark {
     }
 
     /// Returns the direct TID for the instance once unified with the base tid
-    pub fn assign_instance(&'static self, tid: TypeID, instance: Instance) -> TypeID {
+    pub fn assign_instance(
+        &'static self,
+        tid: TypeID,
+        instance: Instance,
+        is_root: bool,
+    ) -> TypeID {
         // make a new tid inst here since the regular one automatically adds it to unifier
-        let instance_tid = TypeID(uuid::Uuid::new_v4(), tid.span(), false);
+        let instance_tid = TypeID(uuid::Uuid::new_v4(), tid.span(), is_root);
 
         tracing::warn!("borrows instances for assign_instance");
         let mut refm = self.instances.borrow_mut();
@@ -538,13 +580,15 @@ impl Quark {
             sender,
             node_id,
             acting_on: RefCell::new(ExpressionContext::new_empty()),
-            type_of_var: RefCell::new(HashMap::new()),
+            type_of_var: Default::default(),
             executor,
             //dynfield_notifies: RefCell::new(HashMap::new()),
             instances: RefCell::new(Unifier::new()),
             //once_know: RefCell::new(HashMap::new()),
             conversations: unsafe { ConversationContext::new(cs) },
             generics: Rc::new(generics),
+            typeofs: TypeMap::new(),
+            monomorphizations: Default::default(),
         }
     }
 
@@ -559,7 +603,7 @@ impl Quark {
     pub fn do_the_thing_rec(&'static self, on_id: ExpressionID, is_lval: bool) -> TypeID {
         tracing::info!("do_the_thing_rec on id: {on_id}");
 
-        match self.acting_on.borrow().get(on_id).clone() {
+        let res_tid = match self.acting_on.borrow().get(on_id).clone() {
             AnyExpression::Block(b) => {
                 let block_ty = self.new_tid(b.info, false);
 
@@ -962,7 +1006,7 @@ impl Quark {
                                 &self,
                             ).await;
 
-                            self.assign_instance(typeof_composite, inst);
+                            self.assign_instance(typeof_composite, inst, true);
 
                             for Unify { from, into } in unifies {
                                 self.add_unify(from, into, "the instance said to!".intern());
@@ -974,7 +1018,11 @@ impl Quark {
 
                 typeof_composite
             }
-        }
+        };
+
+        self.typeofs.set(on_id, res_tid);
+
+        res_tid
     }
 
     #[allow(unused_mut)]
@@ -1048,16 +1096,26 @@ impl Quark {
                     if let Some(v) = remainder {
                         //tracing::error!("unhandled message? it is: {:#?}", v);
                         match v.content {
+                            Content::Monomorphization(m) => {
+                                sref.monomorphizations.borrow_mut().insert(m);
+                            }
                             Content::Quark(photon) => match photon {
                                 Photon::CompilationStalled() => sref.end_last_phase(),
                                 Photon::EndPhase() => sref.end_one_phase(),
                                 Photon::BeginPhase() => {
                                     tracing::warn!("beginphase not handled yet");
                                 }
-                                Photon::StartCodeGen() => {
-                                    tracing::error!("Codegen not implemented yet");
-                                }
+                                Photon::StartCodeGen() => {}
                             },
+                            Content::StartCodeGen() => {
+                                tracing::error!("Codegen not implemented yet");
+
+                                for mono in sref.monomorphizations.borrow().iter() {
+                                    let mut s =
+                                        Scribe::new(either::Either::Left(sref), mono.clone());
+                                    s.codegen();
+                                }
+                            }
                             Content::Control(_) => todo!(),
                             Content::Announce(_) => todo!(),
                             Content::Transponster(_) => todo!(),

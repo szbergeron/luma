@@ -18,11 +18,9 @@ use crate::{
         tree::{CtxID, NodeUnion},
         types::StructuralDataDefinition,
     },
-    compile::per_module::{
-        Content, ConversationContext, Destination, Earpiece, Message, Postal,
-    },
+    compile::per_module::{Content, ConversationContext, Destination, Earpiece, Message, Postal},
     cst::{NodeInfo, SyntacticTypeReferenceRef},
-    errors::{TypeUnificationError, CompilationError},
+    errors::{CompilationError, TypeUnificationError},
     helper::{
         interner::{IStr, Internable},
         SwapWith,
@@ -32,8 +30,8 @@ use crate::{
 use super::{
     expressions::ExpressionID,
     quark::{Quark, ResolvedType, TypeError, TypeID},
+    scribe::Monomorphization,
 };
-
 
 #[derive(Clone, Debug)]
 pub struct InstanceID(uuid::Uuid);
@@ -468,7 +466,8 @@ impl Instance {
                             tracing::warn!("we're inferring the instance for field {mname}");
                             let minst = Self::infer_instance(Some(mref), within).await;
 
-                            let minst_tid = within.introduce_instance(minst, NodeInfo::Builtin, false);
+                            let minst_tid =
+                                within.introduce_instance(minst, NodeInfo::Builtin, false);
 
                             tracing::warn!("this instantiation of {mname} on {mref:?} was given tid {minst_tid:?}");
 
@@ -545,7 +544,6 @@ impl Instance {
         };
 
         self.of = of;
-
     }
 
     /// allows us to unify two things of known base and say they are the "same type"
@@ -727,5 +725,29 @@ impl Instance {
         };
 
         (i, all_generic_unifies)
+    }
+
+    pub fn notify_monomorphizations(&self) {
+        let resolved = unsafe {
+            self.once_resolved
+                .try_get()
+                .expect("tried to check monomorphization on an incomplete thing")
+        };
+
+        match &self.of {
+            InstanceOf::Type(t) => {
+                Postal::instance().send_and_forget(
+                    Destination::transponster(resolved.node),
+                    Content::Monomorphization(Monomorphization::from_resolved(resolved)),
+                );
+            }
+            InstanceOf::Func(f) => {
+                Postal::instance().send_and_forget(
+                    Destination::quark(resolved.node),
+                    Content::Monomorphization(Monomorphization::from_resolved(resolved)),
+                );
+            }
+            _ => panic!("shouldn't call monomorphization on anything other than type or func"),
+        }
     }
 }

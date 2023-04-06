@@ -25,7 +25,7 @@ mod primitive {
         },
     }
 
-    /*fn construction() -> std::primitive::Parameterized<std::primitive::i64> {
+    fn construction() -> std::primitive::Parameterized<std::primitive::i64> {
         struct std::primitive::Parameterized { v: 42.dynf }
     }
 
@@ -33,7 +33,7 @@ mod primitive {
         struct std::primitive::Parameterized { v: 42.dynf }
     }
 
-    fn err_dyn_fields_2() -> std::primitive::Unit {
+    /*fn err_dyn_fields_2() -> std::primitive::Unit {
         42.dynf
     }*/
 
@@ -51,9 +51,9 @@ mod primitive {
 
         a.def = struct std::primitive::Unit {};
 
-        a.def = a.abc;
+        //a.def = a.abc;
 
-        a.g = a.g;
+        //a.g = a.g;
 
         a.abc
     },

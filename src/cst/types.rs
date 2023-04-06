@@ -266,6 +266,18 @@ impl SyntacticTypeReference {
 
         *ent.value()
     }
+
+    pub fn as_c_id(&self) -> IStr {
+        match &self.inner {
+            SyntacticTypeReferenceInner::Unconstrained() => todo!(),
+            SyntacticTypeReferenceInner::Tuple(_) => todo!(),
+            SyntacticTypeReferenceInner::Single { name } => name.scope.iter().map(|e| e.resolve().to_owned()).join("_"),
+            SyntacticTypeReferenceInner::Generic { label } => todo!(),
+            SyntacticTypeReferenceInner::Parameterized { name, generics } => todo!(),
+            SyntacticTypeReferenceInner::Reference { to, mutable } => todo!(),
+            SyntacticTypeReferenceInner::Pointer { to, mutable } => todo!(),
+        }.intern()
+    }
 }
 
 impl std::fmt::Debug for SyntacticTypeReference {

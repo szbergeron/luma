@@ -18,4 +18,5 @@ pub mod oracle;
 pub mod sets;
 pub mod transponster;
 pub mod instance;
+pub mod scribe;
 //mod resolve;

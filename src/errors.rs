@@ -9,6 +9,12 @@ pub enum CompilationError {
     ArgConversionError(ArgConversionError),
     FieldAccessError(FieldAccessError),
     UnrestrictedTypeError(UnrestrictedTypeError),
+    FieldResolutionError(FieldResolutionError),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct FieldResolutionError {
+    pub name: IStr,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -47,6 +53,13 @@ impl CompilationError {
         let ep = ErrorPrinter {};
 
         match self {
+            CompilationError::FieldResolutionError(fre) => {
+                let FieldResolutionError { name } = fre;
+
+                ep.new_error("Dynamic Field Type Resolution Error");
+
+                ep.line(format!("Could not resolve the type of field {name}"));
+            }
             CompilationError::TypeError(te) => {
                 ep.new_error("Type Unification Error");
                 let TypeUnificationError {

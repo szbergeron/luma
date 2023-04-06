@@ -1,4 +1,4 @@
-use crate::{errors::CompilationError, mir::transponster::Mediator};
+use crate::{errors::CompilationError, mir::{transponster::Mediator, scribe::{Monomorphization, get_lines}}};
 use futures::future::join_all;
 use local_channel::mpsc::{Receiver as LocalReceiver, Sender as LocalSender};
 use once_cell::sync::OnceCell;
@@ -362,7 +362,16 @@ impl Director {
 
                 // now, if no errors, start codegen
 
-                postal.send_broadcast_to(Service::Quark(), Content::Quark(Photon::StartCodeGen()));
+                for service in [Service::Quark(), Service::Transponster()] {
+                    postal.send_broadcast_to(service, Content::StartCodeGen());
+                }
+
+                st.wait_stalled(); // everyone has codegen now, so emit output
+                
+                for line in get_lines() {
+                    println!("{line}");
+                }
+                //postal.send_broadcast_to(Service::Quark(), Content::Quark(Photon::StartCodeGen()));
 
                 //std::thread::sleep(Duration::from_secs(10));
 
@@ -536,6 +545,10 @@ impl Postal {
 
     pub fn instance() -> Arc<Self> {
         POSTAL.get().unwrap().clone()
+    }
+
+    pub fn send_and_forget(&self, to: Destination, content: Content) {
+        self.send(Message { to, from: Destination::nil(), send_reply_to: Destination::nil(), conversation: Uuid::new_v4(), content })
     }
 }
 
@@ -845,6 +858,10 @@ pub enum Content {
     NameResolution(NameResolutionMessage),
 
     Error(CompilationError),
+
+    Monomorphization(Monomorphization),
+
+    StartCodeGen(),
 }
 
 #[derive(Debug, Clone)]
@@ -916,6 +933,13 @@ impl Destination {
         Self {
             node,
             service: Service::Transponster(),
+        }
+    }
+
+    pub fn quark(node: CtxID) -> Self {
+        Self {
+            node,
+            service: Service::Quark(),
         }
     }
 
