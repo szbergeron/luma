@@ -1,4 +1,10 @@
-use crate::{errors::CompilationError, mir::{transponster::Mediator, scribe::{Monomorphization, get_lines}}};
+use crate::{
+    errors::CompilationError,
+    mir::{
+        scribe::{get_lines, Monomorphization, Scribe},
+        transponster::Mediator,
+    },
+};
 use futures::future::join_all;
 use local_channel::mpsc::{Receiver as LocalReceiver, Sender as LocalSender};
 use once_cell::sync::OnceCell;
@@ -348,7 +354,10 @@ impl Director {
                     "The system has reached a converged final state, tell it to emit any errors"
                 );
 
-                postal.send_broadcast_to(Service::Transponster(), Content::Transponster(Memo::CompilationStalled()));
+                postal.send_broadcast_to(
+                    Service::Transponster(),
+                    Content::Transponster(Memo::CompilationStalled()),
+                );
 
                 st.wait_stalled();
 
@@ -359,7 +368,6 @@ impl Director {
 
                 st.wait_stalled();
 
-
                 // now, if no errors, start codegen
 
                 for service in [Service::Quark(), Service::Transponster()] {
@@ -367,7 +375,7 @@ impl Director {
                 }
 
                 st.wait_stalled(); // everyone has codegen now, so emit output
-                
+
                 for line in get_lines() {
                     println!("{line}");
                 }
@@ -382,12 +390,12 @@ impl Director {
                 let delta = end - begin;
                 let micros = delta.as_micros();
 
-                std::thread::sleep(Duration::from_millis(200));
+                std::thread::sleep(Duration::from_millis(50));
 
                 println!("Phase section took {} microseconds", micros);
 
                 // send notifications to all nodes to ask them to emit any late errors
-                std::thread::sleep(Duration::from_secs(2));
+                //std::thread::sleep(Duration::from_secs(2));
                 std::process::exit(0);
             } else {
                 //println!("Values for qk and such: {qk_before}, {qk_after}, {tp_before}, {tp_after}");
@@ -548,7 +556,13 @@ impl Postal {
     }
 
     pub fn send_and_forget(&self, to: Destination, content: Content) {
-        self.send(Message { to, from: Destination::nil(), send_reply_to: Destination::nil(), conversation: Uuid::new_v4(), content })
+        self.send(Message {
+            to,
+            from: Destination::nil(),
+            send_reply_to: Destination::nil(),
+            conversation: Uuid::new_v4(),
+            content,
+        })
     }
 }
 
@@ -593,6 +607,7 @@ impl Group {
         let (qk_s, qk_r) = local_channel::mpsc::channel();
         let (ocl_s, ocl_r) = local_channel::mpsc::channel();
         let (rtr_s, rtr_r) = local_channel::mpsc::channel();
+        let (scb_s, scb_r) = local_channel::mpsc::channel();
 
         let (send_out_s, mut send_out_r) = lockfree::channel::spsc::create();
         //let (br_s, br_r) = local_channel::mpsc::channel();
@@ -614,6 +629,8 @@ impl Group {
             exer,
         );
 
+        let quark_static_ref = static_pinned_leaked(quark);
+
         //let bridge = Bridge::new(self.listen_to, rtr_s.clone());
         let router = Router::new(
             rtr_r,
@@ -622,6 +639,7 @@ impl Group {
                 (Service::Transponster(), ocl_s),
                 (Service::Quark(), qk_s),
                 (Service::Router(), rtr_s.clone()),
+                (Service::Scribe(), scb_s.clone()),
             ],
             send_out_s,
             //self.with_postal,
@@ -630,10 +648,20 @@ impl Group {
         );
 
         let ocl_ep = Earpiece::new(rtr_s.clone(), ocl_r, self.for_node);
-        let oracle = Transponster::for_node(
+        let oracle = Transponster::for_node(self.for_node, ocl_ep.cloned_sender());
+
+        let transponster_static_ref = static_pinned_leaked(oracle);
+
+        let scb_ep = Earpiece::new(rtr_s.clone(), scb_r, self.for_node);
+        let scribe = Scribe::for_node(
             self.for_node,
-            ocl_ep.cloned_sender()
+            scb_ep.cloned_sender(),
+            exer,
+            quark_static_ref,
+            transponster_static_ref,
         );
+
+        let scribe_static_ref = static_pinned_leaked(scribe);
 
         unsafe {
             info!("installing resolver uses into exe");
@@ -655,17 +683,22 @@ impl Group {
             );
 
             exer.install(
-                quark.thread(Earpiece::new(rtr_s.clone(), qk_r, self.for_node)),
+                quark_static_ref.thread(Earpiece::new(rtr_s.clone(), qk_r, self.for_node)),
                 format!("quark for node {:?}", self.for_node),
             );
             exer.install(
-                oracle.thread(exer, ocl_ep),
+                transponster_static_ref.thread(exer, ocl_ep),
                 format!("oracle for node {:?}", self.for_node),
             );
 
             exer.install(
                 router.thread(),
                 format!("router for node {:?}", self.for_node),
+            );
+
+            exer.install(
+                scribe_static_ref.thread(scb_ep),
+                format!("scribe for node {:?}", self.for_node),
             );
 
             StalledDog::wake_one();
@@ -1018,6 +1051,8 @@ pub enum Service {
 
     /// Should be copied and sent to every service on a node
     Broadcast(),
+
+    Scribe(),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

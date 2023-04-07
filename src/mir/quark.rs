@@ -2,7 +2,7 @@ use crate::avec::AtomicVecIndex;
 use crate::compile::per_module::Photon;
 use crate::errors::{FieldAccessError, UnrestrictedTypeError};
 use crate::mir::expressions::Binding;
-use crate::mir::scribe::Scribe;
+use crate::mir::scribe::ScribeOne;
 use crate::mir::transponster::Memo;
 use crate::{
     compile::per_module::StalledDog,
@@ -1081,20 +1081,20 @@ impl Quark {
         ae
     }
 
-    pub async fn thread(self, mut ep: Earpiece) {
-        let boxed = Box::pin(self); // put ourselves into the heap in a definitely known location
+    pub async fn thread(&'static self, mut ep: Earpiece) {
+        /*let boxed = Box::pin(self); // put ourselves into the heap in a definitely known location
                                     // to avoid dumb shenaniganery
         let sptr: *const Quark = Pin::into_inner(boxed.as_ref()) as *const _;
-        let sref: &'static Quark = unsafe { sptr.as_ref().unwrap() };
+        let sref: &'static Quark = unsafe { sptr.as_ref().unwrap() };*/
 
         info!("starts quark thread");
 
-        match &sref.node_id.resolve().inner {
+        match &self.node_id.resolve().inner {
             ast::tree::NodeUnion::Function(f, imp) => {
                 let f = f.clone();
                 warn!(
                     "quark for a function starts up using ctx id {:?}",
-                    sref.node_id
+                    self.node_id
                 );
                 let mut imp = imp
                     .lock()
@@ -1106,24 +1106,24 @@ impl Quark {
                     let cloned: FunctionDefinition = f.clone();
                     let eps = ep.cloned_sender();
 
-                    sref.executor.install(
-                        async move { sref.entry(cloned, &mut imp).await },
+                    self.executor.install(
+                        async move { self.entry(cloned, &mut imp).await },
                         "quark worker thread".to_owned(),
                     )
                 }
 
                 while let Ok(v) = ep.wait().await {
                     tracing::info!("got a message for quark, forwarding to conversations...");
-                    let remainder = sref.conversations.dispatch(v);
+                    let remainder = self.conversations.dispatch(v);
                     if let Some(v) = remainder {
                         //tracing::error!("unhandled message? it is: {:#?}", v);
                         match v.content {
                             Content::Monomorphization(m) => {
-                                sref.monomorphizations.borrow_mut().insert(m);
+                                self.monomorphizations.borrow_mut().insert(m);
                             }
                             Content::Quark(photon) => match photon {
-                                Photon::CompilationStalled() => sref.end_last_phase(),
-                                Photon::EndPhase() => sref.end_one_phase(),
+                                Photon::CompilationStalled() => self.end_last_phase(),
+                                Photon::EndPhase() => self.end_one_phase(),
                                 Photon::BeginPhase() => {
                                     tracing::warn!("beginphase not handled yet");
                                 }
@@ -1132,11 +1132,11 @@ impl Quark {
                             Content::StartCodeGen() => {
                                 tracing::error!("Codegen not implemented yet");
 
-                                for mono in sref.monomorphizations.borrow().iter() {
+                                for mono in self.monomorphizations.borrow().iter() {
                                     let mut s =
-                                        Scribe::new(either::Either::Left(sref), mono.clone());
+                                        ScribeOne::new(either::Either::Left(self), mono.clone());
                                     unsafe {
-                                        sref.executor.install(
+                                        self.executor.install(
                                             async move {
                                                 s.codegen().await;
                                             },
@@ -1161,7 +1161,7 @@ impl Quark {
                 // a function
                 warn!(
                     "quark for node {:?} is shutting down, as it is not a function",
-                    sref.node_id
+                    self.node_id
                 );
 
                 while let Ok(v) = ep.wait().await {
@@ -1171,7 +1171,7 @@ impl Quark {
                         to: v.send_reply_to,
                         send_reply_to: Destination::nil(),
                         from: Destination {
-                            node: sref.node_id,
+                            node: self.node_id,
                             service: Service::Quark(),
                         },
                         conversation: v.conversation,

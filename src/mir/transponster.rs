@@ -2,8 +2,9 @@ use std::{
     cell::RefCell,
     collections::{HashMap, HashSet},
     fmt::Debug,
+    pin::Pin,
     rc::Rc,
-    sync::Arc, pin::Pin,
+    sync::Arc,
 };
 
 use dashmap::DashMap;
@@ -23,16 +24,18 @@ use crate::{
     avec::AtomicVecIndex,
     compile::per_module::{Content, ConversationContext, Destination, Earpiece, Message, Postal},
     cst::{NodeInfo, SyntacticTypeReferenceRef},
-    errors::{TypeUnificationError, CompilationError, FieldResolutionError},
+    errors::{CompilationError, FieldResolutionError, TypeUnificationError},
     helper::{
         interner::{IStr, Internable},
         SwapWith,
-    }, mir::scribe::Scribe,
+    },
+    mir::scribe::ScribeOne,
 };
 
 use super::{
     expressions::ExpressionID,
-    quark::{Quark, ResolvedType, TypeError, TypeID}, scribe::Monomorphization,
+    quark::{Quark, ResolvedType, TypeError, TypeID},
+    scribe::Monomorphization,
 };
 
 /// Yes, it's a reference, and no, it's not a good one
@@ -213,7 +216,9 @@ impl DynFieldInfo {
             from: Destination::transponster(CtxID(AtomicVecIndex::nil())),
             send_reply_to: Destination::nil(),
             conversation: Uuid::new_v4(),
-            content: Content::Error(CompilationError::FieldResolutionError(FieldResolutionError { name: self.name })),
+            content: Content::Error(CompilationError::FieldResolutionError(
+                FieldResolutionError { name: self.name },
+            )),
         })
     }
 
@@ -486,7 +491,7 @@ impl Transponster {
             .map(|(a, b)| a)
             .collect_vec();
 
-        Self {
+        let mut s = Self {
             for_ctx: node_id,
 
             sender: sender.clone(),
@@ -501,38 +506,56 @@ impl Transponster {
             conversations: unsafe { ConversationContext::new(sender) },
             monomorphizations: Default::default(),
             //instances: todo!(), // TODO: generics
+        };
+
+        let node = &s.for_ctx.resolve().inner;
+
+        match node {
+            crate::ast::tree::NodeUnion::Type(t) => {
+                let mut sd = t.lock().unwrap().clone();
+
+                for field in sd.fields.iter_mut() {
+                    s.regular_fields.insert(
+                        field.name,
+                        field.has_type.expect("field didn't have a type?"),
+                    );
+
+                    warn!("transponster resolved a field type");
+                }
+
+                for mref in s.for_ctx.resolve().children.iter() {
+                    let (&name, child) = mref.pair();
+                    s.regular_fields
+                        .insert(name, child.resolve().canonical_typeref());
+                }
+            }
+            _other => {
+                warn!("Transponster shuts down since this node type wasn't a Type")
+                //
+            }
         }
+
+        s
     }
 
-    pub async fn entry(mut self, executor: &'static Executor, sd: &mut StructuralDataDefinition, mut ep: Earpiece) {
+    pub async fn entry(
+        &'static self,
+        executor: &'static Executor,
+        mut ep: Earpiece,
+    ) {
         let parent_id = self.for_ctx.resolve().parent.unwrap();
 
-        for field in sd.fields.iter_mut() {
-            self.regular_fields.insert(
-                field.name,
-                field.has_type.expect("field didn't have a type?"),
-            );
-
-            warn!("transponster resolved a field type");
-        }
-
-        for mref in self.for_ctx.resolve().children.iter() {
-            let (&name, child) = mref.pair();
-            self.regular_fields
-                .insert(name, child.resolve().canonical_typeref());
-        }
-
-        let boxed = Box::pin(self); // put ourselves into the heap in a definitely known location
+        /*let boxed = Box::pin(self); // put ourselves into the heap in a definitely known location
                                     // to avoid dumb shenaniganery
         let sptr: *const Transponster = Pin::into_inner(boxed.as_ref()) as *const _;
-        let sref: &'static Transponster = unsafe { sptr.as_ref().unwrap() };
+        let sref: &'static Transponster = unsafe { sptr.as_ref().unwrap() };*/
 
         while let Ok(m) = ep.wait().await {
-            if let Some(m) = sref.conversations.dispatch(m) {
+            if let Some(m) = self.conversations.dispatch(m) {
                 match m.content {
                     Content::Transponster(memo) => match memo {
                         Memo::NotifyIndirectUsage { of } => {
-                            let mut refm = sref.dynamic_fields.borrow_mut();
+                            let mut refm = self.dynamic_fields.borrow_mut();
                             let ent = refm
                                 .entry(of)
                                 .or_insert_with(|| DynFieldInfo::new(of, executor));
@@ -540,7 +563,7 @@ impl Transponster {
                             ent.add_indirect(m.send_reply_to, m.conversation);
                         }
                         Memo::NotifyDirectUsage { of, as_ty } => {
-                            let mut refm = sref.dynamic_fields.borrow_mut();
+                            let mut refm = self.dynamic_fields.borrow_mut();
                             let ent = refm
                                 .entry(of)
                                 .or_insert_with(|| DynFieldInfo::new(of, executor));
@@ -550,11 +573,11 @@ impl Transponster {
                             unreachable!("shouldn't get this ourselves")
                         }
                         Memo::BeginPhase {} => {
-                            sref.run_phase();
+                            self.run_phase();
                         }
                         Memo::InstructCommit { field } => {
                             //panic!("committing field {field}");
-                            let rty = sref
+                            let rty = self
                                 .dynamic_fields
                                 .borrow()
                                 .get(&field)
@@ -562,7 +585,7 @@ impl Transponster {
                                 .commit();
                         }
                         Memo::CompilationStalled() => {
-                            for (name, info) in sref.dynamic_fields.borrow().iter() {
+                            for (name, info) in self.dynamic_fields.borrow().iter() {
                                 if !info.is_committed() {
                                     info.commit_fail();
                                 }
@@ -571,12 +594,12 @@ impl Transponster {
                         _ => todo!(),
                     },
                     Content::Monomorphization(m) => {
-                        sref.monomorphizations.borrow_mut().insert(m);
+                        self.monomorphizations.borrow_mut().insert(m);
                     }
                     Content::StartCodeGen() => {
-                        let monos = sref.monomorphizations.borrow().clone();
+                        let monos = self.monomorphizations.borrow().clone();
                         for m in monos {
-                            let mut s = Scribe::new(Either::Right(&sref), m);
+                            let mut s = ScribeOne::new(Either::Right(&self), m);
 
                             s.codegen().await;
                         }
@@ -608,15 +631,15 @@ impl Transponster {
         todo!("probably not using this approach in particular");
     }
 
-    pub async fn thread(self, executor: &'static Executor, ep: Earpiece) {
+    pub async fn thread(&'static self, executor: &'static Executor, ep: Earpiece) {
         warn!("starting transponster");
 
         let node = &self.for_ctx.resolve().inner;
 
         match node {
             crate::ast::tree::NodeUnion::Type(t) => {
-                let mut sdd = t.lock().unwrap().clone();
-                self.entry(executor, &mut sdd, ep).await;
+                //let mut sdd = t.lock().unwrap().clone();
+                self.entry(executor, ep).await;
             }
             _other => {
                 warn!("Transponster shuts down since this node type wasn't a Type")

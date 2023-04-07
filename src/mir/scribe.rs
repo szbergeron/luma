@@ -1,20 +1,110 @@
-use std::{collections::hash_map::DefaultHasher, hash::{Hash, Hasher}, sync::Mutex};
+use std::{
+    collections::{hash_map::DefaultHasher, HashMap},
+    hash::{Hash, Hasher},
+    sync::Mutex, cell::RefCell,
+};
 
 use either::Either;
 use futures::future::join_all;
 use itertools::Itertools;
+use local_channel::mpsc::Sender;
 
-use crate::{ast::tree::CtxID, helper::{interner::{IStr, SpurHelper, Internable}, SwapWith}};
+use crate::{
+    ast::{tree::CtxID, executor::{Thunk, Executor}, resolver2::NameResolver},
+    compile::per_module::{ConversationContext, Message, Earpiece, Service},
+    helper::{
+        interner::{IStr, Internable, SpurHelper},
+        SwapWith,
+    }, avec::AtomicVec, cst::SyntacticTypeReference,
+};
 
-use super::{quark::{Quark, ResolvedType}, transponster::Transponster, expressions::ExpressionID};
+use super::{
+    expressions::ExpressionID,
+    quark::{Quark, ResolvedType},
+    transponster::Transponster,
+};
 
-pub struct Scribe<'a> {
+pub struct Scribe {
+    local_transponster: &'static Transponster,
+    local_quark: &'static Quark,
+
+    conversations: ConversationContext,
+
+    sender: Sender<Message>,
+
+    monomorphizations: AtomicVec<Monomorphization>,
+
+    monomorphization_workers: RefCell<HashMap<ResolvedType, Thunk<()>>>,
+
+    for_node: CtxID,
+}
+
+impl Scribe {
+    pub fn for_node(
+        for_node: CtxID,
+        sender: Sender<Message>,
+        executor: &'static Executor,
+        quark: &'static Quark,
+        transponster: &'static Transponster,
+    ) -> Self {
+        let cs = sender.clone();
+
+        Self {
+            for_node,
+            monomorphization_workers: Default::default(),
+            local_transponster: transponster,
+            local_quark: quark,
+            conversations: unsafe {
+                ConversationContext::new(cs)
+            },
+            monomorphizations: AtomicVec::new(),
+            sender,
+        }
+    }
+
+    pub async fn thread(&'static self, mut ep: Earpiece) {
+        while let Ok(v) = ep.wait().await {
+        }
+    }
+
+    pub async fn resolve_typeref(&'static self, tr: SyntacticTypeReference, within_monomorphization: &'static Monomorphization) -> ResolvedType {
+        match tr.inner {
+            crate::cst::SyntacticTypeReferenceInner::Unconstrained() => todo!(),
+            crate::cst::SyntacticTypeReferenceInner::Tuple(_) => todo!(),
+            crate::cst::SyntacticTypeReferenceInner::Single { name } => {
+                let nr = NameResolver {
+                    service: Service::Scribe(),
+                    name,
+                    based_in: within_monomorphization.of,
+                    reply_to: self.for_node,
+                };
+
+                let r = nr.using_context(&self.conversations).await;
+
+                ResolvedType {
+                    node: r.unwrap(),
+                    generics: vec![],
+                }
+            },
+            crate::cst::SyntacticTypeReferenceInner::Generic { label } => {
+                todo!()
+            },
+            crate::cst::SyntacticTypeReferenceInner::Parameterized { name, generics } => {
+                todo!()
+            },
+            crate::cst::SyntacticTypeReferenceInner::Reference { to, mutable } => todo!(),
+            crate::cst::SyntacticTypeReferenceInner::Pointer { to, mutable } => todo!(),
+        }
+    }
+}
+
+pub struct ScribeOne<'a> {
     using: Either<&'static Quark, &'a Transponster>,
 
     mono: Monomorphization,
 }
 
-impl<'a> Scribe<'a> {
+impl<'a> ScribeOne<'a> {
     pub fn new(using: Either<&'static Quark, &'a Transponster>, mono: Monomorphization) -> Self {
         Self { using, mono }
     }
@@ -40,14 +130,14 @@ impl<'a> Scribe<'a> {
         let ret_mono = Monomorphization::from_resolved(quark.resolved_type_of(ret_tid).await);
         let ret = format!("{}*", ret_mono.encode_name());
 
-        let params_resolved = join_all(params_tid.into_iter().map(|(name, tid)| { async move {
+        let params_resolved = join_all(params_tid.into_iter().map(|(name, tid)| async move {
             println!("Resolving param {name}");
             let mono = Monomorphization::from_resolved(quark.resolved_type_of(tid).await);
 
             format!("\n\t{}* {}", mono.encode_name(), name)
-        }
-        })).await.join(",");
-
+        }))
+        .await
+        .join(",");
 
         let fname = self.mono.encode_name();
 
@@ -60,11 +150,14 @@ impl<'a> Scribe<'a> {
         within.push(format!("}}"));
 
         LINES.lock().unwrap().append(&mut within);
-
-
     }
 
-    async fn codegen_fn_rec(&mut self, quark: &Quark, at_id: ExpressionID, within: &mut Vec<String>) {
+    async fn codegen_fn_rec(
+        &mut self,
+        quark: &Quark,
+        at_id: ExpressionID,
+        within: &mut Vec<String>,
+    ) {
     }
 
     async fn codegen_ty(&mut self, transponster: &Transponster) {
@@ -78,10 +171,8 @@ impl<'a> Scribe<'a> {
 
         match OUTPUT_TYPE {
             OutputType::FullInf() => {
-
                 for (name, dinf) in transponster.dynamic_fields.borrow().iter() {
                     if let Some(res) = unsafe { dinf.committed_type.clone().wait().await } {
-
                         let mono = Monomorphization::from_resolved(res);
 
                         let n = mono.encode_name();
@@ -90,11 +181,9 @@ impl<'a> Scribe<'a> {
                     }
                 }
 
-
-
                 //lines.push("struct s)
             }
-            _ => todo!()
+            _ => todo!(),
         }
 
         lines.push(format!("}}"));
@@ -127,9 +216,9 @@ enum OutputType {
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Monomorphization {
-    of: CtxID,
+    pub of: CtxID,
 
-    with: Vec<ResolvedType>,
+    pub with: Vec<ResolvedType>,
 }
 
 impl Monomorphization {
@@ -150,6 +239,9 @@ impl Monomorphization {
     }
 
     pub fn from_resolved(r: ResolvedType) -> Self {
-        Self { of: r.node, with: r.generics }
+        Self {
+            of: r.node,
+            with: r.generics,
+        }
     }
 }

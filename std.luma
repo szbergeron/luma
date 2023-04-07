@@ -23,6 +23,15 @@ mod primitive {
         fn operator[_*_](self: std::primitive::i64, other: std::primitive::i64) -> std::primitive::i64 {
             self * other
         },
+
+    }
+
+    fn gen1<T>(v: T) -> T {
+        v
+    }
+
+    fn gen2() -> std::primitive::Unit {
+        gen1(5)
     }
 
     fn construction() -> std::primitive::Parameterized<std::primitive::i64> {
