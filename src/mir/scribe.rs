@@ -171,6 +171,8 @@ impl<'a> ScribeOne<'a> {
 
         lines.push(format!("struct {name} {{"));
 
+        lines.push("\tuint32_t _luma_private__refcount,".to_owned());
+
         match OUTPUT_TYPE {
             OutputType::FullInf() => {
                 for (name, dinf) in transponster.dynamic_fields.borrow().iter() {

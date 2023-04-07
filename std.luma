@@ -26,6 +26,22 @@ mod primitive {
 
     }
 
+    struct Vec<T> {
+        fn push<U>(self: std::primitive::Vec<U>, v: U) -> std::primitive::i64 {
+            5
+        },
+
+        fn pop<U>(self: std::primitive::Vec<U>) -> U {
+            5
+        },
+    }
+
+    fn vecs(v: Vec<i64>) -> std::primitive::Unit {
+        let v = struct std::primitive::Vec {};
+
+        v.pop(v)
+    }
+
     fn gen1<T>(v: T) -> T {
         v
     }
