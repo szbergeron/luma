@@ -132,7 +132,7 @@ impl Subscriber for MySub {
                 || (true && f.contains("transponster"))
                 || (true && f.contains("sets"))
                 || (true && f.contains("instance"))
-                || (true && f.contains("executor"))
+                || (false && f.contains("executor"))
                 || (false && f.contains("per_module")))
                 && allow_any
         }) //|| metadata.level() > &Level::WARN

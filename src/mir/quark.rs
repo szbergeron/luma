@@ -932,6 +932,35 @@ impl Quark {
 
                 vt
             }
+            AnyExpression::OuterReference(s, ni) => {
+                let et = self.new_tid(ni, true);
+
+                unsafe {
+                    self.executor.install(
+                        async move {
+                            let nr = NameResolver {
+                                name: s.clone(),
+                                based_in: self.search_within(),
+                                reply_to: self.node_id,
+                                service: Service::Quark()
+                            };
+
+                            let ctx_for_base = nr
+                                .using_context(&self.conversations)
+                                .await;
+
+                            let inst = Instance::infer_instance(ctx_for_base.ok(), self).await;
+
+                            self.assign_instance(et, inst, false);
+                        },
+                        "resolve the type of a static outer reference (like a function call)"
+                    );
+                }
+
+                //self.instances.borrow_mut().add_k(et);
+
+                et
+            }
             AnyExpression::Literal(l) => {
                 // YOOOOOOOOOOOOOOOOOOOOOOo we can now add a direct,
                 // woooooooooooooooooooooooooooooooo

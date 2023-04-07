@@ -31,7 +31,8 @@ mod primitive {
     }
 
     fn gen2() -> std::primitive::Unit {
-        std::primitive::gen1(5)
+        std::primitive::gen1(struct std::primitive::Unit {})
+        //gen1(5)
     }
 
 //    fn construction() -> std::primitive::Parameterized<std::primitive::i64> {

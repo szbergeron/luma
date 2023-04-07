@@ -127,7 +127,9 @@ impl<'a> ScribeOne<'a> {
 
         let params_tid = quark.params.get().cloned().unwrap();
 
+        println!("Resolving ret mono");
         let ret_mono = Monomorphization::from_resolved(quark.resolved_type_of(ret_tid).await);
+        println!("Got ret mono");
         let ret = format!("{}*", ret_mono.encode_name());
 
         let params_resolved = join_all(params_tid.into_iter().map(|(name, tid)| async move {

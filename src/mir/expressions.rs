@@ -105,6 +105,8 @@ pub enum AnyExpression {
     /// A variable, looks up a value and has type equal to the binding
     Variable(VarID, NodeInfo),
 
+    OuterReference(ScopedName, NodeInfo),
+
     /// Subject to some level of type inference, represents
     /// only a regular literal such as a str, i#, u#, f#, or ()
     ///
@@ -449,7 +451,9 @@ impl AnyExpression {
                     cst::Literal::u8Literal(_) => todo!(),
                     cst::Literal::i128Literal(_) => todo!(),
                     cst::Literal::i64Literal(_) => todo!(),
-                    cst::Literal::i32Literal(_) => todo!(),
+                    cst::Literal::i32Literal(v) => {
+                        todo!()
+                    },
                     cst::Literal::i16Literal(_) => todo!(),
                     cst::Literal::i8Literal(_) => todo!(),
                     cst::Literal::UnknownIntegerLiteral(v) => {
@@ -518,8 +522,10 @@ impl AnyExpression {
 
                     within.add(AnyExpression::Variable(vid, *node_info)).0
                 } else {
-                    //let ae = AnyExpression::OuterReference(
-                    todo!("scoped ident?")
+                    let ae = AnyExpression::OuterReference(ident.clone(), *node_info);
+
+                    within.add(ae).0
+                    //todo!("scoped ident?")
                 }
 
             }
