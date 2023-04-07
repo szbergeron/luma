@@ -301,6 +301,7 @@ impl<'lexer> Parser<'lexer> {
     }
 
     pub fn parse_scope(&mut self, t: &TokenProvider) -> ParseResult<cst::ScopedNameReference> {
+        println!("parsing a scope");
         let mut t = parse_header!(t);
 
         let mut names = Vec::new();
@@ -309,6 +310,7 @@ impl<'lexer> Parser<'lexer> {
 
         while let Some(s) = t.try_take_string([Token::Identifier, Token::DoubleColon]) {
             let ident = s[0];
+            println!("pushes {} to scope", ident.slice);
             names.push(ident.slice);
 
             node_info = node_info.extended(ident);
@@ -504,7 +506,7 @@ impl<'lexer> Parser<'lexer> {
     ) -> ExpressionResult {
         let mut t = parse_header!(t);
 
-        let scope = self.parse_scope(&t).join_hard(&mut t).catch(&mut t)?;
+        //let scope = self.parse_scope(&t).join_hard(&mut t).catch(&mut t)?;
 
         let mut base = self
             .parse_access_base(&t, with_generics)
@@ -555,7 +557,29 @@ impl<'lexer> Parser<'lexer> {
                 self.parse_tuple(&t, with_generics)
             }
             Token::Identifier => {
-                let e = cst::IdentifierExpression::from_token(tw);
+                t.lh.backtrack();
+
+                println!("parsing scope");
+                let mut sn = self.parse_scope(&t).join_hard(&mut t).catch(&mut t)?;
+
+                let last = t.take(Token::Identifier).join()?;
+
+                let node_info = sn.node_info.extended(last);
+
+                sn.scope.push(last.slice);
+
+                println!("got scope, turning into ident");
+                let e = cst::IdentifierExpression { node_info, ident: sn.to_raw_scope() };
+
+                println!("turned into ident, it is {e:?}");
+
+                println!("info: {}", sn.node_info);
+
+                let e = cst::ExpressionWrapper::Identifier(e);
+
+                //let e = cst::IdentifierExpression::from_token(tw);
+
+                //let remainder = 
 
                 t.success(Box::new(e))
             }

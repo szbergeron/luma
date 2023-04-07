@@ -400,9 +400,16 @@ impl Quark {
                 //async_backtrace::
                 println!("Generics: {:?}", with_generics);
                 let existing_tid = with_generics
-                    .get(&label)
-                    .expect("got a generic that didn't mean anything in the context");
-                *existing_tid
+                    .get(&label);
+
+                let existing_tid = match existing_tid {
+                    Some(s) => *s,
+                    None => {
+                        println!("The generic was {label}");
+                        panic!("got a generic that didn't mean anything in the context, we are {:?} and within {:?}", self.node_id, from_base);
+                    },
+                };
+                existing_tid
             }
             SyntacticTypeReferenceInner::Tuple(t) => {
                 todo!("need to actually make tuple types")
@@ -582,6 +589,7 @@ impl Quark {
 
         let mut generics = HashMap::new();
         for (gname, gtype) in node_id.resolve().generics.iter() {
+            tracing::error!("added a generic {gname} within {node_id:?}");
             tracing::error!("ignoring constraints on generics for now");
             let g_tid = TypeID(uuid::Uuid::new_v4(), NodeInfo::Builtin, true);
 

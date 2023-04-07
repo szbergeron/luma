@@ -10,6 +10,7 @@ pub struct Unifier<K: std::fmt::Debug, T: std::fmt::Debug> {
 
 impl<T: Debug, K: Eq + PartialEq + std::hash::Hash + Copy + Debug> Unifier<K, T> {
     pub fn root_for(&self, mut elem_id: K) -> K {
+        debug_assert!(self.elements.contains_key(&elem_id));
         loop {
             let v = self.elements.get(&elem_id).unwrap();
 
@@ -27,6 +28,17 @@ impl<T: Debug, K: Eq + PartialEq + std::hash::Hash + Copy + Debug> Unifier<K, T>
     where
         F: FnOnce(T, T) -> Result<T, E>,
     {
+        if !self.elements.contains_key(&a) {
+            self.add_k(a);
+        }
+
+        if !self.elements.contains_key(&b) {
+            self.add_k(b);
+        }
+
+        debug_assert!(self.elements.contains_key(&a));
+        debug_assert!(self.elements.contains_key(&b));
+
         let root_a = self.root_for(a);
         let root_b = self.root_for(b);
 
@@ -101,6 +113,7 @@ impl<T: Debug, K: Eq + PartialEq + std::hash::Hash + Copy + Debug> Unifier<K, T>
     }
 
     pub fn has_v(&self, k: K) -> bool {
+        debug_assert!(self.elements.contains_key(&k));
         match self.elements.get(&self.root_for(k)).unwrap().inner {
             EntryInner::Root(_) => true,
             EntryInner::Free() => false,
@@ -140,7 +153,10 @@ impl<T: Debug, K: Eq + PartialEq + std::hash::Hash + Copy + Debug> Unifier<K, T>
         out
     }
 
-    pub fn reduce_roots<F, R>(&self, f: F) -> Vec<R> where F: FnMut(&K, &T) -> Option<R> {
+    pub fn reduce_roots<F, R>(&self, f: F) -> Vec<R>
+    where
+        F: FnMut(&K, &T) -> Option<R>,
+    {
         let iter = self.map_roots(f).into_iter().filter_map(|e| e);
 
         iter.collect_vec()
@@ -155,6 +171,7 @@ impl<T: Debug, K: Eq + PartialEq + std::hash::Hash + Copy + Debug> Unifier<K, T>
     }*/
 
     pub fn v_for(&self, k: K) -> Option<&T> {
+        debug_assert!(self.elements.contains_key(&k));
         let root = self.root_for(k);
         if let Some(EntryInner::Root(v)) = self.elements.get(&k).map(|e| &e.inner) {
             Some(v)
@@ -164,6 +181,7 @@ impl<T: Debug, K: Eq + PartialEq + std::hash::Hash + Copy + Debug> Unifier<K, T>
     }
 
     pub fn peers_of(&self, of: K) -> Vec<K> {
+        debug_assert!(self.elements.contains_key(&of));
         let root_of = self.root_for(of);
 
         self.children_of(root_of)

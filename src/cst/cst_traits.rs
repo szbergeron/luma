@@ -90,12 +90,18 @@ impl NodeInfo {
     pub fn extended(self, t: TokenWrapper) -> Self {
         match self {
             Self::Builtin => Self::from_token(&t),
-            Self::Parsed(pni) => Self::Parsed(ParsedNodeInfo {
-                span: Span {
-                    start: pni.span.start,
-                    end: t.end,
-                },
-            }),
+            Self::Parsed(pni) => {
+                let start = pni.span.start.lower_of(t.start);
+
+                let end = pni.span.end.higher_of(t.end);
+
+                Self::Parsed(ParsedNodeInfo {
+                    span: Span {
+                        start,
+                        end,
+                    },
+                })
+            }
         }
     }
 

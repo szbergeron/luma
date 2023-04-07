@@ -300,6 +300,7 @@ impl Node {
             TopLevel::Function(f) => {
                 let name = f.name;
                 let public = f.public;
+                let generics = f.generics.clone();
                 let mut fd = ast::types::FunctionDefinition::from_cst(f);
                 let imp = fd.implementation.take();
 
@@ -307,7 +308,7 @@ impl Node {
 
                 let node = Self::new(
                     name,
-                    vec![], // TODO
+                    generics, // TODO
                     Some(parent),
                     Some(global),
                     inner,

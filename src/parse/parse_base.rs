@@ -504,10 +504,12 @@ impl<'lexer> Parser<'lexer> {
 
         let mut generics = parent_generics.clone();
 
-        for (inner, _) in inner_generics.iter() {
+        for (inner, _strefref) in inner_generics.iter() {
             if parent_generics.contains(&inner) {
                 todo!("user tried to shadow generics")
             }
+
+            //panic!("added generic {inner}");
 
             generics.push(*inner);
         }

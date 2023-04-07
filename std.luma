@@ -2,9 +2,9 @@ mod primitive {
 
     struct Unit {}
 
-    struct Parameterized<T> {
-        var v: T,
-    }
+//    struct Parameterized<T> {
+//        var v: T,
+//    }
 
     struct i64 {
         /*fn dyn_fields() -> std::primitive::i64 {
@@ -20,9 +20,9 @@ mod primitive {
             c
         },*/
 
-        fn operator[_*_](self: std::primitive::i64, other: std::primitive::i64) -> std::primitive::i64 {
+        /*fn operator[_*_](self: std::primitive::i64, other: std::primitive::i64) -> std::primitive::i64 {
             self * other
-        },
+        },*/
 
     }
 
@@ -31,16 +31,16 @@ mod primitive {
     }
 
     fn gen2() -> std::primitive::Unit {
-        gen1(5)
+        std::primitive::gen1(5)
     }
 
-    fn construction() -> std::primitive::Parameterized<std::primitive::i64> {
-        struct std::primitive::Parameterized { v: 42.dynf }
-    }
+//    fn construction() -> std::primitive::Parameterized<std::primitive::i64> {
+//        struct std::primitive::Parameterized { v: 42.dynf }
+//    }
 
-    fn construction2() -> std::primitive::Parameterized<std::primitive::i64> {
-        struct std::primitive::Parameterized { v: 42.dynf }
-    }
+//    fn construction2() -> std::primitive::Parameterized<std::primitive::i64> {
+//        struct std::primitive::Parameterized { v: 42.dynf }
+//    }
 
     /*fn err_dyn_fields_2() -> std::primitive::Unit {
         42.dynf
@@ -52,6 +52,7 @@ mod primitive {
         b = struct std::primitive::Unit {};
     }*/
 
+/*
     fn funky_dyn_fields(a: std::primitive::i64) -> std::primitive::i64 {
         //a.def = a.def;
         a.abc = 5;
@@ -66,6 +67,8 @@ mod primitive {
 
         a.abc
     },
+
+    */
 }
 
 /*

@@ -509,17 +509,19 @@ impl AnyExpression {
             ExpressionWrapper::Identifier(id) => {
                 let IdentifierExpression { node_info, ident } = id;
 
-                let ident = if let [one] = ident.scope.as_slice() {
-                    one
+                if let [one] = ident.scope.as_slice() {
+                    println!("Variable is: {:?}", ident);
+
+                    let vid = bindings
+                        .binding_for(*one)
+                        .expect("variable was not in scope");
+
+                    within.add(AnyExpression::Variable(vid, *node_info)).0
                 } else {
+                    //let ae = AnyExpression::OuterReference(
                     todo!("scoped ident?")
-                };
+                }
 
-                let vid = bindings
-                    .binding_for(*ident)
-                    .expect("variable was not in scope");
-
-                within.add(AnyExpression::Variable(vid, *node_info)).0
             }
             ExpressionWrapper::FunctionCall(fc) => {
                 let FunctionCall {

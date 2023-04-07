@@ -450,6 +450,40 @@ impl CodeLocation {
             }),
         }
     }
+
+    pub fn lower_of(&self, other: CodeLocation) -> CodeLocation {
+        match (*self, other) {
+            (CodeLocation::Parsed(a), CodeLocation::Parsed(b)) => {
+                if a.line < b.line {
+                    CodeLocation::Parsed(a)
+                } else if a.line == b.line && a.offset < b.offset {
+                    CodeLocation::Parsed(a)
+                } else {
+                    CodeLocation::Parsed(b)
+                }
+            },
+            (a @ CodeLocation::Parsed(_), CodeLocation::Builtin) => a,
+            (CodeLocation::Builtin, a @ CodeLocation::Parsed(_)) => a,
+            (CodeLocation::Builtin, CodeLocation::Builtin) => CodeLocation::Builtin,
+        }
+    }
+
+    pub fn higher_of(&self, other: CodeLocation) -> CodeLocation {
+        match (*self, other) {
+            (CodeLocation::Parsed(a), CodeLocation::Parsed(b)) => {
+                if a.line > b.line {
+                    CodeLocation::Parsed(a)
+                } else if a.line == b.line && a.offset > b.offset {
+                    CodeLocation::Parsed(a)
+                } else {
+                    CodeLocation::Parsed(b)
+                }
+            },
+            (a @ CodeLocation::Parsed(_), CodeLocation::Builtin) => a,
+            (CodeLocation::Builtin, a @ CodeLocation::Parsed(_)) => a,
+            (CodeLocation::Builtin, CodeLocation::Builtin) => CodeLocation::Builtin,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
