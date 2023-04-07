@@ -24,6 +24,7 @@ impl<T: Debug, K: Eq + PartialEq + std::hash::Hash + Copy + Debug> Unifier<K, T>
         }
     }
 
+    #[track_caller]
     pub fn unify<F, E>(&mut self, a: K, b: K, with_values: F) -> Result<(), E>
     where
         F: FnOnce(T, T) -> Result<T, E>,

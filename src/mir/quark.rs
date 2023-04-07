@@ -212,6 +212,7 @@ impl Quark {
         //tracing::debug!("{:#?}", b);
     }
 
+    #[track_caller]
     pub async fn resolved_type_of(&'static self, t: TypeID) -> ResolvedType {
         self.with_instance(t, |inst| unsafe {
             inst.once_resolved.clone().wait()
@@ -336,6 +337,7 @@ impl Quark {
     ///
     /// this turns it into either an instance or a TypeID, depending on how well things go
     #[async_recursion::async_recursion(?Send)]
+    #[track_caller]
     pub async fn resolve_typeref(
         &'static self,
         tr: SyntacticTypeReferenceRef,
@@ -471,6 +473,7 @@ impl Quark {
         }
     }
 
+    #[track_caller]
     pub fn with_instance<F, R>(&'static self, tid: TypeID, f: F) -> R
     where
         F: FnOnce(&Instance) -> R,

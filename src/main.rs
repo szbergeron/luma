@@ -32,7 +32,8 @@
     default_free_fn,
     map_many_mut,
     is_some_and,
-    async_iterator
+    async_iterator,
+    closure_track_caller
 )]
 #![allow(irrefutable_let_patterns)]
 #![allow(dead_code)]
@@ -131,6 +132,7 @@ impl Subscriber for MySub {
                 || (true && f.contains("transponster"))
                 || (true && f.contains("sets"))
                 || (true && f.contains("instance"))
+                || (true && f.contains("executor"))
                 || (false && f.contains("per_module")))
                 && allow_any
         }) //|| metadata.level() > &Level::WARN

@@ -4,7 +4,6 @@ use std::{
     fmt::Debug,
     marker::PhantomData,
     mem::ManuallyDrop,
-    panic::AssertUnwindSafe,
     pin::Pin,
     rc::Rc,
     task::{RawWaker, RawWakerVTable, Wake},
@@ -132,6 +131,7 @@ impl Executor {
     /// have awoken during the last iter
     ///
     /// Returns true if we stepped any futures, false if no futures were queued
+    #[track_caller]
     pub fn until_stable(&self) -> bool {
         let mut stepped_any = false;
 
@@ -175,39 +175,18 @@ impl Executor {
             let mut context = Context::from_waker(&waker);
 
             debug!("starts poll for {next_id} named '{named}'");
-            let resw = std::panic::catch_unwind(AssertUnwindSafe(|| {
-                let res = AssertUnwindSafe(mref)
-                    .catch_unwind()
-                    .poll_unpin(&mut context);
-
-                res
-            }));
+            let resw = mref.poll_unpin(&mut context);
 
             debug!("finishes poll for {next_id} named '{named}', it yielded back to us");
 
             match resw {
-                Ok(res) => {
-                    match res {
-                        std::task::Poll::Ready(res) => {
-                            // do nothing, the task is just done now
-                            // so remove it from the task set
-                            unsafe { self.futures.get().as_mut().unwrap().remove(&next_id) };
-
-                            match res {
-                                Ok(_) => (),
-                                Err(e) => {
-                                    println!("Panicking prop in until_stable?");
-                                    std::panic::resume_unwind(e);
-                                }
-                            }
-                        }
-                        std::task::Poll::Pending => {
-                            // keep it here I guess?
-                        }
-                    }
+                std::task::Poll::Ready(res) => {
+                    // do nothing, the task is just done now
+                    // so remove it from the task set
+                    unsafe { self.futures.get().as_mut().unwrap().remove(&next_id) };
                 }
-                Err(e) => {
-                    println!("How did we get here even?");
+                std::task::Poll::Pending => {
+                    // keep it here I guess?
                 }
             }
         }
@@ -228,6 +207,7 @@ pub struct UnsafeAsyncCompletableFuture<T: Clone> {
 impl<T: Clone + std::fmt::Debug> Future for UnsafeAsyncCompletableFuture<T> {
     type Output = T;
 
+    #[track_caller]
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> std::task::Poll<Self::Output> {
         tracing::debug!("got poll for unsafe completable");
         unsafe {
@@ -329,30 +309,36 @@ impl<T: Clone + std::fmt::Debug + 'static> UnsafeAsyncCompletable<T> {
     {
         if a.id == b.id {
             tracing::error!("tried to combine some completable with itself");
-            return a
+            return a;
         }
 
         let a1 = a.clone();
         let b1 = b.clone();
-        within.install(async move {
-            let a1v = a1.clone().wait().await;
-            let e = b1.complete(a1v);
+        within.install(
+            async move {
+                let a1v = a1.clone().wait().await;
+                let e = b1.complete(a1v);
 
-            if let Err(e) = e {
-                if_conflict(a1.try_get().unwrap(), b1.try_get().unwrap());
-            }
-        }, "combine a into b");
+                if let Err(e) = e {
+                    if_conflict(a1.try_get().unwrap(), b1.try_get().unwrap());
+                }
+            },
+            "combine a into b",
+        );
 
         let a2 = a.clone();
         let b2 = b.clone();
-        within.install(async move {
-            let b2v = b2.clone().wait().await;
-            let e = a2.complete(b2v);
+        within.install(
+            async move {
+                let b2v = b2.clone().wait().await;
+                let e = a2.complete(b2v);
 
-            if let Err(e) = e {
-                if_conflict(a2.try_get().unwrap(), b2.try_get().unwrap());
-            }
-        }, "combine a into b");
+                if let Err(e) = e {
+                    if_conflict(a2.try_get().unwrap(), b2.try_get().unwrap());
+                }
+            },
+            "combine a into b",
+        );
 
         a // reuse handle, no need for additional "things"
     }
