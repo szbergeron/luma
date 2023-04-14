@@ -1,5 +1,7 @@
 mod primitive {
 
+    fn print<T>(v: T) -> std::primitive::Unit #builtin luma_print_fast luma_print_silly luma_print_slow;
+
     struct Unit {}
 
     struct i64 {
@@ -7,10 +9,14 @@ mod primitive {
             self * other
         };
 
+        fn operator[_+_](self: std::primitive::i64, other: std::primitive::i64) -> std::primitive::i64
+            #builtin luma_i64_op_add_fast luma_i64_op_add_silly luma_i64_op_add_slow;
+
     };
 
     struct bool {
-        fn operator[_==_](self: std::primitive::bool, other: std::primitive::bool) -> std::primitive::bool #builtin luma__fast_bool_compare_eq luma__silly_bool_compare_eq luma__slow_bool_compare_eq;
+        fn operator[_==_](self: std::primitive::bool, other: std::primitive::bool) -> std::primitive::bool
+            #builtin luma__fast_bool_compare_eq luma__silly_bool_compare_eq luma__slow_bool_compare_eq;
     };
 
     struct huh {
@@ -43,6 +49,10 @@ mod primitive {
     fn p() -> std::primitive::Unit {
         let pa = struct std::primitive::parametric { val: 4 };
         pa.change(pa, 5);
+
+        pa.change(pa, pa.val + 3);
+
+        //std::primitive::print(pa.val);
 
         struct std::primitive::Unit {}
     }

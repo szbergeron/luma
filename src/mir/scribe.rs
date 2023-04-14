@@ -421,47 +421,7 @@ impl<'a> ScribeOne<'a> {
                     ));
                 }
 
-                for child in t_of.node.resolve().children.iter() {
-                    let c = child.value();
-
-                    match &c.resolve().inner {
-                        NodeUnion::Function(f, _) => {
-                            let inner_gens = c.resolve().generics.clone();
-                            tracing::error!("this is almost definitely unsound but is enough for the demo, didn't have time to finish it");
-                            let r = if !inner_gens.is_empty() {
-                                assert!(
-                                    inner_gens.len() == t_of.node.resolve().generics.len(),
-                                    "so we can parameterize directly down"
-                                );
-
-                                let mono = Monomorphization {
-                                    of: *c,
-                                    with: t_of.generics.clone(),
-                                };
-
-                                mono
-                            } else {
-                                let mono = Monomorphization {
-                                    of: *c,
-                                    with: vec![],
-                                };
-
-                                mono
-                            };
-
-                            let proper_name = r.encode_name();
-
-                            let mt = UntypedVar::temp();
-                            code.push(format!("{ind}let mut {mt} = Value::Callable({proper_name} as *const fn());"));
-
-                            let method_name = *child.key();
-
-                            code.push(format!("{ind}__luma_assign(&mut {mt} as *mut Value,
-                                __luma_get_field(&mut {v} as *mut Value, \"{method_name}\".to_owned()));"));
-                        }
-                        _ => {}
-                    }
-                }
+                self.emit_composite_builtup(preamble, code, indent, &v, t_of).await;
 
                 //code.push(format!("todo!(\"emit methods in here into composite\");"));
 
@@ -543,25 +503,89 @@ impl<'a> ScribeOne<'a> {
 
                 let uv = UntypedVar::temp();
 
+                //let rt = self.
+                code.push(format!("{ind}todo!(\"figure out the type of the literal thing to put object stuff\");"));
+
+                let mv = UntypedVar::temp();
+
+                code.push(format!("{ind}let {mv} = todo!();"));
+
                 match value.contents {
                     cst::Literal::i32Literal(i) => {
-                        code.push(format!("{ind}let mut {uv} = Value::I32({i});"));
+                        code.push(format!("{ind}let mut {uv} = Value::I32({i}, {mv});"));
                     }
                     cst::Literal::i64Literal(i) => {
-                        code.push(format!("{ind}let mut {uv} = Value::I64({i});"));
+                        code.push(format!("{ind}let mut {uv} = Value::I64({i}, {mv});"));
                     }
                     cst::Literal::u64Literal(u) => {
-                        code.push(format!("{ind}let mut {uv} = Value::I64({u});"));
+                        code.push(format!("{ind}let mut {uv} = Value::I64({u}, {mv});"));
                     }
                     cst::Literal::UnknownIntegerLiteral(u) => {
-                        code.push(format!("{ind}let mut {uv} = Value::I64({u});"));
+                        code.push(format!("{ind}let mut {uv} = Value::I64({u}, {mv});"));
                     }
                     _ => todo!(),
                 }
 
                 Some(uv)
             }
+            AnyExpression::OuterReference(sn, _) => {
+                todo!()
+            }
             _ => todo!(),
+        }
+    }
+
+    async fn emit_composite_builtup(
+        &mut self,
+        preamble: &mut Vec<String>,
+        code: &mut Vec<String>,
+        indent: usize,
+        v: &UntypedVar,
+        t_of: ResolvedType,
+    ) {
+        let ind = indents(indent);
+        for child in t_of.node.resolve().children.iter() {
+            let c = child.value();
+
+            match &c.resolve().inner {
+                NodeUnion::Function(f, _) => {
+                    let inner_gens = c.resolve().generics.clone();
+                    tracing::error!("this is almost definitely unsound but is enough for the demo, didn't have time to finish it");
+                    let r = if !inner_gens.is_empty() {
+                        assert!(
+                            inner_gens.len() == t_of.node.resolve().generics.len(),
+                            "so we can parameterize directly down"
+                        );
+
+                        let mono = Monomorphization {
+                            of: *c,
+                            with: t_of.generics.clone(),
+                        };
+
+                        mono
+                    } else {
+                        let mono = Monomorphization {
+                            of: *c,
+                            with: vec![],
+                        };
+
+                        mono
+                    };
+
+                    let proper_name = r.encode_name();
+
+                    let mt = UntypedVar::temp();
+                    code.push(format!(
+                        "{ind}let mut {mt} = Value::Callable({proper_name} as *const fn());"
+                    ));
+
+                    let method_name = *child.key();
+
+                    code.push(format!("{ind}__luma_assign(&mut {mt} as *mut Value,
+                                __luma_get_field(&mut {v} as *mut Value, \"{method_name}\".to_owned()));"));
+                }
+                _ => {}
+            }
         }
     }
 
@@ -571,7 +595,6 @@ impl<'a> ScribeOne<'a> {
         returns: SyntacticTypeReference,
         builtin_name: String,
     ) {
-        //
     }
 
     async fn codegen_fn_entry(&mut self, quark: &'static Quark) {
@@ -622,7 +645,6 @@ impl<'a> ScribeOne<'a> {
             .await
             .join(",");*/
 
-
             //within.push(format!("{ret} {fname} ({params_resolved}) {{"));
 
             let entry_fn_id = quark.meta.entry_id.get().copied().unwrap();
@@ -660,7 +682,12 @@ impl<'a> ScribeOne<'a> {
             within.push("// encoding a builtin".to_owned());
             within.push(format!("// builtin is {is_builtin:?}"));
 
-            let builtin_inner = *is_builtin.as_ref().unwrap().impls.get(&OUTPUT_TYPE).unwrap();
+            let builtin_inner = *is_builtin
+                .as_ref()
+                .unwrap()
+                .impls
+                .get(&OUTPUT_TYPE)
+                .unwrap();
 
             match OUTPUT_TYPE {
                 OutputType::FullInf() => todo!(),
@@ -680,8 +707,6 @@ impl<'a> ScribeOne<'a> {
 
                     within.push(format!("pub fn {fname}({params}) -> Value {{"));
                     within.push(format!("    {builtin_inner}({args})"));
-
-                    
 
                     let mut preamble = Vec::new();
                     let mut code = Vec::new();
@@ -789,7 +814,15 @@ impl Monomorphization {
 
         let hashed_tail: String = hashed_tail
             .chars()
-            .filter(|c| c.is_ascii_alphanumeric() || *c == '_')
+            .map(|c| match c {
+                '*' => "mul".to_owned(),
+                '/' => "div".to_owned(),
+                '+' => "add".to_owned(),
+                '_' => "_".to_owned(),
+                other if other.is_ascii_alphanumeric() => other.to_string(),
+                _ => "".to_owned(),
+            })
+            //.filter(|c| c.is_ascii_alphanumeric() || *c == '_')
             .collect();
 
         hashed_tail.intern()
