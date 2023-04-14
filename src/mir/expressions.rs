@@ -11,7 +11,7 @@ use crate::{
         NodeInfo, ScopedName, StatementExpression, StructLiteralExpression,
         SyntacticTypeReferenceRef,
     },
-    helper::interner::{IStr, Internable},
+    helper::interner::{IStr, Internable}, ast::tree::CtxID,
 };
 
 pub type ExpressionID = crate::avec::AtomicVecIndex;
@@ -46,7 +46,7 @@ impl ExpressionContext {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct VarID(usize);
+pub struct VarID(pub usize);
 
 /// If we have two operands but want to know which direction
 /// any coercions should be going, this specifies which
@@ -72,6 +72,7 @@ pub enum AnyExpression {
     Assign(Assign),
 
     Convert(Convert),
+
     While(Iterate),
     Branch(Branch),
 
@@ -118,6 +119,17 @@ pub enum AnyExpression {
     ///
     /// It allows for easier, deeper, inference based on known field types
     Composite(Composite),
+
+    /// These following variants are used during codegen when (non-compiler-bug)
+    /// errors should not occur, and all regular analysis has been done
+    FusedMethodInvoke(FusedMethodInvoke),
+    Deref(ExpressionID),
+}
+
+#[derive(Clone, Debug)]
+pub struct FusedMethodInvoke {
+    calls: CtxID,
+    with: Vec<ExpressionID>, // first one is self
 }
 
 pub struct Bindings<'prior> {

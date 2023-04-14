@@ -175,7 +175,7 @@ fn print_from_root(root: CtxID, indent: usize, named: IStr) {
                 .collect_vec();
             format!("type with fields: {:?}", fields)
         }
-        ast::tree::NodeUnion::Function(fd, e) => {
+        ast::tree::NodeUnion::Function(fd, _) => {
             let name = fd.name;
             let args = fd
                 .parameters

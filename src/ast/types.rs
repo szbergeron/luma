@@ -3,7 +3,10 @@ use std::{collections::HashMap, sync::RwLock};
 //use dashmap::lock::RwLock;
 
 use crate::{
-    cst::{NodeInfo, ScopedName, SyntacticTypeReferenceInner, SyntacticTypeReferenceRef},
+    cst::{
+        FunctionBuiltin, NodeInfo, ScopedName, SyntacticTypeReferenceInner,
+        SyntacticTypeReferenceRef,
+    },
     helper::interner::IStr,
 };
 
@@ -13,6 +16,7 @@ use super::tree::CtxID;
 
 //use itertoo
 
+use either::Either;
 use itertools::Itertools;
 
 /// A TypeReference encloses an entire constraint,
@@ -116,8 +120,9 @@ pub struct FunctionDefinition {
 
     pub parameters: Vec<(IStr, SyntacticTypeReferenceRef)>,
     pub return_type: SyntacticTypeReferenceRef,
-    pub implementation: Option<cst::expressions::ExpressionWrapper>, // quark removes this to do
-                                                                     // stuff on, drops it "early"
+
+    pub implementation: Option<Either<cst::expressions::ExpressionWrapper, FunctionBuiltin>>, // quark removes this to do
+                                                                                              // stuff on, drops it "early"
 }
 
 impl FunctionDefinition {
@@ -153,7 +158,13 @@ impl FunctionDefinition {
             info,
             name,
             is_method,
-            implementation: Some(*body),
+            implementation: Some(body.map_left(|e| {
+                println!("Got a left!");
+                *e
+            }).map_right(|r| {
+                //panic!("got a right!");
+                r
+            })),
             return_type,
             parameters,
             header,

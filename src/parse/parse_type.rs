@@ -196,10 +196,10 @@ impl<'lexer> Parser<'lexer> {
                 _ => unreachable!(),
             }
 
-            let ending = t.take_in(&[Token::Comma, Token::RBrace]).join()?;
+            let ending = t.take_in(&[Token::Semicolon, Token::RBrace]).join()?;
             match ending.token {
-                Token::Comma => {
-                    t.predict_next((Token::Comma, 10.0));
+                Token::Semicolon => {
+                    t.predict_next((Token::Semicolon, 10.0));
                     continue;
                 }
                 Token::RBrace => {

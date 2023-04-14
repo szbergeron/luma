@@ -182,6 +182,13 @@ impl<'lexer> Parser<'lexer> {
                         .catch(&mut t)?;
 
                     pairs.push((field_name, val));
+
+                    match t.try_take(Token::Comma) {
+                        Some(c) => continue,
+                        None => {
+                            break t.take(Token::RBrace).join()?.end
+                        },
+                    }
                 }
             }
         };
@@ -199,6 +206,8 @@ impl<'lexer> Parser<'lexer> {
             cst::SyntacticTypeReferenceInner::Reference { to, mutable } => todo!("huh"),
             cst::SyntacticTypeReferenceInner::Pointer { to, mutable } => todo!("wheee"),
         };
+
+        println!("got a struct literal successfully");
 
         t.success(Box::new(cst::ExpressionWrapper::StructLiteral(
             StructLiteralExpression {
@@ -922,11 +931,14 @@ impl<'lexer> Parser<'lexer> {
                 r
             }
             Token::Struct => {
-                tracing::info!("parsing a struct literal");
+                println!("parsing a struct literal");
                 let r = self
                     .parse_struct_literal(&t, with_generics)
                     .join_hard(&mut t)
                     .catch(&mut t)?;
+
+                let la = t.lh.la(0);
+                println!("la is {:?}", la);
 
                 r
             }
@@ -1045,6 +1057,9 @@ impl<'lexer> Parser<'lexer> {
                 break;
             }
         }
+
+        println!("parex returns success of {lhs:?}");
+        println!("la is {:?}", t.lh.la(0));
 
         t.success(lhs)
     }

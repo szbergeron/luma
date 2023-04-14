@@ -1,6 +1,8 @@
+use either::Either;
+
 use super::{expressions::ExpressionWrapper, ScopedName};
 
-use crate::cst;
+use crate::{cst, mir::scribe::OutputType};
 
 //use crate::ast::tree::GenericHandle;
 /*use super::EnumDefinition;
@@ -12,7 +14,7 @@ use super::TypeDefinition;
 use super::TypeReference;*/
 
 //use crate::types::FunctionDeclaration;
-use std::fmt::Debug;
+use std::{fmt::Debug, collections::HashMap};
 //use std::io::Write;
 
 /*use crate::types::GlobalCtxNode;
@@ -429,12 +431,18 @@ pub struct FunctionDefinition {
 
     pub is_method: bool,
 
-    pub body: Box<ExpressionWrapper>,
+    pub body: Either<Box<ExpressionWrapper>, FunctionBuiltin>,
+
     pub return_type: cst::SyntacticTypeReferenceRef,
     //pub params: Vec<(Box<super::ExpressionWrapper>, super::TypeReference)>,
     pub params: Vec<(IStr, cst::SyntacticTypeReferenceRef)>,
 
     pub generics: Vec<(IStr, cst::SyntacticTypeReferenceRef)>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FunctionBuiltin {
+    pub impls: HashMap<OutputType, IStr>,
 }
 
 impl CstNode for FunctionDefinition {
@@ -452,7 +460,7 @@ impl CstNode for FunctionDefinition {
         //let _ = writeln!(f, " {{");
         //let _ = write!(f, "{}", indent(depth + 1));
 
-        self.body.as_node().pretty(f, depth);
+        self.body.as_ref().map_left(|b| b.as_node().pretty(f, depth));
         //let _ = writeln!(f, "");
         //let _ = writeln!(f, "\n{}}}", indent(depth));
     }

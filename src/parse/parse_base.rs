@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+
+use either::Either;
 use tracing::info;
 
 #[allow(non_upper_case_globals)]
@@ -5,7 +8,7 @@ use tracing::info;
 //use crate::ast::{StaticVariableDeclaration, TopLevel};
 use crate::cst::cst_traits::NodeInfo;
 //use crate::cst::declarations::{OuterScope, TopLevel, Namespace, TypeReference, FunctionDefinition};
-use crate::cst::{self, ScopedName};
+use crate::cst::{self, ScopedName, FunctionBuiltin};
 use crate::lex::{ParseResultError, Token};
 
 //use crate::helper::lex_wrap::LookaheadStream;
@@ -15,6 +18,7 @@ use crate::lex::CodeLocation;
 //use std::collections::HashSet;
 use crate::cst::cst_traits::IntoCstNode;
 
+use crate::mir::scribe::OutputType;
 use crate::parse::*;
 
 use super::schema::{ResultHint, TokenProvider};
@@ -340,6 +344,8 @@ impl<'lexer> Parser<'lexer> {
                 }
             };
 
+            t.try_take(Token::Semicolon); // take any trailing semi for a decl
+
             t.success(r)
 
             //r.and_then(|v| t.success(v))
@@ -506,7 +512,7 @@ impl<'lexer> Parser<'lexer> {
 
         for (inner, _strefref) in inner_generics.iter() {
             if parent_generics.contains(&inner) {
-                todo!("user tried to shadow generics")
+                tracing::error!("user tried to shadow generics, prevent this at some point");
             }
 
             //panic!("added generic {inner}");
@@ -529,13 +535,31 @@ impl<'lexer> Parser<'lexer> {
             .intern();
 
         //if let Some(v) = 
+        //
+        let (body, end) = if let Some(v) = t.try_take(Token::InteriorBuiltin) {
+            let fast = t.take(Token::Identifier).join()?;
+            let silly = t.take(Token::Identifier).join()?;
+            let slow = t.take(Token::Identifier).join()?;
 
-        let body = self
-            .parse_expr(&t, &generics)
-            .join_hard(&mut t)
-            .catch(&mut t)?;
+            let mut hm = HashMap::new();
 
-        let end = body.as_node().start().expect("Some(_) body has None end");
+            hm.insert(OutputType::FullInf(), fast.slice);
+            hm.insert(OutputType::AssumeTypeSafe(), silly.slice);
+            hm.insert(OutputType::AssumeTypeUnsafe(), slow.slice);
+
+            let fd = FunctionBuiltin { impls: hm };
+
+            (Either::Right(fd), slow.end)
+        } else {
+            let body = self
+                .parse_expr(&t, &generics)
+                .join_hard(&mut t)
+                .catch(&mut t)?;
+            let end = body.as_node().start().expect("Some(_) body has None end");
+            (Either::Left(body), end)
+        };
+
+
 
         let info = NodeInfo::from_indices(start, end);
 

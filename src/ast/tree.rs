@@ -1,10 +1,11 @@
 use crate::avec::AtomicVec;
 use crate::cst::{
     ScopedName, SyntacticTypeReference, SyntacticTypeReferenceInner, SyntacticTypeReferenceRef,
-    TopLevel,
+    TopLevel, FunctionBuiltin,
 };
 use crate::helper::interner::Internable;
 use crate::{avec::AtomicVecIndex, cst::UseDeclaration};
+use either::Either;
 use itertools::Itertools;
 use smallvec::smallvec;
 use tracing::info;
@@ -175,6 +176,8 @@ pub struct Node {
 
     pub use_statements: Vec<UseDeclaration>,
 
+    pub builtin: bool,
+
     frozen: Fuse,
 }
 
@@ -252,6 +255,9 @@ impl Node {
             .into_iter()
             .map(|(name, ty)| (name, ty))
             .collect_vec();
+
+        let builtin = inner.is_builtin();
+
         let n = Node {
             node_id: OnceCell::new(),
             name,
@@ -260,6 +266,7 @@ impl Node {
             global,
             inner,
             children: DashMap::new(),
+            builtin,
             //implementations_in_scope: RwLock::new(Vec::new()),
             frozen: Fuse::new(),
             public,
@@ -562,11 +569,28 @@ pub enum NodeUnion {
     Type(Mutex<ast::types::StructuralDataDefinition>),
     Function(
         ast::types::FunctionDefinition,
-        Mutex<Option<cst::expressions::ExpressionWrapper>>,
+        Mutex<Option<Either<cst::expressions::ExpressionWrapper, FunctionBuiltin>>>,
     ),
+
     Global(!),
     Empty(),
     //Implementation(Implementation),
+}
+
+#[derive(Debug)]
+struct FunctionTemplate {
+    template: String,
+}
+
+impl NodeUnion {
+    pub fn is_builtin(&self) -> bool {
+        match self {
+            Self::Function(fd, fe) => {
+                fe.lock().unwrap().as_ref().map(|v| v.is_right()).unwrap_or(false)
+            },
+            _ => false,
+        }
+    }
 }
 
 struct RefPtr<T> {

@@ -487,7 +487,7 @@ impl Instance {
                     from: base,
                 })
             }
-            NodeUnion::Function(f, i) => {
+            NodeUnion::Function(f, _) => {
                 // the typeref there should be resolved, depending on if its a method or not,
                 // either the super scope or the super-super scope
 

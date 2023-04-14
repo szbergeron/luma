@@ -1,5 +1,6 @@
 use crate::avec::AtomicVecIndex;
 use crate::compile::per_module::Photon;
+use crate::cst::FunctionBuiltin;
 use crate::errors::{FieldAccessError, UnrestrictedTypeError};
 use crate::mir::expressions::Binding;
 use crate::mir::scribe::ScribeOne;
@@ -13,6 +14,7 @@ use std::collections::HashSet;
 use std::fmt::Debug;
 use std::{cell::RefCell, collections::HashMap, pin::Pin, rc::Rc};
 
+use either::Either;
 use once_cell::unsync::OnceCell;
 use tracing::{info, warn};
 use uuid::Uuid;
@@ -127,12 +129,21 @@ pub struct Quark {
 
     conversations: ConversationContext,
 
+    monomorphizations: RefCell<HashSet<Monomorphization>>,
+
+    pub meta: Meta,
+}
+
+#[derive(Default)]
+pub struct Meta {
     pub returns: OnceCell<TypeID>,
-    pub params: OnceCell<Vec<(IStr, TypeID)>>,
+    pub params: OnceCell<Vec<(IStr, TypeID, VarID)>>,
 
     pub entry_id: OnceCell<ExpressionID>,
 
-    monomorphizations: RefCell<HashSet<Monomorphization>>,
+    pub is_builtin: OnceCell<Option<FunctionBuiltin>>,
+
+    pub are_methods: RefCell<HashMap<ExpressionID, TypeID>>,
 }
 
 pub struct ErrorState {
@@ -214,9 +225,8 @@ impl Quark {
 
     #[track_caller]
     pub async fn resolved_type_of(&'static self, t: TypeID) -> ResolvedType {
-        self.with_instance(t, |inst| unsafe {
-            inst.once_resolved.clone().wait()
-        }).await
+        self.with_instance(t, |inst| unsafe { inst.once_resolved.clone().wait() })
+            .await
     }
 
     /// When each quark phase completes we get one message here to flush errors
@@ -299,7 +309,7 @@ impl Quark {
 
             if !unresolved_insts.is_empty() {}
 
-            println!("Unresolved insts: {}", unresolved_insts.len());
+            tracing::error!("Unresolved insts: {}", unresolved_insts.len());
 
             for tid in unresolved_insts {
                 errors.push(CompilationError::UnrestrictedTypeError(
@@ -315,7 +325,7 @@ impl Quark {
 
                 //println!("Instances: {b:#?}");
             }
-            println!("Unrestricted vars: {}", free_vars.len());
+            tracing::error!("Unrestricted vars: {}", free_vars.len());
         }
 
         std::mem::drop(errors);
@@ -401,15 +411,14 @@ impl Quark {
             SyntacticTypeReferenceInner::Generic { label } => {
                 //async_backtrace::
                 println!("Generics: {:?}", with_generics);
-                let existing_tid = with_generics
-                    .get(&label);
+                let existing_tid = with_generics.get(&label);
 
                 let existing_tid = match existing_tid {
                     Some(s) => *s,
                     None => {
                         println!("The generic was {label}");
                         panic!("got a generic that didn't mean anything in the context, we are {:?} and within {:?}", self.node_id, from_base);
-                    },
+                    }
                 };
                 existing_tid
             }
@@ -613,9 +622,7 @@ impl Quark {
             generics: Rc::new(generics),
             typeofs: TypeMap::new(),
             monomorphizations: Default::default(),
-            returns: Default::default(),
-            params: Default::default(),
-            entry_id: Default::default(),
+            meta: Default::default(),
         }
     }
 
@@ -916,9 +923,6 @@ impl Quark {
 
                 result_ty
             }
-            AnyExpression::DynamicAccess(_) => {
-                todo!("no syntactic meaning to dynamic access anymore")
-            }
             AnyExpression::Variable(v, n) => {
                 //self.type_of.borrow_mut().insert(k, v)
                 // here we also care if we're an lval or an rval
@@ -942,18 +946,16 @@ impl Quark {
                                 name: s.clone(),
                                 based_in: self.search_within(),
                                 reply_to: self.node_id,
-                                service: Service::Quark()
+                                service: Service::Quark(),
                             };
 
-                            let ctx_for_base = nr
-                                .using_context(&self.conversations)
-                                .await;
+                            let ctx_for_base = nr.using_context(&self.conversations).await;
 
                             let inst = Instance::infer_instance(ctx_for_base.ok(), self).await;
 
                             self.assign_instance(et, inst, false);
                         },
-                        "resolve the type of a static outer reference (like a function call)"
+                        "resolve the type of a static outer reference (like a function call)",
                     );
                 }
 
@@ -1074,6 +1076,9 @@ impl Quark {
 
                 typeof_composite
             }
+            _ => {
+                panic!("any other lowered form here should should not exist yet, and it is a compiler bug if it does")
+            }
         };
 
         self.typeofs.set(on_id, res_tid);
@@ -1086,33 +1091,9 @@ impl Quark {
         &'static self,
         f: &'func ast::types::FunctionDefinition,
         imp: &'func mut ExpressionWrapper,
+        bindings: &'func mut Bindings<'func>,
     ) -> ExpressionID {
-        let mut binding_scope = Bindings::fresh();
-
-        let mut params = Vec::new();
-
-        for (param_name, param_type) in f.parameters.clone() {
-            let ptype = self
-                .resolve_typeref(
-                    param_type,
-                    self.generics.as_ref(),
-                    self.search_within(),
-                    true,
-                )
-                .await;
-
-            let vid = self.acting_on.borrow_mut().next_var();
-
-            self.type_of_var.borrow_mut().insert(vid, ptype);
-
-            binding_scope.add_binding(param_name, vid);
-
-            params.push((param_name, ptype));
-        }
-
-        self.params.set(params).unwrap();
-
-        let ae = AnyExpression::from_ast(&mut self.acting_on.borrow_mut(), imp, &mut binding_scope);
+        let ae = AnyExpression::from_ast(&mut self.acting_on.borrow_mut(), imp, bindings);
 
         tracing::info!("expressions in quark:");
 
@@ -1136,7 +1117,7 @@ impl Quark {
                     "quark for a function starts up using ctx id {:?}",
                     self.node_id
                 );
-                let mut imp = imp
+                let imp = imp
                     .lock()
                     .unwrap()
                     .take()
@@ -1147,7 +1128,7 @@ impl Quark {
                     let eps = ep.cloned_sender();
 
                     self.executor.install(
-                        async move { self.entry(cloned, &mut imp).await },
+                        async move { self.entry(cloned, imp).await },
                         "quark worker thread".to_owned(),
                     )
                 }
@@ -1172,6 +1153,15 @@ impl Quark {
                             Content::StartCodeGen() => {
                                 tracing::error!("Codegen not implemented yet");
 
+                                if self.node_id.resolve().generics.is_empty() {
+                                    self.monomorphizations
+                                        .borrow_mut()
+                                        .insert(Monomorphization {
+                                            of: self.node_id,
+                                            with: vec![],
+                                        });
+                                }
+
                                 for mono in self.monomorphizations.borrow().iter() {
                                     let mut s =
                                         ScribeOne::new(either::Either::Left(self), mono.clone());
@@ -1190,6 +1180,7 @@ impl Quark {
                             Content::Transponster(_) => todo!(),
                             Content::NameResolution(_) => todo!(),
                             Content::Error(_) => todo!(),
+                            Content::Scribe(_) => unreachable!("bad message type"),
                         }
                     }
                 }
@@ -1226,20 +1217,37 @@ impl Quark {
     pub async fn entry(
         &'static self,
         f: crate::ast::types::FunctionDefinition,
-        imp: &mut ExpressionWrapper, //executor: &'static Executor,
+        imp: Either<ExpressionWrapper, FunctionBuiltin>, //executor: &'static Executor,
     ) {
         tracing::info!("getting parent for node: {:?}", self.node_id);
         let parent_id = self.node_id.resolve().parent.unwrap();
 
         tracing::error!("need to properly uh...handle generics for stuff");
 
-        let aeid = self.lower_to_mir(&f, imp).await;
+        let mut binding_scope = Bindings::fresh();
 
-        self.entry_id.set(aeid).unwrap();
+        let mut params = Vec::new();
 
-        let root_tid = self.do_the_thing(aeid);
+        for (param_name, param_type) in f.parameters.clone() {
+            let ptype = self
+                .resolve_typeref(
+                    param_type,
+                    self.generics.as_ref(),
+                    self.search_within(),
+                    true,
+                )
+                .await;
 
-        //let return_ty = f.return_type.resolve().unwrap().clone();
+            let vid = self.acting_on.borrow_mut().next_var();
+
+            self.type_of_var.borrow_mut().insert(vid, ptype);
+
+            binding_scope.add_binding(param_name, vid);
+
+            params.push((param_name, ptype, vid));
+        }
+
+        self.meta.params.set(params).unwrap();
 
         let return_ty = self
             .resolve_typeref(
@@ -1249,14 +1257,40 @@ impl Quark {
                 true,
             )
             .await;
+        self.meta.returns.set(return_ty).unwrap();
 
-        self.add_unify(
-            root_tid,
-            return_ty,
-            "the function block expr must return the type requested".intern(),
-        );
+        match imp {
+            Either::Left(mut imp) => {
+                self.meta.is_builtin.set(None).expect("set prior?");
 
-        self.returns.set(return_ty).unwrap();
+                let aeid = self.lower_to_mir(&f, &mut imp, &mut binding_scope).await;
+
+                self.meta.entry_id.set(aeid).unwrap();
+
+                let root_tid = self.do_the_thing(aeid);
+
+                //let return_ty = f.return_type.resolve().unwrap().clone();
+
+                self.add_unify(
+                    root_tid,
+                    return_ty,
+                    "the function block expr must return the type requested".intern(),
+                );
+            }
+            Either::Right(fr) => {
+                self.meta
+                    .is_builtin
+                    .set(Some(fr.clone()))
+                    .expect("set prior?");
+                // we don't typecheck this, it also can't be a generic so
+                // it only requires one monomorphization
+                println!(
+                    "Got a dec that we need a builtin, builtin is {:?}",
+                    fr
+                );
+                //panic!("got something neat")
+            }
+        }
     }
 }
 

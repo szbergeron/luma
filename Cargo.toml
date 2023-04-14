@@ -63,6 +63,8 @@ lockfree = "0.5.1"
 fixed = "1.23.0"
 async-backtrace = "0.2"
 rustc-hash = "1.1.0"
+handlebars = "4.3.6"
+rand = "0.8.5"
 
 [profile.dev]
 incremental = true

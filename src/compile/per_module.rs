@@ -1,7 +1,7 @@
 use crate::{
     errors::CompilationError,
     mir::{
-        scribe::{get_lines, Monomorphization, Scribe},
+        scribe::{get_lines, Monomorphization, Scribe, Note},
         transponster::Mediator,
     },
 };
@@ -376,8 +376,13 @@ impl Director {
 
                 st.wait_stalled(); // everyone has codegen now, so emit output
 
+                let mut file = std::fs::File::create("out/src/gen.rs").unwrap();
+                use std::io::Write;
+                //use std::io::prelude::*;
+                let _ = writeln!(file, "use crate::std2::*;");
                 for line in get_lines() {
-                    println!("{line}");
+                    //println!("{line}");
+                    let _ = writeln!(file, "{line}");
                 }
                 //postal.send_broadcast_to(Service::Quark(), Content::Quark(Photon::StartCodeGen()));
 
@@ -894,6 +899,8 @@ pub enum Content {
     Error(CompilationError),
 
     Monomorphization(Monomorphization),
+
+    Scribe(Note),
 
     StartCodeGen(),
 }
