@@ -12,11 +12,17 @@ mod primitive {
         fn operator[_+_](self: std::primitive::i64, other: std::primitive::i64) -> std::primitive::i64
             #builtin luma_i64_op_add_fast luma_i64_op_add_silly luma_i64_op_add_slow;
 
+        fn operator[_-_](self: std::primitive::i64, other: std::primitive::i64) -> std::primitive::i64
+            #builtin luma_i64_op_subtract_fast luma_i64_op_subtract_silly luma_i64_op_subtract_slow;
+
+        fn operator[_==_](self: std::primitive::i64, other: std::primitive::i64) -> std::primitive::bool
+            #builtin luma_i64_op_eq_fast luma_i64_op_eq_silly luma_op_eq_slow;
+
     };
 
     struct bool {
         fn operator[_==_](self: std::primitive::bool, other: std::primitive::bool) -> std::primitive::bool
-            #builtin luma__fast_bool_compare_eq luma__silly_bool_compare_eq luma__slow_bool_compare_eq;
+            #builtin luma__fast_bool_compare_eq luma__silly_bool_compare_eq luma_op_eq_slow;
     };
 
     struct huh {
@@ -70,6 +76,20 @@ mod primitive {
         //a.g = a.g;
 
         a.abc
+    }
+
+    fn fibonacci(n: std::primitive::i64) -> std::primitive::i64 {
+        if n == 0 {
+            0
+        } else if n == 1 {
+            1
+        } else {
+            std::primitive::fibonacci(n - 1) + std::primitive::fibonacci(n - 2)
+        }
+    }
+
+    fn fib_test() -> std::primitive::Unit {
+        std::primitive::fibonacci(20);
     }
 
 }

@@ -22,7 +22,9 @@ use crate::{
         tree::{CtxID, NodeUnion},
     },
     avec::AtomicVec,
-    compile::per_module::{Content, ConversationContext, Earpiece, Message, Service},
+    compile::per_module::{
+        static_pinned_leaked, Content, ConversationContext, Earpiece, Message, Service,
+    },
     cst::{self, ScopedName, SyntacticTypeReference},
     helper::{
         interner::{IStr, Internable, SpurHelper},
@@ -33,7 +35,7 @@ use crate::{
 
 use super::{
     expressions::{
-        AnyExpression, Assign, Binding, Composite, ExpressionID, Invoke, Literal, VarID,
+        AnyExpression, Assign, Binding, Composite, ExpressionID, Invoke, Literal, VarID, If,
     },
     quark::{Quark, ResolvedType},
     transponster::Transponster,
@@ -58,6 +60,8 @@ pub struct Scribe {
 
     monomorphization_workers: RefCell<HashMap<ResolvedType, Thunk<()>>>,
 
+    executor: &'static Executor,
+
     for_node: CtxID,
 }
 
@@ -78,16 +82,24 @@ impl Scribe {
             local_quark: quark,
             conversations: unsafe { ConversationContext::new(cs) },
             monomorphizations: AtomicVec::new(),
+            executor,
             sender,
         }
     }
 
     pub async fn thread(&'static self, mut ep: Earpiece) {
         while let Ok(v) = ep.wait().await {
-            match v.content {
-                Content::Scribe(Note::MonoType { ty }) => {}
-                Content::Scribe(Note::MonoFunc { func }) => {}
-                _ => unreachable!("got sent bad msg"),
+            let v = self.conversations.dispatch(v);
+            if let Some(remainder) = v {
+                match remainder.content {
+                    Content::Scribe(Note::MonoType { ty }) => {
+                        self.handle(ty);
+                    }
+                    Content::Scribe(Note::MonoFunc { func }) => {
+                        self.handle(func);
+                    }
+                    _ => unreachable!("got sent bad msg: {remainder:?}"),
+                }
             }
         }
     }
@@ -107,6 +119,27 @@ impl Scribe {
         let r = nr.using_context(&self.conversations).await;
 
         r
+    }
+
+    pub fn handle(&'static self, mono: Monomorphization) {
+        let which = match &mono.of.resolve().inner {
+            NodeUnion::Type(_) => Either::Right(self.local_transponster),
+            NodeUnion::Function(_, _) => Either::Left(self.local_quark),
+            _ => unreachable!(),
+        };
+
+        let leaked_mono = static_pinned_leaked(mono);
+
+        unsafe {
+            self.executor.install(
+                async move {
+                    let mut m = ScribeOne::new(which, leaked_mono, self);
+
+                    m.codegen().await
+                },
+                "monomorphization worker",
+            )
+        };
     }
 
     #[async_recursion(?Send)]
@@ -129,7 +162,7 @@ impl Scribe {
                 }
             }
             crate::cst::SyntacticTypeReferenceInner::Generic { label } => {
-                todo!()
+                todo!("need to pass generics into typeref resolver, need to fetch them from scribe context")
             }
             crate::cst::SyntacticTypeReferenceInner::Parameterized { name, generics } => {
                 let base = self
@@ -161,7 +194,9 @@ pub struct ScribeOne<'a> {
 
     binds: HashMap<VarID, Variable>,
 
-    mono: Monomorphization,
+    mono: &'static Monomorphization,
+
+    within: &'static Scribe,
 }
 
 pub struct Generator {
@@ -200,8 +235,13 @@ pub fn indents(amount: usize) -> String {
 lazy_static! {}
 
 impl<'a> ScribeOne<'a> {
-    pub fn new(using: Either<&'static Quark, &'a Transponster>, mono: Monomorphization) -> Self {
+    pub fn new(
+        using: Either<&'static Quark, &'a Transponster>,
+        mono: &'static Monomorphization,
+        within: &'static Scribe,
+    ) -> Self {
         Self {
+            within,
             using,
             mono,
             vars: Generator::new(),
@@ -308,6 +348,18 @@ impl<'a> ScribeOne<'a> {
             },
             _ => todo!(),
         }
+    }
+
+    #[async_recursion(?Send)]
+    async fn to_rs_nondyn(
+        &mut self,
+        quark: &'static Quark,
+        cur_eid: ExpressionID,
+        preamble: &mut Vec<String>,
+        code: &mut Vec<String>,
+        indent: usize,
+    ) -> Option<UntypedVar> {
+        todo!()
     }
 
     #[async_recursion(?Send)]
@@ -421,7 +473,8 @@ impl<'a> ScribeOne<'a> {
                     ));
                 }
 
-                self.emit_composite_builtup(preamble, code, indent, &v, t_of).await;
+                self.emit_composite_builtup(preamble, code, indent, &v, t_of)
+                    .await;
 
                 //code.push(format!("todo!(\"emit methods in here into composite\");"));
 
@@ -504,32 +557,114 @@ impl<'a> ScribeOne<'a> {
                 let uv = UntypedVar::temp();
 
                 //let rt = self.
-                code.push(format!("{ind}todo!(\"figure out the type of the literal thing to put object stuff\");"));
+                /*code.push(format!(
+                    "{ind}todo!(\"figure out the type of the literal thing to put object stuff\");"
+                ));*/
 
-                let mv = UntypedVar::temp();
+                let methods_object = UntypedVar::temp();
 
-                code.push(format!("{ind}let {mv} = todo!();"));
+                code.push(format!("{ind}let {methods_object}: ObjectHandle = DynamicObject::new_as_handle(0);"));
 
-                match value.contents {
+                let methods_value = UntypedVar::temp();
+
+                code.push(format!("{ind}let mut {methods_value} = Value::Object({methods_object}.clone());"));
+
+                let lit_tr = match value.contents {
                     cst::Literal::i32Literal(i) => {
-                        code.push(format!("{ind}let mut {uv} = Value::I32({i}, {mv});"));
+                        code.push(format!("{ind}let mut {uv} = Value::I32({i}, {methods_object});"));
+
+                        "std::primitive::i32"
                     }
                     cst::Literal::i64Literal(i) => {
-                        code.push(format!("{ind}let mut {uv} = Value::I64({i}, {mv});"));
+                        code.push(format!("{ind}let mut {uv} = Value::I64({i}, {methods_object});"));
+
+                        "std::primitive::i64"
                     }
                     cst::Literal::u64Literal(u) => {
-                        code.push(format!("{ind}let mut {uv} = Value::I64({u}, {mv});"));
+                        code.push(format!("{ind}let mut {uv} = Value::I64({u}, {methods_object});"));
+
+                        "std::primitive::u64"
                     }
                     cst::Literal::UnknownIntegerLiteral(u) => {
-                        code.push(format!("{ind}let mut {uv} = Value::I64({u}, {mv});"));
+                        code.push(format!("{ind}let mut {uv} = Value::I64({u}, {methods_object});"));
+
+                        "std::primitive::i64"
                     }
                     _ => todo!(),
-                }
+                };
+
+                let lit_res_ty = self
+                    .within
+                    .resolve_name(ScopedName::from_many(lit_tr), self.mono)
+                    .await
+                    .unwrap();
+
+                self.emit_composite_builtup(
+                    preamble,
+                    code,
+                    indent,
+                    &methods_value,
+                    ResolvedType {
+                        node: lit_res_ty,
+                        generics: vec![],
+                    },
+                )
+                .await;
 
                 Some(uv)
             }
             AnyExpression::OuterReference(sn, _) => {
-                todo!()
+                let refs = self.within.resolve_name(sn.clone(), self.mono).await.unwrap();
+
+                let now_mono = Monomorphization { of: refs, with: vec![] };
+
+                let name = now_mono.encode_name();
+
+                let stored_in = UntypedVar::temp();
+
+                code.push(format!("{ind}//creating an outer reference from sn {sn:?}"));
+                code.push(format!("{ind}let mut {stored_in} = Value::Callable({name} as *const fn());"));
+
+                Some(stored_in)
+            }
+            AnyExpression::If(ie) => {
+                let If { condition, then_do, else_do } = ie;
+
+                let res_var = UntypedVar::temp();
+
+                let cond_var = UntypedVar::temp();
+
+                code.push(format!("{ind}//eval cond of if expression into a var"));
+                let cond_var_unbool = self.to_rs_dyn(quark, condition, preamble, code, indent).await.unwrap();
+
+                code.push(format!("{ind}let mut {cond_var}: bool = {cond_var_unbool}.is_true();"));
+
+                code.push(format!("let mut {res_var} = {ind} if {cond_var} {{"));
+
+                let then_var = self.to_rs_dyn(quark, then_do, preamble, code, indent).await.unwrap();
+
+                code.push(format!("{ind}; {then_var} }} else {{"));
+
+                //let else_var = else_do.map(|e| self.to_rs_dyn(quark, e, preamble, code, indent).await).flatten();
+
+                let else_var = match else_do {
+                    Some(e) => {Some(self.to_rs_dyn(quark, e, preamble, code, indent).await)},
+                    None => {None},
+                }.flatten();
+
+                let else_var = match else_var {
+                    Some(v) => v,
+                    None => {
+                        let else_fillin = UntypedVar::temp();
+                        code.push(format!("{ind}; let mut {else_fillin} = ();"));
+
+                        else_fillin
+                    }
+                };
+
+                code.push(format!("{ind}; {else_var} }};"));
+
+                Some(res_var)
             }
             _ => todo!(),
         }
@@ -650,7 +785,30 @@ impl<'a> ScribeOne<'a> {
             let entry_fn_id = quark.meta.entry_id.get().copied().unwrap();
 
             match OUTPUT_TYPE {
-                OutputType::FullInf() => todo!(),
+                OutputType::FullInf() => {
+                    //let params = Vec::new();
+
+                    let params = params_tid
+                        .iter()
+                        .map(|(pn, pt, pid)| {
+                            let v = UntypedVar::from(*pid);
+                            format!("mut {v}: Value")
+                        })
+                        .join(", ");
+                    within.push(format!("pub fn {fname}({params}) -> Value {{"));
+                    let mut preamble = Vec::new();
+                    let mut code = Vec::new();
+                    let res = self
+                        .to_rs_dyn(quark, entry_fn_id, &mut preamble, &mut code, 2)
+                        .await;
+
+                    if let Some(v) = res {
+                        code.push(format!("    {v}"));
+                    }
+
+                    within.append(&mut preamble);
+                    within.append(&mut code);
+                }
                 OutputType::AssumeTypeSafe() => todo!(),
                 OutputType::AssumeTypeUnsafe() => {
                     let params = params_tid
@@ -819,6 +977,10 @@ impl Monomorphization {
                 '/' => "div".to_owned(),
                 '+' => "add".to_owned(),
                 '_' => "_".to_owned(),
+                '=' => "eq".to_owned(),
+                '<' => "lt".to_owned(),
+                '>' => "gt".to_owned(),
+                '!' => "not".to_owned(),
                 other if other.is_ascii_alphanumeric() => other.to_string(),
                 _ => "".to_owned(),
             })

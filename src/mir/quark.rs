@@ -1,8 +1,8 @@
 use crate::avec::AtomicVecIndex;
 use crate::compile::per_module::Photon;
-use crate::cst::FunctionBuiltin;
+use crate::cst::{FunctionBuiltin, SyntacticTypeReference};
 use crate::errors::{FieldAccessError, UnrestrictedTypeError};
-use crate::mir::expressions::Binding;
+use crate::mir::expressions::{Binding, If};
 use crate::mir::scribe::ScribeOne;
 use crate::mir::transponster::Memo;
 use crate::{
@@ -682,6 +682,40 @@ impl Quark {
 
                 rhs_tid // for now, we assign straight through, so don't re-take the value
             }
+            AnyExpression::If(i) => {
+                let If {
+                    condition,
+                    then_do,
+                    else_do,
+                } = i;
+
+                let cond_ty = self.do_the_thing_rec(condition, false);
+                let then_ty = self.do_the_thing_rec(then_do, false);
+                let else_ty = else_do.map(|ed| self.do_the_thing_rec(ed, false));
+
+                if let Some(else_ty) = else_ty {
+                    self.add_unify(then_ty, else_ty, "then and else must have same type");
+                }
+
+                unsafe {
+                    self.executor.install(
+                        async move {
+                            let btid = self.resolve_typeref(
+                                SyntacticTypeReferenceRef::from_std("std::primitive::bool"),
+                                &HashMap::new(),
+                                self.node_id,
+                                false,
+                            )
+                            .await;
+
+                            self.add_unify(btid, cond_ty, "the condition of an if must be a bool");
+                        },
+                        "force condition to be a bool",
+                    )
+                }
+
+                then_ty
+            }
             AnyExpression::Convert(c) => todo!(),
             AnyExpression::While(_) => todo!(),
             AnyExpression::Branch(_) => todo!(),
@@ -1163,7 +1197,19 @@ impl Quark {
                                 }
 
                                 for mono in self.monomorphizations.borrow().iter() {
-                                    let mut s =
+                                    let m = Message {
+                                        to: Destination::scribe(self.node_id),
+                                        from: self.as_dest(),
+                                        send_reply_to: Destination::nil(),
+                                        conversation: Uuid::new_v4(),
+                                        content: Content::Scribe(
+                                            crate::mir::scribe::Note::MonoFunc {
+                                                func: mono.clone(),
+                                            },
+                                        ),
+                                    };
+                                    self.sender.send(m);
+                                    /*let mut s =
                                         ScribeOne::new(either::Either::Left(self), mono.clone());
                                     unsafe {
                                         self.executor.install(
@@ -1172,7 +1218,7 @@ impl Quark {
                                             },
                                             "do codegen for function",
                                         )
-                                    }
+                                    }*/
                                 }
                             }
                             Content::Control(_) => todo!(),
@@ -1284,10 +1330,7 @@ impl Quark {
                     .expect("set prior?");
                 // we don't typecheck this, it also can't be a generic so
                 // it only requires one monomorphization
-                println!(
-                    "Got a dec that we need a builtin, builtin is {:?}",
-                    fr
-                );
+                println!("Got a dec that we need a builtin, builtin is {:?}", fr);
                 //panic!("got something neat")
             }
         }

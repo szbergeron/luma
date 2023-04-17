@@ -76,6 +76,8 @@ pub enum AnyExpression {
     While(Iterate),
     Branch(Branch),
 
+    If(If),
+
     //Expire(VarID),
     Binding(Binding),
 
@@ -124,6 +126,21 @@ pub enum AnyExpression {
     /// errors should not occur, and all regular analysis has been done
     FusedMethodInvoke(FusedMethodInvoke),
     Deref(ExpressionID),
+}
+
+#[derive(Clone, Debug)]
+pub struct If {
+    pub condition: ExpressionID,
+    pub then_do: ExpressionID,
+    pub else_do: Option<ExpressionID>,
+}
+
+#[derive(Clone, Debug)]
+pub struct For {
+    pub body: ExpressionID,
+    pub pre: ExpressionID,
+    pub post: ExpressionID,
+    pub condition: ExpressionID,
 }
 
 #[derive(Clone, Debug)]
@@ -245,10 +262,10 @@ impl AnyExpression {
                 let on_id = Self::from_ast(within, subexpr, &mut bindings.child_scoped());
 
                 let opstr = match operation {
-                    cst::UnaryOperation::Negate => "__operation_unary_minus",
-                    cst::UnaryOperation::Invert => "operation_unary_invert",
-                    cst::UnaryOperation::Dereference => "operation_unary_deref",
-                    cst::UnaryOperation::Reference => "operation_unary_ref",
+                    cst::UnaryOperation::Negate => "operator[-_]",
+                    cst::UnaryOperation::Invert => "operator[!_]",
+                    cst::UnaryOperation::Dereference => "operator[*_]",
+                    cst::UnaryOperation::Reference => "operator[&_]",
                 }
                 .intern();
 
@@ -271,12 +288,12 @@ impl AnyExpression {
                 let lhs_id = Self::from_ast(within, &lhs, &mut bindings.child_scoped());
 
                 let opstr = match operation {
-                    cst::ComparisonOperation::Equal => "operation ==",
-                    cst::ComparisonOperation::GreaterThan => "operation >",
-                    cst::ComparisonOperation::LessThan => "operation <",
-                    cst::ComparisonOperation::GreaterThanOrEqual => "operation >=",
-                    cst::ComparisonOperation::LessThanOrEqual => "operation <=",
-                    cst::ComparisonOperation::NotEqual => "operation !@=",
+                    cst::ComparisonOperation::Equal => "operator[_==_]",
+                    cst::ComparisonOperation::GreaterThan => "operator[_>_]",
+                    cst::ComparisonOperation::LessThan => "operator[_<_]",
+                    cst::ComparisonOperation::GreaterThanOrEqual => "operator[_>=_]",
+                    cst::ComparisonOperation::LessThanOrEqual => "operator[_<=_]",
+                    cst::ComparisonOperation::NotEqual => "operator[_!=_]",
                 }
                 .intern();
 
@@ -372,7 +389,7 @@ impl AnyExpression {
                     ..
                 } = ite;
 
-                let branch_on =
+                /*let branch_on =
                     AnyExpression::from_ast(within, if_exp, &mut bindings.child_scoped());
 
                 let branch_yes = BranchArm {
@@ -392,7 +409,15 @@ impl AnyExpression {
                     elements: vec![branch_yes, branch_no],
                 };
 
-                within.add(AnyExpression::Branch(branch)).0
+                within.add(AnyExpression::Branch(branch)).0*/
+
+                let condition = AnyExpression::from_ast(within, if_exp, bindings);
+                let then_do = AnyExpression::from_ast(within, then_exp, bindings);
+                let else_do = AnyExpression::from_ast(within, else_exp, bindings);
+
+                let if_e = If { condition, then_do, else_do: Some(else_do) };
+
+                within.add(AnyExpression::If(if_e)).0
             }
             ExpressionWrapper::Block(b) => {
                 let mut cs = bindings.child_scoped(); // every bind within this operates within the

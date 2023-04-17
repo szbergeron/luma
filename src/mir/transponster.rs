@@ -538,11 +538,7 @@ impl Transponster {
         s
     }
 
-    pub async fn entry(
-        &'static self,
-        executor: &'static Executor,
-        mut ep: Earpiece,
-    ) {
+    pub async fn entry(&'static self, executor: &'static Executor, mut ep: Earpiece) {
         let parent_id = self.for_ctx.resolve().parent.unwrap();
 
         /*let boxed = Box::pin(self); // put ourselves into the heap in a definitely known location
@@ -599,9 +595,19 @@ impl Transponster {
                     Content::StartCodeGen() => {
                         let monos = self.monomorphizations.borrow().clone();
                         for m in monos {
-                            let mut s = ScribeOne::new(Either::Right(&self), m);
+                            /*let mut s = ScribeOne::new(Either::Right(&self), m);
 
-                            s.codegen().await;
+                            s.codegen().await;*/
+                            let m = Message {
+                                to: Destination::scribe(self.for_ctx),
+                                from: self.as_dest(),
+                                send_reply_to: Destination::nil(),
+                                conversation: Uuid::new_v4(),
+                                content: Content::Scribe(crate::mir::scribe::Note::MonoType {
+                                    ty: m,
+                                }),
+                            };
+                            self.sender.send(m);
                         }
                     }
                     Content::Quark(_) => todo!(),

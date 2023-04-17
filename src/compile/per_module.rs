@@ -581,7 +581,7 @@ pub struct Group {
     with_postal: Arc<Postal>,
 }
 
-fn static_pinned_leaked<V>(v: V) -> &'static V {
+pub fn static_pinned_leaked<V>(v: V) -> &'static V {
     //let boxed = Box::pin(v); // don't even pin here, just senseless
     let mref = Box::leak(Box::new(v));
 
@@ -981,6 +981,13 @@ impl Destination {
         Self {
             node,
             service: Service::Quark(),
+        }
+    }
+
+    pub fn scribe(node: CtxID) -> Self {
+        Self {
+            node,
+            service: Service::Scribe(),
         }
     }
 
