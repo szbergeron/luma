@@ -1099,7 +1099,7 @@ pub enum Literal {
 
     Boolean(bool),
 
-    UnknownIntegerLiteral(u128),
+    UnknownIntegerLiteral(i128),
 }
 
 impl Literal {

@@ -932,6 +932,8 @@ impl Quark {
 
                                 let mtid = m.extract().await;
 
+                                self.meta.are_methods.borrow_mut().insert(on_id, mtid);
+
                                 Some(mtid)
                             },
                             (Some(f), None) => {

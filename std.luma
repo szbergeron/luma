@@ -2,12 +2,11 @@ mod primitive {
 
     fn print<T>(v: T) -> std::primitive::Unit #builtin luma_print_fast luma_print_silly luma_print_slow;
 
-    struct Unit {}
+    struct Unit noref {}
 
-    struct i64 noref {
-        fn operator[_*_](self: std::primitive::i64, other: std::primitive::i64) -> std::primitive::i64 {
-            self * other
-        };
+    struct i64 noref #builtin i64 {
+        fn operator[_*_](self: std::primitive::i64, other: std::primitive::i64) -> std::primitive::i64 
+            #builtin luma_i64_op_mul_fast luma_i64_op_mul_silly luma_i64_op_mul_slow;
 
         fn operator[_+_](self: std::primitive::i64, other: std::primitive::i64) -> std::primitive::i64
             #builtin luma_i64_op_add_fast luma_i64_op_add_silly luma_i64_op_add_slow;
@@ -20,7 +19,7 @@ mod primitive {
 
     };
 
-    struct bool noref {
+    struct bool noref #builtin bool {
         fn operator[_==_](self: std::primitive::bool, other: std::primitive::bool) -> std::primitive::bool
             #builtin luma__fast_bool_compare_eq luma__silly_bool_compare_eq luma_op_eq_slow;
     };
@@ -47,6 +46,10 @@ mod primitive {
 
         h
     };
+
+    fn just_simple() -> std::primitive::i64 {
+        42
+    }
 
     /*struct parametric<T> {
         var val: T;
@@ -98,7 +101,7 @@ mod primitive {
     }
 
     fn fib_test() -> std::primitive::Unit {
-        std::primitive::fibonacci(20);
+        std::primitive::fibonacci(5);
 
         struct std::primitive::Unit {}
     }

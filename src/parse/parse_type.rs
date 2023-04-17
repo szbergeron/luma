@@ -164,7 +164,13 @@ impl<'lexer> Parser<'lexer> {
             _ => unreachable!(),
         };
 
+        let is_builtin = match t.try_take(Token::InteriorBuiltin) {
+            Some(v) => Some(t.take(Token::Identifier).join()?.slice),
+            None => None,
+        };
+
         let attrs = StructuralTyAttrs {
+            is_builtin,
             is_ref,
             is_modif,
         };

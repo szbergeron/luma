@@ -26,12 +26,12 @@ use crate::{
     compile::per_module::{
         static_pinned_leaked, Content, ConversationContext, Earpiece, Message, Service,
     },
-    cst::{self, ScopedName, SyntacticTypeReference, StructuralTyAttrs},
+    cst::{self, ScopedName, StructuralTyAttrs, SyntacticTypeReference, LiteralExpression},
     helper::{
         interner::{IStr, Internable, SpurHelper},
         SwapWith,
     },
-    lir::expressions::{Lower, UntypedVar, VarType, Variable},
+    lir::expressions::{Lower, UntypedVar, VarType, Variable}, mir::expressions::StaticAccess,
 };
 
 use super::{
@@ -367,20 +367,192 @@ impl<'a> ScribeOne<'a> {
         &mut self,
         quark: &'static Quark,
         cur_eid: ExpressionID,
-        preamble: &mut Vec<String>,
-        code: &mut Vec<String>,
+        //preamble: &mut Vec<String>,
+        //code: &mut Vec<String>,
         indent: usize,
-    ) -> Option<UntypedVar> {
+    ) -> IStr {
         let exp = quark.acting_on.borrow().get(cur_eid).clone();
         let ind = indents(indent);
 
+        use std::fmt::Write;
+
+        let mut code = String::new();
+
         match exp {
-            AnyExpression::Block(b) => None,
+            AnyExpression::Block(b) => {
+                let br = UntypedVar::temp();
+
+                writeln!(code, "{ind}{{");
+
+                //writeln!(code, "{ind}let mut {br} = Default::default();");
+
+                let mut results = Vec::new();
+
+                for exp in b.expressions {
+                    results.push(self.to_rs_nondyn(quark, exp, indent + 1).await);
+                }
+
+                let exps = results.into_iter().join(format!("{ind};\n").as_str());
+
+                writeln!(code, "{ind}{exps}");
+
+                writeln!(code, "{ind}}}");
+            }
+            AnyExpression::Literal(l) => {
+                let Literal { info, has_type, value } = l;
+
+                let LiteralExpression { node_info, contents } = value;
+
+                match contents {
+                    cst::Literal::i64Literal(i) => {
+                        write!(code, "{i}");
+                    }
+                    cst::Literal::UnknownIntegerLiteral(i) => {
+                        write!(code, "{i}");
+                    }
+                    other => todo!("don't handle {other:?} literals")
+                }
+            }
+            AnyExpression::Variable(v, _i) => {
+                let v = UntypedVar::from(v);
+
+                write!(code, "({v}.clone())");
+            }
+            AnyExpression::Binding(b) => {
+                let Binding { info, name, introduced_as, has_type, from_source } = b;
+
+                writeln!(code, "{ind}//binds variable {name}");
+
+                let v = UntypedVar::from(introduced_as);
+                let e = self.to_rs_nondyn(quark, from_source, indent + 1).await;
+
+                write!(code, "{ind}let mut {v} = {e};");
+            }
+            AnyExpression::OuterReference(sn, _i) => {
+                let refs = self
+                    .within
+                    .resolve_name(sn.clone(), self.mono)
+                    .await
+                    .unwrap();
+
+                let now_mono = Monomorphization {
+                    of: refs,
+                    with: vec![],
+                };
+
+                let name = now_mono.encode_name();
+
+                writeln!(code, "{name}");
+            }
+            AnyExpression::Assign(a) => {
+                let Assign { info, rhs, lhs } = a;
+
+                let rhs_e = self.to_rs_nondyn(quark, rhs, indent + 1).await;
+                let lhs_e = self.to_rs_nondyn(quark, lhs, indent + 1).await;
+                writeln!(code, "{ind}{lhs_e} = {rhs_e}");
+            }
+            AnyExpression::StaticAccess(sa) => {
+                let StaticAccess { on, field, info } = sa;
+                let on_s = self.to_rs_nondyn(quark, on, indent + 1).await;
+
+                if let Some(tid) = quark.meta.are_methods.borrow().get(&cur_eid) {
+                    // figure out what specific method this is
+                    let rt = quark.resolved_type_of(*tid).await;
+
+                    let mon = Monomorphization::from_resolved(rt);
+
+                    let targ = mon.encode_name();
+
+                    write!(code, "/* s_acc is method */ {targ}");
+                } else {
+                    writeln!(code, "({on_s}).{field}");
+                }
+
+            }
+            AnyExpression::If(i) => {
+                let If { condition, then_do, else_do } = i;
+
+                let if_is = self.to_rs_nondyn(quark, condition, indent + 1).await;
+                let then_do = self.to_rs_nondyn(quark, then_do, indent + 1).await;
+                let else_do = if let Some(v) = else_do {
+                    self.to_rs_nondyn(quark, v, indent + 1).await
+                } else {
+                    "()".intern()
+                };
+
+                writeln!(code, "if {if_is} {{ {then_do} }} else {{ {else_do} }}");
+            }
+            AnyExpression::Invoke(i) => {
+                let Invoke { info, target_fn, args } = i;
+
+                let on = self.to_rs_nondyn(quark, target_fn, indent + 1).await;
+
+                let mut args_s = Vec::new();
+
+                for arg in args {
+                    let arg = self.to_rs_nondyn(quark, arg, indent + 1).await;
+                    args_s.push(arg);
+                }
+
+                let args = args_s.into_iter().join(", ");
+
+                writeln!(code, "{on}({args})");
+            }
+            AnyExpression::Composite(c) => {
+                let Composite {
+                    info,
+                    base_type,
+                    generics,
+                    fields,
+                } = c;
+
+
+                assert!(generics.len() == 0, "we don't handle generics yet");
+
+                let bt = self
+                    .within
+                    .resolve_name(base_type, self.mono)
+                    .await
+                    .unwrap();
+
+
+                let bt_mono = Monomorphization {
+                    of: bt,
+                    with: vec![],
+                };
+
+                let into_var = UntypedVar::temp();
+
+                writeln!(code, "{ind}{{");
+
+                let base_mono_name = bt_mono.encode_name();
+
+                writeln!(code, "let {into_var} = {ind}{base_mono_name} {{");
+
+                for (fname, fexp) in fields {
+                    let v = self.to_rs_nondyn(quark, fexp, indent).await;
+
+                    writeln!(code, "{ind}        {fname}: {v},");
+                }
+
+                writeln!(code, "{ind}    ..Default::default() }};");
+
+                match bt.resolve().get_struct_attrs().is_ref {
+                    false => writeln!(code, "{ind}{into_var}"),
+                    true => writeln!(code, "{ind}FastRefHandle::from_val({into_var})"),
+                };
+
+                writeln!(code, "{ind}}}");
+
+                //Some(into_var)
+            }
             _ => {
                 println!("Bad: unhandled exp");
-                None
+
             }
         }
+
+        code.intern()
     }
 
     #[async_recursion(?Send)]
@@ -845,26 +1017,26 @@ impl<'a> ScribeOne<'a> {
                 OutputType::FullInf() => {
                     //let params = Vec::new();
 
-                    let params = params_tid
-                        .iter()
-                        .map(|(pn, pt, pid)| {
-                            let v = UntypedVar::from(*pid);
-                            format!("mut {v}: Value")
-                        })
-                        .join(", ");
-                    within.push(format!("pub fn {fname}({params}) -> Value {{"));
-                    let mut preamble = Vec::new();
-                    let mut code = Vec::new();
-                    let res = self
-                        .to_rs_nondyn(quark, entry_fn_id, &mut preamble, &mut code, 2)
-                        .await;
+                    let params = join_all(params_tid.iter().map(|(pn, pt, pid)| {
+                        let v = UntypedVar::from(*pid);
 
-                    if let Some(v) = res {
-                        code.push(format!("    {v}"));
-                    }
+                        async move {
+                            let t = quark.resolved_type_of(*pt).await;
+                            let m = Monomorphization::from_resolved(t);
 
-                    within.append(&mut preamble);
-                    within.append(&mut code);
+                            format!("mut {v}: {}", m.encode_ref())
+                        }
+                    }))
+                    .await
+                    .join(", ");
+
+                    let rt = ret_mono.encode_ref();
+
+                    within.push(format!("pub fn {fname}({params}) -> {rt}"));
+
+                    let res = self.to_rs_nondyn(quark, entry_fn_id, 2).await;
+
+                    within.push(format!("{res}"));
                 }
                 OutputType::AssumeTypeSafe() => todo!(),
                 OutputType::AssumeTypeUnsafe() => {
@@ -888,11 +1060,11 @@ impl<'a> ScribeOne<'a> {
 
                     within.append(&mut preamble);
                     within.append(&mut code);
+                    within.push(format!("}}"));
                 }
             }
             //self.codegen_fn_rec(quark, entry_fn_id, &mut within).await;
 
-            within.push(format!("}}"));
         } else {
             within.push("// encoding a builtin".to_owned());
             within.push(format!("// builtin is {is_builtin:?}"));
@@ -906,7 +1078,34 @@ impl<'a> ScribeOne<'a> {
 
             match OUTPUT_TYPE {
                 OutputType::FullInf() => {
-                    println!("TODO: encode builtins for fullinf");
+                    //println!("TODO: encode builtins for fullinf");
+
+                    let mut param_names = Vec::new();
+                    let params = join_all(params_tid.iter().map(|(pn, pt, pid)| {
+                        let v = UntypedVar::from(*pid);
+
+                        param_names.push(v.clone());
+
+                        async move {
+                            let t = quark.resolved_type_of(*pt).await;
+                            let m = Monomorphization::from_resolved(t);
+
+                            format!("mut {v}: {}", m.encode_ref())
+                        }
+                    }))
+                    .await
+                    .join(", ");
+
+
+                    let rt = ret_mono.encode_ref();
+
+                    within.push(format!("pub fn {fname}({params}) -> {rt}"));
+
+                    let args = param_names.iter().map(|v| v).join(", ");
+
+                    within.push(format!("{{ {builtin_inner}({args}) }}"));
+
+                    //let res = self.to_rs_nondyn(quark, entry_fn_id, 2).await;
                 }
                 OutputType::AssumeTypeUnsafe() => {
                     let mut param_names = Vec::new();
@@ -952,65 +1151,59 @@ impl<'a> ScribeOne<'a> {
     async fn codegen_ty(&mut self, transponster: &Transponster) {
         println!("Encoding a type");
 
-        let name = self.mono.encode_name();
-
+        let attrs = self.mono.of.resolve().get_struct_attrs();
         let mut lines: Vec<String> = vec!["\n".to_owned()];
+        let name = self.mono.encode_name();
 
         match OUTPUT_TYPE {
             OutputType::FullInf() => {
-                lines.push(format!("struct {name} {{"));
+                if let Some(b) = attrs.is_builtin {
+                    // already builtin
+                    //lines.push(format!("pub type {name} = {b};"));
+                } else {
+                    lines.push(format!("#[derive(Default, Clone)]"));
+                    lines.push(format!("pub struct {name} {{"));
 
-                //lines.push("\tuint32_t _luma_private__refcount,".to_owned());
+                    //lines.push("\tuint32_t _luma_private__refcount,".to_owned());
 
-                for (name, dynf) in transponster.dynamic_fields.borrow().iter() {
-                    if let Some(res) = unsafe { dynf.committed_type.clone().wait().await } {
-                        let mono = Monomorphization::from_resolved(res);
+                    for (name, dynf) in transponster.dynamic_fields.borrow().iter() {
+                        if let Some(res) = unsafe { dynf.committed_type.clone().wait().await } {
+                            let mono = Monomorphization::from_resolved(res);
 
-                        let n = mono.encode_name();
+                            let n = mono.encode_ref();
 
-                        let StructuralTyAttrs { is_ref, is_modif } = mono.of.resolve().get_struct_attrs();
-
-                        if is_ref {
-                            lines.push(format!("\t{name}: Option<Rc<{n}>>,"));
-                        } else {
                             lines.push(format!("\t{name}: {n},"));
                         }
                     }
-                }
 
-                for (rfn, rft) in transponster.regular_fields.iter() {
-                    if transponster.methods.contains(rfn) {
-                        continue;
-                    }
+                    for (rfn, rft) in transponster.regular_fields.iter() {
+                        if transponster.methods.contains(rfn) {
+                            continue;
+                        }
 
-                    let ft = self
-                        .within
-                        .resolve_typeref(rft.resolve().unwrap(), self.mono)
-                        .await;
+                        let ft = self
+                            .within
+                            .resolve_typeref(rft.resolve().unwrap(), self.mono)
+                            .await;
 
-                    let mono = Monomorphization::from_resolved(ft);
+                        let mono = Monomorphization::from_resolved(ft);
 
-                    let mt = mono.encode_name();
+                        let mt = mono.encode_ref();
 
-                    let StructuralTyAttrs { is_ref, is_modif } = mono.of.resolve().get_struct_attrs();
-
-                    if is_ref {
-                        lines.push(format!("\t{rfn}: Option<Rc<{mt}>>,"));
-                    } else {
                         lines.push(format!("\t{rfn}: {mt},"));
                     }
+
+                    // do static fields
+
+                    //for (name, statf) in self.mono.of.resolve().
+
+                    lines.push(format!("}}"));
+
+                    /*lines.push(format!("\n{name}* default_{name}() {{"));
+                    lines.push(format!("}}"));*/
+
+                    //lines.push("struct s)
                 }
-
-                // do static fields
-
-                //for (name, statf) in self.mono.of.resolve().
-
-                lines.push(format!("}}"));
-
-                /*lines.push(format!("\n{name}* default_{name}() {{"));
-                lines.push(format!("}}"));*/
-
-                //lines.push("struct s)
             }
             _ => {
                 // don't encode anything for particular types here, they don't really exist!
@@ -1051,7 +1244,16 @@ pub struct Monomorphization {
 
 impl Monomorphization {
     pub fn encode_ref(&self) -> IStr {
-        todo!()
+        let attrs = self.of.resolve().get_struct_attrs();
+        let name = match attrs.is_builtin {
+            Some(v) => v,
+            None => self.encode_name(),
+        };
+
+        match attrs.is_ref {
+            true => format!("FastRefHandle<{name}>").intern(),
+            false => name,
+        }
     }
 
     pub fn encode_name(&self) -> IStr {
@@ -1069,6 +1271,7 @@ impl Monomorphization {
                 '*' => "mul".to_owned(),
                 '/' => "div".to_owned(),
                 '+' => "add".to_owned(),
+                '-' => "sub".to_owned(),
                 '_' => "_".to_owned(),
                 '=' => "eq".to_owned(),
                 '<' => "lt".to_owned(),

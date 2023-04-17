@@ -36,6 +36,8 @@ pub struct StructuralTyAttrs {
 
     /// Whether this type allows adding additional dyn fields
     pub is_modif: bool,
+
+    pub is_builtin: Option<IStr>,
 }
 
 impl CstNode for StructDefinition {
