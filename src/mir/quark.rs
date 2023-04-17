@@ -1208,7 +1208,7 @@ impl Quark {
                                             },
                                         ),
                                     };
-                                    self.sender.send(m);
+                                    self.sender.send(m).unwrap();
                                     /*let mut s =
                                         ScribeOne::new(either::Either::Left(self), mono.clone());
                                     unsafe {
@@ -1340,7 +1340,12 @@ impl Quark {
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub struct ResolvedType {
     pub node: CtxID,
-    pub generics: Vec<ResolvedType>,
+
+    // either it's a proper given type or, potentially,
+    // it's a generic passing through
+    //pub generics: Vec<Either<ResolvedType, IStr>>,
+    // TODO: finish this and do proper monomorphization once I have time (not right now :) )
+    pub generics: Vec<ResolvedType>
 }
 
 impl Debug for ResolvedType {

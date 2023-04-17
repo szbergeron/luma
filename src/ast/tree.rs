@@ -1,7 +1,7 @@
 use crate::avec::AtomicVec;
 use crate::cst::{
     ScopedName, SyntacticTypeReference, SyntacticTypeReferenceInner, SyntacticTypeReferenceRef,
-    TopLevel, FunctionBuiltin,
+    TopLevel, FunctionBuiltin, StructuralTyAttrs,
 };
 use crate::helper::interner::Internable;
 use crate::{avec::AtomicVecIndex, cst::UseDeclaration};
@@ -357,6 +357,7 @@ impl Node {
                     fields,
                     public,
                     methods,
+                    attrs,
                 } = s;
 
                 let fields = fields
@@ -381,6 +382,7 @@ impl Node {
                 let td = ast::types::StructuralDataDefinition {
                     fields,
                     methods: HashMap::new(),
+                    attrs,
                 };
 
                 let inner = NodeUnion::Type(Mutex::new(td));
@@ -542,6 +544,13 @@ impl Node {
         }
 
         s
+    }
+
+    pub fn get_struct_attrs(&self) -> StructuralTyAttrs {
+        match &self.inner {
+            NodeUnion::Type(t) => t.lock().unwrap().attrs,
+            _ => panic!("tried to get whether a non-ty has attrs")
+        }
     }
 }
 

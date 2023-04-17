@@ -4,7 +4,7 @@ use itertools::Itertools;
 
 use crate::cst::{
     self, CstNode, IntoCstNode, NodeInfo, ScopedName, SyntacticTypeReference,
-    SyntacticTypeReferenceRef,
+    SyntacticTypeReferenceRef, StructuralTyAttrs,
 };
 
 /*use cst::{
@@ -148,6 +148,27 @@ impl<'lexer> Parser<'lexer> {
         let mut fields = Vec::new();
         let mut methods = Vec::new();
 
+        let is_ref = t.try_take_in(&[Token::IsRef, Token::IsNoRef]).map(|tw| tw.token).unwrap_or(Token::IsRef);
+
+        let is_ref = match is_ref {
+            Token::IsNoRef => false,
+            Token::IsRef => true,
+            _ => unreachable!(),
+        };
+
+        let is_modif = t.try_take_in(&[Token::IsMod, Token::IsNoMod]).map(|tw| tw.token).unwrap_or(Token::IsMod);
+
+        let is_modif = match is_modif {
+            Token::IsNoMod => false,
+            Token::IsMod => true,
+            _ => unreachable!(),
+        };
+
+        let attrs = StructuralTyAttrs {
+            is_ref,
+            is_modif,
+        };
+
         t.take(Token::LBrace).join()?;
 
         //while let Ok(Token::Var) = t.lh.la(0).map(|tw| tw.token) {
@@ -215,6 +236,7 @@ impl<'lexer> Parser<'lexer> {
             fields,
             methods,
             name,
+            attrs,
             generics,
             public: true, // TODO: parse public/private on structs
         })

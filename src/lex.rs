@@ -23,6 +23,19 @@ pub enum Token {
 
     //#[token("private")]
     //Private,
+
+    #[token("isref")]
+    IsRef,
+
+    #[token("noref")]
+    IsNoRef,
+
+    #[token("ismod")]
+    IsMod,
+
+    #[token("nomod")]
+    IsNoMod,
+
     #[token("mut")]
     Mutable,
 

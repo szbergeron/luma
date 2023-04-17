@@ -84,7 +84,11 @@ pub struct Transponster {
 
     notify_when_resolved: HashMap<FieldID, Vec<(Destination, FieldID)>>,
 
-    regular_fields: HashMap<IStr, SyntacticTypeReferenceRef>,
+    pub regular_fields: HashMap<IStr, SyntacticTypeReferenceRef>,
+    pub methods: HashSet<IStr>,
+
+    /// Matches StructDefinition::is_ref, says whether this is a ref-type
+    //pub is_ref: bool,
 
     monomorphizations: RefCell<HashSet<Monomorphization>>,
 
@@ -480,6 +484,7 @@ impl Transponster {
 
     pub fn for_node(node_id: CtxID, sender: Sender<Message>) -> Self {
         let regular_fields = HashMap::new();
+        let methods = HashSet::new();
 
         //let cc_send = earpiece.cloned_sender();
 
@@ -502,9 +507,12 @@ impl Transponster {
             notify_when_resolved: HashMap::new(),
 
             regular_fields,
+            methods,
+
             generics,
             conversations: unsafe { ConversationContext::new(sender) },
             monomorphizations: Default::default(),
+            //is_ref: false,
             //instances: todo!(), // TODO: generics
         };
 
@@ -513,6 +521,8 @@ impl Transponster {
         match node {
             crate::ast::tree::NodeUnion::Type(t) => {
                 let mut sd = t.lock().unwrap().clone();
+
+                //s.is_ref = sd.is_ref;
 
                 for field in sd.fields.iter_mut() {
                     s.regular_fields.insert(
@@ -527,6 +537,7 @@ impl Transponster {
                     let (&name, child) = mref.pair();
                     s.regular_fields
                         .insert(name, child.resolve().canonical_typeref());
+                    s.methods.insert(name);
                 }
             }
             _other => {

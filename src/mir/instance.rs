@@ -389,7 +389,7 @@ impl Instance {
         let inst = base.resolve();
 
         // use inst to get regular_fields from the transponster or something
-        let gens_for_type = Rc::new(
+        let gens_for_type: Rc<HashMap<IStr, TypeID>> = Rc::new(
             inst.generics
                 .iter()
                 .map(|(g, r)| (*g, within.new_tid(NodeInfo::Builtin, false)))
@@ -403,27 +403,31 @@ impl Instance {
 
             let generics_unresolved = self.generics.clone();
 
-            within.executor.install(
-                async move {
-                    let mut generics = Vec::new();
-                    for (generic_name, generic_tid) in generics_unresolved.iter() {
-                        let gen_ty = within.with_instance(*generic_tid, |instance| {
-                            instance.once_resolved.clone().wait()
-                        });
-                        generics.push(gen_ty.await);
-                    }
+            if gens_for_type.len() == generics_unresolved.len() {
+                within.executor.install(
+                    async move {
+                        let mut generics = Vec::new();
+                        for (generic_name, generic_tid) in generics_unresolved.iter() {
+                            let gen_ty = within.with_instance(*generic_tid, |instance| {
+                                instance.once_resolved.clone().wait()
+                            });
+                            generics.push(gen_ty.await);
+                        }
 
-                    let base = once_base.wait().await;
+                        let base = once_base.wait().await;
 
-                    let resolved_ty = ResolvedType {
-                        node: base,
-                        generics,
-                    };
+                        let resolved_ty = ResolvedType {
+                            node: base,
+                            generics,
+                        };
 
-                    resolved.complete(resolved_ty);
-                },
-                "once we know the full type of a var, finish its once_resolved",
-            );
+                        resolved.complete(resolved_ty);
+                    },
+                    "once we know the full type of a var, finish its once_resolved",
+                );
+            } else {
+                println!("issue: no generics provided for something that needs them, so we can't complete once_resolved through this");
+            }
         };
 
         self.generics = gens_for_type;
@@ -736,6 +740,8 @@ impl Instance {
 
         match &self.of {
             InstanceOf::Type(t) => {
+                debug_assert_eq!(t.from.resolve().generics.len(), resolved.generics.len());
+                debug_assert_eq!(resolved.generics.len(), t.from.resolve().generics.len());
                 Postal::instance().send_and_forget(
                     Destination::transponster(resolved.node),
                     Content::Monomorphization(Monomorphization::from_resolved(resolved)),

@@ -4,7 +4,7 @@ mod primitive {
 
     struct Unit {}
 
-    struct i64 {
+    struct i64 noref {
         fn operator[_*_](self: std::primitive::i64, other: std::primitive::i64) -> std::primitive::i64 {
             self * other
         };
@@ -20,7 +20,7 @@ mod primitive {
 
     };
 
-    struct bool {
+    struct bool noref {
         fn operator[_==_](self: std::primitive::bool, other: std::primitive::bool) -> std::primitive::bool
             #builtin luma__fast_bool_compare_eq luma__silly_bool_compare_eq luma_op_eq_slow;
     };
@@ -31,7 +31,13 @@ mod primitive {
 
         fn woo(self: std::primitive::huh) -> std::primitive::huh {
             self
-        }
+        };
+
+        fn add_dynf(self: std::primitive::huh) -> std::primitive::huh {
+            self.d = 10;
+
+            self
+        };
     };
 
     fn compose() -> std::primitive::huh {
@@ -42,7 +48,7 @@ mod primitive {
         h
     };
 
-    struct parametric<T> {
+    /*struct parametric<T> {
         var val: T;
 
         fn change<T>(self: parametric<T>, val: T) -> std::primitive::Unit {
@@ -61,9 +67,12 @@ mod primitive {
         //std::primitive::print(pa.val);
 
         struct std::primitive::Unit {}
-    }
+    }*/
 
-    fn funky_dyn_fields(a: std::primitive::i64) -> std::primitive::i64 {
+    struct fdf isref ismod {
+    };
+
+    fn funky_dyn_fields(a: std::primitive::fdf) -> std::primitive::i64 {
         //a.def = a.def;
         a.abc = 5;
         a.abc = 5 * a.abc;
@@ -90,6 +99,8 @@ mod primitive {
 
     fn fib_test() -> std::primitive::Unit {
         std::primitive::fibonacci(20);
+
+        struct std::primitive::Unit {}
     }
 
 }

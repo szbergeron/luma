@@ -5,7 +5,7 @@ use std::{collections::HashMap, sync::RwLock};
 use crate::{
     cst::{
         FunctionBuiltin, NodeInfo, ScopedName, SyntacticTypeReferenceInner,
-        SyntacticTypeReferenceRef,
+        SyntacticTypeReferenceRef, StructuralTyAttrs,
     },
     helper::interner::IStr,
 };
@@ -108,6 +108,7 @@ pub struct FieldMember {
 pub struct StructuralDataDefinition {
     pub fields: Vec<FieldMember>,
     pub methods: HashMap<IStr, CtxID>,
+    pub attrs: StructuralTyAttrs,
 }
 
 #[derive(Debug, Clone)]

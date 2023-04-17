@@ -23,7 +23,19 @@ pub struct StructDefinition {
 
     pub fields: Vec<Field>,
 
+    pub attrs: StructuralTyAttrs,
+
     pub methods: Vec<FunctionDefinition>,
+}
+
+#[derive(Copy, Debug, Clone)]
+pub struct StructuralTyAttrs {
+    /// States that this is a ref type or a non-ref type (by-value)
+    /// non-ref types must not be self-referential!
+    pub is_ref: bool,
+
+    /// Whether this type allows adding additional dyn fields
+    pub is_modif: bool,
 }
 
 impl CstNode for StructDefinition {
