@@ -267,101 +267,6 @@ impl<'a> ScribeOne<'a> {
             Either::Right(t) => self.codegen_ty(t).await,
         }
     }
-
-    #[async_recursion(?Send)]
-    async fn to_lir_nondyn(
-        &mut self,
-        quark: &'static Quark,
-        eid: ExpressionID,
-        do_deref: bool,
-    ) -> Variable {
-        let exp = quark.acting_on.borrow().get(eid).clone();
-
-        match exp {
-            AnyExpression::StaticAccess(sa) => {
-                if let Some(tid) = quark.meta.are_methods.borrow().get(&eid).copied() {
-                    // we know which specific method it is, so can return that directly
-                    let t = quark
-                        .with_instance(tid, |inst| unsafe { inst.once_resolved.clone().wait() })
-                        .await;
-                    let mono = Monomorphization::from_resolved(t);
-
-                    todo!()
-                } else {
-                    // it's a field, so emit a FieldAccess
-                    let on = sa.on;
-                    let on = self.to_lir_nondyn(quark, on, false).await;
-
-                    let type_of_field = quark
-                        .with_instance(quark.typeofs.get(eid), |inst| unsafe {
-                            inst.once_resolved.clone().wait()
-                        })
-                        .await;
-
-                    let into_ty = VarType::just(type_of_field).ptrto();
-
-                    let into_v = Variable::temp(into_ty);
-
-                    let fa = Lower::Field(on, sa.field, into_v.clone()); // need to forward this to
-                                                                         // execute
-
-                    into_v
-                }
-            }
-
-            AnyExpression::Block(b) => {
-                //
-                todo!()
-            }
-
-            AnyExpression::Assign(a) => {
-                let rhs_v = self.to_lir_nondyn(quark, a.rhs, true).await;
-                let lhs_v = self.to_lir_nondyn(quark, a.lhs, false).await; // do lhs second so we avoid
-                                                                           // overlapping field
-                                                                           // instantiations which can
-                                                                           // cause issues
-                todo!()
-            }
-
-            AnyExpression::Invoke(c) => {
-                let to_invoke = self.to_lir_nondyn(quark, c.target_fn, todo!()).await;
-
-                //
-
-                todo!()
-            }
-            AnyExpression::Binding(b) => {
-                let Binding {
-                    info,
-                    name,
-                    introduced_as,
-                    has_type,
-                    from_source,
-                } = b;
-
-                let src = self.to_lir_nondyn(quark, from_source, true);
-
-                let ty = quark
-                    .with_instance(
-                        *quark.type_of_var.borrow().get(&introduced_as).unwrap(),
-                        |inst| unsafe { inst.once_resolved.clone().wait() },
-                    )
-                    .await;
-
-                let ty = VarType::just(ty);
-
-                let v = Variable::temp(ty);
-
-                todo!()
-            }
-
-            AnyExpression::Variable(var, _) => match do_deref {
-                _ => todo!(),
-            },
-            _ => todo!(),
-        }
-    }
-
     #[async_recursion(?Send)]
     async fn to_rs_nondyn(
         &mut self,
@@ -382,21 +287,27 @@ impl<'a> ScribeOne<'a> {
             AnyExpression::Block(b) => {
                 let br = UntypedVar::temp();
 
-                writeln!(code, "{ind}{{");
+                writeln!(code, "{ind}{{").unwrap();
 
                 //writeln!(code, "{ind}let mut {br} = Default::default();");
 
-                let mut results = Vec::new();
+                for exp in b.statements {
+                    let e = self.to_rs_nondyn(quark, exp, indent + 1).await;
 
-                for exp in b.expressions {
-                    results.push(self.to_rs_nondyn(quark, exp, indent + 1).await);
+                    writeln!(code, "{ind}{e};").unwrap();
                 }
 
-                let exps = results.into_iter().join(format!("{ind};\n").as_str());
+                if let Some(e) = b.final_expr {
+                    let e = self.to_rs_nondyn(quark, e, indent + 1).await;
 
-                writeln!(code, "{ind}{exps}");
+                    writeln!(code, "{ind}{e}").unwrap();
+                }
 
-                writeln!(code, "{ind}}}");
+                //let exps = results.into_iter().join(format!("{ind};\n").as_str());
+
+                //writeln!(code, "{ind}{exps}");
+
+                writeln!(code, "{ind}}}").unwrap();
             }
             AnyExpression::Literal(l) => {
                 let Literal { info, has_type, value } = l;
@@ -405,10 +316,10 @@ impl<'a> ScribeOne<'a> {
 
                 match contents {
                     cst::Literal::i64Literal(i) => {
-                        write!(code, "{i}");
+                        write!(code, "{i}").unwrap();
                     }
                     cst::Literal::UnknownIntegerLiteral(i) => {
-                        write!(code, "{i}");
+                        write!(code, "{i}").unwrap();
                     }
                     other => todo!("don't handle {other:?} literals")
                 }
@@ -416,17 +327,17 @@ impl<'a> ScribeOne<'a> {
             AnyExpression::Variable(v, _i) => {
                 let v = UntypedVar::from(v);
 
-                write!(code, "({v}.clone())");
+                let _ = write!(code, "({v}.clone())");
             }
             AnyExpression::Binding(b) => {
                 let Binding { info, name, introduced_as, has_type, from_source } = b;
 
-                writeln!(code, "{ind}//binds variable {name}");
+                let _ = writeln!(code, "{ind}//binds variable {name}");
 
                 let v = UntypedVar::from(introduced_as);
                 let e = self.to_rs_nondyn(quark, from_source, indent + 1).await;
 
-                write!(code, "{ind}let mut {v} = {e};");
+                let _ = write!(code, "{ind}let mut {v} = {e};");
             }
             AnyExpression::OuterReference(sn, _i) => {
                 let refs = self
@@ -442,18 +353,19 @@ impl<'a> ScribeOne<'a> {
 
                 let name = now_mono.encode_name();
 
-                writeln!(code, "{name}");
+                let _ = writeln!(code, "{name}");
             }
             AnyExpression::Assign(a) => {
                 let Assign { info, rhs, lhs } = a;
 
                 let rhs_e = self.to_rs_nondyn(quark, rhs, indent + 1).await;
                 let lhs_e = self.to_rs_nondyn(quark, lhs, indent + 1).await;
-                writeln!(code, "{ind}{lhs_e} = {rhs_e}");
+                let _ = writeln!(code, "{ind}{lhs_e} = {rhs_e}");
             }
             AnyExpression::StaticAccess(sa) => {
                 let StaticAccess { on, field, info } = sa;
                 let on_s = self.to_rs_nondyn(quark, on, indent + 1).await;
+
 
                 if let Some(tid) = quark.meta.are_methods.borrow().get(&cur_eid) {
                     // figure out what specific method this is
@@ -463,9 +375,17 @@ impl<'a> ScribeOne<'a> {
 
                     let targ = mon.encode_name();
 
-                    write!(code, "/* s_acc is method */ {targ}");
+                    let _ = write!(code, "/* s_acc is method */ {targ}");
                 } else {
-                    writeln!(code, "({on_s}).{field}");
+                    let base_type = quark.resolved_type_of(quark.typeofs.get(on)).await;
+
+                    let meta_attrs = base_type.node.resolve().get_struct_attrs();
+
+                    if meta_attrs.is_ref {
+                        let _ = writeln!(code, "({on_s}).borrow_mut().{field}");
+                    } else {
+                        let _ = writeln!(code, "({on_s}).{field}");
+                    }
                 }
 
             }
@@ -480,7 +400,7 @@ impl<'a> ScribeOne<'a> {
                     "()".intern()
                 };
 
-                writeln!(code, "if {if_is} {{ {then_do} }} else {{ {else_do} }}");
+                let _ = writeln!(code, "if {if_is} {{ {then_do} }} else {{ {else_do} }}");
             }
             AnyExpression::Invoke(i) => {
                 let Invoke { info, target_fn, args } = i;
@@ -496,7 +416,7 @@ impl<'a> ScribeOne<'a> {
 
                 let args = args_s.into_iter().join(", ");
 
-                writeln!(code, "{on}({args})");
+                let _ = writeln!(code, "{on}({args})");
             }
             AnyExpression::Composite(c) => {
                 let Composite {
@@ -523,26 +443,26 @@ impl<'a> ScribeOne<'a> {
 
                 let into_var = UntypedVar::temp();
 
-                writeln!(code, "{ind}{{");
+                let _ = writeln!(code, "{ind}{{");
 
                 let base_mono_name = bt_mono.encode_name();
 
-                writeln!(code, "let {into_var} = {ind}{base_mono_name} {{");
+                let _ = writeln!(code, "let {into_var} = {ind}{base_mono_name} {{");
 
                 for (fname, fexp) in fields {
                     let v = self.to_rs_nondyn(quark, fexp, indent).await;
 
-                    writeln!(code, "{ind}        {fname}: {v},");
+                    let _ = writeln!(code, "{ind}        {fname}: {v},");
                 }
 
-                writeln!(code, "{ind}    ..Default::default() }};");
+                let _ = writeln!(code, "{ind}    ..Default::default() }};");
 
-                match bt.resolve().get_struct_attrs().is_ref {
+                let _ = match bt.resolve().get_struct_attrs().is_ref {
                     false => writeln!(code, "{ind}{into_var}"),
                     true => writeln!(code, "{ind}FastRefHandle::from_val({into_var})"),
                 };
 
-                writeln!(code, "{ind}}}");
+                let _ = writeln!(code, "{ind}}}");
 
                 //Some(into_var)
             }
@@ -575,7 +495,7 @@ impl<'a> ScribeOne<'a> {
 
                 code.push(format!("{ind}{{"));
 
-                for expr in b.expressions {
+                for expr in b.statements {
                     let r = self
                         .to_rs_dyn(quark, expr, preamble, code, indent + 1)
                         .await;

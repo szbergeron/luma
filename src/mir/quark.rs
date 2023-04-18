@@ -641,22 +641,41 @@ impl Quark {
             AnyExpression::Block(b) => {
                 let block_ty = self.new_tid(b.info, false);
 
-                let mut last_expr_tid = None;
-
-                for &eid in b.expressions.iter() {
+                for &eid in b.statements.iter() {
                     //let c_ty = self.new_tid();
                     tracing::info!("handling an expr in a block, has eid {eid:?}");
                     let e_ty = self.do_the_thing_rec(eid, false);
-
-                    last_expr_tid = Some(e_ty);
 
                     //self.type_of[&eid] = c_ty;
                     //self.type_of.borrow_mut().insert(eid, e_ty);
                 }
 
-                match last_expr_tid {
+                let final_expr = match b.final_expr {
+                    Some(e) => Some(self.do_the_thing_rec(e, false)),
+                    None => None,
+                };
+
+                match final_expr {
                     None => {
-                        todo!("block has type unit")
+                        unsafe {
+                            self.executor.install(
+                                async move {
+                                    let unit_ty = self
+                                        .resolve_typeref(
+                                            SyntacticTypeReferenceRef::from_std(
+                                                "std::primitive::Unit",
+                                            ),
+                                            &self.generics,
+                                            self.node_id,
+                                            false,
+                                        )
+                                        .await;
+
+                                    self.add_unify(unit_ty, block_ty, "an empty block returns unit");
+                                },
+                                "resolve unit ref for empty block",
+                            )
+                        };
                     }
                     Some(tid) => {
                         self.add_unify(
@@ -700,13 +719,14 @@ impl Quark {
                 unsafe {
                     self.executor.install(
                         async move {
-                            let btid = self.resolve_typeref(
-                                SyntacticTypeReferenceRef::from_std("std::primitive::bool"),
-                                &HashMap::new(),
-                                self.node_id,
-                                false,
-                            )
-                            .await;
+                            let btid = self
+                                .resolve_typeref(
+                                    SyntacticTypeReferenceRef::from_std("std::primitive::bool"),
+                                    &HashMap::new(),
+                                    self.node_id,
+                                    false,
+                                )
+                                .await;
 
                             self.add_unify(btid, cond_ty, "the condition of an if must be a bool");
                         },
@@ -1345,9 +1365,9 @@ pub struct ResolvedType {
 
     // either it's a proper given type or, potentially,
     // it's a generic passing through
-    //pub generics: Vec<Either<ResolvedType, IStr>>,
+    pub generics: Vec<Either<ResolvedType, IStr>>,
     // TODO: finish this and do proper monomorphization once I have time (not right now :) )
-    pub generics: Vec<ResolvedType>
+    //pub generics: Vec<ResolvedType>,
 }
 
 impl Debug for ResolvedType {

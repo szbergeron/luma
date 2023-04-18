@@ -83,7 +83,7 @@ impl ExpressionWrapper {
             }
             ExpressionWrapper::MemberAccess(e) => smallvec![&*e.on],
             ExpressionWrapper::Statement(e) => smallvec![&*e.subexpr],
-            ExpressionWrapper::Block(e) => e.contents.iter().map(|e| e.as_ref()).collect(),
+            ExpressionWrapper::Block(e) => e.statements.iter().map(|e| e.as_ref()).collect(),
             ExpressionWrapper::IfThenElse(e) => {
                 smallvec![e.if_exp.as_ref(), e.then_exp.as_ref(), e.else_exp.as_ref()]
             }
@@ -113,7 +113,7 @@ impl ExpressionWrapper {
             }
             ExpressionWrapper::MemberAccess(e) => smallvec![e.on.as_mut()],
             ExpressionWrapper::Statement(e) => smallvec![e.subexpr.as_mut()],
-            ExpressionWrapper::Block(e) => e.contents.iter_mut().map(|e| e.as_mut()).collect(),
+            ExpressionWrapper::Block(e) => e.statements.iter_mut().map(|e| e.as_mut()).collect(),
             ExpressionWrapper::IfThenElse(e) => {
                 smallvec![e.if_exp.as_mut(), e.then_exp.as_mut(), e.else_exp.as_mut()]
             }
@@ -380,13 +380,14 @@ impl CstNode for IfThenElseExpression {
 pub struct BlockExpression {
     pub node_info: NodeInfo,
 
-    pub contents: Vec<Box<ExpressionWrapper>>,
+    pub statements: Vec<Box<ExpressionWrapper>>,
+    pub final_expr: Option<Box<ExpressionWrapper>>,
 }
 
 impl CstNode for BlockExpression {
     fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
         let _ = writeln!(f, "{{");
-        for c in self.contents.iter() {
+        for c in self.statements.iter() {
             let _ = write!(f, "{}", indent(depth + 1));
             c.as_node().pretty(f, depth + 1);
             let _ = writeln!(f, "");
@@ -402,11 +403,13 @@ impl CstNode for BlockExpression {
 impl BlockExpression {
     pub fn new_expr(
         node_info: NodeInfo,
-        contents: Vec<Box<ExpressionWrapper>>,
+        statements: Vec<Box<ExpressionWrapper>>,
+        final_expr: Option<Box<ExpressionWrapper>>,
     ) -> Box<ExpressionWrapper> {
         Box::new(ExpressionWrapper::Block(BlockExpression {
             node_info,
-            contents,
+            statements,
+            final_expr,
         }))
     }
 }
@@ -1100,6 +1103,8 @@ pub enum Literal {
     Boolean(bool),
 
     UnknownIntegerLiteral(i128),
+
+    UnitLiteral(),
 }
 
 impl Literal {

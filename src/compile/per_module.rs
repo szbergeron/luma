@@ -400,7 +400,7 @@ impl Director {
                 println!("Phase section took {} microseconds", micros);
 
                 // send notifications to all nodes to ask them to emit any late errors
-                //std::thread::sleep(Duration::from_secs(2));
+                std::thread::sleep(Duration::from_secs(2));
                 std::process::exit(0);
             } else {
                 //println!("Values for qk and such: {qk_before}, {qk_after}, {tp_before}, {tp_after}");

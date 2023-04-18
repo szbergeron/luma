@@ -208,26 +208,31 @@ impl CompilationError {
 
                 ep.new_error("Unconstrained Type");
 
+                let mut seen = HashSet::new();
+
                 ep.contextualize(
                     tid.span(),
                     files,
                     "This type could not be resolved".intern(),
                 );
 
+                seen.insert(tid.span());
+
                 for peer in peers {
-                    if peer.is_root() || true {
+                    if peer.is_root() && seen.insert(peer.span()) {
                         ep.contextualize(
                             peer.span(),
                             files,
                             "This was found in the 'same-as' chain".intern(),
                         );
-                        ep.note_line(
-                            "This was probably caused by a dynamic field not resolving,
-                                     so the related instances are of unknown type"
-                                .to_owned(),
-                        );
                     }
                 }
+
+                ep.note_line(
+                    "This was potentially caused by a dynamic field not resolving,
+                                     so the related instances are of unknown type"
+                        .to_owned(),
+                );
             }
         }
     }

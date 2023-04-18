@@ -2,7 +2,7 @@ mod primitive {
 
     fn print<T>(v: T) -> std::primitive::Unit #builtin luma_print_fast luma_print_silly luma_print_slow;
 
-    struct Unit noref {}
+    struct Unit noref #builtin luma_unit {}
 
     struct i64 noref #builtin i64 {
         fn operator[_*_](self: std::primitive::i64, other: std::primitive::i64) -> std::primitive::i64 
@@ -44,6 +44,10 @@ mod primitive {
 
         h.woo(h);
 
+        h.a = 10;
+
+        //std::primitive::print(h.a);
+
         h
     };
 
@@ -51,7 +55,7 @@ mod primitive {
         42
     }
 
-    /*struct parametric<T> {
+    struct parametric<T> {
         var val: T;
 
         fn change<T>(self: parametric<T>, val: T) -> std::primitive::Unit {
@@ -70,9 +74,17 @@ mod primitive {
         //std::primitive::print(pa.val);
 
         struct std::primitive::Unit {}
-    }*/
+    }
 
     struct fdf isref ismod {
+    };
+
+    struct sref isref ismod {
+        var v: std::primitive::sref;
+    };
+
+    fn sref_s(s: std::primitive::sref) -> std::primitive::Unit {
+        //
     };
 
     fn funky_dyn_fields(a: std::primitive::fdf) -> std::primitive::i64 {
@@ -103,7 +115,7 @@ mod primitive {
     fn fib_test() -> std::primitive::Unit {
         std::primitive::fibonacci(5);
 
-        struct std::primitive::Unit {}
+        //struct std::primitive::Unit {}
     }
 
 }

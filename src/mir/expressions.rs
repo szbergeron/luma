@@ -423,15 +423,18 @@ impl AnyExpression {
                 let mut cs = bindings.child_scoped(); // every bind within this operates within the
                                                       // same binding scope
 
-                let items = b
-                    .contents
+                let statements = b
+                    .statements
                     .clone()
                     .into_iter()
                     .map(|box e| AnyExpression::from_ast(within, &e, &mut cs))
                     .collect_vec();
 
+                let final_expr = b.final_expr.clone().map(|box e| AnyExpression::from_ast(within, &e, &mut cs));
+
                 let ae = AnyExpression::Block(StringBlock {
-                    expressions: items,
+                    statements,
+                    final_expr,
                     info: b.node_info,
                 });
 
@@ -478,6 +481,9 @@ impl AnyExpression {
                 } = li;
 
                 let value_type = match contents {
+                    cst::Literal::UnitLiteral() => {
+                        SyntacticTypeReferenceRef::from_std("std::primitive::Unit")
+                    }
                     cst::Literal::StringLiteral(_) => todo!(),
                     cst::Literal::f32Literal(_) => todo!(),
                     cst::Literal::f64Literal(_) => todo!(),
@@ -660,7 +666,8 @@ pub struct MetaData {
 pub struct StringBlock {
     pub info: NodeInfo,
 
-    pub expressions: Vec<ExpressionID>,
+    pub statements: Vec<ExpressionID>,
+    pub final_expr: Option<ExpressionID>,
 }
 
 #[derive(Clone, Debug)]

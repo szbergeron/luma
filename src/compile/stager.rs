@@ -270,7 +270,7 @@ async fn async_launch(args: ArgResult) {
     let (es, mut er) = tokio::sync::mpsc::unbounded_channel();
 
     tokio::spawn(async move {
-        //std::thread::sleep(Duration::from_secs(1));
+        std::thread::sleep(Duration::from_secs(1));
         let mut so_far = HashSet::new();
         while let Some(v) = er.recv().await {
             let v: CompilationError = v;

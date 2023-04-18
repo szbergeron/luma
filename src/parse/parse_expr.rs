@@ -746,7 +746,7 @@ impl<'lexer> Parser<'lexer> {
 
             (exp, end)
         } else {
-            let exp = cst::BlockExpression::new_expr(NodeInfo::Builtin, Vec::new());
+            let exp = cst::BlockExpression::new_expr(NodeInfo::Builtin, Vec::new(), None);
             let end = then_exp.as_node().end().expect("then had no end?");
 
             (exp, end)
@@ -796,21 +796,28 @@ impl<'lexer> Parser<'lexer> {
         ]);*/
 
         t.take(Token::LBrace).join()?;
-        let mut declarations: Vec<Box<cst::ExpressionWrapper>> = Vec::new();
+        let mut statements: Vec<Box<cst::ExpressionWrapper>> = Vec::new();
 
         let start = t.lh.la(0).map_or(CodeLocation::Builtin, |tw| tw.start);
 
         //let mut failed = false;
 
+        let mut last_expr = None;
+
         loop {
             match t.la(0).catch(&mut t).join_hard(&mut t)?.token {
                 Token::RBrace => {
+                    // was not preceded directly by semicolon, so...
                     break;
                 }
                 Token::Semicolon => {
                     //self.lex.advance();
                     t.take(Token::Semicolon).join()?;
                     t.predict_next((Token::Semicolon, 10.0));
+
+                    if let Some(v) = last_expr.take() {
+                        statements.push(v);
+                    }
                     // empty
                 }
                 /*Token::Let => {
@@ -836,8 +843,10 @@ impl<'lexer> Parser<'lexer> {
 
                     let (v, mut _es, _s) = e.update_solution(&t).open();
 
-                    v.map(|exp| {
-                        let exp = match t.try_take(Token::Semicolon) {
+                    if let Some(exp) = v {
+
+
+                        /*let exp = match t.try_take(Token::Semicolon) {
                             Some(semi) => {
                                 let start =
                                     exp.as_node().start().map_or(CodeLocation::Builtin, |v| v);
@@ -846,23 +855,33 @@ impl<'lexer> Parser<'lexer> {
                                 cst::StatementExpression::new_expr(node_info, exp)
                             }
                             None => exp,
-                        };
+                        };*/
 
-                        declarations.push(exp);
-                    });
+                        match t.try_take(Token::Semicolon) {
+                            Some(s) => {
+                                statements.push(exp);
+                                continue;
+                            },
+                            None => {
+                                last_expr = Some(exp);
+                                break;
+                            }
+                        }
+                    }
 
                     //self.expect(Token::Semicolon)?; // TODO: eval if this is required
                 }
             }
         }
 
-        let end = t.lh.la(-1).map_or(start, |tw| tw.start);
+        //let end = t.lh.la(-1).map_or(start, |tw| tw.start);
+
+
+        let end = t.take(Token::RBrace).join()?.end;
 
         let node_info = NodeInfo::from_indices(start, end);
 
-        t.take(Token::RBrace).join()?;
-
-        t.success(cst::BlockExpression::new_expr(node_info, declarations))
+        t.success(cst::BlockExpression::new_expr(node_info, statements, last_expr))
     }
 
     pub fn parse_expr_inner(
