@@ -19,6 +19,7 @@ pub struct FieldResolutionError {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct UnrestrictedTypeError {
+    pub note: IStr,
     pub tid: TypeID,
     pub peers: Vec<TypeID>,
 }
@@ -128,8 +129,8 @@ impl CompilationError {
                 already_printed.insert(from.span());
                 already_printed.insert(into.span());
 
-                for t in from_peers {
-                    if already_printed.insert(t.span()) && t.is_root() {
+                for t in from_peers.clone() {
+                    if already_printed.insert(t.span()) {
                         if let p @ NodeInfo::Parsed(_) = t.span() {
                             ep.contextualize(
                                 p,
@@ -140,8 +141,8 @@ impl CompilationError {
                     }
                 }
 
-                for t in into_peers {
-                    if already_printed.insert(t.span()) && t.is_root() {
+                for t in into_peers.clone() {
+                    if already_printed.insert(t.span()) {
                         if let p @ NodeInfo::Parsed(_) = t.span() {
                             ep.contextualize(
                                 p,
@@ -149,6 +150,25 @@ impl CompilationError {
                                 "this was evaluated when forming the 'into' chain".intern(),
                             );
                         }
+                    }
+                }
+
+                let mut all = HashSet::new();
+
+                for peer in into_peers {
+                    all.insert(peer);
+                }
+
+                for peer in from_peers {
+                    all.insert(peer);
+                }
+
+                all.insert(into);
+                all.insert(from);
+
+                for t in all {
+                    if already_printed.insert(t.span()) {
+                        ep.contextualize(t.span(), files, "this was part of the 'all' chain".intern());
                     }
                 }
 
@@ -204,7 +224,7 @@ impl CompilationError {
                 );
             }
             CompilationError::UnrestrictedTypeError(ute) => {
-                let UnrestrictedTypeError { tid, peers } = ute;
+                let UnrestrictedTypeError { tid, peers, note } = ute;
 
                 ep.new_error("Unconstrained Type");
 
@@ -233,6 +253,8 @@ impl CompilationError {
                                      so the related instances are of unknown type"
                         .to_owned(),
                 );
+
+                ep.note_line(note.to_string());
             }
         }
     }

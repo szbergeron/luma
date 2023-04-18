@@ -21,7 +21,7 @@ use crate::{
     ast::{
         executor::{Executor, Thunk},
         resolver2::{ImportError, NameResolver},
-        tree::{CtxID, NodeUnion},
+        tree::{CtxID, NodeUnion, SubMap},
     },
     avec::AtomicVec,
     compile::per_module::{
@@ -161,7 +161,7 @@ impl Scribe {
                 let r = self.resolve_name(name, within_monomorphization).await;
 
                 ResolvedType {
-                    node: Either::Left(r.unwrap()),
+                    node: r.unwrap(),
                     generics: vec![],
                 }
             }
@@ -192,7 +192,7 @@ impl Scribe {
                 .await;
 
                 ResolvedType {
-                    node: Either::Left(base),
+                    node: base,
                     generics: each,
                 }
             }
@@ -273,6 +273,7 @@ impl<'a> ScribeOne<'a> {
     async fn to_rs_nondyn(
         &mut self,
         quark: &'static Quark,
+        submap: &SubMap,
         cur_eid: ExpressionID,
         //preamble: &mut Vec<String>,
         //code: &mut Vec<String>,
@@ -294,13 +295,13 @@ impl<'a> ScribeOne<'a> {
                 //writeln!(code, "{ind}let mut {br} = Default::default();");
 
                 for exp in b.statements {
-                    let e = self.to_rs_nondyn(quark, exp, indent + 1).await;
+                    let e = self.to_rs_nondyn(quark, submap, exp, indent + 1).await;
 
                     writeln!(code, "{ind}{e};").unwrap();
                 }
 
                 if let Some(e) = b.final_expr {
-                    let e = self.to_rs_nondyn(quark, e, indent + 1).await;
+                    let e = self.to_rs_nondyn(quark, submap, e, indent + 1).await;
 
                     writeln!(code, "{ind}{e}").unwrap();
                 }
@@ -350,7 +351,7 @@ impl<'a> ScribeOne<'a> {
                 let _ = writeln!(code, "{ind}//binds variable {name}");
 
                 let v = UntypedVar::from(introduced_as);
-                let e = self.to_rs_nondyn(quark, from_source, indent + 1).await;
+                let e = self.to_rs_nondyn(quark, submap, from_source, indent + 1).await;
 
                 let _ = write!(code, "{ind}let mut {v} = {e};");
             }
@@ -373,13 +374,13 @@ impl<'a> ScribeOne<'a> {
             AnyExpression::Assign(a) => {
                 let Assign { info, rhs, lhs } = a;
 
-                let rhs_e = self.to_rs_nondyn(quark, rhs, indent + 1).await;
-                let lhs_e = self.to_rs_nondyn(quark, lhs, indent + 1).await;
+                let rhs_e = self.to_rs_nondyn(quark, submap, rhs, indent + 1).await;
+                let lhs_e = self.to_rs_nondyn(quark, submap, lhs, indent + 1).await;
                 let _ = writeln!(code, "{ind}{lhs_e} = {rhs_e}");
             }
             AnyExpression::StaticAccess(sa) => {
                 let StaticAccess { on, field, info } = sa;
-                let on_s = self.to_rs_nondyn(quark, on, indent + 1).await;
+                let on_s = self.to_rs_nondyn(quark, submap, on, indent + 1).await;
 
                 if let Some(tid) = quark.meta.are_methods.borrow().get(&cur_eid) {
                     // figure out what specific method this is
@@ -395,8 +396,6 @@ impl<'a> ScribeOne<'a> {
 
                     let meta_attrs = base_type
                         .node
-                        .left()
-                        .expect("generics")
                         .resolve()
                         .get_struct_attrs();
 
@@ -414,10 +413,10 @@ impl<'a> ScribeOne<'a> {
                     else_do,
                 } = i;
 
-                let if_is = self.to_rs_nondyn(quark, condition, indent + 1).await;
-                let then_do = self.to_rs_nondyn(quark, then_do, indent + 1).await;
+                let if_is = self.to_rs_nondyn(quark, submap, condition, indent + 1).await;
+                let then_do = self.to_rs_nondyn(quark, submap, then_do, indent + 1).await;
                 let else_do = if let Some(v) = else_do {
-                    self.to_rs_nondyn(quark, v, indent + 1).await
+                    self.to_rs_nondyn(quark, submap, v, indent + 1).await
                 } else {
                     "()".intern()
                 };
@@ -427,10 +426,10 @@ impl<'a> ScribeOne<'a> {
             AnyExpression::For(f) => {
                 let For { body, pre, post, condition } = f;
 
-                let pre_s = self.to_rs_nondyn(quark, pre, indent + 1).await;
-                let cond_s = self.to_rs_nondyn(quark, condition, indent + 1).await;
-                let post_s = self.to_rs_nondyn(quark, post, indent + 1).await;
-                let body_s = self.to_rs_nondyn(quark, body, indent + 1).await;
+                let pre_s = self.to_rs_nondyn(quark, submap, pre, indent + 1).await;
+                let cond_s = self.to_rs_nondyn(quark, submap, condition, indent + 1).await;
+                let post_s = self.to_rs_nondyn(quark, submap, post, indent + 1).await;
+                let body_s = self.to_rs_nondyn(quark, submap, body, indent + 1).await;
 
                 let _ = writeln!(code, "{ind}//for loop");
 
@@ -455,12 +454,12 @@ impl<'a> ScribeOne<'a> {
                     args,
                 } = i;
 
-                let on = self.to_rs_nondyn(quark, target_fn, indent + 1).await;
+                let on = self.to_rs_nondyn(quark, submap, target_fn, indent + 1).await;
 
                 let mut args_s = Vec::new();
 
                 for arg in args {
-                    let arg = self.to_rs_nondyn(quark, arg, indent + 1).await;
+                    let arg = self.to_rs_nondyn(quark, submap, arg, indent + 1).await;
                     args_s.push(arg);
                 }
 
@@ -478,16 +477,19 @@ impl<'a> ScribeOne<'a> {
 
                 assert!(generics.len() == 0, "we don't handle generics yet");
 
-                let bt = self
+                /*let bt = self
                     .within
                     .resolve_name(base_type, self.mono)
                     .await
-                    .unwrap();
+                    .unwrap();*/
 
-                let bt_mono = Monomorphization {
-                    of: bt,
-                    with: vec![],
-                };
+                let bt_res = quark.resolved_type_of(quark.typeofs.get(cur_eid)).await;
+
+                let bt_res = submap.substitute_of(bt_res);
+
+                //let bt_mono = submap.substitute_of(ResolvedType { node: bt, generics: vec![] })
+
+                let bt_mono = Monomorphization::from_resolved(bt_res);
 
                 let into_var = UntypedVar::temp();
 
@@ -498,14 +500,14 @@ impl<'a> ScribeOne<'a> {
                 let _ = writeln!(code, "let {into_var} = {ind}{base_mono_name} {{");
 
                 for (fname, fexp) in fields {
-                    let v = self.to_rs_nondyn(quark, fexp, indent).await;
+                    let v = self.to_rs_nondyn(quark, submap, fexp, indent).await;
 
                     let _ = writeln!(code, "{ind}        {fname}: {v},");
                 }
 
                 let _ = writeln!(code, "{ind}    ..Default::default() }};");
 
-                let _ = match bt.resolve().get_struct_attrs().is_ref {
+                let _ = match bt_mono.of.resolve().get_struct_attrs().is_ref {
                     false => writeln!(code, "{ind}{into_var}"),
                     true => writeln!(code, "{ind}FastRefHandle::from_val({into_var})"),
                 };
@@ -756,28 +758,28 @@ impl<'a> ScribeOne<'a> {
                             "{ind}let mut {uv} = Value::I32({i}, {methods_object});"
                         ));
 
-                        "std::primitive::i32"
+                        "std::i32"
                     }
                     cst::Literal::i64Literal(i) => {
                         code.push(format!(
                             "{ind}let mut {uv} = Value::I64({i}, {methods_object});"
                         ));
 
-                        "std::primitive::i64"
+                        "std::i64"
                     }
                     cst::Literal::u64Literal(u) => {
                         code.push(format!(
                             "{ind}let mut {uv} = Value::I64({u}, {methods_object});"
                         ));
 
-                        "std::primitive::u64"
+                        "std::u64"
                     }
                     cst::Literal::UnknownIntegerLiteral(u) => {
                         code.push(format!(
                             "{ind}let mut {uv} = Value::I64({u}, {methods_object});"
                         ));
 
-                        "std::primitive::i64"
+                        "std::i64"
                     }
                     _ => todo!(),
                 };
@@ -795,7 +797,7 @@ impl<'a> ScribeOne<'a> {
                     indent,
                     &methods_value,
                     ResolvedType {
-                        node: Either::Left(lit_res_ty),
+                        node: lit_res_ty,
                         generics: vec![],
                     },
                 )
@@ -893,8 +895,6 @@ impl<'a> ScribeOne<'a> {
         let ind = indents(indent);
         for child in t_of
             .node
-            .left()
-            .expect("generics")
             .resolve()
             .children
             .iter()
@@ -908,12 +908,12 @@ impl<'a> ScribeOne<'a> {
                     let r = if !inner_gens.is_empty() {
                         assert!(
                             inner_gens.len()
-                                == t_of.node.left().expect("generics").resolve().generics.len(),
+                                == t_of.node.resolve().generics.len(),
                             "so we can parameterize directly down"
                         );
 
                         let rt = ResolvedType {
-                            node: Either::Left(*c),
+                            node: *c,
                             generics: t_of.generics.clone(),
                         };
 
@@ -1006,6 +1006,9 @@ impl<'a> ScribeOne<'a> {
 
             let entry_fn_id = quark.meta.entry_id.get().copied().unwrap();
 
+            let submap = SubMap::new_in(quark, self.mono);
+            let smr = &submap;
+
             match output_type() {
                 OutputType::FullInf() => {
                     //let params = Vec::new();
@@ -1015,6 +1018,7 @@ impl<'a> ScribeOne<'a> {
 
                         async move {
                             let t = quark.resolved_type_of(*pt).await;
+                            let t = smr.substitute_of(t);
                             let m = Monomorphization::from_resolved(t);
 
                             format!("mut {v}: {}", m.encode_ref())
@@ -1028,7 +1032,7 @@ impl<'a> ScribeOne<'a> {
                     within.push(format!("#[inline(never)]"));
                     within.push(format!("pub fn {fname}({params}) -> {rt}"));
 
-                    let res = self.to_rs_nondyn(quark, entry_fn_id, 2).await;
+                    let res = self.to_rs_nondyn(quark, &submap, entry_fn_id, 2).await;
 
                     within.push(format!("{res}"));
                 }
@@ -1147,6 +1151,15 @@ impl<'a> ScribeOne<'a> {
         let mut lines: Vec<String> = vec!["\n".to_owned()];
         let name = self.mono.encode_name();
 
+        for v in self.mono.flattened_contexts() {
+
+            if let NodeUnion::Generic(_) = v.resolve().inner {
+                println!("Tried to monomorphize with a generic param, can't do that dave");
+
+                return;
+            }
+        }
+
         match output_type() {
             OutputType::FullInf() => {
                 if let Some(b) = attrs.is_builtin {
@@ -1256,6 +1269,25 @@ impl Monomorphization {
         }
     }
 
+    pub fn flattened_contexts(&self) -> Vec<CtxID> {
+        fn inner(ar: Vec<ResolvedType>) -> Vec<CtxID> {
+            let mut c = Vec::new();
+
+            for t in ar {
+                c.push(t.node);
+
+                c.append(&mut inner(t.generics));
+            }
+
+            c
+        }
+
+        let mut v = vec![self.of];
+
+        v.append(&mut inner(self.with.clone().into_iter().map(|e| e.1).collect_vec()));
+        v
+    }
+
     pub fn encode_name(&self) -> IStr {
         let tr = self.of.resolve().canonical_typeref().resolve().unwrap();
 
@@ -1289,8 +1321,6 @@ impl Monomorphization {
     pub fn from_resolved(r: ResolvedType) -> Self {
         let generics = r
             .node
-            .left()
-            .expect("generics")
             .resolve()
             .generics
             .clone()
@@ -1300,7 +1330,7 @@ impl Monomorphization {
             .collect();
 
         Self {
-            of: r.node.left().expect("generics"),
+            of: r.node,
             with: generics,
         }
     }

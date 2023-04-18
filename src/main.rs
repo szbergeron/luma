@@ -129,8 +129,8 @@ impl Subscriber for MySub {
         metadata.file().is_some_and(|f| {
             (allow_all
                 || (true && f.contains("quark"))
-                || (true && f.contains("transponster"))
-                || (true && f.contains("sets"))
+                || (false && f.contains("transponster"))
+                || (false && f.contains("sets"))
                 || (true && f.contains("instance"))
                 || (false && f.contains("executor"))
                 || (false && f.contains("per_module")))

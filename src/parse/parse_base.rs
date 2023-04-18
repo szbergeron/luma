@@ -508,7 +508,10 @@ impl<'lexer> Parser<'lexer> {
             .join_hard(&mut t)
             .catch(&mut t)?;
 
-        let mut generics = parent_generics.clone();
+        //let mut generics = parent_generics.clone();
+        println!("pass through generics later, fix things now");
+
+        let mut generics = Vec::new();
 
         for (inner, _strefref) in inner_generics.iter() {
             if parent_generics.contains(&inner) {

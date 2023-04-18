@@ -1,274 +1,275 @@
-mod primitive {
 
-    fn print<T>(v: T) -> std::primitive::Unit #builtin luma_print_fast luma_print_silly luma_print_slow;
+//fn print<T>(v: T) -> std::Unit #builtin luma_print_fast luma_print_silly luma_print_slow;
 
-    struct Unit noref #builtin luma_unit {}
+struct Unit noref #builtin luma_unit {}
 
-    struct i64 noref #builtin i64 {
-        fn operator[_*_](self: std::primitive::i64, other: std::primitive::i64) -> std::primitive::i64 
-            #builtin luma_i64_op_mul_fast luma_i64_op_mul_silly luma_i64_op_mul_slow;
+struct i64 noref #builtin i64 {
+    fn operator[_*_](self: std::i64, other: std::i64) -> std::i64 
+        #builtin luma_i64_op_mul_fast luma_i64_op_mul_silly luma_i64_op_mul_slow;
 
-        fn operator[_+_](self: std::primitive::i64, other: std::primitive::i64) -> std::primitive::i64
-            #builtin luma_i64_op_add_fast luma_i64_op_add_silly luma_i64_op_add_slow;
+    fn operator[_+_](self: std::i64, other: std::i64) -> std::i64
+        #builtin luma_i64_op_add_fast luma_i64_op_add_silly luma_i64_op_add_slow;
 
-        fn operator[_-_](self: std::primitive::i64, other: std::primitive::i64) -> std::primitive::i64
-            #builtin luma_i64_op_subtract_fast luma_i64_op_subtract_silly luma_i64_op_subtract_slow;
+    fn operator[_-_](self: std::i64, other: std::i64) -> std::i64
+        #builtin luma_i64_op_subtract_fast luma_i64_op_subtract_silly luma_i64_op_subtract_slow;
 
-        fn operator[_==_](self: std::primitive::i64, other: std::primitive::i64) -> std::primitive::bool
-            #builtin luma_i64_op_eq_fast luma_i64_op_eq_silly luma_op_eq_slow;
+    fn operator[_==_](self: std::i64, other: std::i64) -> std::bool
+        #builtin luma_i64_op_eq_fast luma_i64_op_eq_silly luma_op_eq_slow;
 
-        fn operator[_<_](self: std::primitive::i64, other: std::primitive::i64) -> std::primitive::bool
-            #builtin luma_i64_op_lt_fast luma_i64_op_lt_silly luma_op_lt_slow;
+    fn operator[_<_](self: std::i64, other: std::i64) -> std::bool
+        #builtin luma_i64_op_lt_fast luma_i64_op_lt_silly luma_op_lt_slow;
 
-        fn operator[_>_](self: std::primitive::i64, other: std::primitive::i64) -> std::primitive::bool
-            #builtin luma_i64_op_gt_fast luma_i64_op_gt_silly luma_op_gt_slow;
+    fn operator[_>_](self: std::i64, other: std::i64) -> std::bool
+        #builtin luma_i64_op_gt_fast luma_i64_op_gt_silly luma_op_gt_slow;
 
-    };
+};
 
-    struct bool noref #builtin bool {
-        fn operator[_==_](self: std::primitive::bool, other: std::primitive::bool) -> std::primitive::bool
-            #builtin luma__fast_bool_compare_eq luma__silly_bool_compare_eq luma_op_eq_slow;
-    };
+struct bool noref #builtin bool {
+    /*
+    fn operator[_==_](self: std::bool, other: std::bool) -> std::bool
+        #builtin luma__fast_bool_compare_eq luma__silly_bool_compare_eq luma_op_eq_slow;
+        */
+};
 
-    struct huh {
-        var a: std::primitive::i64;
-        var b: std::primitive::i64;
+struct parametric<T> {
+    var val: T;
 
-        fn woo(self: std::primitive::huh) -> std::primitive::huh {
-            self
-        };
+    fn change<T>(self: parametric<T>, val: T) -> std::Unit {
+        self.val = val;
 
-        fn add_dynf(self: std::primitive::huh) -> std::primitive::huh {
-            self.d = 10;
-
-            self
-        };
-    };
-
-    fn for_loop(from: std::primitive::i64, until: std::primitive::i64) -> std::primitive::Unit {
-        let b = 0;
-        for(let a = from; a < until; a = a + 1) {
-            b = b + 1;
-        }
-    };
-
-/*
-    fn bad_scope() -> std::primitive::Unit {
-        if 1 == 2 {
-            let a = 3;
-            4
-        } else {
-            a
-        }
+        struct std::Unit {}
     }
-    */
+}
 
-    fn compose() -> std::primitive::huh {
-        let h = struct std::primitive::huh { a: 5, b: 6 };
+fn p() -> std::Unit {
+    let pa = struct std::parametric { val: 4 };
+    pa.change(pa, 5);
 
-        h.woo(h);
+    pa.change(pa, pa.val + 3);
 
-        h.a = 10;
+    //std::print(pa.val);
 
-        //std::primitive::print(h.a);
-
-        h
-    };
-
-    fn just_simple() -> std::primitive::i64 {
-        42
-    }
-
-    /*struct parametric<T> {
-        var val: T;
-
-        fn change<T>(self: parametric<T>, val: T) -> std::primitive::Unit {
-            self.val = val;
-
-            struct std::primitive::Unit {}
-        }
-    }
-
-    fn p() -> std::primitive::Unit {
-        let pa = struct std::primitive::parametric { val: 4 };
-        pa.change(pa, 5);
-
-        pa.change(pa, pa.val + 3);
-
-        //std::primitive::print(pa.val);
-
-        struct std::primitive::Unit {}
-    }*/
-
-    struct fdf isref ismod {
-        var b: std::primitive::i64;
-    };
-
-    struct sref isref ismod {
-        var v: std::primitive::sref;
-    };
-
-    fn sref_s(s: std::primitive::sref) -> std::primitive::Unit {
-    };
-
-    fn funky_dyn_fields(a: std::primitive::fdf) -> std::primitive::i64 {
-        //a.def = a.def;
-        a.abc = 5;
-        a.abc = 5 * a.abc;
-
-
-        //a.def = struct std::primitive::Unit {};
-
-        a.def = a.abc;
-
-        a.g = struct std::primitive::fdf { b: 20 };
-
-        //a.g = a.g;
-
-        a.abc
-    }
-
-    fn fibonacci(n: std::primitive::i64) -> std::primitive::i64 {
-        if n == 0 {
-            0
-        } else if n == 1 {
-            1
-        } else {
-            std::primitive::fibonacci(n - 1) + std::primitive::fibonacci(n - 2)
-        }
-    };
-
-    fn fib_test() -> std::primitive::i64 {
-        std::primitive::fibonacci(17)
-
-        //struct std::primitive::Unit {}
-    };
-
-    fn ackermann(m: std::primitive::i64, n: std::primitive::i64) -> std::primitive::i64 {
-        if m == 0 {
-            n + 1
-        } else if n == 0 {
-            std::primitive::ackermann(m - 1, 1)
-        } else {
-            std::primitive::ackermann(m - 1, std::primitive::ackermann(m, n - 1))
-        }
-    };
-
-    fn ackermann_test() -> std::primitive::i64 {
-        std::primitive::ackermann(3, 4)
-    };
-
-
+    //struct std::Unit {}
 }
 
 /*
+struct fdf isref ismod {
+    var b: std::i64;
+};
 
-    struct i64 {
-        fn operator[_+_](self: std::primitive::i64, other: std::primitive::i64) -> std::primitive::i64 {
-            self + other
-        };
+struct sref isref ismod {
+    var v: std::sref;
+};
 
-        fn operator[_/_](self: std::primitive::i64, other: std::primitive::i64) -> std::primitive::i64 {
-            self / other
-        };
+fn sref_s(s: std::sref) -> std::Unit {
+};
 
-        fn operator[_-_](self: std::primitive::i64, other: std::primitive::i64) -> std::primitive::i64 {
-            self - other
-        };
+fn funky_dyn_fields(a: std::fdf) -> std::i64 {
+    //a.def = a.def;
+    a.abc = 5;
+    a.abc = 5 * a.abc;
+
+
+    //a.def = struct std::Unit {};
+
+    a.def = a.abc;
+
+    a.g = struct std::fdf { b: 20 };
+
+    //a.g = a.g;
+
+    a.abc
+}
+
+fn fibonacci(n: std::i64) -> std::i64 {
+    if n == 0 {
+        0
+    } else if n == 1 {
+        1
+    } else {
+        std::fibonacci(n - 1) + std::fibonacci(n - 2)
     }
+};
 
-    struct i32 {
-        fn operator[_*_](self: std::primitive::i32, other: std::primitive::i32) -> std::primitive::i32 {
-            //5 + 3 / 2
-            //3 / 2
-            //3 + 3 / 2 - 5
-            //3.operator[_+_]()
-            self * other
-        };
+fn fib_test() -> std::i64 {
+    std::fibonacci(17)
 
-        fn incorrect_second_operand_type(a: std::primitive::i32, b: std::primitive::i64) -> std::primitive::i32 {
-            a * b
-            //3 / a;
-        };
+    //struct std::Unit {}
+};
 
-        fn foo(a: std::primitive::i32, b: std::primitive::i32) -> std::primitive::i32 {
-            a.foo(b)
-        };
-
-        fn incorrect_return_type(a: std::primitive::i32, b: std::primitive::i32) -> std::primitive::i64 {
-            a.foo(b)
-        };
-
+fn ackermann(m: std::i64, n: std::i64) -> std::i64 {
+    if m == 0 {
+        n + 1
+    } else if n == 0 {
+        std::ackermann(m - 1, 1)
+    } else {
+        std::ackermann(m - 1, std::ackermann(m, n - 1))
     }
+};
 
-    struct Wrap<T> {
-        //var f: T;
-    }
+fn ackermann_test() -> std::i64 {
+    std::ackermann(3, 4)
+};
 
-    fn w() -> std::primitive::Wrap<std::primitive::i32> {
-        struct std::primitive::Wrap { }
-    }
+struct huh {
+    var a: std::i64;
+    var b: std::i64;
 
-    struct Vec<T> {
-        fn push<U>(self: std::primitive::Vec<U>, v: U) -> std::primitive::i64 {
-            5
-        };
-
-        fn pop<U>(self: std::primitive::Vec<U>) -> U {
-            5
-        };
-    }
-
-    fn vecs(v: Vec<i64>) -> std::primitive::Unit {
-        let v = struct std::primitive::Vec {};
-
-        v.pop(v)
-    }
-
-    fn gen1<T>(v: T) -> T {
-        v
+    fn woo(self: std::huh) -> std::huh {
+        self
     };
 
-    fn gen2() -> std::primitive::Unit {
-        std::primitive::gen1(struct std::primitive::Unit {})
-        //gen1(5)
+    fn add_dynf(self: std::huh) -> std::huh {
+        self.d = 10;
+
+        self
+    };
+};
+
+fn for_loop(from: std::i64, until: std::i64) -> std::Unit {
+    let b = 0;
+    for(let a = from; a < until; a = a + 1) {
+        b = b + 1;
     }
-        /*fn dyn_fields() -> std::primitive::i64 {
-            42.dynf
-        };*/
+};
 
-        /*fn err_dyn_fields_1() -> std::primitive::Unit {
-            let b = 42.dynf;
-            struct Unit {};
+/*
+fn bad_scope() -> std::Unit {
+    if 1 == 2 {
+        let a = 3;
+        4
+    } else {
+        a
+    }
+}
+*/
 
-            let c = b * 3;
+fn compose() -> std::huh {
+    let h = struct std::huh { a: 5, b: 6 };
 
-            c
-        };*/
+    h.woo(h);
 
-//    fn construction() -> std::primitive::Parameterized<std::primitive::i64> {
-//        struct std::primitive::Parameterized { v: 42.dynf }
-//    }
+    h.a = 10;
 
-//    fn construction2() -> std::primitive::Parameterized<std::primitive::i64> {
-//        struct std::primitive::Parameterized { v: 42.dynf }
-//    }
+    //std::print(h.a);
 
-    /*fn err_dyn_fields_2() -> std::primitive::Unit {
+    h
+};
+
+fn just_simple() -> std::i64 {
+    42
+}
+*/
+
+
+/*
+
+struct i64 {
+    fn operator[_+_](self: std::i64, other: std::i64) -> std::i64 {
+        self + other
+    };
+
+    fn operator[_/_](self: std::i64, other: std::i64) -> std::i64 {
+        self / other
+    };
+
+    fn operator[_-_](self: std::i64, other: std::i64) -> std::i64 {
+        self - other
+    };
+}
+
+struct i32 {
+    fn operator[_*_](self: std::i32, other: std::i32) -> std::i32 {
+        //5 + 3 / 2
+        //3 / 2
+        //3 + 3 / 2 - 5
+        //3.operator[_+_]()
+        self * other
+    };
+
+    fn incorrect_second_operand_type(a: std::i32, b: std::i64) -> std::i32 {
+        a * b
+        //3 / a;
+    };
+
+    fn foo(a: std::i32, b: std::i32) -> std::i32 {
+        a.foo(b)
+    };
+
+    fn incorrect_return_type(a: std::i32, b: std::i32) -> std::i64 {
+        a.foo(b)
+    };
+
+}
+
+struct Wrap<T> {
+    //var f: T;
+}
+
+fn w() -> std::Wrap<std::i32> {
+    struct std::Wrap { }
+}
+
+struct Vec<T> {
+    fn push<U>(self: std::Vec<U>, v: U) -> std::i64 {
+        5
+    };
+
+    fn pop<U>(self: std::Vec<U>) -> U {
+        5
+    };
+}
+
+fn vecs(v: Vec<i64>) -> std::Unit {
+    let v = struct std::Vec {};
+
+    v.pop(v)
+}
+
+fn gen1<T>(v: T) -> T {
+    v
+};
+
+fn gen2() -> std::Unit {
+    std::gen1(struct std::Unit {})
+    //gen1(5)
+}
+    /*fn dyn_fields() -> std::i64 {
         42.dynf
-    }*/
+    };*/
 
-    /*fn assignment() -> std::primitive::Unit {
-        let b = 5;
+    /*fn err_dyn_fields_1() -> std::Unit {
+        let b = 42.dynf;
+        struct Unit {};
 
-        b = struct std::primitive::Unit {};
-    }*/
+        let c = b * 3;
+
+        c
+    };*/
+
+//    fn construction() -> std::Parameterized<std::i64> {
+//        struct std::Parameterized { v: 42.dynf }
+//    }
+
+//    fn construction2() -> std::Parameterized<std::i64> {
+//        struct std::Parameterized { v: 42.dynf }
+//    }
+
+/*fn err_dyn_fields_2() -> std::Unit {
+    42.dynf
+}*/
+
+/*fn assignment() -> std::Unit {
+    let b = 5;
+
+    b = struct std::Unit {};
+}*/
 
 
 
 mod pointers {
-    struct reference<T> {
-        var v: T;
-    }
+struct reference<T> {
+    var v: T;
+}
 }
 */

@@ -4,6 +4,8 @@ use crate::cst::{
     TopLevel, FunctionBuiltin, StructuralTyAttrs,
 };
 use crate::helper::interner::Internable;
+use crate::mir::quark::{Quark, ResolvedType};
+use crate::mir::scribe::Monomorphization;
 use crate::{avec::AtomicVecIndex, cst::UseDeclaration};
 use either::Either;
 use itertools::Itertools;
@@ -30,6 +32,8 @@ use crate::{
     cst,
     helper::interner::{IStr, SpurHelper},
 };
+
+use super::types::StructuralDataDefinition;
 
 /// Designed to be a "global"
 /// interner of sorts for contexts, storing their
@@ -102,9 +106,79 @@ impl std::fmt::Debug for CtxID {
     }
 }
 
+pub struct SubMap {
+    replace: HashMap<ResolvedType, ResolvedType>,
+}
+
+impl SubMap {
+    pub fn substitute_of(&self, c: ResolvedType) -> ResolvedType {
+        match self.replace.get(&c) {
+            Some(v) => {
+                // generics shouldn't be parametric
+                assert!(c.generics.is_empty());
+                v.clone()
+            }
+            None => {
+                ResolvedType {
+                    node: c.node,
+                    generics: c.generics.into_iter().map(|t| self.substitute_of(t)).collect_vec(),
+                }
+            }
+        }
+    }
+
+    pub fn new_in(within: &Quark, with_mono: &Monomorphization) -> Self {
+        let mut subs = HashMap::new();
+
+        /*fn collect(v: Vec<(IStr, ResolvedType)>) -> Vec<(IStr, CtxID)> {
+            let mut r = Vec::new();
+            for (name, rt) in v {
+                r.push((name, rt.node));
+
+                let mut a = collect(rt.generics);
+
+                r.append(&mut a);
+
+            }
+
+            r
+        }*/
+
+        //let all = collect(with_mono.with.clone());
+        let all = with_mono.with.clone();
+
+        //let base_generics = with_mono.of.resolve().generics.clone();
+
+        for (name, sub) in all {
+            let generic_ctx = within.meta.generics_from_name.borrow().get(&name).copied().expect("wrap didn't have generics it said it would");
+
+            subs.insert(ResolvedType { node: generic_ctx, generics: vec![] }, sub);
+        }
+
+        Self { replace: subs }
+
+        /*for (b, r) in base_generics.into_iter().zip(with_mono.with.into_iter()) {
+            //
+        }*/
+    }
+}
+
 impl CtxID {
     pub fn resolve(self) -> &'static Node {
         Contexts::instance().get(&self)
+    }
+
+    /*pub fn within_submap(self, sm: &SubMap) -> CtxID {
+        sm.substitute_of(self)
+    }*/
+
+    pub fn new_generic(name: IStr) -> CtxID {
+        //let sd = StructuralDataDefinition { fields: vec![], methods: HashMap::new(), attrs: StructuralTyAttrs::default() };
+
+        let n = Node::new(name, vec![], None, None, NodeUnion::Generic(name), false, vec![]);
+
+        // this is horrible and hacky and should not carry through to the final product
+        n
     }
 }
 
@@ -308,6 +382,9 @@ impl Node {
                 let name = f.name;
                 let public = f.public;
                 let generics = f.generics.clone();
+                if !generics.is_empty() {
+                    //panic!("generics are: {generics:?}");
+                }
                 let mut fd = ast::types::FunctionDefinition::from_cst(f);
                 let imp = fd.implementation.take();
 
@@ -549,7 +626,10 @@ impl Node {
     pub fn get_struct_attrs(&self) -> StructuralTyAttrs {
         match &self.inner {
             NodeUnion::Type(t) => t.lock().unwrap().attrs,
-            _ => panic!("tried to get whether a non-ty has attrs")
+            _ => {
+                println!("tried to get whether a non-ty has attrs");
+                Default::default()
+            }
         }
     }
 }
@@ -580,6 +660,7 @@ pub enum NodeUnion {
         ast::types::FunctionDefinition,
         Mutex<Option<Either<cst::expressions::ExpressionWrapper, FunctionBuiltin>>>,
     ),
+    Generic(IStr),
 
     Global(!),
     Empty(),

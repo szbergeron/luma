@@ -2,7 +2,8 @@ use crate::avec::AtomicVecIndex;
 use crate::compile::per_module::Photon;
 use crate::cst::{FunctionBuiltin, SyntacticTypeReference};
 use crate::errors::{FieldAccessError, UnrestrictedTypeError};
-use crate::mir::expressions::{Binding, If, For};
+use crate::helper::CopyMethod;
+use crate::mir::expressions::{Binding, For, If};
 use crate::mir::scribe::ScribeOne;
 use crate::mir::transponster::Memo;
 use crate::{
@@ -145,6 +146,9 @@ pub struct Meta {
     pub is_builtin: OnceCell<Option<FunctionBuiltin>>,
 
     pub are_methods: RefCell<HashMap<ExpressionID, TypeID>>,
+
+    pub generics_from_name: RefCell<HashMap<IStr, CtxID>>,
+    pub generics_to_name: RefCell<HashMap<CtxID, IStr>>,
 }
 
 pub struct ErrorState {
@@ -195,7 +199,7 @@ impl Quark {
         StalledDog::nudge_quark();
 
         let reason: IStr = reason.into();
-        tracing::debug!("unifies {from:?} into {into:?} because {reason}");
+        println!("unifies {from:?} into {into:?} because {reason}");
         tracing::warn!("borrows instances for add_unify");
         let mut refm = self.instances.borrow_mut();
         let mut resulting_unifies = Vec::new();
@@ -280,7 +284,7 @@ impl Quark {
     /// If compilation fully stalls then this is called,
     /// to let us emit final errors or prepare Scribe to output our
     /// monomorphizations
-    fn end_last_phase(&self) {
+    fn end_last_phase(&'static self) {
         let mut errors = self.type_errors.borrow_mut();
 
         tracing::debug!("Ending last phase, current unification state:");
@@ -313,8 +317,20 @@ impl Quark {
             tracing::error!("Unresolved insts: {}", unresolved_insts.len());
 
             for tid in unresolved_insts {
+                let note = if let Some(v) = self.with_instance(tid, |inst| unsafe { inst.once_base.try_get().copied() }) {
+                    let cr = v.resolve().canonical_typeref().resolve().unwrap();
+
+                    format!("the type base was found to be a {cr:?}").intern()
+                } else {
+                    "nothing about the type base could be determined".intern()
+                };
+
+                let b = self.instances.borrow();
+                println!("Instances: {b:#?}");
+
                 errors.push(CompilationError::UnrestrictedTypeError(
                     UnrestrictedTypeError {
+                        note,
                         tid,
                         peers: self.instances.borrow().peers_of(tid),
                     },
@@ -322,10 +338,10 @@ impl Quark {
             }
 
             if free_vars.len() > 0 {
-                let b = self.instances.borrow();
 
-                //println!("Instances: {b:#?}");
             }
+
+
             tracing::error!("Unrestricted vars: {}", free_vars.len());
         }
 
@@ -375,8 +391,7 @@ impl Quark {
                 match r {
                     Ok(cid) => {
                         tracing::info!("constructs an instance for single {name:?}, and it pointed to {cid:?} for a simple typeref");
-                        let instance =
-                            Instance::infer_instance(Some(Either::Left(cid)), self).await;
+                        let instance = Instance::infer_instance(Some(cid), self).await;
 
                         //panic!("got an instance");
 
@@ -416,7 +431,10 @@ impl Quark {
                 let existing_tid = with_generics.get(&label);
 
                 let existing_tid = match existing_tid {
-                    Some(s) => *s,
+                    Some(s) => {
+                        println!("Gives the generic the known tid {s:?}");
+                        *s
+                    }
                     None => {
                         println!("The generic was {label}");
                         panic!("got a generic that didn't mean anything in the context, we are {:?} and within {:?}", self.node_id, from_base);
@@ -454,6 +472,10 @@ impl Quark {
                     resolved_generics.push(resolved);
                 }
 
+                println!(
+                    "Makes an instance of {:?} with generics {resolved_generics:?}",
+                    base.resolve().canonical_typeref().resolve().unwrap()
+                );
                 let (inst, unify) = Instance::with_generics(base, self, resolved_generics).await;
 
                 for Unify { from, into } in unify {
@@ -602,9 +624,14 @@ impl Quark {
         let cs = sender.clone();
 
         let mut generics = HashMap::new();
+
+        println!("Generics are {:?}", node_id.resolve().generics);
+
         for (gname, gtype) in node_id.resolve().generics.iter() {
-            tracing::error!("added a generic {gname} within {node_id:?}");
-            tracing::error!("ignoring constraints on generics for now");
+            println!(
+                "a - added a generic {gname} within {node_id:?} who is {:?}",
+                node_id.resolve().canonical_typeref().resolve().unwrap()
+            );
             let g_tid = TypeID(uuid::Uuid::new_v4(), NodeInfo::Builtin, true);
 
             generics.insert(*gname, g_tid);
@@ -664,9 +691,7 @@ impl Quark {
                                 async move {
                                     let unit_ty = self
                                         .resolve_typeref(
-                                            SyntacticTypeReferenceRef::from_std(
-                                                "std::primitive::Unit",
-                                            ),
+                                            SyntacticTypeReferenceRef::from_std("std::Unit"),
                                             &self.generics,
                                             self.node_id,
                                             false,
@@ -727,7 +752,7 @@ impl Quark {
                         async move {
                             let btid = self
                                 .resolve_typeref(
-                                    SyntacticTypeReferenceRef::from_std("std::primitive::bool"),
+                                    SyntacticTypeReferenceRef::from_std("std::bool"),
                                     &HashMap::new(),
                                     self.node_id,
                                     false,
@@ -743,7 +768,12 @@ impl Quark {
                 then_ty
             }
             AnyExpression::For(f) => {
-                let For { body, pre, post, condition } = f;
+                let For {
+                    body,
+                    pre,
+                    post,
+                    condition,
+                } = f;
 
                 self.do_the_thing_rec(pre, false);
 
@@ -758,7 +788,7 @@ impl Quark {
                         async move {
                             let btid = self
                                 .resolve_typeref(
-                                    SyntacticTypeReferenceRef::from_std("std::primitive::bool"),
+                                    SyntacticTypeReferenceRef::from_std("std::bool"),
                                     &HashMap::new(),
                                     self.node_id,
                                     false,
@@ -776,7 +806,7 @@ impl Quark {
                         async move {
                             let utid = self
                                 .resolve_typeref(
-                                    SyntacticTypeReferenceRef::from_std("std::primitive::Unit"),
+                                    SyntacticTypeReferenceRef::from_std("std::Unit"),
                                     &HashMap::new(),
                                     self.node_id,
                                     false,
@@ -790,7 +820,7 @@ impl Quark {
                 }*/
 
                 body_ty
-            },
+            }
             AnyExpression::Convert(c) => todo!(),
             AnyExpression::While(_) => todo!(),
             AnyExpression::Branch(_) => todo!(),
@@ -944,7 +974,7 @@ impl Quark {
                                     // tell the related type about the direct
                                     let resp = self.conversations.wait_for(
                                         Message {
-                                            to: Destination { node: base_ctx.left().expect("impl generics"), service: Service::Transponster() },
+                                            to: Destination { node: base_ctx, service: Service::Transponster() },
                                             from: self.as_dest(),
                                             send_reply_to: self.as_dest(),
                                             conversation: Uuid::new_v4(),
@@ -959,7 +989,7 @@ impl Quark {
                                     // tell the dest type that we have an indirect usage
                                     let resp = self.conversations.wait_for(
                                         Message {
-                                            to: Destination { node: base_ctx.left().expect("impl generics"), service: Service::Transponster() },
+                                            to: Destination { node: base_ctx, service: Service::Transponster() },
                                             from: self.as_dest(),
                                             send_reply_to: self.as_dest(),
                                             conversation: Uuid::new_v4(),
@@ -1062,11 +1092,7 @@ impl Quark {
 
                             let ctx_for_base = nr.using_context(&self.conversations).await;
 
-                            let inst = Instance::infer_instance(
-                                ctx_for_base.ok().map(|cid| Either::Left(cid)),
-                                self,
-                            )
-                            .await;
+                            let inst = Instance::infer_instance(ctx_for_base.ok(), self).await;
 
                             self.assign_instance(et, inst, false);
                         },
@@ -1172,6 +1198,8 @@ impl Quark {
                                 inst_generics.push(ty);
                             }
 
+                            assert!(inst_generics.is_empty(), "just for now, since don't have code to use it");
+
                             let (inst, unifies) = Instance::construct_instance(
                                 ctx_for_base,
                                 inst_fields,
@@ -1229,8 +1257,8 @@ impl Quark {
             ast::tree::NodeUnion::Function(f, imp) => {
                 let f = f.clone();
                 warn!(
-                    "quark for a function starts up using ctx id {:?}",
-                    self.node_id
+                    "quark for a function starts up using ctx id {:?}, which is {:?}",
+                    self.node_id, self.node_id.resolve().canonical_typeref().resolve().unwrap(),
                 );
                 let imp = imp
                     .lock()
@@ -1323,7 +1351,7 @@ impl Quark {
                 );
 
                 while let Ok(v) = ep.wait().await {
-                    info!("Quark got a message");
+                    //info!("Quark got a message");
 
                     ep.send(Message {
                         to: v.send_reply_to,
@@ -1355,6 +1383,39 @@ impl Quark {
 
         let mut params = Vec::new();
 
+        for (&gst, &gty) in self.generics.iter() {
+            let gid = CtxID::new_generic(gst);
+            println!("Made a new generic node");
+
+            self.meta.generics_from_name.borrow_mut().insert(gst, gid);
+            self.meta.generics_to_name.borrow_mut().insert(gid, gst);
+
+            println!("Makes one from generic resolved");
+            let (inst, unify) = Instance::from_resolved(
+                ResolvedType {
+                    node: gid,
+                    generics: vec![],
+                },
+                self,
+            )
+            .await;
+
+            for Unify { from, into } in unify {
+                unreachable!("maybe?");
+                self.add_unify(from, into, "idk, why did we get this?");
+            }
+
+            println!(
+                "takes generic by name {gst} and gives it a specific cid: {gid:?} for gty {gty:?}"
+            );
+
+            let new_tid = self.introduce_instance(inst, NodeInfo::Builtin, false);
+
+            self.add_unify(new_tid, gty, "generics serve as roots for other variables");
+
+            //self.introduce_instance(gty, inst, true);
+        }
+
         for (param_name, param_type) in f.parameters.clone() {
             let ptype = self
                 .resolve_typeref(
@@ -1365,7 +1426,11 @@ impl Quark {
                 )
                 .await;
 
+            let pty_s = param_type.resolve().unwrap();
+
             let vid = self.acting_on.borrow_mut().next_var();
+
+            println!("resolved the type of {param_name} with given type {pty_s:?} to {ptype:?}");
 
             self.type_of_var.borrow_mut().insert(vid, ptype);
 
@@ -1420,7 +1485,7 @@ impl Quark {
 
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub struct ResolvedType {
-    pub node: Either<CtxID, Generic>,
+    pub node: CtxID,
 
     // either it's a proper given type or, potentially,
     // it's a generic passing through
@@ -1431,17 +1496,10 @@ pub struct ResolvedType {
 
 impl Debug for ResolvedType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.node {
-            Either::Left(cid) => {
-                let stref = cid.resolve().canonical_typeref().resolve().unwrap();
-                match self.generics.as_slice() {
-                    [] => write!(f, "{:?}", stref),
-                    other => write!(f, "{:?}<{:?}>", stref, other),
-                }
-            }
-            Either::Right(gen) => {
-                todo!()
-            }
+        let stref = self.node.resolve().canonical_typeref().resolve().unwrap();
+        match self.generics.as_slice() {
+            [] => write!(f, "{:?}", stref),
+            other => write!(f, "{:?}<{:?}>", stref, other),
         }
     }
 }

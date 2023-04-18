@@ -483,7 +483,7 @@ impl AnyExpression {
 
                 let value_type = match contents {
                     cst::Literal::UnitLiteral() => {
-                        SyntacticTypeReferenceRef::from_std("std::primitive::Unit")
+                        SyntacticTypeReferenceRef::from_std("std::Unit")
                     }
                     cst::Literal::StringLiteral(_) => todo!(),
                     cst::Literal::f32Literal(_) => todo!(),
@@ -503,7 +503,7 @@ impl AnyExpression {
                     cst::Literal::UnknownIntegerLiteral(v) => {
                         tracing::warn!("for now just casting unknown ints down to i64");
                         //Literal::lit_i32(*v as i32)
-                        SyntacticTypeReferenceRef::from_std("std::primitive::i64")
+                        SyntacticTypeReferenceRef::from_std("std::i64")
                     }
                     cst::Literal::Boolean(_) => todo!(),
                 };
@@ -844,7 +844,7 @@ impl Literal {
     pub fn lit_bool(v: bool) -> Self {
         Literal {
             info: NodeInfo::Builtin,
-            has_type: SyntacticTypeReferenceRef::from_std("std::primitive::bool"),
+            has_type: SyntacticTypeReferenceRef::from_std("std::bool"),
             value: LiteralExpression {
                 node_info: cst::NodeInfo::Builtin,
                 contents: cst::Literal::Boolean(v),
@@ -855,7 +855,7 @@ impl Literal {
     pub fn lit_i32(val: i32) -> Self {
         Literal {
             info: NodeInfo::Builtin,
-            has_type: SyntacticTypeReferenceRef::from_std("std::primitive::i32"),
+            has_type: SyntacticTypeReferenceRef::from_std("std::i32"),
             value: LiteralExpression {
                 node_info: cst::NodeInfo::Builtin,
                 contents: cst::Literal::i32Literal(val),

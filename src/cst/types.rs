@@ -28,7 +28,7 @@ pub struct StructDefinition {
     pub methods: Vec<FunctionDefinition>,
 }
 
-#[derive(Copy, Debug, Clone)]
+#[derive(Copy, Debug, Clone, Default)]
 pub struct StructuralTyAttrs {
     /// States that this is a ref type or a non-ref type (by-value)
     /// non-ref types must not be self-referential!
@@ -310,7 +310,7 @@ impl std::fmt::Debug for SyntacticTypeReference {
             }
             SyntacticTypeReferenceInner::Generic { label } => label.resolve().to_owned(),
             SyntacticTypeReferenceInner::Parameterized { name, generics } => {
-                format!("{name:?}<{generics:?}")
+                format!("{name:?}<{generics:?}>")
             }
             SyntacticTypeReferenceInner::Reference { to, mutable } => {
                 format!("&{}<{to:?}>", if *mutable { "mut" } else { "" })

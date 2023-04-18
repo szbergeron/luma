@@ -187,6 +187,7 @@ fn print_from_root(root: CtxID, indent: usize, named: IStr) {
             let rtype = fd.return_type.resolve().unwrap().clone();
             format!("fn {name}({args:?}) -> {rtype:?}")
         }
+        ast::tree::NodeUnion::Generic(_) => unreachable!("shouldn't exist at this point"),
         ast::tree::NodeUnion::Global(_) => todo!(),
         ast::tree::NodeUnion::Empty() => {
             format!("module")
