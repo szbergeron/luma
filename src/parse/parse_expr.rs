@@ -782,6 +782,36 @@ impl<'lexer> Parser<'lexer> {
         t.success(cst::WhileExpression::new_expr(node_info, while_exp, do_exp))
     }
 
+    pub fn parse_for(
+        &mut self,
+        t: &TokenProvider,
+        with_generics: &Vec<IStr>,
+    ) -> ExpressionResult {
+        let mut t = parse_header!(t);
+
+        let start = t.take(Token::For).join()?.start;
+
+        t.take(Token::LParen).join()?;
+
+        let pre = self.parse_expr(&t, with_generics).join_hard(&mut t).catch(&mut t)?;
+
+        t.take(Token::Semicolon).join()?;
+
+        let check = self.parse_expr(&t, with_generics).join_hard(&mut t).catch(&mut t)?;
+
+        t.take(Token::Semicolon).join()?;
+
+        let post = self.parse_expr(&t, with_generics).join_hard(&mut t).catch(&mut t)?;
+
+        t.take(Token::RParen).join()?;
+
+        let body = self.parse_expr(&t, with_generics).join_hard(&mut t).catch(&mut t)?;
+
+        let node_info = NodeInfo::from_indices(start, body.as_node().end().unwrap());
+
+        t.success(Box::new(cst::ExpressionWrapper::For(cst::ForExpression { node_info, pre, check, post, body })))
+    }
+
     pub fn syntactic_block(
         &mut self,
         t: &TokenProvider,
@@ -946,6 +976,11 @@ impl<'lexer> Parser<'lexer> {
                     .parse_while(&t, with_generics)
                     .join_hard(&mut t)
                     .catch(&mut t)?;
+
+                r
+            }
+            Token::For => {
+                let r = self.parse_for(&t, with_generics).join_hard(&mut t).catch(&mut t)?;
 
                 r
             }

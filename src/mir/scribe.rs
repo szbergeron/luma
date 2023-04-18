@@ -13,6 +13,7 @@ use either::Either;
 use futures::future::join_all;
 use itertools::Itertools;
 use local_channel::mpsc::Sender;
+use once_cell::sync::OnceCell;
 use rand::random;
 use smallstr::SmallString;
 
@@ -26,12 +27,13 @@ use crate::{
     compile::per_module::{
         static_pinned_leaked, Content, ConversationContext, Earpiece, Message, Service,
     },
-    cst::{self, ScopedName, StructuralTyAttrs, SyntacticTypeReference, LiteralExpression},
+    cst::{self, LiteralExpression, ScopedName, StructuralTyAttrs, SyntacticTypeReference},
     helper::{
         interner::{IStr, Internable, SpurHelper},
         SwapWith,
     },
-    lir::expressions::{Lower, UntypedVar, VarType, Variable}, mir::expressions::StaticAccess,
+    lir::expressions::{Lower, UntypedVar, VarType, Variable},
+    mir::expressions::{StaticAccess, For},
 };
 
 use super::{
@@ -159,7 +161,7 @@ impl Scribe {
                 let r = self.resolve_name(name, within_monomorphization).await;
 
                 ResolvedType {
-                    node: r.unwrap(),
+                    node: Either::Left(r.unwrap()),
                     generics: vec![],
                 }
             }
@@ -190,7 +192,7 @@ impl Scribe {
                 .await;
 
                 ResolvedType {
-                    node: base,
+                    node: Either::Left(base),
                     generics: each,
                 }
             }
@@ -310,9 +312,16 @@ impl<'a> ScribeOne<'a> {
                 writeln!(code, "{ind}}}").unwrap();
             }
             AnyExpression::Literal(l) => {
-                let Literal { info, has_type, value } = l;
+                let Literal {
+                    info,
+                    has_type,
+                    value,
+                } = l;
 
-                let LiteralExpression { node_info, contents } = value;
+                let LiteralExpression {
+                    node_info,
+                    contents,
+                } = value;
 
                 match contents {
                     cst::Literal::i64Literal(i) => {
@@ -321,7 +330,7 @@ impl<'a> ScribeOne<'a> {
                     cst::Literal::UnknownIntegerLiteral(i) => {
                         write!(code, "{i}").unwrap();
                     }
-                    other => todo!("don't handle {other:?} literals")
+                    other => todo!("don't handle {other:?} literals"),
                 }
             }
             AnyExpression::Variable(v, _i) => {
@@ -330,7 +339,13 @@ impl<'a> ScribeOne<'a> {
                 let _ = write!(code, "({v}.clone())");
             }
             AnyExpression::Binding(b) => {
-                let Binding { info, name, introduced_as, has_type, from_source } = b;
+                let Binding {
+                    info,
+                    name,
+                    introduced_as,
+                    has_type,
+                    from_source,
+                } = b;
 
                 let _ = writeln!(code, "{ind}//binds variable {name}");
 
@@ -366,7 +381,6 @@ impl<'a> ScribeOne<'a> {
                 let StaticAccess { on, field, info } = sa;
                 let on_s = self.to_rs_nondyn(quark, on, indent + 1).await;
 
-
                 if let Some(tid) = quark.meta.are_methods.borrow().get(&cur_eid) {
                     // figure out what specific method this is
                     let rt = quark.resolved_type_of(*tid).await;
@@ -379,7 +393,12 @@ impl<'a> ScribeOne<'a> {
                 } else {
                     let base_type = quark.resolved_type_of(quark.typeofs.get(on)).await;
 
-                    let meta_attrs = base_type.node.resolve().get_struct_attrs();
+                    let meta_attrs = base_type
+                        .node
+                        .left()
+                        .expect("generics")
+                        .resolve()
+                        .get_struct_attrs();
 
                     if meta_attrs.is_ref {
                         let _ = writeln!(code, "({on_s}).borrow_mut().{field}");
@@ -387,10 +406,13 @@ impl<'a> ScribeOne<'a> {
                         let _ = writeln!(code, "({on_s}).{field}");
                     }
                 }
-
             }
             AnyExpression::If(i) => {
-                let If { condition, then_do, else_do } = i;
+                let If {
+                    condition,
+                    then_do,
+                    else_do,
+                } = i;
 
                 let if_is = self.to_rs_nondyn(quark, condition, indent + 1).await;
                 let then_do = self.to_rs_nondyn(quark, then_do, indent + 1).await;
@@ -402,8 +424,36 @@ impl<'a> ScribeOne<'a> {
 
                 let _ = writeln!(code, "if {if_is} {{ {then_do} }} else {{ {else_do} }}");
             }
+            AnyExpression::For(f) => {
+                let For { body, pre, post, condition } = f;
+
+                let pre_s = self.to_rs_nondyn(quark, pre, indent + 1).await;
+                let cond_s = self.to_rs_nondyn(quark, condition, indent + 1).await;
+                let post_s = self.to_rs_nondyn(quark, post, indent + 1).await;
+                let body_s = self.to_rs_nondyn(quark, body, indent + 1).await;
+
+                let _ = writeln!(code, "{ind}//for loop");
+
+                let _ = writeln!(code, "{ind}{{");
+
+                let _ = writeln!(code, "{ind}{pre_s};");
+
+                let _ = writeln!(code, "{ind}while( ({cond_s}) ) {{;");
+
+                let _ = writeln!(code, "{ind} {{ {body_s} }};");
+
+                let _ = writeln!(code, "{ind}{post_s};");
+
+                let _ = writeln!(code, "{ind}}}");
+
+                let _ = writeln!(code, "{ind}}}");
+            }
             AnyExpression::Invoke(i) => {
-                let Invoke { info, target_fn, args } = i;
+                let Invoke {
+                    info,
+                    target_fn,
+                    args,
+                } = i;
 
                 let on = self.to_rs_nondyn(quark, target_fn, indent + 1).await;
 
@@ -426,7 +476,6 @@ impl<'a> ScribeOne<'a> {
                     fields,
                 } = c;
 
-
                 assert!(generics.len() == 0, "we don't handle generics yet");
 
                 let bt = self
@@ -434,7 +483,6 @@ impl<'a> ScribeOne<'a> {
                     .resolve_name(base_type, self.mono)
                     .await
                     .unwrap();
-
 
                 let bt_mono = Monomorphization {
                     of: bt,
@@ -468,7 +516,6 @@ impl<'a> ScribeOne<'a> {
             }
             _ => {
                 println!("Bad: unhandled exp");
-
             }
         }
 
@@ -490,8 +537,11 @@ impl<'a> ScribeOne<'a> {
         match exp {
             AnyExpression::Block(b) => {
                 let tv = UntypedVar::temp();
-
                 code.push(format!("{ind}let mut {tv} = Value::Uninhabited();"));
+
+                //
+                if let Some(v) = b.final_expr {
+                }
 
                 code.push(format!("{ind}{{"));
 
@@ -499,13 +549,27 @@ impl<'a> ScribeOne<'a> {
                     let r = self
                         .to_rs_dyn(quark, expr, preamble, code, indent + 1)
                         .await;
+
                     code.push(format!("{ind};"));
                     if let Some(r) = r {
-                        code.push(format!("{ind}  {tv} = {r}.clone();"));
+                        //code.push(format!("{ind}  {tv} = {r}.clone();"));
                     }
                 }
 
+
+                match b.final_expr {
+                    Some(v) => {
+                        let rv = self.to_rs_dyn(quark, v, preamble, code, indent + 1).await.unwrap();
+
+                        code.push(format!("{ind}{tv} = {rv};"));
+                    },
+                    None => {
+
+                    }
+                };
+
                 code.push(format!("{ind}}}"));
+
 
                 Some(tv)
             }
@@ -724,13 +788,14 @@ impl<'a> ScribeOne<'a> {
                     .await
                     .unwrap();
 
+                
                 self.emit_composite_builtup(
                     preamble,
                     code,
                     indent,
                     &methods_value,
                     ResolvedType {
-                        node: lit_res_ty,
+                        node: Either::Left(lit_res_ty),
                         generics: vec![],
                     },
                 )
@@ -826,7 +891,14 @@ impl<'a> ScribeOne<'a> {
         t_of: ResolvedType,
     ) {
         let ind = indents(indent);
-        for child in t_of.node.resolve().children.iter() {
+        for child in t_of
+            .node
+            .left()
+            .expect("generics")
+            .resolve()
+            .children
+            .iter()
+        {
             let c = child.value();
 
             match &c.resolve().inner {
@@ -835,12 +907,13 @@ impl<'a> ScribeOne<'a> {
                     tracing::error!("this is almost definitely unsound but is enough for the demo, didn't have time to finish it");
                     let r = if !inner_gens.is_empty() {
                         assert!(
-                            inner_gens.len() == t_of.node.resolve().generics.len(),
+                            inner_gens.len()
+                                == t_of.node.left().expect("generics").resolve().generics.len(),
                             "so we can parameterize directly down"
                         );
 
                         let rt = ResolvedType {
-                            node: *c,
+                            node: Either::Left(*c),
                             generics: t_of.generics.clone(),
                         };
 
@@ -933,7 +1006,7 @@ impl<'a> ScribeOne<'a> {
 
             let entry_fn_id = quark.meta.entry_id.get().copied().unwrap();
 
-            match OUTPUT_TYPE {
+            match output_type() {
                 OutputType::FullInf() => {
                     //let params = Vec::new();
 
@@ -952,6 +1025,7 @@ impl<'a> ScribeOne<'a> {
 
                     let rt = ret_mono.encode_ref();
 
+                    within.push(format!("#[inline(never)]"));
                     within.push(format!("pub fn {fname}({params}) -> {rt}"));
 
                     let res = self.to_rs_nondyn(quark, entry_fn_id, 2).await;
@@ -984,7 +1058,6 @@ impl<'a> ScribeOne<'a> {
                 }
             }
             //self.codegen_fn_rec(quark, entry_fn_id, &mut within).await;
-
         } else {
             within.push("// encoding a builtin".to_owned());
             within.push(format!("// builtin is {is_builtin:?}"));
@@ -993,10 +1066,10 @@ impl<'a> ScribeOne<'a> {
                 .as_ref()
                 .unwrap()
                 .impls
-                .get(&OUTPUT_TYPE)
+                .get(&output_type())
                 .unwrap();
 
-            match OUTPUT_TYPE {
+            match output_type() {
                 OutputType::FullInf() => {
                     //println!("TODO: encode builtins for fullinf");
 
@@ -1015,7 +1088,6 @@ impl<'a> ScribeOne<'a> {
                     }))
                     .await
                     .join(", ");
-
 
                     let rt = ret_mono.encode_ref();
 
@@ -1075,7 +1147,7 @@ impl<'a> ScribeOne<'a> {
         let mut lines: Vec<String> = vec!["\n".to_owned()];
         let name = self.mono.encode_name();
 
-        match OUTPUT_TYPE {
+        match output_type() {
             OutputType::FullInf() => {
                 if let Some(b) = attrs.is_builtin {
                     // already builtin
@@ -1146,7 +1218,15 @@ pub fn get_lines() -> Vec<String> {
 }
 
 //const OUTPUT_TYPE: OutputType = OutputType::AssumeTypeUnsafe();
-const OUTPUT_TYPE: OutputType = OutputType::FullInf();
+//const OUTPUT_TYPE: OutputType = OutputType::FullInf();
+
+lazy_static! {
+    pub static ref OUTPUT_TYPE_ONCE: OnceCell<OutputType> = OnceCell::new();
+}
+
+pub fn output_type() -> OutputType {
+    OUTPUT_TYPE_ONCE.get().copied().unwrap()
+}
 
 #[derive(Eq, PartialEq, Hash, Clone, Copy, Debug)]
 pub enum OutputType {
@@ -1209,6 +1289,8 @@ impl Monomorphization {
     pub fn from_resolved(r: ResolvedType) -> Self {
         let generics = r
             .node
+            .left()
+            .expect("generics")
             .resolve()
             .generics
             .clone()
@@ -1218,7 +1300,7 @@ impl Monomorphization {
             .collect();
 
         Self {
-            of: r.node,
+            of: r.node.left().expect("generics"),
             with: generics,
         }
     }

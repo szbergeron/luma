@@ -17,6 +17,12 @@ mod primitive {
         fn operator[_==_](self: std::primitive::i64, other: std::primitive::i64) -> std::primitive::bool
             #builtin luma_i64_op_eq_fast luma_i64_op_eq_silly luma_op_eq_slow;
 
+        fn operator[_<_](self: std::primitive::i64, other: std::primitive::i64) -> std::primitive::bool
+            #builtin luma_i64_op_lt_fast luma_i64_op_lt_silly luma_op_lt_slow;
+
+        fn operator[_>_](self: std::primitive::i64, other: std::primitive::i64) -> std::primitive::bool
+            #builtin luma_i64_op_gt_fast luma_i64_op_gt_silly luma_op_gt_slow;
+
     };
 
     struct bool noref #builtin bool {
@@ -39,6 +45,24 @@ mod primitive {
         };
     };
 
+    fn for_loop(from: std::primitive::i64, until: std::primitive::i64) -> std::primitive::Unit {
+        let b = 0;
+        for(let a = from; a < until; a = a + 1) {
+            b = b + 1;
+        }
+    };
+
+/*
+    fn bad_scope() -> std::primitive::Unit {
+        if 1 == 2 {
+            let a = 3;
+            4
+        } else {
+            a
+        }
+    }
+    */
+
     fn compose() -> std::primitive::huh {
         let h = struct std::primitive::huh { a: 5, b: 6 };
 
@@ -55,7 +79,7 @@ mod primitive {
         42
     }
 
-    struct parametric<T> {
+    /*struct parametric<T> {
         var val: T;
 
         fn change<T>(self: parametric<T>, val: T) -> std::primitive::Unit {
@@ -74,9 +98,10 @@ mod primitive {
         //std::primitive::print(pa.val);
 
         struct std::primitive::Unit {}
-    }
+    }*/
 
     struct fdf isref ismod {
+        var b: std::primitive::i64;
     };
 
     struct sref isref ismod {
@@ -84,7 +109,6 @@ mod primitive {
     };
 
     fn sref_s(s: std::primitive::sref) -> std::primitive::Unit {
-        //
     };
 
     fn funky_dyn_fields(a: std::primitive::fdf) -> std::primitive::i64 {
@@ -96,6 +120,8 @@ mod primitive {
         //a.def = struct std::primitive::Unit {};
 
         a.def = a.abc;
+
+        a.g = struct std::primitive::fdf { b: 20 };
 
         //a.g = a.g;
 
@@ -110,13 +136,28 @@ mod primitive {
         } else {
             std::primitive::fibonacci(n - 1) + std::primitive::fibonacci(n - 2)
         }
-    }
+    };
 
-    fn fib_test() -> std::primitive::Unit {
-        std::primitive::fibonacci(5);
+    fn fib_test() -> std::primitive::i64 {
+        std::primitive::fibonacci(17)
 
         //struct std::primitive::Unit {}
-    }
+    };
+
+    fn ackermann(m: std::primitive::i64, n: std::primitive::i64) -> std::primitive::i64 {
+        if m == 0 {
+            n + 1
+        } else if n == 0 {
+            std::primitive::ackermann(m - 1, 1)
+        } else {
+            std::primitive::ackermann(m - 1, std::primitive::ackermann(m, n - 1))
+        }
+    };
+
+    fn ackermann_test() -> std::primitive::i64 {
+        std::primitive::ackermann(3, 4)
+    };
+
 
 }
 

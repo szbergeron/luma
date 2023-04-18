@@ -2,7 +2,7 @@ use crate::avec::AtomicVecIndex;
 use crate::compile::per_module::Photon;
 use crate::cst::{FunctionBuiltin, SyntacticTypeReference};
 use crate::errors::{FieldAccessError, UnrestrictedTypeError};
-use crate::mir::expressions::{Binding, If};
+use crate::mir::expressions::{Binding, If, For};
 use crate::mir::scribe::ScribeOne;
 use crate::mir::transponster::Memo;
 use crate::{
@@ -37,6 +37,7 @@ use crate::{
     },
 };
 
+use super::instance::Generic;
 use super::scribe::Monomorphization;
 use super::{
     expressions::ExpressionID,
@@ -374,7 +375,8 @@ impl Quark {
                 match r {
                     Ok(cid) => {
                         tracing::info!("constructs an instance for single {name:?}, and it pointed to {cid:?} for a simple typeref");
-                        let instance = Instance::infer_instance(Some(cid), self).await;
+                        let instance =
+                            Instance::infer_instance(Some(Either::Left(cid)), self).await;
 
                         //panic!("got an instance");
 
@@ -671,7 +673,11 @@ impl Quark {
                                         )
                                         .await;
 
-                                    self.add_unify(unit_ty, block_ty, "an empty block returns unit");
+                                    self.add_unify(
+                                        unit_ty,
+                                        block_ty,
+                                        "an empty block returns unit",
+                                    );
                                 },
                                 "resolve unit ref for empty block",
                             )
@@ -736,6 +742,55 @@ impl Quark {
 
                 then_ty
             }
+            AnyExpression::For(f) => {
+                let For { body, pre, post, condition } = f;
+
+                self.do_the_thing_rec(pre, false);
+
+                let cond_ty = self.do_the_thing_rec(condition, false);
+
+                self.do_the_thing_rec(post, false);
+
+                let body_ty = self.do_the_thing_rec(body, false);
+
+                unsafe {
+                    self.executor.install(
+                        async move {
+                            let btid = self
+                                .resolve_typeref(
+                                    SyntacticTypeReferenceRef::from_std("std::primitive::bool"),
+                                    &HashMap::new(),
+                                    self.node_id,
+                                    false,
+                                )
+                                .await;
+
+                            self.add_unify(btid, cond_ty, "the condition of a for must be a bool");
+                        },
+                        "force condition to be a bool",
+                    )
+                }
+
+                /*unsafe {
+                    self.executor.install(
+                        async move {
+                            let utid = self
+                                .resolve_typeref(
+                                    SyntacticTypeReferenceRef::from_std("std::primitive::Unit"),
+                                    &HashMap::new(),
+                                    self.node_id,
+                                    false,
+                                )
+                                .await;
+
+                            self.add_unify(utid, cond_ty, "the body of a for loop should be of type Unit");
+                        },
+                        "force body to be a Unit",
+                    )
+                }*/
+
+                body_ty
+            },
             AnyExpression::Convert(c) => todo!(),
             AnyExpression::While(_) => todo!(),
             AnyExpression::Branch(_) => todo!(),
@@ -889,7 +944,7 @@ impl Quark {
                                     // tell the related type about the direct
                                     let resp = self.conversations.wait_for(
                                         Message {
-                                            to: Destination { node: base_ctx, service: Service::Transponster() },
+                                            to: Destination { node: base_ctx.left().expect("impl generics"), service: Service::Transponster() },
                                             from: self.as_dest(),
                                             send_reply_to: self.as_dest(),
                                             conversation: Uuid::new_v4(),
@@ -904,7 +959,7 @@ impl Quark {
                                     // tell the dest type that we have an indirect usage
                                     let resp = self.conversations.wait_for(
                                         Message {
-                                            to: Destination { node: base_ctx, service: Service::Transponster() },
+                                            to: Destination { node: base_ctx.left().expect("impl generics"), service: Service::Transponster() },
                                             from: self.as_dest(),
                                             send_reply_to: self.as_dest(),
                                             conversation: Uuid::new_v4(),
@@ -1007,7 +1062,11 @@ impl Quark {
 
                             let ctx_for_base = nr.using_context(&self.conversations).await;
 
-                            let inst = Instance::infer_instance(ctx_for_base.ok(), self).await;
+                            let inst = Instance::infer_instance(
+                                ctx_for_base.ok().map(|cid| Either::Left(cid)),
+                                self,
+                            )
+                            .await;
 
                             self.assign_instance(et, inst, false);
                         },
@@ -1361,21 +1420,28 @@ impl Quark {
 
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub struct ResolvedType {
-    pub node: CtxID,
+    pub node: Either<CtxID, Generic>,
 
     // either it's a proper given type or, potentially,
     // it's a generic passing through
-    pub generics: Vec<Either<ResolvedType, IStr>>,
+    pub generics: Vec<ResolvedType>,
     // TODO: finish this and do proper monomorphization once I have time (not right now :) )
     //pub generics: Vec<ResolvedType>,
 }
 
 impl Debug for ResolvedType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let stref = self.node.resolve().canonical_typeref().resolve().unwrap();
-        match self.generics.as_slice() {
-            [] => write!(f, "{:?}", stref),
-            other => write!(f, "{:?}<{:?}>", stref, other),
+        match self.node {
+            Either::Left(cid) => {
+                let stref = cid.resolve().canonical_typeref().resolve().unwrap();
+                match self.generics.as_slice() {
+                    [] => write!(f, "{:?}", stref),
+                    other => write!(f, "{:?}<{:?}>", stref, other),
+                }
+            }
+            Either::Right(gen) => {
+                todo!()
+            }
         }
     }
 }

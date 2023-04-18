@@ -144,21 +144,22 @@ impl Executor {
             let mut named = String::new();
 
             let mref = unsafe {
-                self.futures
-                    .get()
-                    .as_mut()
-                    .unwrap()
-                    .get_mut(&next_id)
-                    .map(|(t, n)| {
-                        //info!("going to poll task named '{n}', id'd {next_id}");
-                        named = n.clone();
-                        t
-                    })
-                    .unwrap()
-                    .future
-                    .get()
-                    .as_mut()
-                    .unwrap()
+                if let Some(v) =
+                    self.futures
+                        .get()
+                        .as_mut()
+                        .unwrap()
+                        .get_mut(&next_id)
+                        .map(|(t, n)| {
+                            //info!("going to poll task named '{n}', id'd {next_id}");
+                            named = n.clone();
+                            t
+                        })
+                {
+                    v.future.get().as_mut().unwrap()
+                } else {
+                    continue;
+                }
             };
 
             let waker = MyWaker {
@@ -330,30 +331,36 @@ impl<T: Clone + std::fmt::Debug + 'static> UnsafeAsyncCompletable<T> {
     {
         if a.id == b.id {
             tracing::error!("tried to combine some completable with itself");
-            return a
+            return a;
         }
 
         let a1 = a.clone();
         let b1 = b.clone();
-        within.install(async move {
-            let a1v = a1.clone().wait().await;
-            let e = b1.complete(a1v);
+        within.install(
+            async move {
+                let a1v = a1.clone().wait().await;
+                let e = b1.complete(a1v);
 
-            if let Err(e) = e {
-                if_conflict(a1.try_get().unwrap(), b1.try_get().unwrap());
-            }
-        }, "combine a into b");
+                if let Err(e) = e {
+                    if_conflict(a1.try_get().unwrap(), b1.try_get().unwrap());
+                }
+            },
+            "combine a into b",
+        );
 
         let a2 = a.clone();
         let b2 = b.clone();
-        within.install(async move {
-            let b2v = b2.clone().wait().await;
-            let e = a2.complete(b2v);
+        within.install(
+            async move {
+                let b2v = b2.clone().wait().await;
+                let e = a2.complete(b2v);
 
-            if let Err(e) = e {
-                if_conflict(a2.try_get().unwrap(), b2.try_get().unwrap());
-            }
-        }, "combine a into b");
+                if let Err(e) = e {
+                    if_conflict(a2.try_get().unwrap(), b2.try_get().unwrap());
+                }
+            },
+            "combine a into b",
+        );
 
         a // reuse handle, no need for additional "things"
     }

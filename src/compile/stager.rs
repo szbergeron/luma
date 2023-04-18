@@ -6,6 +6,7 @@ use crate::errors::CompilationError;
 
 use crate::compile::per_module::CompilationUnit;
 use crate::lex::{ErrorSet, LookaheadHandle, TokenStream};
+use crate::mir::scribe::{OutputType, OUTPUT_TYPE_ONCE};
 use crate::parse::schema::TokenProvider;
 use crate::parse::Parser;
 use std::collections::HashSet;
@@ -276,7 +277,7 @@ async fn async_launch(args: ArgResult) {
             let v: CompilationError = v;
 
             if so_far.insert(v.clone()) {
-            // need to break down the error
+                // need to break down the error
                 let s = v.with_file_context(&files);
             }
         }
@@ -340,6 +341,7 @@ fn parse_args(args: &[&str]) -> Result<ArgResult, &'static str> {
         ExpectSpecInput,
         ExpectOutput,
         ExpectThreadCount,
+        ExpectBuildVariant,
         _ExpectWarnFlags,
         _ExpectErrorFlags,
     }
@@ -364,6 +366,7 @@ fn parse_args(args: &[&str]) -> Result<ArgResult, &'static str> {
             "-s" | "--spec" => state = State::ExpectSpecInput,
             "-r" | "--root" => state = State::ExpectSourceInput,
             "-Cthreads" => state = State::ExpectThreadCount,
+            "-Bvar" => state = State::ExpectBuildVariant,
             "-Dtree" => cflags.dump_tree = true,
             "-Dpretty" => cflags.dump_pretty = true,
             "-Esilent" => cflags.eflags.silence_errors = true,
@@ -391,6 +394,16 @@ fn parse_args(args: &[&str]) -> Result<ArgResult, &'static str> {
                             _ => panic!("state was expecting a path then it wasn't"),
                         }; // maybe check for duplicates here?
                     }
+                    State::ExpectBuildVariant => match other {
+                        "static" => OUTPUT_TYPE_ONCE.set(OutputType::FullInf()).unwrap(),
+                        "dyn_checked" => OUTPUT_TYPE_ONCE
+                            .set(OutputType::AssumeTypeUnsafe())
+                            .unwrap(),
+                        _ => {
+                            println!("Expected a build variant, instead got '{other}'");
+                            process::exit(-1)
+                        }
+                    },
                     State::ExpectThreadCount => {
                         let count: usize = other.parse().unwrap_or_else(|_| {
                             println!("Expected a thread count, instead got '{}'", other);

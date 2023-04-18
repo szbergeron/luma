@@ -74,6 +74,7 @@ pub enum AnyExpression {
     Convert(Convert),
 
     While(Iterate),
+    For(For),
     Branch(Branch),
 
     If(If),
@@ -547,6 +548,28 @@ impl AnyExpression {
                 let e = Self::from_ast(within, &subexpr, bindings);
 
                 e
+            }
+            ExpressionWrapper::For(f) => {
+                let cst::expressions::ForExpression { node_info, box pre, box check, box post, box body } = f;
+                let mut pre_scope = bindings.child_scoped();
+
+                let pre = AnyExpression::from_ast(within, pre, &mut pre_scope);
+
+                let mut check_scope = pre_scope.child_scoped();
+
+                let condition = AnyExpression::from_ast(within, check, &mut check_scope);
+
+                let mut post_scope = pre_scope.child_scoped();
+
+                let post = AnyExpression::from_ast(within, post, &mut post_scope);
+
+                let mut body_scope = pre_scope.child_scoped();
+
+                let body = AnyExpression::from_ast(within, body, &mut body_scope);
+
+                let for_e = For { body, pre, post, condition };
+
+                within.add(AnyExpression::For(for_e)).0
             }
             ExpressionWrapper::While(_) => todo!(),
             ExpressionWrapper::Tuple(_) => todo!(),

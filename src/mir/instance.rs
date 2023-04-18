@@ -7,6 +7,7 @@ use std::{
 };
 
 use dashmap::DashMap;
+use either::Either;
 use futures::future::join;
 use itertools::Itertools;
 use tracing::warn;
@@ -61,7 +62,7 @@ pub struct Instance {
 
     pub generics: Rc<HashMap<IStr, TypeID>>,
 
-    pub once_base: Rc<UnsafeAsyncCompletable<CtxID>>, // when we resolve our base, notify this
+    pub once_base: Rc<UnsafeAsyncCompletable<Either<CtxID, Generic>>>, // when we resolve our base, notify this
 
     pub once_resolved: Rc<UnsafeAsyncCompletable<ResolvedType>>,
 }
@@ -138,6 +139,12 @@ pub struct UnifyThunk {
     pub into: ValueOrThunk<TypeID>,
 }
 
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub struct Generic {
+    pub ties_to: IStr,
+    pub is_a: TypeID,
+}
+
 impl UnifyThunk {
     pub async fn to_unify(self) -> Unify {
         let (into, from) = join(self.into.to_value(), self.from.to_value()).await;
@@ -163,23 +170,29 @@ pub struct ArgConversionError {
 impl Instance {
     #[async_recursion::async_recursion(?Send)]
     pub async fn from_resolved(rty: ResolvedType, within: &'static Quark) -> (Self, Vec<Unify>) {
-        let mut generics = Vec::new();
+        match rty.node {
+            Either::Left(ctx) => {
+                let mut generics = Vec::new();
 
-        let mut unify = Vec::new();
+                let mut unify = Vec::new();
 
-        for rt in rty.generics {
-            let (inst, mut additional_unify) = Instance::from_resolved(rt, within).await;
-            let tid = within.introduce_instance(inst, NodeInfo::Builtin, false);
-            generics.push(tid);
+                for rt in rty.generics {
+                    let (inst, mut additional_unify) = Instance::from_resolved(rt, within).await;
+                    let tid = within.introduce_instance(inst, NodeInfo::Builtin, false);
+                    generics.push(tid);
 
-            unify.append(&mut additional_unify);
+                    unify.append(&mut additional_unify);
+                }
+
+                let (inst, mut additional_unify) = Self::with_generics(ctx, within, generics).await;
+                unify.append(&mut additional_unify);
+
+                (inst, unify)
+            }
+            Either::Right(gen) => {
+                todo!()
+            }
         }
-
-        let (inst, mut additional_unify) = Self::with_generics(rty.node, within, generics).await;
-
-        unify.append(&mut additional_unify);
-
-        (inst, unify)
     }
 
     pub fn as_call(
@@ -270,7 +283,7 @@ impl Instance {
         let n = base.resolve();
         //let mut generic_map = HashMap::new();
 
-        let origin = Self::infer_instance(Some(base), within).await;
+        let origin = Self::infer_instance(Some(Either::Left(base)), within).await;
 
         if !provided_generics.is_empty() {
             for gen in origin
@@ -328,7 +341,7 @@ impl Instance {
         within: &'static Quark,
         generics: Vec<TypeID>,
     ) -> (Self, Vec<Unify>) {
-        let v = Self::infer_instance(Some(base), within).await;
+        let v = Self::infer_instance(Some(Either::Left(base)), within).await;
 
         let mut unifies = Vec::new();
 
@@ -347,7 +360,10 @@ impl Instance {
         (v, unifies)
     }
 
-    pub async fn infer_instance(base: Option<CtxID>, within: &'static Quark) -> Self {
+    pub async fn infer_instance(
+        base: Option<Either<CtxID, Generic>>,
+        within: &'static Quark,
+    ) -> Self {
         let mut inst = Self::plain_instance(within);
 
         if let Some(v) = base {
@@ -385,169 +401,179 @@ impl Instance {
     }
 
     #[async_recursion::async_recursion(?Send)]
-    pub async fn resolve_base(&mut self, base: CtxID, within: &'static Quark) {
-        let inst = base.resolve();
+    pub async fn resolve_base(&mut self, base: Either<CtxID, Generic>, within: &'static Quark) {
+        match base {
+            Either::Left(base) => {
+                let inst = base.resolve();
 
-        // use inst to get regular_fields from the transponster or something
-        let gens_for_type: Rc<HashMap<IStr, TypeID>> = Rc::new(
-            inst.generics
-                .iter()
-                .map(|(g, r)| (*g, within.new_tid(NodeInfo::Builtin, false)))
-                .collect(),
-        );
-
-        unsafe {
-            let resolved = self.once_resolved.clone();
-
-            let once_base = self.once_base.clone();
-
-            let generics_unresolved = self.generics.clone();
-
-            if gens_for_type.len() == generics_unresolved.len() {
-                within.executor.install(
-                    async move {
-                        let mut generics = Vec::new();
-                        for (generic_name, generic_tid) in generics_unresolved.iter() {
-                            let gen_ty = within.with_instance(*generic_tid, |instance| {
-                                instance.once_resolved.clone().wait()
-                            });
-                            generics.push(gen_ty.await);
-                        }
-
-                        let base = once_base.wait().await;
-
-                        let resolved_ty = ResolvedType {
-                            node: base,
-                            generics,
-                        };
-
-                        resolved.complete(resolved_ty);
-                    },
-                    "once we know the full type of a var, finish its once_resolved",
+                // use inst to get regular_fields from the transponster or something
+                let gens_for_type: Rc<HashMap<IStr, TypeID>> = Rc::new(
+                    inst.generics
+                        .iter()
+                        .map(|(g, r)| (*g, within.new_tid(NodeInfo::Builtin, false)))
+                        .collect(),
                 );
-            } else {
-                println!("issue: no generics provided for something that needs them, so we can't complete once_resolved through this");
-            }
-        };
 
-        self.generics = gens_for_type;
+                unsafe {
+                    let resolved = self.once_resolved.clone();
 
-        //panic!();
+                    let once_base = self.once_base.clone();
 
-        let of = match &inst.inner {
-            NodeUnion::Type(t) => {
-                let mut inst_fields = HashMap::new();
-                let mut inst_methods = HashMap::new();
+                    let generics_unresolved = self.generics.clone();
 
-                // add generics since we didn't already
+                    if gens_for_type.len() == generics_unresolved.len() {
+                        within.executor.install(
+                            async move {
+                                let mut generics = Vec::new();
 
-                let fields = t.lock().unwrap().fields.clone();
+                                for (generic_name, generic_tid) in generics_unresolved.iter() {
+                                    let gen_ty = within.with_instance(*generic_tid, |instance| {
+                                        instance.once_resolved.clone().wait()
+                                    });
+                                    generics.push(gen_ty.await);
+                                }
 
-                for field in fields {
-                    let fname = field.name;
-                    let ty = field.has_type.unwrap();
+                                let base = once_base.wait().await;
 
-                    let generics = self.generics.clone(); // rc clone
+                                let resolved_ty = ResolvedType {
+                                    node: base,
+                                    generics,
+                                };
 
-                    let thunk = unsafe {
-                        Thunk::new(within.executor, async move {
-                            let tid = within
-                                .resolve_typeref(ty, &generics, inst.parent.unwrap(), false)
-                                .await;
-
-                            tid
-                        })
-                    };
-
-                    inst_fields.insert(fname, thunk);
-                }
-
-                let methods = t.lock().unwrap().methods.clone();
-
-                for (mname, mref) in methods {
-                    let minst_thunk = unsafe {
-                        Thunk::new(within.executor, async move {
-                            tracing::warn!("we're inferring the instance for field {mname}");
-                            let minst = Self::infer_instance(Some(mref), within).await;
-
-                            let minst_tid =
-                                within.introduce_instance(minst, NodeInfo::Builtin, false);
-
-                            tracing::warn!("this instantiation of {mname} on {mref:?} was given tid {minst_tid:?}");
-
-                            minst_tid
-                        })
-                    };
-
-                    inst_methods.insert(mname, minst_thunk);
-                }
-
-                let _ = unsafe { self.once_base.complete(base) }; // we don't yield yet, so this is
-                                                                  // fine until ret
-
-                InstanceOf::Type(InstanceOfType {
-                    regular_fields: inst_fields,
-                    methods: inst_methods,
-                    from: base,
-                })
-            }
-            NodeUnion::Function(f, _) => {
-                // the typeref there should be resolved, depending on if its a method or not,
-                // either the super scope or the super-super scope
-
-                let resolve_within = if f.is_method {
-                    inst.parent.unwrap().resolve().parent.unwrap()
-                } else {
-                    inst.parent.unwrap()
+                                resolved.complete(resolved_ty);
+                            },
+                            "once we know the full type of a var, finish its once_resolved",
+                        );
+                    } else {
+                        println!("issue: no generics provided for something that needs them, so we can't complete once_resolved through this");
+                    }
                 };
 
-                tracing::warn!("make function res better");
-                let _ = unsafe { self.once_base.complete(base) };
+                self.generics = gens_for_type;
 
-                /*let parameters = f.parameters.clone().into_iter().map(|(pname, pty)| unsafe {
-                    let generics = self.generics.clone();
-                    Thunk::new(within.executor, async move {
-                        let tid = within.resolve_typeref(pty, &generics, resolve_within).await;
+                //panic!();
 
-                        tid
-                    })
-                });
+                let of = match &inst.inner {
+                    NodeUnion::Type(t) => {
+                        let mut inst_fields = HashMap::new();
+                        let mut inst_methods = HashMap::new();
 
-                let generics = self.generics.clone();
-                let returns = unsafe {
-                    Thunk::new(within.executor, async move {
-                        within
-                            .resolve_typeref(f.return_type, &generics, resolve_within)
-                            .await
-                    })
-                };*/
+                        // add generics since we didn't already
 
-                let mut parameters = Vec::new();
+                        let fields = t.lock().unwrap().fields.clone();
 
-                for (pname, pty) in f.parameters.clone() {
-                    let tid = within
-                        .resolve_typeref(pty, &self.generics, resolve_within, false)
-                        .await;
+                        for field in fields {
+                            let fname = field.name;
+                            let ty = field.has_type.unwrap();
 
-                    parameters.push(tid);
-                }
+                            let generics = self.generics.clone(); // rc clone
 
-                let returns = within
-                    .resolve_typeref(f.return_type, &self.generics, resolve_within, false)
-                    .await;
+                            let thunk = unsafe {
+                                Thunk::new(within.executor, async move {
+                                    let tid = within
+                                        .resolve_typeref(ty, &generics, inst.parent.unwrap(), false)
+                                        .await;
 
-                InstanceOf::Func(InstanceOfFn {
-                    parameters,
-                    returns,
-                    from: Some(base),
-                })
+                                    tid
+                                })
+                            };
+
+                            inst_fields.insert(fname, thunk);
+                        }
+
+                        let methods = t.lock().unwrap().methods.clone();
+
+                        for (mname, mref) in methods {
+                            let minst_thunk = unsafe {
+                                Thunk::new(within.executor, async move {
+                                    tracing::warn!(
+                                        "we're inferring the instance for field {mname}"
+                                    );
+                                    let minst =
+                                        Self::infer_instance(Some(Either::Left(mref)), within)
+                                            .await;
+
+                                    let minst_tid =
+                                        within.introduce_instance(minst, NodeInfo::Builtin, false);
+
+                                    tracing::warn!("this instantiation of {mname} on {mref:?} was given tid {minst_tid:?}");
+
+                                    minst_tid
+                                })
+                            };
+
+                            inst_methods.insert(mname, minst_thunk);
+                        }
+
+                        let _ = unsafe { self.once_base.complete(Either::Left(base)) }; // we don't yield yet, so this is
+                                                                                        // fine until ret
+
+                        InstanceOf::Type(InstanceOfType {
+                            regular_fields: inst_fields,
+                            methods: inst_methods,
+                            from: base,
+                        })
+                    }
+                    NodeUnion::Function(f, _) => {
+                        // the typeref there should be resolved, depending on if its a method or not,
+                        // either the super scope or the super-super scope
+
+                        let resolve_within = if f.is_method {
+                            inst.parent.unwrap().resolve().parent.unwrap()
+                        } else {
+                            inst.parent.unwrap()
+                        };
+
+                        tracing::warn!("make function res better");
+                        let _ = unsafe { self.once_base.complete(Either::Left(base)) };
+
+                        /*let parameters = f.parameters.clone().into_iter().map(|(pname, pty)| unsafe {
+                            let generics = self.generics.clone();
+                            Thunk::new(within.executor, async move {
+                                let tid = within.resolve_typeref(pty, &generics, resolve_within).await;
+
+                                tid
+                            })
+                        });
+
+                        let generics = self.generics.clone();
+                        let returns = unsafe {
+                            Thunk::new(within.executor, async move {
+                                within
+                                    .resolve_typeref(f.return_type, &generics, resolve_within)
+                                    .await
+                            })
+                        };*/
+
+                        let mut parameters = Vec::new();
+
+                        for (pname, pty) in f.parameters.clone() {
+                            let tid = within
+                                .resolve_typeref(pty, &self.generics, resolve_within, false)
+                                .await;
+
+                            parameters.push(tid);
+                        }
+
+                        let returns = within
+                            .resolve_typeref(f.return_type, &self.generics, resolve_within, false)
+                            .await;
+
+                        InstanceOf::Func(InstanceOfFn {
+                            parameters,
+                            returns,
+                            from: Some(base),
+                        })
+                    }
+                    other => {
+                        todo!("no")
+                    }
+                };
+
+                self.of = of;
             }
-            other => {
-                todo!("no")
-            }
-        };
-
-        self.of = of;
+            Either::Right(gen) => todo!(),
+        }
     }
 
     /// allows us to unify two things of known base and say they are the "same type"
@@ -676,19 +702,30 @@ impl Instance {
                 stores_into.once_base,
                 move |va, vb| {
                     tracing::warn!("we're unifying id {va:?} with id {vb:?} in ctx");
-                    if va != vb {
-                        //panic!("user tried to unify two different types")
-                        let first = va.resolve().canonical_typeref().resolve().unwrap();
-                        let second = vb.resolve().canonical_typeref().resolve().unwrap();
+                    //panic!("user tried to unify two different types")
+                    match (va, vb) {
+                        (Either::Left(va), Either::Left(vb)) => {
+                            if va != vb {
+                                let first = va.resolve().canonical_typeref().resolve().unwrap();
+                                let second = vb.resolve().canonical_typeref().resolve().unwrap();
 
-                        let msg = format!("can not assign a value of type {first:?} into a value of type {second:?}");
+                                let msg = format!("can not assign a value of type {first:?} into a value of type {second:?}");
 
-                        within.add_type_error(TypeError {
-                            components: vec![because.from, because.into],
-                            complaint: msg,
-                            because_unify: because,
-                        });
-                    } else {
+                                within.add_type_error(TypeError {
+                                    components: vec![because.from, because.into],
+                                    complaint: msg,
+                                    because_unify: because,
+                                });
+                            }
+                        }
+                        (Either::Right(va), Either::Right(vb)) => {
+                            if va.ties_to != vb.ties_to {
+                                todo!("handle conflicting generics, need unify statements")
+                            }
+                        }
+                        other => {
+                            todo!("user tried to unify a generic with a real type")
+                        }
                     }
                 },
             )
@@ -738,22 +775,24 @@ impl Instance {
                 .expect("tried to check monomorphization on an incomplete thing")
         };
 
-        match &self.of {
-            InstanceOf::Type(t) => {
-                debug_assert_eq!(t.from.resolve().generics.len(), resolved.generics.len());
-                debug_assert_eq!(resolved.generics.len(), t.from.resolve().generics.len());
-                Postal::instance().send_and_forget(
-                    Destination::transponster(resolved.node),
-                    Content::Monomorphization(Monomorphization::from_resolved(resolved)),
-                );
+        if let Either::Left(ctx) = resolved.node {
+            match &self.of {
+                InstanceOf::Type(t) => {
+                    debug_assert_eq!(t.from.resolve().generics.len(), resolved.generics.len());
+                    debug_assert_eq!(resolved.generics.len(), t.from.resolve().generics.len());
+                    Postal::instance().send_and_forget(
+                        Destination::transponster(ctx),
+                        Content::Monomorphization(Monomorphization::from_resolved(resolved)),
+                    );
+                }
+                InstanceOf::Func(f) => {
+                    Postal::instance().send_and_forget(
+                        Destination::quark(ctx),
+                        Content::Monomorphization(Monomorphization::from_resolved(resolved)),
+                    );
+                }
+                _ => panic!("shouldn't call monomorphization on anything other than type or func"),
             }
-            InstanceOf::Func(f) => {
-                Postal::instance().send_and_forget(
-                    Destination::quark(resolved.node),
-                    Content::Monomorphization(Monomorphization::from_resolved(resolved)),
-                );
-            }
-            _ => panic!("shouldn't call monomorphization on anything other than type or func"),
         }
     }
 }

@@ -39,6 +39,7 @@ pub enum ExpressionWrapper {
     Block(BlockExpression),
     IfThenElse(IfThenElseExpression),
     While(WhileExpression),
+    For(ForExpression),
     LetExpression(LetExpression),
     Tuple(Tuple),
     Return(ReturnExpression),
@@ -88,6 +89,12 @@ impl ExpressionWrapper {
                 smallvec![e.if_exp.as_ref(), e.then_exp.as_ref(), e.else_exp.as_ref()]
             }
             ExpressionWrapper::While(e) => smallvec![e.if_exp.as_ref(), e.then_exp.as_ref()],
+            ExpressionWrapper::For(e) => smallvec![
+                e.pre.as_ref(),
+                e.check.as_ref(),
+                e.post.as_ref(),
+                e.body.as_ref()
+            ],
             ExpressionWrapper::LetExpression(e) => smallvec![e.expression.as_ref()],
             ExpressionWrapper::Tuple(e) => e.expressions.iter().map(|e| e.as_ref()).collect(),
             ExpressionWrapper::Return(e) => smallvec![e.subexpr.as_ref()],
@@ -118,6 +125,12 @@ impl ExpressionWrapper {
                 smallvec![e.if_exp.as_mut(), e.then_exp.as_mut(), e.else_exp.as_mut()]
             }
             ExpressionWrapper::While(e) => smallvec![e.if_exp.as_mut(), e.then_exp.as_mut()],
+            ExpressionWrapper::For(e) => smallvec![
+                e.pre.as_mut(),
+                e.check.as_mut(),
+                e.post.as_mut(),
+                e.body.as_mut()
+            ],
             ExpressionWrapper::LetExpression(e) => smallvec![e.expression.as_mut()],
             ExpressionWrapper::Tuple(e) => e.expressions.iter_mut().map(|e| e.as_mut()).collect(),
             ExpressionWrapper::Return(e) => smallvec![e.subexpr.as_mut()],
@@ -162,6 +175,7 @@ impl IntoCstNode for ExpressionWrapper {
             Self::Tuple(e) => e,
             Self::Wildcard(e) => e,
             Self::While(e) => e,
+            Self::For(e) => e,
             Self::Return(e) => e,
             Self::LLVMLiteral(e) => e,
             Self::MemberAccess(e) => e,
@@ -273,6 +287,47 @@ impl CstNode for Tuple {
         }
 
         let _ = write!(f, ")");
+    }
+}
+
+#[derive(Clone)]
+pub struct ForExpression {
+    pub node_info: NodeInfo,
+
+    pub pre: Box<ExpressionWrapper>,
+    pub check: Box<ExpressionWrapper>,
+    pub post: Box<ExpressionWrapper>,
+
+    pub body: Box<ExpressionWrapper>,
+}
+
+impl Debug for ForExpression {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ForExpression")
+            .field("pre", &self.pre)
+            .field("check", &self.check)
+            .field("post", &self.post)
+            .field("body", &self.body)
+            .finish()
+    }
+}
+
+impl CstNode for ForExpression {
+    fn node_info(&self) -> NodeInfo {
+        self.node_info
+    }
+
+    fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
+        let _ = write!(f, "for(");
+        self.pre.as_node().pretty(f, depth);
+        let _ = write!(f, "; ");
+        self.check.as_node().pretty(f, depth);
+        let _ = write!(f, "; ");
+        self.post.as_node().pretty(f, depth);
+        let _ = writeln!(f, ") {{");
+        let _ = write!(f, "{}", indent(depth + 1));
+        self.body.as_node().pretty(f, depth + 1);
+        let _ = writeln!(f, "\n}}");
     }
 }
 

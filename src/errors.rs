@@ -219,7 +219,7 @@ impl CompilationError {
                 seen.insert(tid.span());
 
                 for peer in peers {
-                    if peer.is_root() && seen.insert(peer.span()) {
+                    if seen.insert(peer.span()) {
                         ep.contextualize(
                             peer.span(),
                             files,
