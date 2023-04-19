@@ -1,33 +1,33 @@
 
-//fn print<T>(v: T) -> std::Unit #builtin luma_print_fast luma_print_silly luma_print_slow;
+fn print<T>(v: T) -> std::Unit #builtin "luma_print_fast" "luma_print_silly" "luma_print_slow";
 
 struct Unit noref #builtin luma_unit {}
 
 struct i64 noref #builtin i64 {
     fn operator[_*_](self: std::i64, other: std::i64) -> std::i64 
-        #builtin luma_i64_op_mul_fast luma_i64_op_mul_silly luma_i64_op_mul_slow;
+        #builtin "luma_i64_op_mul_fast" "luma_i64_op_mul_silly" "luma_i64_op_mul_slow";
 
     fn operator[_+_](self: std::i64, other: std::i64) -> std::i64
-        #builtin luma_i64_op_add_fast luma_i64_op_add_silly luma_i64_op_add_slow;
+        #builtin "luma_i64_op_add_fast" "luma_i64_op_add_silly" "luma_i64_op_add_slow";
 
     fn operator[_-_](self: std::i64, other: std::i64) -> std::i64
-        #builtin luma_i64_op_subtract_fast luma_i64_op_subtract_silly luma_i64_op_subtract_slow;
+        #builtin "luma_i64_op_subtract_fast" "luma_i64_op_subtract_silly" "luma_i64_op_subtract_slow";
 
     fn operator[_==_](self: std::i64, other: std::i64) -> std::bool
-        #builtin luma_i64_op_eq_fast luma_i64_op_eq_silly luma_op_eq_slow;
+        #builtin "luma_i64_op_eq_fast" "luma_i64_op_eq_silly" "luma_op_eq_slow";
 
     fn operator[_<_](self: std::i64, other: std::i64) -> std::bool
-        #builtin luma_i64_op_lt_fast luma_i64_op_lt_silly luma_op_lt_slow;
+        #builtin "luma_i64_op_lt_fast" "luma_i64_op_lt_silly" "luma_op_lt_slow";
 
     fn operator[_>_](self: std::i64, other: std::i64) -> std::bool
-        #builtin luma_i64_op_gt_fast luma_i64_op_gt_silly luma_op_gt_slow;
+        #builtin "luma_i64_op_gt_fast" "luma_i64_op_gt_silly" "luma_op_gt_slow";
 
 };
 
 struct bool noref #builtin bool {
     /*
     fn operator[_==_](self: std::bool, other: std::bool) -> std::bool
-        #builtin luma__fast_bool_compare_eq luma__silly_bool_compare_eq luma_op_eq_slow;
+        #builtin "luma__fast_bool_compare_eq" "luma__silly_bool_compare_eq" "luma_op_eq_slow";
         */
 };
 
@@ -37,7 +37,6 @@ struct parametric<T> {
     fn change<T>(self: parametric<T>, val: T) -> std::Unit {
         self.val = val;
 
-        struct std::Unit {}
     }
 }
 
@@ -46,6 +45,8 @@ fn p() -> std::Unit {
     pa.change(pa, 5);
 
     pa.change(pa, pa.val + 3);
+
+    std::print(pa.val);
 
     //std::print(pa.val);
 

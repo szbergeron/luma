@@ -540,19 +540,25 @@ impl<'lexer> Parser<'lexer> {
         //if let Some(v) = 
         //
         let (body, end) = if let Some(v) = t.try_take(Token::InteriorBuiltin) {
-            let fast = t.take(Token::Identifier).join()?;
-            let silly = t.take(Token::Identifier).join()?;
-            let slow = t.take(Token::Identifier).join()?;
+            let fast = t.take(Token::StringLiteral).join()?;
+            let silly = t.take(Token::StringLiteral).join()?;
+            let slow = t.take(Token::StringLiteral).join()?;
+
+            let end = slow.end;
+
+            let fast = fast.slice.drop_front(1).drop_end(1);
+            let silly = silly.slice.drop_front(1).drop_end(1);
+            let slow = slow.slice.drop_front(1).drop_end(1);
 
             let mut hm = HashMap::new();
 
-            hm.insert(OutputType::FullInf(), fast.slice);
-            hm.insert(OutputType::AssumeTypeSafe(), silly.slice);
-            hm.insert(OutputType::AssumeTypeUnsafe(), slow.slice);
+            hm.insert(OutputType::FullInf(), fast);
+            hm.insert(OutputType::AssumeTypeSafe(), silly);
+            hm.insert(OutputType::AssumeTypeUnsafe(), slow);
 
             let fd = FunctionBuiltin { impls: hm };
 
-            (Either::Right(fd), slow.end)
+            (Either::Right(fd), end)
         } else {
             let body = self
                 .parse_expr(&t, &generics)

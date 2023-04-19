@@ -275,6 +275,17 @@ pub mod interner {
             }
         }
     }
+
+    impl IStr {
+        pub fn drop_front(self, amount: usize) -> Self {
+            self.resolve()[amount..].intern()
+        }
+
+        pub fn drop_end(self, amount: usize) -> Self {
+            let res = self.resolve();
+            res[..(res.len() - amount)].intern()
+        }
+    }
 }
 
 /*pub enum Either<A, B> {

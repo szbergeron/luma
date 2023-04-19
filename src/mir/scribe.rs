@@ -985,6 +985,8 @@ impl<'a> ScribeOne<'a> {
         let ret_mono = Monomorphization::from_resolved(quark.resolved_type_of(ret_tid).await);
         let ret = format!("{}*", ret_mono.encode_name());
         println!("Got ret mono: {ret}");
+        let submap = SubMap::new_in(quark, self.mono);
+        let smr = &submap;
 
         if is_builtin.is_none() {
             /*
@@ -1006,8 +1008,6 @@ impl<'a> ScribeOne<'a> {
 
             let entry_fn_id = quark.meta.entry_id.get().copied().unwrap();
 
-            let submap = SubMap::new_in(quark, self.mono);
-            let smr = &submap;
 
             match output_type() {
                 OutputType::FullInf() => {
@@ -1085,6 +1085,7 @@ impl<'a> ScribeOne<'a> {
 
                         async move {
                             let t = quark.resolved_type_of(*pt).await;
+                            let t = smr.substitute_of(t);
                             let m = Monomorphization::from_resolved(t);
 
                             format!("mut {v}: {}", m.encode_ref())
