@@ -507,7 +507,9 @@ impl AnyExpression {
                         //Literal::lit_i32(*v as i32)
                         SyntacticTypeReferenceRef::from_std("std::i64")
                     }
-                    cst::Literal::Boolean(_) => todo!(),
+                    cst::Literal::Boolean(b) => {
+                        SyntacticTypeReferenceRef::from_std("std::bool")
+                    },
                 };
 
                 let li = Literal {

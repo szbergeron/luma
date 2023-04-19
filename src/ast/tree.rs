@@ -625,7 +625,7 @@ impl Node {
 
     pub fn get_struct_attrs(&self) -> StructuralTyAttrs {
         match &self.inner {
-            NodeUnion::Type(t) => t.lock().unwrap().attrs,
+            NodeUnion::Type(t) => t.lock().unwrap().attrs.clone(),
             _ => {
                 println!("tried to get whether a non-ty has attrs");
                 Default::default()

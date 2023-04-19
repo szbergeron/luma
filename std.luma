@@ -5,10 +5,14 @@ struct Unit noref #builtin luma_unit {}
 
 struct String noref #builtin String {}
 
-struct Vec<T> {
-    fn push<T>(self: std::Vec<T>, item: T) #builtin "luma_vec_push_fast" "" "";
+//struct LumaVec<T> #builtin 
 
-    fn new<T>() -> std::Vec<T> #builtin "luma_vec_new" "" "";
+struct Vec<T> noref #builtin LumaVec<T> {
+    fn push<T>(self: std::Vec<T>, item: T) #builtin "luma_vec_push_fast" "" "luma_vec_push_slow";
+
+    fn get<T>(self: std::Vec<T>, ind: std::i64) -> T #builtin "luma_vec_get_fast" "" "luma_vec_get_slow";
+
+    fn new<T>() -> std::Vec<T> #builtin "luma_vec_new_fast" "" "luma_vec_new_slow";
     //fn new_i64() -> std::Vec<i64> #builtin "Vec::new" "" "";
 }
 
@@ -28,7 +32,12 @@ fn funky_dyn_fields(a: std::fdf) -> std::i64 {
 
     a.def = a.abc;
 
+    //let v = a.abc;
+    //a.def = v;
+
     a.g = struct std::fdf { b: 20 };
+
+    a.h = "h";
 
     //a.g = a.g;
 
@@ -41,13 +50,13 @@ struct fdf isref ismod {
 
 struct i64 noref #builtin i64 {
     fn operator[_*_](self: std::i64, other: std::i64) -> std::i64 
-        #builtin "luma_i64_op_mul_fast" "luma_i64_op_mul_silly" "luma_i64_op_mul_slow";
+        #builtin "luma_i64_op_mul_fast" "luma_i64_op_mul_silly" "luma_op_mul_slow";
 
     fn operator[_+_](self: std::i64, other: std::i64) -> std::i64
-        #builtin "luma_i64_op_add_fast" "luma_i64_op_add_silly" "luma_i64_op_add_slow";
+        #builtin "luma_i64_op_add_fast" "luma_i64_op_add_silly" "luma_op_add_slow";
 
     fn operator[_-_](self: std::i64, other: std::i64) -> std::i64
-        #builtin "luma_i64_op_subtract_fast" "luma_i64_op_subtract_silly" "luma_i64_op_subtract_slow";
+        #builtin "luma_i64_op_subtract_fast" "luma_i64_op_subtract_silly" "luma_op_subtract_slow";
 
     fn operator[_==_](self: std::i64, other: std::i64) -> std::bool
         #builtin "luma_i64_op_eq_fast" "luma_i64_op_eq_silly" "luma_op_eq_slow";
@@ -70,7 +79,11 @@ fn main() {
     std::print("hello world");
 
     std::print("this is 2 + 2:");
-    std::print(2 + 2);
+    if true {
+        std::print(2 + 2);
+    }
+
+    std::vectest3();
 };
 
 fn vectest() -> std::Vec<std::i64> {
@@ -81,9 +94,12 @@ fn vectest3() {
     let v = std::Vec::new();
     v.push(v, 5);
 
-    v.push(v, "hello");
+    std::print(v.get(v, 0))
+
+    //v.push(v, "hello");
 }
 
+/*
 struct VecOfInt {
     var v: std::Vec<std::i64>;
 
@@ -95,6 +111,7 @@ fn vectest2() {
 
     v.v.push(v.v, 10);
 }
+*/
 
 /*
 

@@ -661,7 +661,7 @@ impl Instance {
                 if ta.from != tb.from {
                     let te = TypeError {
                         components: vec![],
-                        complaint: reason.resolve().to_owned(),
+                        complaint: format!("original reason for unification was {reason}, tried to unify a {:?} with a {:?}", ta.from.resolve().canonical_typeref().resolve().unwrap(), tb.from.resolve().canonical_typeref().resolve().unwrap()),
                         because_unify: because,
                     };
                     return Err(te)

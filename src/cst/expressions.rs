@@ -1229,6 +1229,8 @@ impl LiteralExpression {
             Token::i8Literal => Literal::i8Literal(tw.slice.resolve().parse().unwrap()),
             Token::i32Literal => Literal::i32Literal(slice[..slice.len() - 3].parse().unwrap()),
             Token::StringLiteral => Literal::StringLiteral(tw.slice),
+            Token::True => Literal::Boolean(true),
+            Token::False => Literal::Boolean(false),
             _ => {
                 println!("No literal handler for {tw:?}");
                 todo!()

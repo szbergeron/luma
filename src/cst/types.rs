@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::{sync::atomic::{AtomicUsize, Ordering}, collections::HashMap};
 
 use dashmap::DashMap;
 use itertools::Itertools;
@@ -28,7 +28,7 @@ pub struct StructDefinition {
     pub methods: Vec<FunctionDefinition>,
 }
 
-#[derive(Copy, Debug, Clone, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct StructuralTyAttrs {
     /// States that this is a ref type or a non-ref type (by-value)
     /// non-ref types must not be self-referential!
@@ -37,7 +37,7 @@ pub struct StructuralTyAttrs {
     /// Whether this type allows adding additional dyn fields
     pub is_modif: bool,
 
-    pub is_builtin: Option<IStr>,
+    pub is_builtin: Option<SyntacticTypeReference>,
 }
 
 impl CstNode for StructDefinition {
@@ -267,7 +267,7 @@ impl SyntacticTypeReference {
         Self { id: SyntacticTypeReferenceRef::new_nil(), info: NodeInfo::Builtin, inner: SyntacticTypeReferenceInner::Unconstrained() }
     }
 
-    pub fn as_plain_type(mut self) -> IStr {
+    pub fn as_plain_type(mut self, sub_generics: &HashMap<IStr, IStr>) -> IStr {
         match self.inner {
             SyntacticTypeReferenceInner::Unconstrained() => todo!(),
             SyntacticTypeReferenceInner::Tuple(t) => {
@@ -277,10 +277,10 @@ impl SyntacticTypeReference {
                 name.scope.into_iter().join("::").intern()
                 //format!("{name}").intern()
             }
-            SyntacticTypeReferenceInner::Generic { label } => todo!(),
+            SyntacticTypeReferenceInner::Generic { label } => sub_generics.get(&label).copied().unwrap(),
             SyntacticTypeReferenceInner::Parameterized { name, generics } => {
                 let n = name.scope.into_iter().join("::").intern();
-                let g = generics.into_iter().map(|g| g.as_plain_type()).join(", ");
+                let g = generics.into_iter().map(|g| g.as_plain_type(sub_generics)).join(", ");
 
                 format!("{n}<{g}>").intern()
             },

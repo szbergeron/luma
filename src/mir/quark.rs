@@ -209,12 +209,16 @@ impl Quark {
         let mut refm = self.instances.borrow_mut();
         //let mut resulting_unifies = Vec::new();
 
-        let r: Result<Option<Vec<Unify>>, TypeError> = refm.unify(from, into, |from_inst, into_inst| -> Result<(Instance, Vec<Unify>), TypeError> {
-            tracing::info!("having to merge two instances");
-            let original_a = from_inst.clone();
-            let r = from_inst.unify_with(into_inst, Unify { from, into }, reason, self);
-            r
-        });
+        let r: Result<Option<Vec<Unify>>, TypeError> = refm.unify(
+            from,
+            into,
+            |from_inst, into_inst| -> Result<(Instance, Vec<Unify>), TypeError> {
+                tracing::info!("having to merge two instances");
+                let original_a = from_inst.clone();
+                let r = from_inst.unify_with(into_inst, Unify { from, into }, reason, self);
+                r
+            },
+        );
 
         //.expect("user did a type error");
 
@@ -226,7 +230,7 @@ impl Quark {
                 for Unify { from, into } in u.unwrap_or(vec![]) {
                     self.add_unify(from, into, "resulting unify from an instance add".intern());
                 }
-            },
+            }
             Err(te) => {
                 self.add_type_error(te);
             }
@@ -240,8 +244,15 @@ impl Quark {
 
     #[track_caller]
     pub async fn resolved_type_of(&'static self, t: TypeID) -> ResolvedType {
+        self.resolved_base_of(t).await; // just because this makes it less fragile for now (eek!)
+
         self.with_instance(t, |inst| unsafe { inst.once_resolved.clone().wait() })
             .await
+    }
+
+    #[track_caller]
+    pub async fn resolved_base_of(&'static self, t: TypeID) -> CtxID {
+        self.with_instance(t, |inst| unsafe { inst.once_base.clone().wait() }).await
     }
 
     /// When each quark phase completes we get one message here to flush errors
@@ -327,7 +338,9 @@ impl Quark {
             tracing::error!("Unresolved insts: {}", unresolved_insts.len());
 
             for tid in unresolved_insts {
-                let note = if let Some(v) = self.with_instance(tid, |inst| unsafe { inst.once_base.try_get().copied() }) {
+                let note = if let Some(v) =
+                    self.with_instance(tid, |inst| unsafe { inst.once_base.try_get().copied() })
+                {
                     let cr = v.resolve().canonical_typeref().resolve().unwrap();
 
                     format!("the type base was found to be a {cr:?}").intern()
@@ -347,10 +360,7 @@ impl Quark {
                 ))
             }
 
-            if free_vars.len() > 0 {
-
-            }
-
+            if free_vars.len() > 0 {}
 
             tracing::error!("Unrestricted vars: {}", free_vars.len());
         }
@@ -467,7 +477,11 @@ impl Quark {
                 let base = match base {
                     Err(e) => {
                         tracing::error!("report import errors");
-                        return self.new_tid(NodeInfo::Builtin, "import error, but bubble", is_root);
+                        return self.new_tid(
+                            NodeInfo::Builtin,
+                            "import error, but bubble",
+                            is_root,
+                        );
                     }
                     Ok(v) => v,
                 };
@@ -526,7 +540,12 @@ impl Quark {
         if let Some(v) = refm.v_for(tid) {
             f(v)
         } else {
-            let new_tid = TypeID(Uuid::new_v4(), tid.span(), false, format!("spawns new instance from tid {tid:?}").intern());
+            let new_tid = TypeID(
+                Uuid::new_v4(),
+                tid.span(),
+                false,
+                format!("spawns new instance from tid {tid:?}").intern(),
+            );
             let instance = Instance::plain_instance(self);
 
             refm.add_kv(new_tid, instance);
@@ -558,7 +577,12 @@ impl Quark {
         is_root: bool,
     ) -> TypeID {
         // make a new tid inst here since the regular one automatically adds it to unifier
-        let instance_tid = TypeID(uuid::Uuid::new_v4(), tid.span(), is_root, format!("tid from assigning an instance to tid {tid:?}").intern());
+        let instance_tid = TypeID(
+            uuid::Uuid::new_v4(),
+            tid.span(),
+            is_root,
+            format!("tid from assigning an instance to tid {tid:?}").intern(),
+        );
 
         tracing::warn!("borrows instances for assign_instance");
         let mut refm = self.instances.borrow_mut();
@@ -583,7 +607,12 @@ impl Quark {
         span: NodeInfo,
         is_root: bool,
     ) -> TypeID {
-        let instance_tid = TypeID(Uuid::new_v4(), span, is_root, "introducing an instance".intern());
+        let instance_tid = TypeID(
+            Uuid::new_v4(),
+            span,
+            is_root,
+            "introducing an instance".intern(),
+        );
 
         tracing::warn!("borrows instances for introduce_instance");
         let mut refm = self.instances.borrow_mut();
@@ -593,7 +622,12 @@ impl Quark {
         instance_tid
     }
 
-    pub fn new_tid<IS: Into<String>>(&self, for_span: NodeInfo, made_for: IS, is_root: bool) -> TypeID {
+    pub fn new_tid<IS: Into<String>>(
+        &self,
+        for_span: NodeInfo,
+        made_for: IS,
+        is_root: bool,
+    ) -> TypeID {
         let s: String = made_for.into();
         let s = s.intern();
 
@@ -645,7 +679,12 @@ impl Quark {
                 "a - added a generic {gname} within {node_id:?} who is {:?}",
                 node_id.resolve().canonical_typeref().resolve().unwrap()
             );
-            let g_tid = TypeID(uuid::Uuid::new_v4(), NodeInfo::Builtin, true, format!("tid for the generic {gname}").intern());
+            let g_tid = TypeID(
+                uuid::Uuid::new_v4(),
+                NodeInfo::Builtin,
+                true,
+                format!("tid for the generic {gname}").intern(),
+            );
 
             generics.insert(*gname, g_tid);
         }
@@ -976,11 +1015,15 @@ impl Quark {
                                 let fname = sa.field;
 
                                 self.executor.install(async move {
-                                    let direct = self.with_instance(result_ty, |instance| { instance.once_resolved.clone().wait() }).await;
+                                    //let direct = self.with_instance(result_ty, |instance| { instance.once_resolved.clone().wait() }).await;
+                                    println!("waits a direct for {fname} by waiting on {result_ty:?}");
+                                    let base = self.resolved_base_of(result_ty).await;
 
-                                    //panic!("we got the type of the ret!");
+                                    println!("got a base direct of {base:?} for {fname}");
 
-                                    //let inst: Instance = Instance::from_resolved(direct_resolved);
+                                    let direct = self.resolved_type_of(result_ty).await;
+
+                                    println!("got a direct: {direct:?} for {fname}");
 
                                     tracing::warn!("sends a wait for on a NotifyDirectUsage");
 
@@ -1271,7 +1314,12 @@ impl Quark {
                 let f = f.clone();
                 warn!(
                     "quark for a function starts up using ctx id {:?}, which is {:?}",
-                    self.node_id, self.node_id.resolve().canonical_typeref().resolve().unwrap(),
+                    self.node_id,
+                    self.node_id
+                        .resolve()
+                        .canonical_typeref()
+                        .resolve()
+                        .unwrap(),
                 );
                 let imp = imp
                     .lock()
