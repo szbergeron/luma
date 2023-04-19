@@ -3,7 +3,17 @@ fn print<T>(v: T) -> std::Unit #builtin "luma_print_fast" "luma_print_silly" "lu
 
 struct Unit noref #builtin luma_unit {}
 
+struct String noref #builtin String {}
+
+struct Vec<T> {
+    fn push<T>(self: std::Vec<T>, item: T) #builtin "luma_vec_push_fast" "" "";
+
+    fn new<T>() -> std::Vec<T> #builtin "luma_vec_new" "" "";
+    //fn new_i64() -> std::Vec<i64> #builtin "Vec::new" "" "";
+}
+
 struct i64 noref #builtin i64 {
+    /*
     fn operator[_*_](self: std::i64, other: std::i64) -> std::i64 
         #builtin "luma_i64_op_mul_fast" "luma_i64_op_mul_silly" "luma_i64_op_mul_slow";
 
@@ -22,6 +32,7 @@ struct i64 noref #builtin i64 {
     fn operator[_>_](self: std::i64, other: std::i64) -> std::bool
         #builtin "luma_i64_op_gt_fast" "luma_i64_op_gt_silly" "luma_op_gt_slow";
 
+    */
 };
 
 struct bool noref #builtin bool {
@@ -30,6 +41,26 @@ struct bool noref #builtin bool {
         #builtin "luma__fast_bool_compare_eq" "luma__silly_bool_compare_eq" "luma_op_eq_slow";
         */
 };
+
+
+//fn main() -> std::Vec<i64> {
+fn main() {
+
+    std::print("hello world");
+
+
+    //let v = struct std::Vec { };
+    //let v = std::Vec::new_i64();
+    //let v = std::Vec::new();
+
+    //v.push(v, 5);
+
+    //v
+};
+
+/*
+
+
 
 struct parametric<T> {
     var val: T;
@@ -46,14 +77,24 @@ fn p() -> std::Unit {
 
     pa.change(pa, pa.val + 3);
 
+
     std::print(pa.val);
+
 
     //std::print(pa.val);
 
     //struct std::Unit {}
 }
 
-/*
+fn hw() -> std::Unit {
+    std::print("hello world");
+};
+
+
+
+
+
+
 struct fdf isref ismod {
     var b: std::i64;
 };

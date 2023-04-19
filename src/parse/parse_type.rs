@@ -1,5 +1,6 @@
 //use crate::ast::base::IntoAstNode;
 
+
 use itertools::Itertools;
 
 use crate::cst::{
@@ -165,7 +166,12 @@ impl<'lexer> Parser<'lexer> {
         };
 
         let is_builtin = match t.try_take(Token::InteriorBuiltin) {
-            Some(v) => Some(t.take(Token::Identifier).join()?.slice),
+            Some(v) => {
+                //Some(t.take(Token::Identifier).join()?.slice),
+                let t = self.parse_type_specifier(&t, &vec![]).join_hard(&mut t).catch(&mut t)?;
+                let as_fmt = format!("{t:?}");
+                Some(as_fmt.intern())
+            }
             None => None,
         };
 

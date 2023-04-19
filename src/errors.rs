@@ -170,6 +170,9 @@ impl CompilationError {
                     if already_printed.insert(t.span()) {
                         ep.contextualize(t.span(), files, "this was part of the 'all' chain".intern());
                     }
+
+                    let why = t.why();
+                    ep.note_line(format!("A tid here had the creation reason: {why}"));
                 }
 
                 ep.note_line(format!(
@@ -246,6 +249,9 @@ impl CompilationError {
                             "This was found in the 'same-as' chain".intern(),
                         );
                     }
+
+                    let why = peer.why();
+                    ep.note_line(format!("A tid here had the creation reason: {why}"));
                 }
 
                 ep.note_line(

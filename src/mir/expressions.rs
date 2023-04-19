@@ -485,7 +485,9 @@ impl AnyExpression {
                     cst::Literal::UnitLiteral() => {
                         SyntacticTypeReferenceRef::from_std("std::Unit")
                     }
-                    cst::Literal::StringLiteral(_) => todo!(),
+                    cst::Literal::StringLiteral(sl) => {
+                        SyntacticTypeReferenceRef::from_std("std::String")
+                    },
                     cst::Literal::f32Literal(_) => todo!(),
                     cst::Literal::f64Literal(_) => todo!(),
                     cst::Literal::u128Literal(_) => todo!(),

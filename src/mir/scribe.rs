@@ -331,6 +331,9 @@ impl<'a> ScribeOne<'a> {
                     cst::Literal::UnknownIntegerLiteral(i) => {
                         write!(code, "{i}").unwrap();
                     }
+                    cst::Literal::StringLiteral(sl) => {
+                        write!(code, "{sl}.to_owned()").unwrap();
+                    }
                     other => todo!("don't handle {other:?} literals"),
                 }
             }
@@ -356,16 +359,16 @@ impl<'a> ScribeOne<'a> {
                 let _ = write!(code, "{ind}let mut {v} = {e};");
             }
             AnyExpression::OuterReference(sn, _i) => {
-                let refs = self
+                /*let refs = self
                     .within
                     .resolve_name(sn.clone(), self.mono)
                     .await
-                    .unwrap();
+                    .unwrap();*/
 
-                let now_mono = Monomorphization {
-                    of: refs,
-                    with: vec![],
-                };
+                let r = quark.resolved_type_of(quark.typeofs.get(cur_eid)).await;
+                let r = submap.substitute_of(r);
+
+                let now_mono = Monomorphization::from_resolved(r);
 
                 let name = now_mono.encode_name();
 
@@ -969,7 +972,14 @@ impl<'a> ScribeOne<'a> {
         let r = r % 5;
         //std::thread::sleep(Duration::from_secs(r));
 
-        let fname = self.mono.encode_name();
+        let submap = SubMap::new_in(quark, self.mono);
+        let smr = &submap;
+
+        let fname = match quark.meta.name.get().unwrap().resolve() {
+            "main" => "_luma_main".intern(),
+            _ => self.mono.encode_name(),
+        };
+        //let fname = self.mono.encode_name();
         println!("Encoding a function, named {fname}");
 
         let mut within = vec!["".to_owned()];
@@ -985,8 +995,6 @@ impl<'a> ScribeOne<'a> {
         let ret_mono = Monomorphization::from_resolved(quark.resolved_type_of(ret_tid).await);
         let ret = format!("{}*", ret_mono.encode_name());
         println!("Got ret mono: {ret}");
-        let submap = SubMap::new_in(quark, self.mono);
-        let smr = &submap;
 
         if is_builtin.is_none() {
             /*

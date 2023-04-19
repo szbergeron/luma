@@ -446,7 +446,19 @@ impl Instance {
         let gens_for_type: Rc<HashMap<IStr, TypeID>> = Rc::new(
             inst.generics
                 .iter()
-                .map(|(g, r)| (*g, within.new_tid(NodeInfo::Builtin, false)))
+                .map(|(g, r)| {
+                    (
+                        *g,
+                        within.new_tid(
+                            NodeInfo::Builtin,
+                            format!(
+                                "generic for a base of {:?}",
+                                base.resolve().canonical_typeref().resolve().unwrap()
+                            ),
+                            false,
+                        ),
+                    )
+                })
                 .collect(),
         );
 
@@ -469,7 +481,7 @@ impl Instance {
             if gens_for_type.len() == generics_unresolved.len() {
                 within.executor.install(
                     async move {
-                        let mut generics = Vec::new();
+                        let mut generics = HashMap::new();
 
                         for (generic_name, generic_tid) in generics_unresolved.iter() {
                             let gen_ty = within.with_instance(*generic_tid, |instance| {
@@ -478,8 +490,10 @@ impl Instance {
                             println!("Waiting on resolution of generic tid {generic_tid:?} which is generic {generic_name} so that {:?} can be resolved",
                                      base.resolve().canonical_typeref().resolve().unwrap());
 
-                            generics.push(gen_ty.await);
+                            generics.insert(generic_name, gen_ty.await);
                         }
+
+                        let generics = base.resolve().generics.iter().map(|(name, _)| generics.get(name).unwrap().clone()).collect_vec();
 
                         let resolved_ty = ResolvedType {
                             node: base,
@@ -765,6 +779,7 @@ impl Instance {
             )
         };
 
+        /*
         let once_resolved = unsafe {
             UnsafeAsyncCompletable::combine(
                 within.executor,
@@ -786,6 +801,33 @@ impl Instance {
                     }
                 },
             )
+        };*/
+
+        let once_resolved = unsafe {
+            let orig = UnsafeAsyncCompletable::new();
+
+            let inner = orig.clone();
+            let once_base_inner = once_base.clone();
+            let unified_generics_inner = unified_generics.clone();
+
+            within.executor.install(async move {
+                let base = once_base_inner.wait().await; // make sure we have the base
+
+                let mut resolved_ones = HashMap::new();
+
+                for (name, tid) in unified_generics_inner {
+                    let rt = within.resolved_type_of(tid).await;
+
+                    resolved_ones.insert(name, rt);
+                }
+
+                let generics = base.resolve().generics.iter().map(|(name, _)| resolved_ones.get(name).unwrap().clone()).collect_vec();
+
+                inner.complete(ResolvedType { node: base, generics });
+
+            }, "unified completion future");
+
+            orig
         };
 
         let i = Instance {

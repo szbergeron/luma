@@ -8,7 +8,7 @@ use tracing::info;
 //use crate::ast::{StaticVariableDeclaration, TopLevel};
 use crate::cst::cst_traits::NodeInfo;
 //use crate::cst::declarations::{OuterScope, TopLevel, Namespace, TypeReference, FunctionDefinition};
-use crate::cst::{self, ScopedName, FunctionBuiltin};
+use crate::cst::{self, ScopedName, FunctionBuiltin, SyntacticTypeReferenceRef};
 use crate::lex::{ParseResultError, Token};
 
 //use crate::helper::lex_wrap::LookaheadStream;
@@ -530,12 +530,15 @@ impl<'lexer> Parser<'lexer> {
             .catch(&mut t)?;
         let p_end = t.take(Token::RParen).join()?.end;
 
-        t.take(Token::ThinArrow).join()?;
-        let return_type = self
-            .parse_type_specifier(&t, &generics)
-            .join_hard(&mut t)
-            .catch(&mut t)?
-            .intern();
+        let return_type = if let Some(a) = t.try_take(Token::ThinArrow) {
+            self
+                .parse_type_specifier(&t, &generics)
+                .join_hard(&mut t)
+                .catch(&mut t)?
+                .intern()
+        } else {
+            SyntacticTypeReferenceRef::from_std("std::Unit")
+        };
 
         //if let Some(v) = 
         //

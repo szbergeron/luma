@@ -267,6 +267,28 @@ impl SyntacticTypeReference {
         Self { id: SyntacticTypeReferenceRef::new_nil(), info: NodeInfo::Builtin, inner: SyntacticTypeReferenceInner::Unconstrained() }
     }
 
+    pub fn as_plain_type(mut self) -> IStr {
+        match self.inner {
+            SyntacticTypeReferenceInner::Unconstrained() => todo!(),
+            SyntacticTypeReferenceInner::Tuple(t) => {
+                todo!()
+            },
+            SyntacticTypeReferenceInner::Single { name } => {
+                name.scope.into_iter().join("::").intern()
+                //format!("{name}").intern()
+            }
+            SyntacticTypeReferenceInner::Generic { label } => todo!(),
+            SyntacticTypeReferenceInner::Parameterized { name, generics } => {
+                let n = name.scope.into_iter().join("::").intern();
+                let g = generics.into_iter().map(|g| g.as_plain_type()).join(", ");
+
+                format!("{n}<{g}>").intern()
+            },
+            SyntacticTypeReferenceInner::Reference { to, mutable } => todo!(),
+            SyntacticTypeReferenceInner::Pointer { to, mutable } => todo!(),
+        }
+    }
+
     pub fn intern(mut self) -> SyntacticTypeReferenceRef {
         self.id = SyntacticTypeReferenceRef::new_nil();
 

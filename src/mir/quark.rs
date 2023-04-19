@@ -48,7 +48,7 @@ use super::{
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 /// (ID of the typevar, info for where it was parsed, whether it's a "root")
-pub struct TypeID(uuid::Uuid, cst::NodeInfo, bool);
+pub struct TypeID(uuid::Uuid, cst::NodeInfo, bool, IStr);
 
 impl TypeID {
     pub fn span(&self) -> NodeInfo {
@@ -57,6 +57,10 @@ impl TypeID {
 
     pub fn is_root(&self) -> bool {
         self.2
+    }
+
+    pub fn why(&self) -> IStr {
+        self.3
     }
 }
 
@@ -138,6 +142,7 @@ pub struct Quark {
 
 #[derive(Default)]
 pub struct Meta {
+    pub name: OnceCell<IStr>,
     pub returns: OnceCell<TypeID>,
     pub params: OnceCell<Vec<(IStr, TypeID, VarID)>>,
 
@@ -413,7 +418,7 @@ impl Quark {
 
                         // once we've propagated the error, we just treat this as unconstrained
                         // to let us find as many errors as possible
-                        let tid = self.new_tid(trv.info, true);
+                        let tid = self.new_tid(trv.info, "error prop ty", true);
 
                         tid
                     }
@@ -421,7 +426,7 @@ impl Quark {
             }
             SyntacticTypeReferenceInner::Unconstrained() => {
                 tracing::warn!("constructing completely unconstrained typeref, need to validate that or something");
-                let tid = self.new_tid(trv.info, is_root);
+                let tid = self.new_tid(trv.info, "unconstrained typeref ty", is_root);
 
                 tid
             }
@@ -457,7 +462,7 @@ impl Quark {
                 let base = match base {
                     Err(e) => {
                         tracing::error!("report import errors");
-                        return self.new_tid(NodeInfo::Builtin, is_root);
+                        return self.new_tid(NodeInfo::Builtin, "import error, but bubble", is_root);
                     }
                     Ok(v) => v,
                 };
@@ -516,7 +521,7 @@ impl Quark {
         if let Some(v) = refm.v_for(tid) {
             f(v)
         } else {
-            let new_tid = TypeID(Uuid::new_v4(), tid.span(), false);
+            let new_tid = TypeID(Uuid::new_v4(), tid.span(), false, format!("spawns new instance from tid {tid:?}").intern());
             let instance = Instance::plain_instance(self);
 
             refm.add_kv(new_tid, instance);
@@ -548,7 +553,7 @@ impl Quark {
         is_root: bool,
     ) -> TypeID {
         // make a new tid inst here since the regular one automatically adds it to unifier
-        let instance_tid = TypeID(uuid::Uuid::new_v4(), tid.span(), is_root);
+        let instance_tid = TypeID(uuid::Uuid::new_v4(), tid.span(), is_root, format!("tid from assigning an instance to tid {tid:?}").intern());
 
         tracing::warn!("borrows instances for assign_instance");
         let mut refm = self.instances.borrow_mut();
@@ -573,7 +578,7 @@ impl Quark {
         span: NodeInfo,
         is_root: bool,
     ) -> TypeID {
-        let instance_tid = TypeID(Uuid::new_v4(), span, is_root);
+        let instance_tid = TypeID(Uuid::new_v4(), span, is_root, "introducing an instance".intern());
 
         tracing::warn!("borrows instances for introduce_instance");
         let mut refm = self.instances.borrow_mut();
@@ -583,8 +588,11 @@ impl Quark {
         instance_tid
     }
 
-    pub fn new_tid(&self, for_span: NodeInfo, is_root: bool) -> TypeID {
-        let tid = TypeID(uuid::Uuid::new_v4(), for_span, is_root);
+    pub fn new_tid<IS: Into<String>>(&self, for_span: NodeInfo, made_for: IS, is_root: bool) -> TypeID {
+        let s: String = made_for.into();
+        let s = s.intern();
+
+        let tid = TypeID(uuid::Uuid::new_v4(), for_span, is_root, s);
 
         tracing::warn!("borrows instances for new_tid");
         self.instances.borrow_mut().add_k(tid);
@@ -632,7 +640,7 @@ impl Quark {
                 "a - added a generic {gname} within {node_id:?} who is {:?}",
                 node_id.resolve().canonical_typeref().resolve().unwrap()
             );
-            let g_tid = TypeID(uuid::Uuid::new_v4(), NodeInfo::Builtin, true);
+            let g_tid = TypeID(uuid::Uuid::new_v4(), NodeInfo::Builtin, true, format!("tid for the generic {gname}").intern());
 
             generics.insert(*gname, g_tid);
         }
@@ -668,7 +676,7 @@ impl Quark {
 
         let res_tid = match self.acting_on.borrow().get(on_id).clone() {
             AnyExpression::Block(b) => {
-                let block_ty = self.new_tid(b.info, false);
+                let block_ty = self.new_tid(b.info, "block ty", false);
 
                 for &eid in b.statements.iter() {
                     //let c_ty = self.new_tid();
@@ -839,7 +847,7 @@ impl Quark {
                     .type_of_var
                     .borrow_mut()
                     .entry(introduced_as)
-                    .or_insert(self.new_tid(info, true));
+                    .or_insert(self.new_tid(info, "binding ty", true));
 
                 self.add_unify(
                     src_tid,
@@ -858,7 +866,7 @@ impl Quark {
 
                 tracing::info!("it's an invocation: {i:#?}");
 
-                let resulting_type_id = self.new_tid(i.info, false);
+                let resulting_type_id = self.new_tid(i.info, "invocation ty", false);
                 tracing::info!(
                     "creates result type id for the invocation of {resulting_type_id:?}"
                 );
@@ -917,7 +925,7 @@ impl Quark {
                 resulting_type_id
             }
             AnyExpression::StaticAccess(sa) => {
-                let result_ty = self.new_tid(sa.info, false);
+                let result_ty = self.new_tid(sa.info, "static access ty", false);
                 tracing::info!("static accessing: {sa:?}");
                 // the type of the base that we're accessing the field on
                 let src_ty = self.do_the_thing_rec(sa.on, false);
@@ -1069,7 +1077,7 @@ impl Quark {
                 // here we also care if we're an lval or an rval
                 let ovt = self.type_of_var.borrow().get(&v).copied().unwrap();
 
-                let vt = self.new_tid(n, false);
+                let vt = self.new_tid(n, "variable ref ty", false);
 
                 self.add_unify(ovt, vt, "a variable has the type of its binding");
 
@@ -1078,7 +1086,7 @@ impl Quark {
                 vt
             }
             AnyExpression::OuterReference(s, ni) => {
-                let et = self.new_tid(ni, true);
+                let et = self.new_tid(ni, "outer ref ty", true);
 
                 unsafe {
                     self.executor.install(
@@ -1112,7 +1120,7 @@ impl Quark {
                 }
                 tracing::info!("got a literal: {l:?}");
 
-                let typeof_literal = self.new_tid(l.info, true);
+                let typeof_literal = self.new_tid(l.info, "literal ty", true);
 
                 unsafe {
                     self.executor.install(
@@ -1157,7 +1165,7 @@ impl Quark {
                     info,
                 } = c;
 
-                let typeof_composite = self.new_tid(info, true);
+                let typeof_composite = self.new_tid(info, "composite ty", true);
 
                 unsafe {
                     self.executor.install(
@@ -1378,6 +1386,8 @@ impl Quark {
         let parent_id = self.node_id.resolve().parent.unwrap();
 
         tracing::error!("need to properly uh...handle generics for stuff");
+
+        self.meta.name.set(f.name).unwrap();
 
         let mut binding_scope = Bindings::fresh();
 
