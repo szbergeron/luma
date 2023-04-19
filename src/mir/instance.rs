@@ -664,14 +664,13 @@ impl Instance {
                         complaint: format!("original reason for unification was {reason}, tried to unify a {:?} with a {:?}", ta.from.resolve().canonical_typeref().resolve().unwrap(), tb.from.resolve().canonical_typeref().resolve().unwrap()),
                         because_unify: because,
                     };
-                    return Err(te)
+                    return Err(te);
                 } else {
                     InstanceOf::Type(ta)
                 }
 
                 //within.add_type_error(TypeError { components: , complaint: (), because_unify: () })
                 //assert_eq!(ta.from, tb.from);
-
             }
 
             (InstanceOf::Func(fa), InstanceOf::Func(fb)) => {

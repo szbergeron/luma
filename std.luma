@@ -7,7 +7,7 @@ struct String noref #builtin String {}
 
 //struct LumaVec<T> #builtin 
 
-struct Vec<T> noref #builtin LumaVec<T> {
+struct Vec<T> noref #builtin FastRefHandle<T> {
     fn push<T>(self: std::Vec<T>, item: T) #builtin "luma_vec_push_fast" "" "luma_vec_push_slow";
 
     fn get<T>(self: std::Vec<T>, ind: std::i64) -> T #builtin "luma_vec_get_fast" "" "luma_vec_get_slow";
@@ -84,6 +84,8 @@ fn main() {
     }
 
     std::vectest3();
+
+    std::test_dyn_fields();
 };
 
 fn vectest() -> std::Vec<std::i64> {
@@ -97,6 +99,42 @@ fn vectest3() {
     std::print(v.get(v, 0))
 
     //v.push(v, "hello");
+}
+
+struct User {
+    var name: std::String;
+    var age: std::i64;
+}
+
+fn test_dyn_fields() {
+    let bob = struct std::User { name: "Bob", age: 20 };
+
+    std::print("bob's age is");
+    std::print(bob.age);
+
+    bob.married = true;
+
+    std::print("bob marital status:");
+    std::print(bob.married);
+
+    bob.married = false;
+
+    //bob.married = "yes";
+}
+
+struct A {
+}
+
+fn check_dyn_usage(u: User) {
+    let v = struct std::A {};
+
+    v.b = u.married;
+
+    std::print(v.b);
+}
+
+fn bad_dyn_usage(u: std::User) {
+    u.married = "no"
 }
 
 /*

@@ -1,7 +1,7 @@
 use crate::avec::AtomicVec;
 use crate::cst::{
-    ScopedName, SyntacticTypeReference, SyntacticTypeReferenceInner, SyntacticTypeReferenceRef,
-    TopLevel, FunctionBuiltin, StructuralTyAttrs,
+    FunctionBuiltin, ScopedName, StructuralTyAttrs, SyntacticTypeReference,
+    SyntacticTypeReferenceInner, SyntacticTypeReferenceRef, TopLevel,
 };
 use crate::helper::interner::Internable;
 use crate::mir::quark::{Quark, ResolvedType};
@@ -118,12 +118,14 @@ impl SubMap {
                 assert!(c.generics.is_empty());
                 v.clone()
             }
-            None => {
-                ResolvedType {
-                    node: c.node,
-                    generics: c.generics.into_iter().map(|t| self.substitute_of(t)).collect_vec(),
-                }
-            }
+            None => ResolvedType {
+                node: c.node,
+                generics: c
+                    .generics
+                    .into_iter()
+                    .map(|t| self.substitute_of(t))
+                    .collect_vec(),
+            },
         }
     }
 
@@ -150,9 +152,21 @@ impl SubMap {
         //let base_generics = with_mono.of.resolve().generics.clone();
 
         for (name, sub) in all {
-            let generic_ctx = within.meta.generics_from_name.borrow().get(&name).copied().expect("wrap didn't have generics it said it would");
+            let generic_ctx = within
+                .meta
+                .generics_from_name
+                .borrow()
+                .get(&name)
+                .copied()
+                .expect("wrap didn't have generics it said it would");
 
-            subs.insert(ResolvedType { node: generic_ctx, generics: vec![] }, sub);
+            subs.insert(
+                ResolvedType {
+                    node: generic_ctx,
+                    generics: vec![],
+                },
+                sub,
+            );
         }
 
         Self { replace: subs }
@@ -175,7 +189,15 @@ impl CtxID {
     pub fn new_generic(name: IStr) -> CtxID {
         //let sd = StructuralDataDefinition { fields: vec![], methods: HashMap::new(), attrs: StructuralTyAttrs::default() };
 
-        let n = Node::new(name, vec![], None, None, NodeUnion::Generic(name), false, vec![]);
+        let n = Node::new(
+            name,
+            vec![],
+            None,
+            None,
+            NodeUnion::Generic(name),
+            false,
+            vec![],
+        );
 
         // this is horrible and hacky and should not carry through to the final product
         n
@@ -675,9 +697,12 @@ struct FunctionTemplate {
 impl NodeUnion {
     pub fn is_builtin(&self) -> bool {
         match self {
-            Self::Function(fd, fe) => {
-                fe.lock().unwrap().as_ref().map(|v| v.is_right()).unwrap_or(false)
-            },
+            Self::Function(fd, fe) => fe
+                .lock()
+                .unwrap()
+                .as_ref()
+                .map(|v| v.is_right())
+                .unwrap_or(false),
             _ => false,
         }
     }
