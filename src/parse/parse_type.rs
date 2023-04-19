@@ -169,8 +169,9 @@ impl<'lexer> Parser<'lexer> {
             Some(v) => {
                 //Some(t.take(Token::Identifier).join()?.slice),
                 let t = self.parse_type_specifier(&t, &vec![]).join_hard(&mut t).catch(&mut t)?;
-                let as_fmt = format!("{t:?}");
-                Some(as_fmt.intern())
+                Some(t.as_plain_type())
+                //let as_fmt = format!("{t:?}");
+                //Some(as_fmt.intern())
             }
             None => None,
         };

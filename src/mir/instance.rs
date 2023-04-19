@@ -823,7 +823,10 @@ impl Instance {
 
                 let generics = base.resolve().generics.iter().map(|(name, _)| resolved_ones.get(name).unwrap().clone()).collect_vec();
 
-                inner.complete(ResolvedType { node: base, generics });
+                let rt = ResolvedType { node: base, generics };
+                inner.complete(rt.clone());
+                self.once_resolved.complete(rt.clone());
+                stores_into.once_resolved.complete(rt.clone());
 
             }, "unified completion future");
 

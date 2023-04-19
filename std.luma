@@ -12,8 +12,13 @@ struct Vec<T> {
     //fn new_i64() -> std::Vec<i64> #builtin "Vec::new" "" "";
 }
 
+
+//struct VecInner noref #builtin Vec<T> {}
+
+/*fn v(vi: VecInner) {
+}*/
+
 struct i64 noref #builtin i64 {
-    /*
     fn operator[_*_](self: std::i64, other: std::i64) -> std::i64 
         #builtin "luma_i64_op_mul_fast" "luma_i64_op_mul_silly" "luma_i64_op_mul_slow";
 
@@ -31,8 +36,6 @@ struct i64 noref #builtin i64 {
 
     fn operator[_>_](self: std::i64, other: std::i64) -> std::bool
         #builtin "luma_i64_op_gt_fast" "luma_i64_op_gt_silly" "luma_op_gt_slow";
-
-    */
 };
 
 struct bool noref #builtin bool {
@@ -43,20 +46,29 @@ struct bool noref #builtin bool {
 };
 
 
-//fn main() -> std::Vec<i64> {
 fn main() {
 
     std::print("hello world");
 
-
-    //let v = struct std::Vec { };
-    //let v = std::Vec::new_i64();
-    //let v = std::Vec::new();
-
-    //v.push(v, 5);
-
-    //v
+    std::print("this is 2 + 2:");
+    std::print(2 + 2);
 };
+
+/*fn vectest() -> std::Vec<std::i64> {
+    std::Vec::new()
+}*/
+
+struct VecOfInt {
+    var v: std::Vec<std::i64>;
+
+    fn new() -> std::VecOfInt #builtin "" "" "";
+}
+
+fn vectest2() {
+    let v = std::VecOfInt::new();
+
+    v.v.push(v.v, 10);
+}
 
 /*
 

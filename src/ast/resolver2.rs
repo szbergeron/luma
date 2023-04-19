@@ -478,7 +478,7 @@ impl Resolver {
                                         is_at,
                                         is_public,
                                     },
-                                    Err(e) => todo!("handle import errors"),
+                                    Err(e) => todo!("handle import errors {e:?}"),
                                 };
 
                                 warn!("resolved a doyouhave for {symbol} which resolved to {res:?}");
