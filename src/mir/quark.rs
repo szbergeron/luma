@@ -207,15 +207,13 @@ impl Quark {
         println!("unifies {from:?} into {into:?} because {reason}");
         tracing::warn!("borrows instances for add_unify");
         let mut refm = self.instances.borrow_mut();
-        let mut resulting_unifies = Vec::new();
+        //let mut resulting_unifies = Vec::new();
 
-        let _useme = refm.unify(from, into, |from_inst, into_inst| -> Result<Instance, !> {
+        let r: Result<Option<Vec<Unify>>, TypeError> = refm.unify(from, into, |from_inst, into_inst| -> Result<(Instance, Vec<Unify>), TypeError> {
             tracing::info!("having to merge two instances");
             let original_a = from_inst.clone();
-            let (v, u) = from_inst.unify_with(into_inst, Unify { from, into }, reason, self);
-            resulting_unifies = u;
-
-            Ok(v)
+            let r = from_inst.unify_with(into_inst, Unify { from, into }, reason, self);
+            r
         });
 
         //.expect("user did a type error");
@@ -223,8 +221,15 @@ impl Quark {
         // this add_unify could also call it
         std::mem::drop(refm);
 
-        for Unify { from, into } in resulting_unifies {
-            self.add_unify(from, into, "resulting unify from an instance add".intern());
+        match r {
+            Ok(u) => {
+                for Unify { from, into } in u.unwrap_or(vec![]) {
+                    self.add_unify(from, into, "resulting unify from an instance add".intern());
+                }
+            },
+            Err(te) => {
+                self.add_type_error(te);
+            }
         }
 
         tracing::debug!("New status for sets:");

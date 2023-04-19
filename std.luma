@@ -17,7 +17,7 @@ struct Vec<T> {
 
 /*fn v(vi: VecInner) {
 }*/
-/*
+
 fn funky_dyn_fields(a: std::fdf) -> std::i64 {
     //a.def = a.def;
     a.abc = 5;
@@ -33,7 +33,7 @@ fn funky_dyn_fields(a: std::fdf) -> std::i64 {
     //a.g = a.g;
 
     a.abc
-}*/
+}
 
 struct fdf isref ismod {
     var b: std::i64;
@@ -60,10 +60,8 @@ struct i64 noref #builtin i64 {
 };
 
 struct bool noref #builtin bool {
-    /*
     fn operator[_==_](self: std::bool, other: std::bool) -> std::bool
         #builtin "luma__fast_bool_compare_eq" "luma__silly_bool_compare_eq" "luma_op_eq_slow";
-        */
 };
 
 
@@ -77,6 +75,13 @@ fn main() {
 
 fn vectest() -> std::Vec<std::i64> {
     std::Vec::new()
+}
+
+fn vectest3() {
+    let v = std::Vec::new();
+    v.push(v, 5);
+
+    v.push(v, "hello");
 }
 
 struct VecOfInt {

@@ -23,7 +23,7 @@ use crate::{
     cst::{NodeInfo, SyntacticTypeReferenceRef},
     errors::{CompilationError, TypeUnificationError},
     helper::{
-        interner::{IStr, Internable},
+        interner::{IStr, Internable, SpurHelper},
         SwapWith,
     },
 };
@@ -473,20 +473,26 @@ impl Instance {
 
             let once_resolved_inner = self.once_resolved.clone();
 
-            within.executor.install(async move {
-                let mut resolved = Vec::new();
-                for (name, tid) in gens_inner.iter().copied() {
-                    let r = within.resolved_type_of(tid).await;
-                    resolved.push(r);
-                }
+            within.executor.install(
+                async move {
+                    let mut resolved = Vec::new();
+                    for (name, tid) in gens_inner.iter().copied() {
+                        let r = within.resolved_type_of(tid).await;
+                        resolved.push(r);
+                    }
 
-                let resolved = ResolvedType { node: base, generics: resolved };
+                    let resolved = ResolvedType {
+                        node: base,
+                        generics: resolved,
+                    };
 
-                once_resolved_inner.complete(resolved).expect("should be the only one completing this");
-
-            }, "complete self once all generics are completed")
+                    once_resolved_inner
+                        .complete(resolved)
+                        .expect("should be the only one completing this");
+                },
+                "complete self once all generics are completed",
+            )
         }
-
 
         let of = match &base_node.inner {
             NodeUnion::Type(t) => {
@@ -608,7 +614,7 @@ impl Instance {
         because: Unify,
         reason: IStr,
         within: &'static Quark,
-    ) -> (Instance, Vec<Unify>) {
+    ) -> Result<(Instance, Vec<Unify>), TypeError> {
         let mut unifies = Vec::new();
 
         tracing::info!(
@@ -652,9 +658,20 @@ impl Instance {
         let new_of = match (self.of, stores_into.of) {
             (InstanceOf::Type(ta), InstanceOf::Type(tb)) => {
                 println!("do this proper later");
-                assert_eq!(ta.from, tb.from);
+                if ta.from != tb.from {
+                    let te = TypeError {
+                        components: vec![],
+                        complaint: reason.resolve().to_owned(),
+                        because_unify: because,
+                    };
+                    return Err(te)
+                } else {
+                    InstanceOf::Type(ta)
+                }
 
-                InstanceOf::Type(ta)
+                //within.add_type_error(TypeError { components: , complaint: (), because_unify: () })
+                //assert_eq!(ta.from, tb.from);
+
             }
 
             (InstanceOf::Func(fa), InstanceOf::Func(fb)) => {
@@ -738,7 +755,7 @@ impl Instance {
                            // do any fancy unify and can just pick one
         };
 
-        (i, unifies)
+        Ok((i, unifies))
     }
 
     pub fn notify_monomorphizations(&self) {

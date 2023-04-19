@@ -25,9 +25,9 @@ impl<T: Debug, K: Eq + PartialEq + std::hash::Hash + Copy + Debug> Unifier<K, T>
     }
 
     #[track_caller]
-    pub fn unify<F, E>(&mut self, a: K, b: K, with_values: F) -> Result<(), E>
+    pub fn unify<F, P, E>(&mut self, a: K, b: K, with_values: F) -> Result<Option<P>, E>
     where
-        F: FnOnce(T, T) -> Result<T, E>,
+        F: FnOnce(T, T) -> Result<(T, P), E>,
     {
         if !self.elements.contains_key(&a) {
             self.add_k(a);
@@ -45,7 +45,7 @@ impl<T: Debug, K: Eq + PartialEq + std::hash::Hash + Copy + Debug> Unifier<K, T>
 
         if root_a == root_b {
             // already unified
-            Ok(())
+            Ok(None)
         } else {
             debug_assert!(!self.children_of(root_a).into_iter().contains(&root_b));
             debug_assert!(!self.children_of(root_b).into_iter().contains(&root_a));
@@ -62,30 +62,34 @@ impl<T: Debug, K: Eq + PartialEq + std::hash::Hash + Copy + Debug> Unifier<K, T>
             let ta = std::mem::take(&mut ar.inner);
             let tb = std::mem::take(&mut br.inner);
 
-            match (ta, tb) {
+            let r = match (ta, tb) {
                 (EntryInner::Root(va), EntryInner::Root(vb)) => {
                     tracing::info!("they're both roots, need to merge val");
-                    let new_v = with_values(va, vb)?;
+                    let (t, p) = with_values(va, vb)?;
                     ar.ref_from.push(root_b); // we're changing A to be authority
-                    ar.inner = EntryInner::Root(new_v);
+                    ar.inner = EntryInner::Root(t);
                     br.inner = EntryInner::Refers(root_a);
+
+                    Some(p)
                 }
                 (EntryInner::Free(), bi) => {
                     tracing::info!("a was free, so do a noop merge");
                     br.ref_from.push(root_a);
                     ar.inner = EntryInner::Refers(br.keyed);
                     br.inner = bi;
+                    None
                 }
                 (ai, EntryInner::Free()) => {
                     tracing::info!("b was free, so do a noop merge");
                     ar.ref_from.push(root_b);
                     br.inner = EntryInner::Refers(ar.keyed);
                     ar.inner = ai;
+                    None
                 }
                 _ => unreachable!(),
             };
 
-            Ok(())
+            Ok(r)
         }
     }
 
