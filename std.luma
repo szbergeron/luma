@@ -17,6 +17,27 @@ struct Vec<T> {
 
 /*fn v(vi: VecInner) {
 }*/
+/*
+fn funky_dyn_fields(a: std::fdf) -> std::i64 {
+    //a.def = a.def;
+    a.abc = 5;
+    a.abc = 5 * a.abc;
+
+
+    //a.def = struct std::Unit {};
+
+    a.def = a.abc;
+
+    a.g = struct std::fdf { b: 20 };
+
+    //a.g = a.g;
+
+    a.abc
+}*/
+
+struct fdf isref ismod {
+    var b: std::i64;
+};
 
 struct i64 noref #builtin i64 {
     fn operator[_*_](self: std::i64, other: std::i64) -> std::i64 
@@ -54,9 +75,9 @@ fn main() {
     std::print(2 + 2);
 };
 
-/*fn vectest() -> std::Vec<std::i64> {
+fn vectest() -> std::Vec<std::i64> {
     std::Vec::new()
-}*/
+}
 
 struct VecOfInt {
     var v: std::Vec<std::i64>;
