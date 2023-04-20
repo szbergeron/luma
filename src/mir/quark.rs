@@ -204,7 +204,7 @@ impl Quark {
         StalledDog::nudge_quark();
 
         let reason: IStr = reason.into();
-        println!("unifies {from:?} into {into:?} because {reason}");
+        tracing::warn!("unifies {from:?} into {into:?} because {reason}");
         tracing::warn!("borrows instances for add_unify");
         let mut refm = self.instances.borrow_mut();
         //let mut resulting_unifies = Vec::new();
@@ -447,16 +447,16 @@ impl Quark {
             }
             SyntacticTypeReferenceInner::Generic { label } => {
                 //async_backtrace::
-                println!("Generics: {:?}", with_generics);
+                tracing::warn!("Generics: {:?}", with_generics);
                 let existing_tid = with_generics.get(&label);
 
                 let existing_tid = match existing_tid {
                     Some(s) => {
-                        println!("Gives the generic the known tid {s:?}");
+                        tracing::warn!("Gives the generic the known tid {s:?}");
                         *s
                     }
                     None => {
-                        println!("The generic was {label}");
+                        tracing::warn!("The generic was {label}");
                         panic!("got a generic that didn't mean anything in the context, we are {:?} and within {:?}", self.node_id, from_base);
                     }
                 };
@@ -496,7 +496,7 @@ impl Quark {
                     resolved_generics.push(resolved);
                 }
 
-                println!(
+                tracing::warn!(
                     "Makes an instance of {:?} with generics {resolved_generics:?}",
                     base.resolve().canonical_typeref().resolve().unwrap()
                 );
@@ -672,10 +672,10 @@ impl Quark {
 
         let mut generics = HashMap::new();
 
-        println!("Generics are {:?}", node_id.resolve().generics);
+        tracing::warn!("Generics are {:?}", node_id.resolve().generics);
 
         for (gname, gtype) in node_id.resolve().generics.iter() {
-            println!(
+            tracing::warn!(
                 "a - added a generic {gname} within {node_id:?} who is {:?}",
                 node_id.resolve().canonical_typeref().resolve().unwrap()
             );
@@ -1077,11 +1077,12 @@ impl Quark {
                                         self.add_unify(result_ty, tid,
                                                        "a dynamic field should be compatible with its usages after resolution");
                                     } else {
+                                        let st = base_ctx.resolve().canonical_typeref().resolve().unwrap();
                                         self.add_error(CompilationError::FieldAccessError(
                                                 FieldAccessError {
                                                     base_expr_span: sa.info,
                                                     field_span: sa.info,
-                                                    error_info: format!("this field did not exist, and its dynamic property type could not be successfully inferred"),
+                                                    error_info: format!("this field did not exist, and its dynamic property type could not be successfully inferred. It was accessed on type {st:?}"),
                                                 }))
                                     }
                                 }, "once we get a resolved notification back from the dynfield, we should unify that value");

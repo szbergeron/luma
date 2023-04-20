@@ -225,6 +225,8 @@ impl CompilationError {
                     files,
                     "This field did not exist on the base expression type:".intern(),
                 );
+
+                ep.note_line(error_info);
             }
             CompilationError::UnrestrictedTypeError(ute) => {
                 let UnrestrictedTypeError { tid, peers, note } = ute;

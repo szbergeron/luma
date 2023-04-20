@@ -16,18 +16,66 @@ struct i64 noref #builtin "i64" {
 
     fn operator[_>_](self: std::i64, other: std::i64) -> std::bool
         #builtin "$self > $other" "luma_i64_op_gt_silly($self, $other)" "luma_op_gt_slow($self, $other)";
+
+    fn to_string(self: std::i64) -> std::String
+        #builtin "$self.to_string()" "" "";
 };
+
+struct f64 noref #builtin "f64" {
+    fn operator[_*_](self: std::f64, other: std::f64) -> std::f64 
+        #builtin "$self * $other" "luma_i64_op_mul_silly($self, $other)" "luma_op_mul_slow($self, $other)";
+
+    fn operator[_+_](self: std::f64, other: std::f64) -> std::f64
+        #builtin "$self + $other" "luma_i64_op_add_silly($self, $other)" "luma_op_add_slow($self, $other)";
+
+    fn operator[_-_](self: std::f64, other: std::f64) -> std::f64
+        #builtin "$self - $other" "luma_i64_op_subtract_silly($self, $other)" "luma_op_subtract_slow($self, $other)";
+
+    fn operator[_/_](self: std::f64, other: std::f64) -> std::f64
+        #builtin "$self / $other" "luma_i64_op_subtract_silly($self, $other)" "luma_op_subtract_slow($self, $other)";
+
+    fn operator[_==_](self: std::f64, other: std::f64) -> std::bool
+        #builtin "$self == $other" "luma_i64_op_eq_silly($self, $other)" "luma_op_eq_slow($self, $other)";
+
+    fn operator[_<_](self: std::f64, other: std::f64) -> std::bool
+        #builtin "$self < $other" "luma_i64_op_lt_silly($self, $other)" "luma_op_lt_slow($self, $other)";
+
+    fn operator[_>_](self: std::f64, other: std::f64) -> std::bool
+        #builtin "$self > $other" "luma_i64_op_gt_silly($self, $other)" "luma_op_gt_slow($self, $other)";
+
+    fn to_string(self: std::f64) -> std::String
+        #builtin "$self.to_string()" "" "";
+
+    fn pow(self: std::f64, p: std::f64) -> std::f64
+        #builtin "$self.pow($p)" "" "";
+
+    fn sqrt(self: std::f64) -> std::f64
+        #builtin "$self.sqrt()" "" "";
+}
 
 struct bool noref #builtin "bool" {
     fn operator[_==_](self: std::bool, other: std::bool) -> std::bool
-        #builtin "$self == $other" "luma__silly_bool_compare_eq" "luma_op_eq_slow($self, $other)";
+        #builtin
+            "$self == $other"
+            "luma__silly_bool_compare_eq"
+            "luma_op_eq_slow($self, $other)";
 };
 
 fn print<T>(v: T) -> std::Unit #builtin "luma_print_fast($v);" "luma_print_silly" "luma_print_slow($v)";
 
 struct Unit noref #builtin "()" {}
 
-struct String noref #builtin "String" {}
+struct String noref #builtin "String" {
+    fn operator[_+_](self: std::String, other: std::String) -> std::String
+        #builtin
+        "{ let mut first = $self; first.push_str($other.as_str()); first }" "" "";
+
+    /*
+    fn operator[_+_](self: std::String, other: std::i64) -> std::String {
+        self + other.to_string(other)
+    };
+    */
+}
 
 //struct LumaVec<T> #builtin 
 
@@ -85,6 +133,7 @@ fn main() {
     std::vectest3();
     std::assigntest();
     std::takes_vecs_test();
+    //std::print("hello" + " " + 42.to_string());
 
     //let bob = std::test_dyn_fields();
 
@@ -98,21 +147,21 @@ fn vectest() -> Vec<i64> {
 
 fn vectest3() {
     let v = Vec::new();
-    v.push(v, 5);
+    v.push(5);
 
-    std::print(v.get(v, 0))
+    std::print(v.get(0))
 
     //v.push(v, "hello");
 }
 
 fn takes_vecs(a: std::Vec<i64>, b: std::Vec<i64>) {
-    std::print(a.get(a, 0) + b.get(b, 1));
+    std::print(a.get(0) + b.get(1));
 }
 
 fn takes_vecs_test() {
     let v = std::Vec::new();
-    v.push(v, 10);
-    v.push(v, 11);
+    v.push(10);
+    v.push(11);
 
     std::takes_vecs(v, v);
 }

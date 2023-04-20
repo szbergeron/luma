@@ -404,6 +404,7 @@ impl<'lexer> Parser<'lexer> {
         let mut t = parse_header!(t);
         let tw = t
             .take_in(&[
+                Token::FloatLiteral,
                 Token::UnknownIntegerLiteral,
                 Token::StringLiteral,
                 Token::Underscore,
@@ -414,7 +415,7 @@ impl<'lexer> Parser<'lexer> {
             .join()?;
 
         match tw.token {
-            Token::UnknownIntegerLiteral | Token::StringLiteral => {
+            Token::UnknownIntegerLiteral | Token::StringLiteral | Token::FloatLiteral => {
                 t.success(cst::ExpressionWrapper::literal_expression(tw))
             }
             Token::Underscore => t.success(cst::ExpressionWrapper::wildcard(tw)),
@@ -461,9 +462,10 @@ impl<'lexer> Parser<'lexer> {
                 // doing a function call on the current continuation
                 t.lh.backtrack();
                 let call_tuple = self
-                    .parse_tuple(&t, with_generics)
+                    .parse_tuple(&t, with_generics, true) // must tuple, since fc
                     .join_hard(&mut t)
                     .catch(&mut t)?;
+
                 let end = if let NodeInfo::Parsed(pni) = call_tuple.as_node().node_info() {
                     pni.span.end
                 } else {
@@ -487,17 +489,44 @@ impl<'lexer> Parser<'lexer> {
                     .hint("Any dot access should be followed by a member name")
                     .join()?;
 
+                // TODO: this is horrible, hacky, please fix this when you get a chance
+
                 let end = ident.end;
 
                 let ni = NodeInfo::from_indices(start, end);
 
                 let mae = cst::MemberAccessExpression {
-                    on,
+                    on: on.clone(),
                     name: ident.slice,
                     node_info: ni,
                 };
+                
+                let mae = Box::new(cst::ExpressionWrapper::MemberAccess(mae));
 
-                t.success((true, Box::new(cst::ExpressionWrapper::MemberAccess(mae))))
+                let e = if let Some(p) = t.try_take(Token::LParen) {
+                    t.lh.backtrack();
+
+                    let (call_again, mut f) = self.parse_access_continuation(&t, mae, with_generics).join_hard(&mut t).catch(&mut t)?;
+
+                    if let cst::ExpressionWrapper::FunctionCall(fc) = f.as_mut() {
+                        if let cst::ExpressionWrapper::Tuple(t) = fc.args.as_mut() {
+                            let mut new_e = vec![on];
+                            new_e.append(&mut t.expressions);
+
+                            t.expressions = new_e;
+                        } else {
+                            unreachable!()
+                        }
+                    } else {
+                        unreachable!()
+                    }
+
+                    (call_again, f)
+                } else {
+                    (true, mae)
+                };
+
+                t.success(e)
             }
             Token::RBracket => {
                 todo!("Array access not yet implemented")
@@ -563,7 +592,8 @@ impl<'lexer> Parser<'lexer> {
         match tw.token {
             Token::LParen => {
                 t.lh.backtrack(); // ungrab the lparen so it can be consumed by tuple
-                self.parse_tuple(&t, with_generics)
+                self.parse_tuple(&t, with_generics, false) // doesn't need to tuple, could just be
+                                                           // parens
             }
             Token::Identifier => {
                 t.lh.backtrack();
@@ -608,6 +638,7 @@ impl<'lexer> Parser<'lexer> {
         &mut self,
         t: &TokenProvider,
         with_generics: &Vec<IStr>,
+        must_tuple: bool,
     ) -> ExpressionResult {
         let mut t =
             parse_header!(t, [Token::LParen => 1.0, Token::Comma => 1.0, Token::RParen => 1.0]);
@@ -650,7 +681,12 @@ impl<'lexer> Parser<'lexer> {
 
         let ni = NodeInfo::from_indices(start, end);
 
-        let ex = cst::Tuple::new_expr(ni, exprs);
+        let ex = if exprs.len() == 1 && !must_tuple {
+            exprs.get(0).cloned().unwrap()
+        } else {
+            cst::Tuple::new_expr(ni, exprs)
+        };
+
 
         t.success(ex)
     }
