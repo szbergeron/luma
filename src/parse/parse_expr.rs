@@ -578,7 +578,7 @@ impl<'lexer> Parser<'lexer> {
         t: &TokenProvider,
         with_generics: &Vec<IStr>,
     ) -> ExpressionResult {
-        let mut t = parse_header!(t, [Token::Identifier => 1.0, Token::UnknownIntegerLiteral => 1.0, Token::StringLiteral => 1.0]);
+        let mut t = parse_header!(t, [Token::Identifier => 1.0, Token::UnknownIntegerLiteral => 1.0, Token::FloatLiteral => 1.0, Token::StringLiteral => 1.0]);
 
         let tw = t.try_take_if(|tw| {
             (tw.token.is_operand_base() || tw.token.matches(Token::LParen)).then_some(())

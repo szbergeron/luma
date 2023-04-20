@@ -47,7 +47,7 @@ struct f64 noref #builtin "f64" {
         #builtin "$self.to_string()" "" "";
 
     fn pow(self: std::f64, p: std::f64) -> std::f64
-        #builtin "$self.pow($p)" "" "";
+        #builtin "$self.powf($p)" "" "";
 
     fn sqrt(self: std::f64) -> std::f64
         #builtin "$self.sqrt()" "" "";

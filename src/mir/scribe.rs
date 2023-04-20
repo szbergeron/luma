@@ -344,6 +344,15 @@ impl<'a> ScribeOne<'a> {
                     cst::Literal::Boolean(b) => {
                         write!(code, "{b}").unwrap();
                     }
+                    cst::Literal::f64Literal(f) => {
+                        let formatted = format!("{f}");
+                        let formatted = if !formatted.contains(".") {
+                            format!("{formatted}.0")
+                        } else {
+                            formatted
+                        };
+                        write!(code, "({formatted})").unwrap();
+                    }
                     other => todo!("don't handle {other:?} literals"),
                 }
             }

@@ -23,7 +23,6 @@ pub enum Token {
 
     //#[token("private")]
     //Private,
-
     #[token("isref")]
     IsRef,
 
@@ -337,6 +336,7 @@ impl Token {
         match self {
             Self::UnknownIntegerLiteral => true,
             Self::f32Literal | Self::f64Literal => true,
+            Self::FloatLiteral => true,
             Self::i8Literal
             | Self::i16Literal
             | Self::i32Literal
@@ -477,7 +477,7 @@ impl CodeLocation {
                 } else {
                     CodeLocation::Parsed(b)
                 }
-            },
+            }
             (a @ CodeLocation::Parsed(_), CodeLocation::Builtin) => a,
             (CodeLocation::Builtin, a @ CodeLocation::Parsed(_)) => a,
             (CodeLocation::Builtin, CodeLocation::Builtin) => CodeLocation::Builtin,
@@ -494,7 +494,7 @@ impl CodeLocation {
                 } else {
                     CodeLocation::Parsed(b)
                 }
-            },
+            }
             (a @ CodeLocation::Parsed(_), CodeLocation::Builtin) => a,
             (CodeLocation::Builtin, a @ CodeLocation::Parsed(_)) => a,
             (CodeLocation::Builtin, CodeLocation::Builtin) => CodeLocation::Builtin,
@@ -705,7 +705,11 @@ impl<'a> TokenStream<'a> {
                                 break 'llvm_collector;
                             }
                             other => {
-                                tracing::info!("llvm pushes token {:?} with slice {}", other, itw.slice);
+                                tracing::info!(
+                                    "llvm pushes token {:?} with slice {}",
+                                    other,
+                                    itw.slice
+                                );
                                 llvm_rest.push_str(itw.slice.resolve());
                             }
                         }
