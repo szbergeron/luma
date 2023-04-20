@@ -249,6 +249,7 @@ pub enum Value {
     Object(ObjectHandle),
     I32(i32, ObjectHandle),
     I64(i64, ObjectHandle),
+    F64(f64, ObjectHandle),
     Bool(bool, ObjectHandle),
     String(String, ObjectHandle),
     Ref(*mut Value),
@@ -273,6 +274,7 @@ impl std::fmt::Debug for Value {
             Value::Vec(v, _) => writeln!(f, "vec({v:?})"),
             Value::I32(v, _) => write!(f, "i32({v})"),
             Value::I64(v, _) => write!(f, "i64({v})"),
+            Value::F64(v, _) => write!(f, "f64({v})"),
             Value::Bool(v, _) => write!(f, "bool({v})"),
             Value::String(v, _) => write!(f, "str({v})"),
             r @ Value::Ref(_) => write!(f, "ref({:?})", r.root()),
@@ -299,6 +301,7 @@ impl std::fmt::Display for Value {
             }
             Value::I32(v, _) => write!(f, "{v}"),
             Value::I64(v, _) => write!(f, "{v}"),
+            Value::F64(v, _) => write!(f, "{v}"),
             Value::Bool(v, _) => write!(f, "{v}"),
             Value::String(v, _) => write!(f, "{v}"),
             r @ Value::Ref(_) => write!(f, "{:?}", r.root()),
@@ -453,12 +456,27 @@ lazy_static::lazy_static! {
     };
 
     static ref VEC_OBJ: ObjectHandle = {
-        let h = DynamicObject::new_as_handle(u64::MAX - 3);
+        let h = DynamicObject::new_as_handle(u64::MAX - 4);
 
         let mut f = unsafe { h.inner.get().as_mut().unwrap() };
 
         f.fields.insert("push".to_owned(), Value::from_fn(luma_vec_push_slow as *const fn()));
         f.fields.insert("get".to_owned(), Value::from_fn(luma_vec_get_slow as *const fn()));
+
+        h
+    };
+
+    static ref FLOAT_OBJ: ObjectHandle = {
+        let h = DynamicObject::new_as_handle(u64::MAX - 5);
+
+        let mut f = unsafe { h.inner.get().as_mut().unwrap() };
+
+        f.fields.insert("operator[_==_]".to_owned(), Value::from_fn(luma_op_eq_slow as *const fn()));
+        f.fields.insert("operator[_!=_]".to_owned(), Value::from_fn(luma_op_ne_slow as *const fn()));
+        f.fields.insert("operator[_+_]".to_owned(), Value::from_fn(luma_op_add_slow as *const fn()));
+        f.fields.insert("operator[_-_]".to_owned(), Value::from_fn(luma_op_subtract_slow as *const fn()));
+        f.fields.insert("operator[_*_]".to_owned(), Value::from_fn(luma_op_mul_slow as *const fn()));
+        f.fields.insert("operator[_/_]".to_owned(), Value::from_fn(luma_op_divide_slow as *const fn()));
 
         h
     };
@@ -556,6 +574,10 @@ pub fn luma_op_add_slow(a: Value, b: Value) -> Value {
             //println!("adding {a} and {b}");
             Value::I64(a + b, am.clone())
         }
+        (Value::F64(a, am), Value::F64(b, bm)) => {
+            //println!("multiplying {a} and {b}");
+            Value::F64(a + b, am.clone())
+        }
         _ => unreachable!(),
     }
 }
@@ -566,6 +588,10 @@ pub fn luma_op_subtract_slow(a: Value, b: Value) -> Value {
             //println!("subtracting {a} and {b}");
             Value::I64(a - b, am.clone())
         }
+        (Value::F64(a, am), Value::F64(b, bm)) => {
+            //println!("multiplying {a} and {b}");
+            Value::F64(a - b, am.clone())
+        }
         _ => unreachable!(),
     }
 }
@@ -575,6 +601,24 @@ pub fn luma_op_mul_slow(a: Value, b: Value) -> Value {
         (Value::I64(a, am), Value::I64(b, bm)) => {
             //println!("multiplying {a} and {b}");
             Value::I64(a * b, am.clone())
+        }
+        (Value::F64(a, am), Value::F64(b, bm)) => {
+            //println!("multiplying {a} and {b}");
+            Value::F64(a * b, am.clone())
+        }
+        _ => unreachable!(),
+    }
+}
+
+pub fn luma_op_divide_slow(a: Value, b: Value) -> Value {
+    match (a.root(), b.root()) {
+        (Value::I64(a, am), Value::I64(b, bm)) => {
+            //println!("multiplying {a} and {b}");
+            Value::I64(a / b, am.clone())
+        }
+        (Value::F64(a, am), Value::F64(b, bm)) => {
+            //println!("multiplying {a} and {b}");
+            Value::F64(a / b, am.clone())
         }
         _ => unreachable!(),
     }

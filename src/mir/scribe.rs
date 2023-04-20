@@ -847,6 +847,14 @@ impl<'a> ScribeOne<'a> {
 
                         "std::String"
                     }
+                    cst::Literal::f64Literal(v) => {
+                        code.push(format!(
+                            //"{ind}let mut {uv} = Value::String({s}.to_owned(), {methods_object});"
+                            "{ind}let mut {uv} = luma_slow_new_f64({v});"
+                        ));
+
+                        "std::f64"
+                    }
                     o => todo!("unhandled literal {o:?}"),
                 };
 
@@ -895,6 +903,13 @@ impl<'a> ScribeOne<'a> {
                 ));
 
                 Some(stored_in)
+            }
+            AnyExpression::For(f) => {
+                let For { body, pre, post, condition } = f;
+
+                let res_var = UntypedVar::temp();
+
+                todo!()
             }
             AnyExpression::If(ie) => {
                 let If {
@@ -951,7 +966,7 @@ impl<'a> ScribeOne<'a> {
 
                 Some(res_var)
             }
-            _ => todo!(),
+            other => todo!("handle {other:?}"),
         }
     }
 

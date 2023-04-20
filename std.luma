@@ -40,6 +40,9 @@ struct f64 noref #builtin "f64" {
     fn operator[_==_](self: std::f64, other: std::f64) -> std::bool
         #builtin "$self == $other" "luma_i64_op_eq_silly($self, $other)" "luma_op_eq_slow($self, $other)";
 
+    fn operator[_!=_](self: std::f64, other: std::f64) -> std::bool
+        #builtin "$self != $other" "luma_i64_op_eq_silly($self, $other)" "luma_op_eq_slow($self, $other)";
+
     fn operator[_<_](self: std::f64, other: std::f64) -> std::bool
         #builtin "$self < $other" "luma_i64_op_lt_silly($self, $other)" "luma_op_lt_slow($self, $other)";
 
