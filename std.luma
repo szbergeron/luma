@@ -11,6 +11,9 @@ struct i64 noref #builtin "i64" {
     fn operator[_==_](self: std::i64, other: std::i64) -> std::bool
         #builtin "luma_i64_op_eq_fast($self, $other)" "luma_i64_op_eq_silly($self, $other)" "luma_op_eq_slow($self, $other)";
 
+    fn operator[_!=_](self: std::i64, other: std::i64) -> std::bool
+        #builtin "luma_i64_op_eq_fast($self, $other)" "luma_i64_op_eq_silly($self, $other)" "luma_op_eq_slow($self, $other)";
+
     fn operator[_<_](self: std::i64, other: std::i64) -> std::bool
         #builtin "luma_i64_op_lt_fast($self, $other)" "luma_i64_op_lt_silly($self, $other)" "luma_op_lt_slow($self, $other)";
 
@@ -85,6 +88,8 @@ struct Vec<T> noref #builtin "FastRefHandle<Vec<$T>>" {
     fn get<T>(self: std::Vec<T>, ind: std::i64) -> T #builtin "$self.borrow_mut().get($ind as usize).cloned().unwrap()" "" "luma_vec_get_slow($self, $ind)";
 
     fn new<T>() -> std::Vec<T> #builtin "FastRefHandle::from_val(Vec::new())" "" "luma_vec_new_slow()";
+
+    fn len<T>(self: std::Vec<T>) -> std::i64 #builtin "$self.len() as i64" "" "";
     //fn new_i64() -> std::Vec<i64> #builtin "Vec::new" "" "";
 }
 
@@ -121,7 +126,7 @@ struct fdf isref ismod {
 };
 
 
-fn main() {
+fn tmain() {
 
     std::print("hello world");
 

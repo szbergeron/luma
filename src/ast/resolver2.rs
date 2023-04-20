@@ -555,7 +555,7 @@ impl Resolver {
         let _ = {
             let mut inner = self.inner.lock().unwrap();
 
-            for s in ["global", "std", "super"] {
+            for s in ["global", "std", "super", "usr"] {
                 inner.possibles.insert(s.intern());
             }
 
@@ -603,6 +603,18 @@ impl Resolver {
                 self.for_ctx,
                 false,
             );
+
+            self.announce_resolution(
+                "usr".intern(),
+                *global
+                    .resolve()
+                    .children
+                    .get(&"usr".intern())
+                    .unwrap()
+                    .value(),
+                self.for_ctx,
+                false,
+            );
         } else {
             // we *are* the global
             self.announce_resolution("global".intern(), self.for_ctx, self.for_ctx, true);
@@ -614,6 +626,19 @@ impl Resolver {
                     .resolve()
                     .children
                     .get(&"std".intern())
+                    .unwrap()
+                    .value(),
+                self.for_ctx,
+                false,
+            );
+
+            self.announce_resolution(
+                "usr".intern(),
+                *self
+                    .for_ctx
+                    .resolve()
+                    .children
+                    .get(&"usr".intern())
                     .unwrap()
                     .value(),
                 self.for_ctx,
