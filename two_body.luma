@@ -33,6 +33,9 @@ fn generate_body(x: std::f64, y: std::f64, mass: f64) -> Body {
     b.y = y;
     b.mass = mass;
 
+    b.v_x = std::cosine(x);
+    b.v_y = std::cosine(y); // just almost random
+
     b
 };
 
@@ -52,7 +55,7 @@ fn simulate_nbody(bodies: std::Vec<Body>, samples: std::i64) {
         //let fv = struct ForceVector { x: 0.0, y: 0.0 };
         let fv = usr::grav_from(cur_body, other_bodies);
 
-        cur_body.v_x = cur_body.v_x + (fv.x / cur_body.mass); // f = ma, a = 
+        cur_body.v_x = cur_body.v_x + (fv.x / cur_body.mass); // f = ma, a = f / m
         cur_body.v_y = cur_body.v_y + (fv.y / cur_body.mass);
     };
 };

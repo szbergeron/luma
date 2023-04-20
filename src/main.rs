@@ -76,8 +76,8 @@ pub mod helper;
 pub mod lalrpop_lexer;
 pub mod lex;
 pub mod lir;
-pub mod llvm;
-pub mod lowered;
+//pub mod llvm;
+//pub mod lowered;
 pub mod mir; // just until we fix lowering, reduce error count
              //pub mod mid_repr;
 pub mod errors;
