@@ -1,0 +1,68 @@
+struct Body {};
+
+/*
+ * F = (G m_1 m_2) / r^2 by Newton's law of gravitation
+ *
+ * r_v = - ((1 + q) / r^2) * r_h
+ *
+ */
+
+struct ForceVector {
+    var x: std::f64;
+    var y: std::f64;
+};
+
+fn grav_from(on: usr::Body, from: std::Vec<Body>) -> usr::ForceVector {
+    for ( let i = 0; i < from.len(); i = i + 1 ) {
+        // do newton stuff
+    };
+
+    struct ForceVector { x: 0.0, y: 0.0 }
+};
+
+fn distance_between(a: usr::Body, b: Body) -> std::f64 {
+    let delta_x = a.x - b.x;
+    let delta_y = a.y - b.y;
+    (delta_x.pow(2.0) + delta_y.pow(2.0)).sqrt()
+};
+
+fn generate_body(x: std::f64, y: std::f64) -> Body {
+    let b = struct Body {};
+
+    b.x = x;
+    b.y = y;
+
+    b
+};
+
+fn simulate_nbody(bodies: std::Vec<Body>, samples: std::i64) {
+    for (let i = 0; i < bodies.len(); i = i + 1) {
+
+        let cur_body = bodies.get(i);
+
+        let other_bodies = std::Vec::new();
+
+        for (let j = 0; i < bodies.len(); j = j + 1) {
+            if i != j {
+                other_bodies.push(bodies.get(j));
+            }
+        };
+        
+        //let fv = struct ForceVector { x: 0.0, y: 0.0 };
+        let fv = usr::grav_from(cur_body, other_bodies);
+    };
+};
+
+fn main() {
+    let b1 = usr::generate_body(10.0, 20.0);
+    let b2 = usr::generate_body(30.0, 10.0);
+    //let b3 = usr::generate_body(0.0, 10.0);
+
+    let bodies = std::Vec::new();
+
+    bodies.push(b1);
+    //bodies.push(b2);
+    //bodies.push(b3);
+
+    usr::simulate_nbody(bodies, 1000);
+}
