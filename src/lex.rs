@@ -276,7 +276,7 @@ pub enum Token {
     #[regex("[0-9]+f32")]
     f32Literal,
 
-    #[regex("[0-9]+.[0-9]+")]
+    #[regex("-?[0-9]+\\.[0-9]+")]
     FloatLiteral,
 
     #[regex(r"operator\[(\[\]|[/_\+\-\~`\*\&\^%\$\#=<>@!a-zA-Z]+)\]")]
