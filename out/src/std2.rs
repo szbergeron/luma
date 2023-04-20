@@ -108,7 +108,7 @@ impl<T> AsVariable for FastRefHandle<T> {
 pub struct FastHandleTarget<T> {
     //mut_borrows: AtomicU16,
     //immut_borrows: AtomicU16,
-    inner: RefCell<T>,
+    inner: UnsafeCell<T>,
 }
 
 impl<T> FastHandleTarget<T> {
@@ -135,7 +135,7 @@ impl<T> FastHandleTarget<T> {
     pub fn new(v: T) -> Self {
         //Self { mut_borrows: AtomicU16::new(0), immut_borrows: AtomicU16::new(0), inner: UnsafeCell::new(v) }
         Self {
-            inner: RefCell::new(v),
+            inner: UnsafeCell::new(v),
         }
     }
 }
@@ -162,6 +162,15 @@ where
 impl<T> std::default::Default for FastRefHandle<T> {
     fn default() -> Self {
         Self { inner: None }
+    }
+}
+
+impl<T> std::fmt::Debug for FastRefHandle<T>
+where
+    T: std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.borrow_mut().fmt(f)
     }
 }
 
@@ -205,12 +214,16 @@ impl<T> FastRefHandle<T> {
 
     //pub fn as_ptr(&self)
 
-    pub fn borrow_mut(&self) -> RefMut<T> {
-        self.inner
-            .as_ref()
-            .expect("tried to read from a None variable or ref field")
-            .inner
-            .borrow_mut()
+    pub fn borrow_mut(&self) -> &mut T {
+        unsafe {
+            self.inner
+                .as_ref()
+                .expect("tried to read from a None variable or ref field")
+                .inner
+                .get()
+                .as_mut()
+                .unwrap()
+        }
     }
 
     /*
@@ -588,11 +601,11 @@ pub fn luma_i64_op_eq_fast(a: i64, b: i64) -> bool {
 }
 
 pub fn luma_i64_op_lt_fast(a: i64, b: i64) -> bool {
-    a <= b
+    a < b
 }
 
 pub fn luma_i64_op_gt_fast(a: i64, b: i64) -> bool {
-    a >= b
+    a > b
 }
 
 pub fn luma__fast_bool_compare_eq(a: bool, b: bool) -> bool {

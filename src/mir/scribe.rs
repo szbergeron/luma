@@ -420,7 +420,8 @@ impl<'a> ScribeOne<'a> {
 
                     let targ = mon.encode_name();
 
-                    let _ = write!(code, "/* s_acc is method */ {targ}");
+                    //let _ = write!(code, "/* s_acc is method */ {targ}");
+                    let _ = write!(code, "{targ}");
                 } else {
                     let base_type = quark.resolved_type_of(quark.typeofs.get(on)).await;
 
@@ -1279,7 +1280,7 @@ impl<'a> ScribeOne<'a> {
                     // already builtin
                     //lines.push(format!("pub type {name} = {b};"));
                 } else {
-                    lines.push(format!("#[derive(Default, Clone)]"));
+                    lines.push(format!("#[derive(Default, Clone, Debug)]"));
                     lines.push(format!("pub struct {name} {{"));
 
                     //lines.push("\tuint32_t _luma_private__refcount,".to_owned());
