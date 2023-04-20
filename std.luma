@@ -64,6 +64,8 @@ struct bool noref #builtin "bool" {
             "luma_op_eq_slow($self, $other)";
 };
 
+fn cosine(v: std::f64) -> std::f64 #builtin "$v.cos()" "" "";
+
 fn print<T>(v: T) -> std::Unit #builtin "luma_print_fast($v);" "luma_print_silly" "luma_print_slow($v)";
 
 struct Unit noref #builtin "()" {}
@@ -89,7 +91,7 @@ struct Vec<T> noref #builtin "FastRefHandle<Vec<$T>>" {
 
     fn new<T>() -> std::Vec<T> #builtin "FastRefHandle::from_val(Vec::new())" "" "luma_vec_new_slow()";
 
-    fn len<T>(self: std::Vec<T>) -> std::i64 #builtin "$self.len() as i64" "" "";
+    fn len<T>(self: std::Vec<T>) -> std::i64 #builtin "$self.borrow_mut().len() as i64" "" "";
     //fn new_i64() -> std::Vec<i64> #builtin "Vec::new" "" "";
 }
 

@@ -17,16 +17,16 @@ fn grav_from(on: usr::Body, from: std::Vec<Body>) -> usr::ForceVector {
         // do newton stuff
     };
 
-    struct ForceVector { x: 0.0, y: 0.0 }
+    struct usr::ForceVector { x: 0.0, y: 0.0 }
 };
 
-fn distance_between(a: usr::Body, b: Body) -> std::f64 {
+fn distance_between(a: usr::Body, b: usr::Body) -> std::f64 {
     let delta_x = a.x - b.x;
     let delta_y = a.y - b.y;
     (delta_x.pow(2.0) + delta_y.pow(2.0)).sqrt()
 };
 
-fn generate_body(x: std::f64, y: std::f64, mass: f64) -> Body {
+fn generate_body(x: std::f64, y: std::f64, mass: std::f64) -> Body {
     let b = struct Body {};
 
     b.x = x;
@@ -39,24 +39,34 @@ fn generate_body(x: std::f64, y: std::f64, mass: f64) -> Body {
     b
 };
 
-fn simulate_nbody(bodies: std::Vec<Body>, samples: std::i64) {
-    for (let i = 0; i < bodies.len(); i = i + 1) {
+struct Simulation {
+    var bodies: std::Vec<usr::Body>;
+};
 
-        let cur_body = bodies.get(i);
+fn simulate_nbody(s: usr::Simulation) {
+    let bodies = s.bodies;
+    for (let sample = 0; sample < s.samples; sample = sample + 1) {
+        for (let i = 0; i < bodies.len(); i = i + 1) {
 
-        let other_bodies = std::Vec::new();
+            let cur_body = bodies.get(i);
 
-        for (let j = 0; i < bodies.len(); j = j + 1) {
-            if i != j {
-                other_bodies.push(bodies.get(j));
-            }
+            let other_bodies = std::Vec::new();
+
+            for (let j = 0; i < bodies.len(); j = j + 1) {
+                if i != j {
+                    other_bodies.push(bodies.get(j));
+                }
+            };
+            
+            //let fv = struct ForceVector { x: 0.0, y: 0.0 };
+            let fv = usr::grav_from(cur_body, other_bodies);
+
+            cur_body.v_x = cur_body.v_x + (fv.x / cur_body.mass); // f = ma, a = f / m
+            cur_body.v_y = cur_body.v_y + (fv.y / cur_body.mass);
+
+            cur_body.x = cur_body.x + (cur_body.v_x * s.step_time);
+            cur_body.y = cur_body.y + (cur_body.v_y * s.step_time);
         };
-        
-        //let fv = struct ForceVector { x: 0.0, y: 0.0 };
-        let fv = usr::grav_from(cur_body, other_bodies);
-
-        cur_body.v_x = cur_body.v_x + (fv.x / cur_body.mass); // f = ma, a = f / m
-        cur_body.v_y = cur_body.v_y + (fv.y / cur_body.mass);
     };
 };
 
@@ -65,11 +75,16 @@ fn main() {
     let b2 = usr::generate_body(30.0, 10.0, 3.0);
     let b3 = usr::generate_body(0.0, 10.0, 1.0);
 
-    let bodies = std::Vec::new();
+    let b = std::Vec::new();
 
-    bodies.push(b1);
+    b.push(b1);
     //bodies.push(b2);
     //bodies.push(b3);
 
-    usr::simulate_nbody(bodies, 1000);
+    let s = struct usr::Simulation { bodies: b };
+
+    s.samples = 1000;
+    s.step_time = 0.1;
+
+    usr::simulate_nbody(s);
 }
