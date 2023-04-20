@@ -1,7 +1,7 @@
 use crate::{
     errors::CompilationError,
     mir::{
-        scribe::{get_lines, Monomorphization, Scribe, Note},
+        scribe::{get_lines, Monomorphization, Note, Scribe},
         transponster::Mediator,
     },
 };
@@ -14,7 +14,7 @@ use uuid::Uuid;
 //use std::collec
 use std::{
     cell::RefCell,
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     rc::Rc,
     sync::{
         atomic::{fence, AtomicIsize, AtomicUsize, Ordering},
@@ -37,6 +37,8 @@ use crate::{
     },
 };
 
+use super::file_tree::FileRegistry;
+
 pub struct CompilationUnit {
     /// we are solely responsible
     /// for dealing with the nodes within our domain.
@@ -52,8 +54,23 @@ impl CompilationUnit {
         Self { domain }
     }
 
-    pub async fn launch(self, errors: UnboundedSender<CompilationError>) {
+    pub async fn launch(self, files: &'static FileRegistry) {
         info!("launching CompilationUnit across domain {:?}", self.domain);
+
+        let (errors, mut er) = tokio::sync::mpsc::unbounded_channel();
+
+        tokio::spawn(async move {
+            std::thread::sleep(Duration::from_millis(700));
+            let mut so_far = HashSet::new();
+            while let Some(v) = er.recv().await {
+                let v: CompilationError = v;
+
+                if so_far.insert(v.clone()) {
+                    // need to break down the error
+                    let s = v.with_file_context(&files);
+                }
+            }
+        });
 
         let mut senders = HashMap::new();
         let mut receivers = HashMap::new();
@@ -401,7 +418,10 @@ impl Director {
 
                 // send notifications to all nodes to ask them to emit any late errors
                 std::thread::sleep(Duration::from_secs(2));
-                std::process::Command::new("cargo").current_dir("./out/").arg("fmt").output();
+                std::process::Command::new("cargo")
+                    .current_dir("./out/")
+                    .arg("fmt")
+                    .output();
                 std::process::exit(0);
             } else {
                 //println!("Values for qk and such: {qk_before}, {qk_after}, {tp_before}, {tp_after}");

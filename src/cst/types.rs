@@ -37,7 +37,7 @@ pub struct StructuralTyAttrs {
     /// Whether this type allows adding additional dyn fields
     pub is_modif: bool,
 
-    pub is_builtin: Option<SyntacticTypeReference>,
+    pub is_builtin: Option<IStr>,
 }
 
 impl CstNode for StructDefinition {
@@ -274,12 +274,16 @@ impl SyntacticTypeReference {
                 todo!()
             },
             SyntacticTypeReferenceInner::Single { name } => {
-                name.scope.into_iter().join("::").intern()
+                let n = name.scope.into_iter().join("::").intern();
+                //let n = name.scope.last().copied().unwrap_or("unknown".intern());
+
+                n
                 //format!("{name}").intern()
             }
             SyntacticTypeReferenceInner::Generic { label } => sub_generics.get(&label).copied().unwrap(),
             SyntacticTypeReferenceInner::Parameterized { name, generics } => {
                 let n = name.scope.into_iter().join("::").intern();
+                //let n = name.scope.last().copied().unwrap_or("unknown".intern());
                 let g = generics.into_iter().map(|g| g.as_plain_type(sub_generics)).join(", ");
 
                 format!("{n}<{g}>").intern()
@@ -307,7 +311,10 @@ impl SyntacticTypeReference {
         match &self.inner {
             SyntacticTypeReferenceInner::Unconstrained() => todo!(),
             SyntacticTypeReferenceInner::Tuple(_) => todo!(),
-            SyntacticTypeReferenceInner::Single { name } => name.scope.iter().map(|e| e.resolve().to_owned()).join("_"),
+            SyntacticTypeReferenceInner::Single { name } => {
+                name.scope.iter().map(|e| e.resolve().to_owned()).join("_")
+                //name.scope.last().copied().unwrap_or("unknown".intern()).resolve()
+            }
             SyntacticTypeReferenceInner::Generic { label } => todo!(),
             SyntacticTypeReferenceInner::Parameterized { name, generics } => todo!(),
             SyntacticTypeReferenceInner::Reference { to, mutable } => todo!(),

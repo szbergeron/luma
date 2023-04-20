@@ -4,7 +4,7 @@ use crate::compile::parse_tree::ParseTreeNode;
 use crate::errors::CompilationError;
 //use crate::ast;
 
-use crate::compile::per_module::CompilationUnit;
+use crate::compile::per_module::{CompilationUnit, static_pinned_leaked};
 use crate::lex::{ErrorSet, LookaheadHandle, TokenStream};
 use crate::mir::scribe::{OutputType, OUTPUT_TYPE_ONCE};
 use crate::parse::schema::TokenProvider;
@@ -204,6 +204,7 @@ fn print_from_root(root: CtxID, indent: usize, named: IStr) {
 
 async fn async_launch(args: ArgResult) {
     let files: FileRegistry = Default::default();
+    let files = static_pinned_leaked(files);
 
     let roles = args_to_roles(&args);
 
@@ -212,10 +213,10 @@ async fn async_launch(args: ArgResult) {
     println!("Building node");
 
     // build the initial module tree based on file locations
-    let usr_node = crate::compile::preparse_tree::from_roots(&files, roles);
+    let usr_node = crate::compile::preparse_tree::from_roots(files, roles);
 
     let std_node = crate::compile::preparse_tree::from_roots(
-        &files,
+        files,
         vec![FileRole::Source(SourceFile {
             location: PathBuf::from_str("./std.luma").unwrap(),
         })],
@@ -269,22 +270,8 @@ async fn async_launch(args: ArgResult) {
     //ResolverWorker::new(ids).resolve().await; // fix types up
     let cu = CompilationUnit::new(ids);
 
-    let (es, mut er) = tokio::sync::mpsc::unbounded_channel();
 
-    tokio::spawn(async move {
-        std::thread::sleep(Duration::from_secs(1));
-        let mut so_far = HashSet::new();
-        while let Some(v) = er.recv().await {
-            let v: CompilationError = v;
-
-            if so_far.insert(v.clone()) {
-                // need to break down the error
-                let s = v.with_file_context(&files);
-            }
-        }
-    });
-
-    cu.launch(es).await;
+    cu.launch(files).await;
     //todo!("spawn all the network stuff");
 
     // convert AST to MIR

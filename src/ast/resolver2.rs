@@ -68,10 +68,11 @@ pub enum NameResolutionMessage {
     /// of the scope that *could* be resolved
     /// before the next step failed
     HasNoResolution {
-        composite_symbol: ScopedName,
+        /*composite_symbol: ScopedName,
         longest_prefix: ScopedName,
         prefix_ends_at: CtxID,
-        given_root: CtxID,
+        given_root: CtxID,*/
+        error: ImportError,
     },
 
     CausesCircularImport {
@@ -439,13 +440,14 @@ impl Resolver {
                                                 composite_symbol: r.name, is_at: r.is_at, given_root },
                                             Err(e) => {
                                                 eprintln!("import error: {e:?}, while looking for: {composite_symbol:?}");
-                                                std::process::exit(-1);
+                                                //std::process::exit(-1);
                                                 NameResolutionMessage::HasNoResolution {
-                                                composite_symbol,
-                                                longest_prefix: todo!(),
-                                                prefix_ends_at: todo!(),
-                                                given_root: todo!()
-                                            }
+                                                    /*composite_symbol,
+                                                    longest_prefix: ScopedName::from_one(e.symbol_name),
+                                                    prefix_ends_at: e.from_ctx,
+                                                    given_root,*/
+                                                    error: e,
+                                                }
                                             }
                                         };
 
@@ -770,11 +772,29 @@ impl Resolver {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct ImportError {
     pub symbol_name: IStr,
     pub from_ctx: CtxID,
     pub error_reason: String,
+}
+
+impl std::fmt::Debug for ImportError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ImportError")
+            .field("symbol_name", &self.symbol_name)
+            .field(
+                "from_ctx",
+                &self
+                    .from_ctx
+                    .resolve()
+                    .canonical_typeref()
+                    .resolve()
+                    .unwrap(),
+            )
+            .field("error_reason", &self.error_reason)
+            .finish()
+    }
 }
 
 impl Resolver {
@@ -848,11 +868,8 @@ impl NameResolver {
                     given_root,
                 } => Ok(is_at),
                 NameResolutionMessage::HasNoResolution {
-                    composite_symbol,
-                    longest_prefix,
-                    prefix_ends_at,
-                    given_root,
-                } => todo!(),
+                    error,
+                } => Err(error),
                 NameResolutionMessage::CausesCircularImport { v } => todo!(),
                 _ => panic!("got another weird message?"),
             }

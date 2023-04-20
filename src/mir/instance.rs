@@ -511,6 +511,7 @@ impl Instance {
 
                     let thunk = unsafe {
                         Thunk::new(within.executor, async move {
+                            println!("looking for type of method now");
                             let tid = within
                                 .resolve_typeref(
                                     ty,

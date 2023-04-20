@@ -20,7 +20,7 @@ pub fn luma_print_fast<T: std::fmt::Debug>(v: T) {
 }
 
 pub fn luma_print_slow(v: Value) -> Value {
-    println!("{v:?}");
+    println!("{v}");
 
     Value::Uninhabited()
 }
@@ -144,20 +144,51 @@ pub struct FastRefHandle<T> {
     inner: Option<Pin<Arc<FastHandleTarget<T>>>>,
 }
 
+pub struct FastValHandle<T> {
+    inner: T,
+}
+
+impl<T> std::default::Default for FastValHandle<T>
+where
+    T: std::default::Default,
+{
+    fn default() -> Self {
+        Self {
+            inner: Default::default(),
+        }
+    }
+}
+
 impl<T> std::default::Default for FastRefHandle<T> {
     fn default() -> Self {
         Self { inner: None }
     }
 }
 
-impl<T> std::ops::Deref for FastRefHandle<T> {
-    type Target = T;
+/*
+pub trait FastValue<T> {
+    pub fn as_lval(self) -> FastRVal<T>;
+}
+
+pub enum FastLVal<T> {
+    Handle(FastRefHandle<T>),
+    Value(FastValHandle<T>),
+}
+
+pub struct FastRVal<T> {
+    //originally:
+}*/
+
+//impl<T> std::ops::Deref for FastRVal<T> {}
+
+/*impl<T> std::ops::Deref for FastRefHandle<T> {
+    type Target = Ref<T>;
 
     fn deref(&self) -> &Self::Target {
         //assert!(self.
-        todo!()
+        self.inner.as_ref().unwrap().deref()
     }
-}
+}*/
 
 /*impl<T> std::ops::DerefMut for FastRefHandle<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
@@ -172,6 +203,8 @@ impl<T> FastRefHandle<T> {
         }
     }
 
+    //pub fn as_ptr(&self)
+
     pub fn borrow_mut(&self) -> RefMut<T> {
         self.inner
             .as_ref()
@@ -179,6 +212,15 @@ impl<T> FastRefHandle<T> {
             .inner
             .borrow_mut()
     }
+
+    /*
+    pub fn borrow(&self) -> Ref<T> {
+        self.inner
+            .as_ref()
+            .expect("tried to read from None variable or ref field")
+            .inner
+            .borrow()
+    }*/
 }
 
 impl<T> Clone for FastRefHandle<T> {
@@ -222,6 +264,32 @@ impl std::fmt::Debug for Value {
             Value::String(v, _) => write!(f, "str({v})"),
             r @ Value::Ref(_) => write!(f, "ref({:?})", r.root()),
             Value::Callable(c) => write!(f, "callable()"),
+            Value::Uninhabited() => write!(f, "None"),
+        }
+    }
+}
+
+impl std::fmt::Display for Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Value::Object(o) => write!(f, "Object({})", unsafe {
+                o.inner.get().as_ref().unwrap().object_tid
+            }),
+            Value::Vec(v, _) => {
+                //writeln!(f, "[{v}]"),
+                write!(f, "[")?;
+                for v in unsafe { v.get().as_ref().unwrap().iter() } {
+                    write!(f, "{v}")?;
+                }
+
+                write!(f, "]")
+            }
+            Value::I32(v, _) => write!(f, "{v}"),
+            Value::I64(v, _) => write!(f, "{v}"),
+            Value::Bool(v, _) => write!(f, "{v}"),
+            Value::String(v, _) => write!(f, "{v}"),
+            r @ Value::Ref(_) => write!(f, "{:?}", r.root()),
+            Value::Callable(c) => write!(f, "callable({c:?})"),
             Value::Uninhabited() => write!(f, "None"),
         }
     }

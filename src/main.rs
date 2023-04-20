@@ -124,7 +124,7 @@ pub struct MySub {
 impl Subscriber for MySub {
     fn enabled(&self, metadata: &tracing::Metadata<'_>) -> bool {
         let allow_all = false;
-        let allow_any = true;
+        let allow_any = false;
 
         metadata.file().is_some_and(|f| {
             (allow_all

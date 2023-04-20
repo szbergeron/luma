@@ -1,18 +1,42 @@
+struct i64 noref #builtin "i64" {
+    fn operator[_*_](self: std::i64, other: std::i64) -> std::i64 
+        #builtin "luma_i64_op_mul_fast($self, $other)" "luma_i64_op_mul_silly($self, $other)" "luma_op_mul_slow($self, $other)";
 
-fn print<T>(v: T) -> std::Unit #builtin "luma_print_fast" "luma_print_silly" "luma_print_slow";
+    fn operator[_+_](self: std::i64, other: std::i64) -> std::i64
+        #builtin "luma_i64_op_add_fast($self, $other)" "luma_i64_op_add_silly($self, $other)" "luma_op_add_slow($self, $other)";
 
-struct Unit noref #builtin luma_unit {}
+    fn operator[_-_](self: std::i64, other: std::i64) -> std::i64
+        #builtin "luma_i64_op_subtract_fast($self, $other)" "luma_i64_op_subtract_silly($self, $other)" "luma_op_subtract_slow($self, $other)";
 
-struct String noref #builtin String {}
+    fn operator[_==_](self: std::i64, other: std::i64) -> std::bool
+        #builtin "luma_i64_op_eq_fast($self, $other)" "luma_i64_op_eq_silly($self, $other)" "luma_op_eq_slow($self, $other)";
+
+    fn operator[_<_](self: std::i64, other: std::i64) -> std::bool
+        #builtin "luma_i64_op_lt_fast($self, $other)" "luma_i64_op_lt_silly($self, $other)" "luma_op_lt_slow($self, $other)";
+
+    fn operator[_>_](self: std::i64, other: std::i64) -> std::bool
+        #builtin "$self > $other" "luma_i64_op_gt_silly($self, $other)" "luma_op_gt_slow($self, $other)";
+};
+
+struct bool noref #builtin "bool" {
+    fn operator[_==_](self: std::bool, other: std::bool) -> std::bool
+        #builtin "$self == $other" "luma__silly_bool_compare_eq" "luma_op_eq_slow($self, $other)";
+};
+
+fn print<T>(v: T) -> std::Unit #builtin "luma_print_fast($v);" "luma_print_silly" "luma_print_slow($v)";
+
+struct Unit noref #builtin "()" {}
+
+struct String noref #builtin "String" {}
 
 //struct LumaVec<T> #builtin 
 
-struct Vec<T> noref #builtin FastRefHandle<T> {
-    fn push<T>(self: std::Vec<T>, item: T) #builtin "luma_vec_push_fast" "" "luma_vec_push_slow";
+struct Vec<T> noref #builtin "FastRefHandle<Vec<$T>>" {
+    fn push<T>(self: std::Vec<T>, item: T) #builtin "$self.borrow_mut().push($item);" "" "luma_vec_push_slow($self, $item)";
 
-    fn get<T>(self: std::Vec<T>, ind: std::i64) -> T #builtin "luma_vec_get_fast" "" "luma_vec_get_slow";
+    fn get<T>(self: std::Vec<T>, ind: std::i64) -> T #builtin "$self.borrow_mut().get($ind as usize).cloned().unwrap()" "" "luma_vec_get_slow($self, $ind)";
 
-    fn new<T>() -> std::Vec<T> #builtin "luma_vec_new_fast" "" "luma_vec_new_slow";
+    fn new<T>() -> std::Vec<T> #builtin "FastRefHandle::from_val(Vec::new())" "" "luma_vec_new_slow()";
     //fn new_i64() -> std::Vec<i64> #builtin "Vec::new" "" "";
 }
 
@@ -48,31 +72,6 @@ struct fdf isref ismod {
     var b: std::i64;
 };
 
-struct i64 noref #builtin i64 {
-    fn operator[_*_](self: std::i64, other: std::i64) -> std::i64 
-        #builtin "luma_i64_op_mul_fast" "luma_i64_op_mul_silly" "luma_op_mul_slow";
-
-    fn operator[_+_](self: std::i64, other: std::i64) -> std::i64
-        #builtin "luma_i64_op_add_fast" "luma_i64_op_add_silly" "luma_op_add_slow";
-
-    fn operator[_-_](self: std::i64, other: std::i64) -> std::i64
-        #builtin "luma_i64_op_subtract_fast" "luma_i64_op_subtract_silly" "luma_op_subtract_slow";
-
-    fn operator[_==_](self: std::i64, other: std::i64) -> std::bool
-        #builtin "luma_i64_op_eq_fast" "luma_i64_op_eq_silly" "luma_op_eq_slow";
-
-    fn operator[_<_](self: std::i64, other: std::i64) -> std::bool
-        #builtin "luma_i64_op_lt_fast" "luma_i64_op_lt_silly" "luma_op_lt_slow";
-
-    fn operator[_>_](self: std::i64, other: std::i64) -> std::bool
-        #builtin "luma_i64_op_gt_fast" "luma_i64_op_gt_silly" "luma_op_gt_slow";
-};
-
-struct bool noref #builtin bool {
-    fn operator[_==_](self: std::bool, other: std::bool) -> std::bool
-        #builtin "luma__fast_bool_compare_eq" "luma__silly_bool_compare_eq" "luma_op_eq_slow";
-};
-
 
 fn main() {
 
@@ -84,16 +83,21 @@ fn main() {
     }
 
     std::vectest3();
+    std::assigntest();
+    std::takes_vecs_test();
 
-    std::test_dyn_fields();
+    //let bob = std::test_dyn_fields();
+
+    //std::check_dyn_usage(bob);
 };
-
-fn vectest() -> std::Vec<std::i64> {
-    std::Vec::new()
+/*
+fn vectest() -> Vec<i64> {
+    Vec::new()
 }
+*/
 
 fn vectest3() {
-    let v = std::Vec::new();
+    let v = Vec::new();
     v.push(v, 5);
 
     std::print(v.get(v, 0))
@@ -101,12 +105,44 @@ fn vectest3() {
     //v.push(v, "hello");
 }
 
+fn takes_vecs(a: std::Vec<i64>, b: std::Vec<i64>) {
+    std::print(a.get(a, 0) + b.get(b, 1));
+}
+
+fn takes_vecs_test() {
+    let v = std::Vec::new();
+    v.push(v, 10);
+    v.push(v, 11);
+
+    std::takes_vecs(v, v);
+}
+
+struct A {
+    var v: std::i64;
+}
+
+fn assigntest() {
+    let a = 10;
+    let b = 20;
+    let c = a;
+
+    let d = struct std::A { v: a };
+
+    d.v = b;
+
+    b = d.v;
+
+    //if c == 0 { a } else { b } = 30;
+
+    //
+}
+
 struct User {
     var name: std::String;
     var age: std::i64;
 }
 
-fn test_dyn_fields() {
+fn test_dyn_fields() -> std::User {
     let bob = struct std::User { name: "Bob", age: 20 };
 
     std::print("bob's age is");
@@ -120,22 +156,54 @@ fn test_dyn_fields() {
     bob.married = false;
 
     //bob.married = "yes";
+
+    bob
 }
 
-struct A {
+struct A_Struct {
 }
 
 fn check_dyn_usage(u: User) {
-    let v = struct std::A {};
+    let v = struct std::A_Struct {};
 
-    v.b = u.married;
+    u.adsfjkl = "hi";
 
-    std::print(v.b);
+    //v.b = u.married;
+    v.b = u.adsfjkl;
+
+    //std::print("v.b is:");
+    //std::print(v.b);
 }
 
 fn bad_dyn_usage(u: std::User) {
-    u.married = "no"
+    //u.married = "no"
 }
+
+fn fibonacci(n: std::i64) -> std::i64 {
+    if n == 0 {
+        0
+    } else if n == 1 {
+        1
+    } else {
+        std::fibonacci(n - 1) + std::fibonacci(n - 2)
+    }
+};
+
+fn fib_test() -> std::i64 {
+    std::fibonacci(17)
+
+    //struct std::Unit {}
+};
+
+fn ackermann(m: std::i64, n: std::i64) -> std::i64 {
+    if m == 0 {
+        n + 1
+    } else if n == 0 {
+        std::ackermann(m - 1, 1)
+    } else {
+        std::ackermann(m - 1, std::ackermann(m, n - 1))
+    }
+};
 
 /*
 struct VecOfInt {

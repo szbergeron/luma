@@ -148,7 +148,7 @@ impl<'lexer> Parser<'lexer> {
 
         let mut fields = Vec::new();
         let mut methods = Vec::new();
-        let mut builtin_fields: Vec<(IStr, IStr)> = Vec::new();
+        //let mut builtin_fields: Vec<(IStr, IStr)> = Vec::new();
 
         let is_ref = t.try_take_in(&[Token::IsRef, Token::IsNoRef]).map(|tw| tw.token).unwrap_or(Token::IsRef);
 
@@ -169,7 +169,8 @@ impl<'lexer> Parser<'lexer> {
         let is_builtin = match t.try_take(Token::InteriorBuiltin) {
             Some(v) => {
                 //Some(t.take(Token::Identifier).join()?.slice),
-                let t = self.parse_type_specifier(&t, &generics_as_list_istr).join_hard(&mut t).catch(&mut t)?;
+                //let t = self.parse_type_specifier(&t, &generics_as_list_istr).join_hard(&mut t).catch(&mut t)?;
+                let t = t.take(Token::StringLiteral).join()?.slice;
                 Some(t)
                 //let as_fmt = format!("{t:?}");
                 //Some(as_fmt.intern())
