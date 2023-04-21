@@ -13,7 +13,7 @@ use crate::{
         Content, ControlMessage, ConversationContext, Destination, Earpiece, Message, Service,
     },
     cst::{ScopedName, UseDeclaration},
-    helper::interner::{IStr, Internable},
+    helper::{interner::{IStr, Internable}, CopyMethod},
 };
 
 use super::{
@@ -878,7 +878,7 @@ impl NameResolver {
             },
             conversation: Uuid::new_v4(),
             content: Content::NameResolution(NameResolutionMessage::WhatIs {
-                composite_symbol: self.name,
+                composite_symbol: self.name.clone(),
                 given_root: self.based_in,
             }),
         };
@@ -894,7 +894,39 @@ impl NameResolver {
                 } => Ok(is_at),
                 NameResolutionMessage::HasNoResolution {
                     error,
-                } => Err(error),
+                } => {
+                    fn look_direct(starting: CtxID, looking_for: &[IStr]) -> Option<CtxID> {
+                        match looking_for {
+                            [] => Some(starting),
+                            [first, rest @ ..] => {
+                                starting.resolve().children.get(first).map(|nid| look_direct(*nid.value(), rest)).flatten()
+                            }
+                        }
+                        //let n = starting.resolve();
+                    }
+                    // TODO: actually fix resolver so we don't start doing this going forward, this
+                    // is stupid and shouldn't be how we do this
+                    fn search(starting: CtxID, looking_for: &ScopedName) -> Result<CtxID, ()> {
+                        let n = starting.resolve();
+
+                        if let Some(v) = look_direct(starting, &looking_for.scope) {
+                            return Ok(v)
+                        } else {
+                            for child in n.children.iter() {
+                                if let Ok(v) = search(*child.value(), &looking_for) {
+                                    return Ok(v)
+                                }
+                            }
+
+                            Err(())
+                        }
+                    }
+
+                    match search(self.based_in.resolve().global.unwrap(), &self.name) {
+                        Ok(v) => Ok(v),
+                        Err(_) => Err(error)
+                    }
+                },
                 NameResolutionMessage::CausesCircularImport { v } => todo!(),
                 _ => panic!("got another weird message?"),
             }

@@ -60,7 +60,8 @@ struct f64 noref #builtin "f64" {
 
     fn abs(self: std::f64) -> std::f64 #builtin "$self.abs()" "" "luma_op_abs_slow($self)";
 
-    fn modulo(self: std::f64, modby: std::f64) -> std::f64 #builtin "$self % $modby" "" "luma_op_modulo_slow($self, $modby)";
+    fn modulo(self: std::f64, modby: std::f64) -> std::f64
+        #builtin "$self % $modby" "" "luma_op_modulo_slow($self, $modby)";
 
     fn rand() -> std::f64 #builtin "rand_f64()" "" "luma_f64_rand_slow()";
 
@@ -107,6 +108,9 @@ struct Vec<T> noref #builtin "FastRefHandle<Vec<$T>>" {
     fn with_capacity<T>(capacity: std::i64) -> std::Vec<T> #builtin "FastRefHandle::from_val(Vec::with_capacity($capacity as usize))" "" "luma_vec_new_slow()";
 
     fn len<T>(self: std::Vec<T>) -> std::i64 #builtin "$self.borrow_mut().len() as i64" "" "luma_vec_len_slow($self)";
+
+    fn insert<T>(self: std::Vec<T>, index: std::i64, value: T)
+        #builtin "$self.borrow_mut().insert($index as usize, $value);" "" "todo!()"
     //fn new_i64() -> std::Vec<i64> #builtin "Vec::new" "" "";
 }
 

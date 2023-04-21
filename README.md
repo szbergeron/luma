@@ -18,7 +18,8 @@ fn generate_body(x: std::f64, y: std::f64, mass: std::f64) -> Body {
 
     b.x = x;
     b.y = y;
-    b.mass = mass; // mass is an f64, so the emitted struct for `Body` will have a `mass: f64` member!
+    b.mass = mass; // mass is an f64, so the emitted struct
+                   // for `Body` will have a `mass: f64` member!
 
     b.v_x = x.cos();
     b.v_y = y.cos();
