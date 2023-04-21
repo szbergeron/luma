@@ -1119,7 +1119,7 @@ impl<'a> ScribeOne<'a> {
 
                     let rt = ret_mono.encode_ref();
 
-                    within.push(format!("#[inline(never)]"));
+                    //within.push(format!("#[inline(never)]"));
                     within.push(format!("pub fn {fname}({params}) -> {rt}"));
 
                     let res = self
@@ -1283,6 +1283,7 @@ impl<'a> ScribeOne<'a> {
             OutputType::FullInf() => {
                 if let Some(b) = attrs.is_builtin {
                     let mut base = b.drop_front(1).drop_end(1).resolve().to_owned();
+
                     for (gen_name, gen_ty) in self.mono.with.clone() {
                         let mono = Monomorphization::from_resolved(gen_ty);
                         let mono_name = mono.encode_ref();

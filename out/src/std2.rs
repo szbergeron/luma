@@ -9,6 +9,8 @@ use std::{
     thread::panicking,
 };
 
+use rand::Rng;
+
 const IS_DYN: bool = true;
 
 pub struct LumaVec<T> {
@@ -23,6 +25,16 @@ pub fn luma_print_slow(v: Value) -> Value {
     println!("{v}");
 
     Value::Uninhabited()
+}
+
+pub fn rand_i64() -> i64 {
+    let mut r = rand::thread_rng();
+    r.gen()
+}
+
+pub fn rand_f64() -> f64 {
+    let mut r = rand::thread_rng();
+    r.gen()
 }
 
 /// Contract: the return of this is only valid for as long as no other
@@ -141,7 +153,7 @@ impl<T> FastHandleTarget<T> {
 }
 
 pub struct FastRefHandle<T> {
-    inner: Option<Pin<Arc<FastHandleTarget<T>>>>,
+    inner: Option<Pin<Rc<FastHandleTarget<T>>>>,
 }
 
 pub struct FastValHandle<T> {
@@ -208,7 +220,7 @@ pub struct FastRVal<T> {
 impl<T> FastRefHandle<T> {
     pub fn from_val(v: T) -> Self {
         Self {
-            inner: Some(Arc::pin(FastHandleTarget::new(v))),
+            inner: Some(Rc::pin(FastHandleTarget::new(v))),
         }
     }
 

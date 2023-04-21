@@ -57,6 +57,12 @@ struct f64 noref #builtin "f64" {
 
     fn sqrt(self: std::f64) -> std::f64
         #builtin "$self.sqrt()" "" "";
+
+    fn abs(self: std::f64) -> std::f64 #builtin "$self.abs()" "" "";
+
+    fn modulo(self: std::f64, modby: std::f64) -> std::f64 #builtin "$self % $modby" "" "";
+
+    fn rand() -> std::f64 #builtin "rand_f64()" "" "";
 }
 
 struct bool noref #builtin "bool" {
@@ -94,8 +100,23 @@ struct Vec<T> noref #builtin "FastRefHandle<Vec<$T>>" {
 
     fn new<T>() -> std::Vec<T> #builtin "FastRefHandle::from_val(Vec::new())" "" "luma_vec_new_slow()";
 
+    fn with_capacity<T>(capacity: std::i64) -> std::Vec<T> #builtin "FastRefHandle::from_val(Vec::with_capacity($capacity as usize))" "" "luma_vec_new_slow()";
+
     fn len<T>(self: std::Vec<T>) -> std::i64 #builtin "$self.borrow_mut().len() as i64" "" "";
     //fn new_i64() -> std::Vec<i64> #builtin "Vec::new" "" "";
+}
+
+// don't use, this is broken for some reason
+struct ValueVec<T> noref #builtin "Vec<$T>" {
+    fn push<T>(self: std::ValueVec<T>, item: T) #builtin "$self.push($item);" "" "luma_vec_push_slow($self, $item)";
+
+    fn get<T>(self: std::ValueVec<T>, ind: std::i64) -> T #builtin "$self.get($ind as usize).cloned().unwrap()" "" "luma_vec_get_slow($self, $ind)";
+
+    fn new<T>() -> std::ValueVec<T> #builtin "Vec::new()" "" "luma_vec_new_slow()";
+
+    fn with_capacity<T>(capacity: std::i64) -> std::ValueVec<T> #builtin "Vec::with_capacity($capacity)" "" "luma_vec_new_slow()";
+
+    fn len<T>(self: std::ValueVec<T>) -> std::i64 #builtin "$self.len() as i64" "" "";
 }
 
 
