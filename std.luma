@@ -21,7 +21,7 @@ struct i64 noref #builtin "i64" {
         #builtin "$self > $other" "luma_i64_op_gt_silly($self, $other)" "luma_op_gt_slow($self, $other)";
 
     fn to_string(self: std::i64) -> std::String
-        #builtin "$self.to_string()" "" "";
+        #builtin "$self.to_string()" "" "luma_to_string_slow($self)";
 };
 
 struct f64 noref #builtin "f64" {
@@ -50,19 +50,23 @@ struct f64 noref #builtin "f64" {
         #builtin "$self > $other" "luma_i64_op_gt_silly($self, $other)" "luma_op_gt_slow($self, $other)";
 
     fn to_string(self: std::f64) -> std::String
-        #builtin "$self.to_string()" "" "";
+        #builtin "$self.to_string()" "" "luma_to_string_slow($self)";
 
     fn pow(self: std::f64, p: std::f64) -> std::f64
-        #builtin "$self.powf($p)" "" "";
+        #builtin "$self.powf($p)" "" "luma_op_pow_slow($self, $p)";
 
     fn sqrt(self: std::f64) -> std::f64
-        #builtin "$self.sqrt()" "" "";
+        #builtin "$self.sqrt()" "" "luma_op_sqrt_slow($self)";
 
-    fn abs(self: std::f64) -> std::f64 #builtin "$self.abs()" "" "";
+    fn abs(self: std::f64) -> std::f64 #builtin "$self.abs()" "" "luma_op_abs_slow($self)";
 
-    fn modulo(self: std::f64, modby: std::f64) -> std::f64 #builtin "$self % $modby" "" "";
+    fn modulo(self: std::f64, modby: std::f64) -> std::f64 #builtin "$self % $modby" "" "luma_op_modulo_slow($self, $modby)";
 
-    fn rand() -> std::f64 #builtin "rand_f64()" "" "";
+    fn rand() -> std::f64 #builtin "rand_f64()" "" "luma_f64_rand_slow()";
+
+    fn cos(self: std::f64) -> std::f64 {
+        std::cosine(self)
+    };
 }
 
 struct bool noref #builtin "bool" {
@@ -73,7 +77,7 @@ struct bool noref #builtin "bool" {
             "luma_op_eq_slow($self, $other)";
 };
 
-fn cosine(v: std::f64) -> std::f64 #builtin "$v.cos()" "" "";
+fn cosine(v: std::f64) -> std::f64 #builtin "$v.cos()" "" "luma_op_cos_slow($v)";
 
 fn print<T>(v: T) -> std::Unit #builtin "luma_print_fast($v);" "luma_print_silly" "luma_print_slow($v)";
 
@@ -82,7 +86,7 @@ struct Unit noref #builtin "()" {}
 struct String noref #builtin "String" {
     fn operator[_+_](self: std::String, other: std::String) -> std::String
         #builtin
-        "{ let mut first = $self; first.push_str($other.as_str()); first }" "" "";
+        "{ let mut first = $self; first.push_str($other.as_str()); first }" "" "luma_op_add_slow($self, $other)";
 
     /*
     fn operator[_+_](self: std::String, other: std::i64) -> std::String {
@@ -102,10 +106,11 @@ struct Vec<T> noref #builtin "FastRefHandle<Vec<$T>>" {
 
     fn with_capacity<T>(capacity: std::i64) -> std::Vec<T> #builtin "FastRefHandle::from_val(Vec::with_capacity($capacity as usize))" "" "luma_vec_new_slow()";
 
-    fn len<T>(self: std::Vec<T>) -> std::i64 #builtin "$self.borrow_mut().len() as i64" "" "";
+    fn len<T>(self: std::Vec<T>) -> std::i64 #builtin "$self.borrow_mut().len() as i64" "" "luma_vec_len_slow($self)";
     //fn new_i64() -> std::Vec<i64> #builtin "Vec::new" "" "";
 }
 
+/*
 // don't use, this is broken for some reason
 struct ValueVec<T> noref #builtin "Vec<$T>" {
     fn push<T>(self: std::ValueVec<T>, item: T) #builtin "$self.push($item);" "" "luma_vec_push_slow($self, $item)";
@@ -118,6 +123,7 @@ struct ValueVec<T> noref #builtin "Vec<$T>" {
 
     fn len<T>(self: std::ValueVec<T>) -> std::i64 #builtin "$self.len() as i64" "" "";
 }
+*/
 
 
 //struct VecInner noref #builtin Vec<T> {}

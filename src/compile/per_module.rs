@@ -60,7 +60,7 @@ impl CompilationUnit {
         let (errors, mut er) = tokio::sync::mpsc::unbounded_channel();
 
         tokio::spawn(async move {
-            std::thread::sleep(Duration::from_millis(700));
+            std::thread::sleep(Duration::from_millis(200));
             let mut so_far = HashSet::new();
             while let Some(v) = er.recv().await {
                 let v: CompilationError = v;
@@ -122,7 +122,7 @@ impl CompilationUnit {
         println!("started watchdog");
 
         std::thread::spawn(|| loop {
-            std::thread::sleep(Duration::from_millis(1000));
+            std::thread::sleep(Duration::from_millis(200));
             StalledDog::summarize();
         });
 
@@ -417,7 +417,7 @@ impl Director {
                 println!("Phase section took {} microseconds", micros);
 
                 // send notifications to all nodes to ask them to emit any late errors
-                std::thread::sleep(Duration::from_secs(2));
+                std::thread::sleep(Duration::from_millis(500));
                 std::process::Command::new("cargo")
                     .current_dir("./out/")
                     .arg("fmt")

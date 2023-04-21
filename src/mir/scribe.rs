@@ -848,9 +848,16 @@ impl<'a> ScribeOne<'a> {
                         "std::String"
                     }
                     cst::Literal::f64Literal(v) => {
+                        let formatted = format!("{v}");
+                        let formatted = if !formatted.contains(".") {
+                            format!("{formatted}.0")
+                        } else {
+                            formatted
+                        };
+
                         code.push(format!(
                             //"{ind}let mut {uv} = Value::String({s}.to_owned(), {methods_object});"
-                            "{ind}let mut {uv} = luma_slow_new_f64({v});"
+                            "{ind}let mut {uv} = luma_slow_new_f64({formatted});"
                         ));
 
                         "std::f64"
@@ -909,7 +916,24 @@ impl<'a> ScribeOne<'a> {
 
                 let res_var = UntypedVar::temp();
 
-                todo!()
+                code.push(format!("{ind}let mut {res_var} = Value::Uninhabited();"));
+
+                code.push(format!("{ind}{{"));
+
+                self.to_rs_dyn(quark, pre, preamble, code, indent + 1, submap).await;
+
+                code.push(format!("{ind}   while({{"));
+                let r = self.to_rs_dyn(quark, condition, preamble, code, indent + 1, submap).await.unwrap();
+                code.push(format!("{ind}{r}.is_true() }}) {{"));
+
+                let r = self.to_rs_dyn(quark, body, preamble, code, indent, submap).await;
+                let r = self.to_rs_dyn(quark, post, preamble, code, indent, submap).await;
+
+                code.push(format!("{ind}}};"));
+
+                code.push(format!("{ind}}};"));
+
+                Some(res_var)
             }
             AnyExpression::If(ie) => {
                 let If {

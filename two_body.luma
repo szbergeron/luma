@@ -93,12 +93,12 @@ fn simulate_nbody(s: usr::Simulation) -> std::Vec<std::Vec<usr::Vec2>> {
     //let results = std::Vec::with_capacity(s.samples);
     let results = std::Vec::new();
 
-    //std::print("simulating bodies");
+    std::print("simulating bodies");
     let bodies = s.bodies;
     for (let sample = 0; sample < s.samples; sample = sample + 1) {
         let sample_one = std::Vec::new();
 
-        //std::print("doing sample " + sample.to_string());
+        std::print("doing sample " + sample.to_string());
         for (let i = 0; i < bodies.len(); i = i + 1) {
             //std::print("doing body " + i.to_string());
 
@@ -152,7 +152,8 @@ fn main() {
     let s = struct usr::Simulation { bodies: b };
 
     //s.samples = 1000000;
-    s.samples = 10000;
+    //s.samples = 10000;
+    s.samples = 100;
     s.step_time = 0.1;
     //s.pr = std::print;
     //s.pr = usr::simulate_nbody;

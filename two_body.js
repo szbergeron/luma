@@ -127,25 +127,22 @@ for (let i = 0; i < 100; i++) {
     let mass = Math.random() * 100;
 
     let body = generate_body(x, y, mass)
-    
+
     bodies.push(body)
-    
+
 }
 
 s = new Simulation()
 
 s.bodies = bodies
-s.samples = 10000
+s.samples = 100000
 s.step_time = 0.1
 
-console.time()
+for (let i = 0; i < 100; i++) {
+    console.time()
 
-simulate_nbody(s)
+    simulate_nbody(s)
 
-console.timeEnd()
+    console.timeEnd()
 
-console.time()
-
-simulate_nbody(s)
-
-console.timeEnd()
+}

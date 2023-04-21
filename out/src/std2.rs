@@ -66,6 +66,8 @@ pub fn __luma_get_field(object: *mut Value, field: String) -> *mut Value {
                 r
             }
             Value::I64(p, o) => __luma_get_field(&mut Value::Object(o.clone()), field),
+            Value::F64(p, o) => __luma_get_field(&mut Value::Object(o.clone()), field),
+            Value::String(p, o) => __luma_get_field(&mut Value::Object(o.clone()), field),
             Value::Vec(p, o) => __luma_get_field(&mut Value::Object(o.clone()), field),
             other => todo!("handle value {other:?}"),
         }
@@ -441,6 +443,7 @@ lazy_static::lazy_static! {
 
         f.fields.insert("operator[_==_]".to_owned(), Value::from_fn(luma_op_eq_slow as *const fn()));
         f.fields.insert("operator[_!=_]".to_owned(), Value::from_fn(luma_op_ne_slow as *const fn()));
+        f.fields.insert("to_string".to_owned(), Value::from_fn(luma_to_string_slow as *const fn()));
 
         h
     };
@@ -455,6 +458,9 @@ lazy_static::lazy_static! {
         f.fields.insert("operator[_+_]".to_owned(), Value::from_fn(luma_op_add_slow as *const fn()));
         f.fields.insert("operator[_-_]".to_owned(), Value::from_fn(luma_op_subtract_slow as *const fn()));
         f.fields.insert("operator[_*_]".to_owned(), Value::from_fn(luma_op_mul_slow as *const fn()));
+        f.fields.insert("operator[_<_]".to_owned(), Value::from_fn(luma_op_lt_slow as *const fn()));
+        f.fields.insert("operator[_>_]".to_owned(), Value::from_fn(luma_op_gt_slow as *const fn()));
+        f.fields.insert("to_string".to_owned(), Value::from_fn(luma_to_string_slow as *const fn()));
 
         h
     };
@@ -463,6 +469,8 @@ lazy_static::lazy_static! {
         let h = DynamicObject::new_as_handle(u64::MAX - 3);
 
         let mut f = unsafe { h.inner.get().as_mut().unwrap() };
+
+        f.fields.insert("operator[_+_]".to_owned(), Value::from_fn(luma_op_add_slow as *const fn()));
 
         h
     };
@@ -474,6 +482,8 @@ lazy_static::lazy_static! {
 
         f.fields.insert("push".to_owned(), Value::from_fn(luma_vec_push_slow as *const fn()));
         f.fields.insert("get".to_owned(), Value::from_fn(luma_vec_get_slow as *const fn()));
+        f.fields.insert("len".to_owned(), Value::from_fn(luma_vec_len_slow as *const fn()));
+        f.fields.insert("to_string".to_owned(), Value::from_fn(luma_to_string_slow as *const fn()));
 
         h
     };
@@ -489,6 +499,14 @@ lazy_static::lazy_static! {
         f.fields.insert("operator[_-_]".to_owned(), Value::from_fn(luma_op_subtract_slow as *const fn()));
         f.fields.insert("operator[_*_]".to_owned(), Value::from_fn(luma_op_mul_slow as *const fn()));
         f.fields.insert("operator[_/_]".to_owned(), Value::from_fn(luma_op_divide_slow as *const fn()));
+        f.fields.insert("operator[_%_]".to_owned(), Value::from_fn(luma_op_modulo_slow as *const fn()));
+        f.fields.insert("operator[_<_]".to_owned(), Value::from_fn(luma_op_lt_slow as *const fn()));
+        f.fields.insert("operator[_>_]".to_owned(), Value::from_fn(luma_op_gt_slow as *const fn()));
+        f.fields.insert("modulo".to_owned(), Value::from_fn(luma_op_modulo_slow as *const fn()));
+        f.fields.insert("abs".to_owned(), Value::from_fn(luma_op_abs_slow as *const fn()));
+        f.fields.insert("sqrt".to_owned(), Value::from_fn(luma_op_sqrt_slow as *const fn()));
+        f.fields.insert("pow".to_owned(), Value::from_fn(luma_op_pow_slow as *const fn()));
+        f.fields.insert("to_string".to_owned(), Value::from_fn(luma_to_string_slow as *const fn()));
 
         h
     };
@@ -500,6 +518,10 @@ pub fn luma_slow_new_bool(v: bool) -> Value {
 
 pub fn luma_slow_new_i64(v: i64) -> Value {
     Value::I64(v, INT_OBJ.clone())
+}
+
+pub fn luma_slow_new_f64(v: f64) -> Value {
+    Value::F64(v, FLOAT_OBJ.clone())
 }
 
 pub fn luma_slow_new_string(s: &str) -> Value {
@@ -590,6 +612,10 @@ pub fn luma_op_add_slow(a: Value, b: Value) -> Value {
             //println!("multiplying {a} and {b}");
             Value::F64(a + b, am.clone())
         }
+        (Value::String(a, am), Value::String(b, bm)) => {
+            //println!("multiplying {a} and {b}");
+            Value::String(format!("{a}{b}"), am.clone())
+        }
         _ => unreachable!(),
     }
 }
@@ -634,6 +660,91 @@ pub fn luma_op_divide_slow(a: Value, b: Value) -> Value {
         }
         _ => unreachable!(),
     }
+}
+
+pub fn luma_op_modulo_slow(a: Value, b: Value) -> Value {
+    match (a.root(), b.root()) {
+        (Value::I64(a, am), Value::I64(b, bm)) => {
+            //println!("multiplying {a} and {b}");
+            Value::I64(a % b, am.clone())
+        }
+        (Value::F64(a, am), Value::F64(b, bm)) => {
+            //println!("multiplying {a} and {b}");
+            Value::F64(a % b, am.clone())
+        }
+        _ => unreachable!(),
+    }
+}
+
+pub fn luma_op_pow_slow(a: Value, b: Value) -> Value {
+    match (a.root(), b.root()) {
+        (Value::I64(a, am), Value::I64(b, bm)) => {
+            //println!("multiplying {a} and {b}");
+            Value::I64(a.pow(*b as u32), am.clone())
+        }
+        (Value::F64(a, am), Value::F64(b, bm)) => {
+            //println!("multiplying {a} and {b}");
+            Value::F64(a.powf(*b), am.clone())
+        }
+        _ => unreachable!(),
+    }
+}
+
+pub fn luma_op_cos_slow(a: Value) -> Value {
+    match a.root() {
+        Value::F64(a, am) => {
+            //println!("multiplying {a} and {b}");
+            Value::F64(a.cos(), am.clone())
+        }
+        _ => unreachable!(),
+    }
+}
+
+pub fn luma_op_abs_slow(a: Value) -> Value {
+    match a.root() {
+        Value::F64(a, am) => {
+            //println!("multiplying {a} and {b}");
+            Value::F64(a.abs(), am.clone())
+        }
+        Value::I64(a, am) => {
+            //println!("multiplying {a} and {b}");
+            Value::I64(a.abs(), am.clone())
+        }
+        _ => unreachable!(),
+    }
+}
+
+pub fn luma_op_sqrt_slow(a: Value) -> Value {
+    match a.root() {
+        Value::F64(a, am) => {
+            //println!("multiplying {a} and {b}");
+            Value::F64(a.sqrt(), am.clone())
+        }
+        _ => unreachable!(),
+    }
+}
+
+pub fn luma_f64_rand_slow() -> Value {
+    Value::F64(rand_f64(), FLOAT_OBJ.clone())
+}
+
+pub fn luma_vec_len_slow(a: Value) -> Value {
+    match a.root() {
+        Value::Vec(a, am) => {
+            //println!("multiplying {a} and {b}");
+            Value::I64(
+                unsafe { a.get().as_mut().unwrap().len() as i64 },
+                am.clone(),
+            )
+        }
+        _ => unreachable!(),
+    }
+}
+
+pub fn luma_to_string_slow(a: Value) -> Value {
+    let sv = format!("{a}");
+
+    Value::String(sv, STRING_OBJ.clone())
 }
 
 pub fn luma_i64_op_mul_fast(a: i64, b: i64) -> i64 {
