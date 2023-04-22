@@ -434,7 +434,8 @@ impl Quark {
                         tid
                     }
                     Err(e) => {
-                        todo!("need to handle import errors with Instances, err was {e:?}");
+                        //todo!("need to handle import errors with Instances, err was {e:?}");
+                        add_error(CompilationError::UnresolvedSymbol(UnresolvedSymbolError { symbol: name, location: tr.resolve().unwrap().info }));
 
                         // once we've propagated the error, we just treat this as unconstrained
                         // to let us find as many errors as possible
@@ -481,6 +482,8 @@ impl Quark {
 
                 let base = match base {
                     Err(e) => {
+                        add_error(CompilationError::UnresolvedSymbol(UnresolvedSymbolError { symbol: name, location: tr.resolve().unwrap().info }));
+
                         tracing::error!("report import errors");
                         return self.new_tid(
                             NodeInfo::Builtin,
