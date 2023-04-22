@@ -24,6 +24,7 @@ struct i64 noref #builtin "i64" {
         #builtin "$self.to_string()" "" "luma_to_string_slow($self)";
 };
 
+
 struct f64 noref #builtin "f64" {
     fn operator[_*_](self: std::f64, other: std::f64) -> std::f64 
         #builtin "$self * $other" "luma_i64_op_mul_silly($self, $other)" "luma_op_mul_slow($self, $other)";
@@ -76,7 +77,12 @@ struct bool noref #builtin "bool" {
             "$self == $other"
             "luma__silly_bool_compare_eq"
             "luma_op_eq_slow($self, $other)";
+
+    fn operator[!_](self: bool) -> bool
+        #builtin "!$self" "" "";
 };
+
+fn is_null<T>(v: T) -> bool #builtin "$v.inner.is_some()" "" "$v == Value::Uninhabited()";
 
 fn cosine(v: std::f64) -> std::f64 #builtin "$v.cos()" "" "luma_op_cos_slow($v)";
 
@@ -92,13 +98,37 @@ struct Unit noref #builtin "()" {}
 struct String noref #builtin "String" {
     fn operator[_+_](self: std::String, other: std::String) -> std::String #builtin
         "{ let mut first = $self; first.push_str($other.as_str()); first }" "" "luma_op_add_slow($self, $other)";
-}
+
+    fn head(self: String) -> std::char #builtin "$self.chars().next().unwrap()" "" "";
+
+    fn tail(self: String) -> std::String #builtin "$self[1..].to_owned()" "" "";
+
+    fn len(self: String) -> std::i64 #builtin "$self.len() as i64" "" "";
+};
+
+struct char noref #builtin "char" {
+    fn as_int(self: char) -> std::i64 #builtin "$self as i64" "" "";
+};
 
 /*struct StringSlice noref #builtin "&str" {
     fn 
 }*/
 
 //struct LumaVec<T> #builtin 
+
+struct Option<T> noref #builtin "Option<$T>" {
+    // todo: need to prop generics properly through mono
+}
+
+struct HashMap<K, V> noref #builtin "FastRefHandle<std::collections::HashMap<$K, $V>>" {
+    fn contains_key<K, V>(self: HashMap<K, V>, key: K) -> bool #builtin "$self.borrow_mut().contains_key(&$key)" "" "";
+
+    fn new<K, V>() -> HashMap<K, V> #builtin "FastRefHandle::from_val(std::collections::HashMap::new())" "" "";
+
+    fn insert<K, V>(self: HashMap<K, V>, k: K, v: V) #builtin "$self.borrow_mut().insert($k, $v);" "" "";
+
+    fn get<K, V>(self: HashMap<K, V>, k: K) -> V #builtin "$self.borrow_mut().get(&$k).cloned().unwrap()" "" "";
+}
 
 struct Vec<T> noref #builtin "FastRefHandle<Vec<$T>>" {
     fn push<T>(self: std::Vec<T>, item: T) #builtin "$self.borrow_mut().push($item);" "" "luma_vec_push_slow($self, $item)";

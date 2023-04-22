@@ -944,6 +944,24 @@ impl<'lexer> Parser<'lexer> {
                         statements.push(exp);
                     }
                 }
+                Token::If => {
+                    let e = self
+                        .parse_if_then_else(&t, with_generics)
+                        .join_hard(&mut t)
+                        .catch(&mut t)
+                        .handle_here()?;
+
+                    let (v, mut _es, _s) = e.update_solution(&t).open();
+
+                    if let Some(exp) = v {
+                        //statements.push(exp);
+                        let prior = last_expr.replace(exp);
+
+                        if let Some(e) = prior {
+                            statements.push(e);
+                        }
+                    }
+                }
                 _ => {
                     let e = self
                         .parse_expr(&t, with_generics)
@@ -964,6 +982,9 @@ impl<'lexer> Parser<'lexer> {
                             }
                             None => exp,
                         };*/
+                        if let Some(v) = last_expr.take() {
+                            statements.push(v);
+                        }
 
                         match t.try_take(Token::Semicolon) {
                             Some(s) => {

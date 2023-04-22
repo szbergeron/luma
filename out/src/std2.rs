@@ -159,7 +159,7 @@ impl<T> FastHandleTarget<T> {
 }
 
 pub struct FastRefHandle<T> {
-    inner: Option<Pin<Rc<FastHandleTarget<T>>>>,
+    pub inner: Option<Pin<Rc<FastHandleTarget<T>>>>,
 }
 
 pub struct FastValHandle<T> {
