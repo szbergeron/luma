@@ -1,7 +1,7 @@
 use crate::avec::AtomicVecIndex;
 use crate::compile::per_module::Photon;
 use crate::cst::{FunctionBuiltin, SyntacticTypeReference};
-use crate::errors::{FieldAccessError, UnrestrictedTypeError};
+use crate::errors::{add_error, FieldAccessError, UnrestrictedTypeError, UnresolvedSymbolError};
 use crate::helper::CopyMethod;
 use crate::mir::expressions::{Binding, For, If};
 use crate::mir::scribe::ScribeOne;
@@ -252,7 +252,8 @@ impl Quark {
 
     #[track_caller]
     pub async fn resolved_base_of(&'static self, t: TypeID) -> CtxID {
-        self.with_instance(t, |inst| unsafe { inst.once_base.clone().wait() }).await
+        self.with_instance(t, |inst| unsafe { inst.once_base.clone().wait() })
+            .await
     }
 
     /// When each quark phase completes we get one message here to flush errors
@@ -262,13 +263,14 @@ impl Quark {
 
         if errors.is_tainted {
             for error in errors.errors_to_be_flushed.swap_with(vec![]).into_iter() {
-                let _ = self.sender.send(Message {
+                /*let _ = self.sender.send(Message {
                     to: Destination::nil(),
                     from: Destination::nil(),
                     send_reply_to: Destination::nil(),
                     conversation: Uuid::new_v4(),
                     content: Content::Error(error),
-                });
+                });*/
+                add_error(error);
             }
         }
     }
@@ -410,7 +412,10 @@ impl Quark {
 
                 match r {
                     Ok(cid) => {
-                        tracing::info!("constructs an instance for single {name:?}, and it pointed to {cid:?} for a simple typeref");
+                        tracing::info!(
+                            "constructs an instance for single {name:?},
+                                       and it pointed to {cid:?} for a simple typeref"
+                        );
                         let instance = Instance::infer_instance(Some(cid), self).await;
 
                         //panic!("got an instance");
@@ -428,8 +433,8 @@ impl Quark {
 
                         tid
                     }
-                    Err(_) => {
-                        todo!("need to handle import errors with Instances");
+                    Err(e) => {
+                        todo!("need to handle import errors with Instances, err was {e:?}");
 
                         // once we've propagated the error, we just treat this as unconstrained
                         // to let us find as many errors as possible
@@ -1234,7 +1239,14 @@ impl Quark {
 
                             let ctx_for_base = match ctx_for_base {
                                 Ok(v) => v,
-                                Err(ie) => todo!("handle import error"),
+                                Err(ie) => {
+                                    add_error(CompilationError::UnresolvedSymbol(UnresolvedSymbolError {
+                                        symbol: base_type,
+                                        location: info
+                                    }));
+
+                                    return;
+                                }
                             };
 
                             let mut inst_fields = HashMap::new();

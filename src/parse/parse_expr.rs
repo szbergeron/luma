@@ -185,9 +185,7 @@ impl<'lexer> Parser<'lexer> {
 
                     match t.try_take(Token::Comma) {
                         Some(c) => continue,
-                        None => {
-                            break t.take(Token::RBrace).join()?.end
-                        },
+                        None => break t.take(Token::RBrace).join()?.end,
                     }
                 }
             }
@@ -500,13 +498,16 @@ impl<'lexer> Parser<'lexer> {
                     name: ident.slice,
                     node_info: ni,
                 };
-                
+
                 let mae = Box::new(cst::ExpressionWrapper::MemberAccess(mae));
 
                 let e = if let Some(p) = t.try_take(Token::LParen) {
                     t.lh.backtrack();
 
-                    let (call_again, mut f) = self.parse_access_continuation(&t, mae, with_generics).join_hard(&mut t).catch(&mut t)?;
+                    let (call_again, mut f) = self
+                        .parse_access_continuation(&t, mae, with_generics)
+                        .join_hard(&mut t)
+                        .catch(&mut t)?;
 
                     if let cst::ExpressionWrapper::FunctionCall(fc) = f.as_mut() {
                         if let cst::ExpressionWrapper::Tuple(t) = fc.args.as_mut() {
@@ -608,7 +609,10 @@ impl<'lexer> Parser<'lexer> {
                 sn.scope.push(last.slice);
 
                 println!("got scope, turning into ident");
-                let e = cst::IdentifierExpression { node_info, ident: sn.to_raw_scope() };
+                let e = cst::IdentifierExpression {
+                    node_info,
+                    ident: sn.to_raw_scope(),
+                };
 
                 println!("turned into ident, it is {e:?}");
 
@@ -618,7 +622,7 @@ impl<'lexer> Parser<'lexer> {
 
                 //let e = cst::IdentifierExpression::from_token(tw);
 
-                //let remainder = 
+                //let remainder =
 
                 t.success(Box::new(e))
             }
@@ -686,7 +690,6 @@ impl<'lexer> Parser<'lexer> {
         } else {
             cst::Tuple::new_expr(ni, exprs)
         };
-
 
         t.success(ex)
     }
@@ -818,34 +821,48 @@ impl<'lexer> Parser<'lexer> {
         t.success(cst::WhileExpression::new_expr(node_info, while_exp, do_exp))
     }
 
-    pub fn parse_for(
-        &mut self,
-        t: &TokenProvider,
-        with_generics: &Vec<IStr>,
-    ) -> ExpressionResult {
+    pub fn parse_for(&mut self, t: &TokenProvider, with_generics: &Vec<IStr>) -> ExpressionResult {
         let mut t = parse_header!(t);
 
         let start = t.take(Token::For).join()?.start;
 
         t.take(Token::LParen).join()?;
 
-        let pre = self.parse_expr(&t, with_generics).join_hard(&mut t).catch(&mut t)?;
+        let pre = self
+            .parse_expr(&t, with_generics)
+            .join_hard(&mut t)
+            .catch(&mut t)?;
 
         t.take(Token::Semicolon).join()?;
 
-        let check = self.parse_expr(&t, with_generics).join_hard(&mut t).catch(&mut t)?;
+        let check = self
+            .parse_expr(&t, with_generics)
+            .join_hard(&mut t)
+            .catch(&mut t)?;
 
         t.take(Token::Semicolon).join()?;
 
-        let post = self.parse_expr(&t, with_generics).join_hard(&mut t).catch(&mut t)?;
+        let post = self
+            .parse_expr(&t, with_generics)
+            .join_hard(&mut t)
+            .catch(&mut t)?;
 
         t.take(Token::RParen).join()?;
 
-        let body = self.parse_expr(&t, with_generics).join_hard(&mut t).catch(&mut t)?;
+        let body = self
+            .parse_expr(&t, with_generics)
+            .join_hard(&mut t)
+            .catch(&mut t)?;
 
         let node_info = NodeInfo::from_indices(start, body.as_node().end().unwrap());
 
-        t.success(Box::new(cst::ExpressionWrapper::For(cst::ForExpression { node_info, pre, check, post, body })))
+        t.success(Box::new(cst::ExpressionWrapper::For(cst::ForExpression {
+            node_info,
+            pre,
+            check,
+            post,
+            body,
+        })))
     }
 
     pub fn syntactic_block(
@@ -910,8 +927,6 @@ impl<'lexer> Parser<'lexer> {
                     let (v, mut _es, _s) = e.update_solution(&t).open();
 
                     if let Some(exp) = v {
-
-
                         /*let exp = match t.try_take(Token::Semicolon) {
                             Some(semi) => {
                                 let start =
@@ -927,7 +942,7 @@ impl<'lexer> Parser<'lexer> {
                             Some(s) => {
                                 statements.push(exp);
                                 continue;
-                            },
+                            }
                             None => {
                                 last_expr = Some(exp);
                                 break;
@@ -942,12 +957,13 @@ impl<'lexer> Parser<'lexer> {
 
         //let end = t.lh.la(-1).map_or(start, |tw| tw.start);
 
-
         let end = t.take(Token::RBrace).join()?.end;
 
         let node_info = NodeInfo::from_indices(start, end);
 
-        t.success(cst::BlockExpression::new_expr(node_info, statements, last_expr))
+        t.success(cst::BlockExpression::new_expr(
+            node_info, statements, last_expr,
+        ))
     }
 
     pub fn parse_expr_inner(
@@ -1016,7 +1032,10 @@ impl<'lexer> Parser<'lexer> {
                 r
             }
             Token::For => {
-                let r = self.parse_for(&t, with_generics).join_hard(&mut t).catch(&mut t)?;
+                let r = self
+                    .parse_for(&t, with_generics)
+                    .join_hard(&mut t)
+                    .catch(&mut t)?;
 
                 r
             }

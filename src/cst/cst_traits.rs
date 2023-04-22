@@ -96,10 +96,7 @@ impl NodeInfo {
                 let end = pni.span.end.higher_of(t.end);
 
                 Self::Parsed(ParsedNodeInfo {
-                    span: Span {
-                        start,
-                        end,
-                    },
+                    span: Span { start, end },
                 })
             }
         }

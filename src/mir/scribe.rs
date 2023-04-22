@@ -510,11 +510,11 @@ impl<'a> ScribeOne<'a> {
                     let arg = self
                         .to_rs_nondyn(quark, submap, arg, indent + 1, false)
                         .await;
-                    let arg = format!("{arg}.clone()").intern();
+                    let arg = format!("\n{arg}.clone()").intern();
                     args_s.push(arg);
                 }
 
-                let args = args_s.into_iter().join(", ");
+                let args = args_s.into_iter().join(",");
 
                 let _ = writeln!(code, "{on}({args})");
             }
@@ -912,7 +912,12 @@ impl<'a> ScribeOne<'a> {
                 Some(stored_in)
             }
             AnyExpression::For(f) => {
-                let For { body, pre, post, condition } = f;
+                let For {
+                    body,
+                    pre,
+                    post,
+                    condition,
+                } = f;
 
                 let res_var = UntypedVar::temp();
 
@@ -920,14 +925,22 @@ impl<'a> ScribeOne<'a> {
 
                 code.push(format!("{ind}{{"));
 
-                self.to_rs_dyn(quark, pre, preamble, code, indent + 1, submap).await;
+                self.to_rs_dyn(quark, pre, preamble, code, indent + 1, submap)
+                    .await;
 
                 code.push(format!("{ind}   while({{"));
-                let r = self.to_rs_dyn(quark, condition, preamble, code, indent + 1, submap).await.unwrap();
+                let r = self
+                    .to_rs_dyn(quark, condition, preamble, code, indent + 1, submap)
+                    .await
+                    .unwrap();
                 code.push(format!("{ind}{r}.is_true() }}) {{"));
 
-                let r = self.to_rs_dyn(quark, body, preamble, code, indent, submap).await;
-                let r = self.to_rs_dyn(quark, post, preamble, code, indent, submap).await;
+                let r = self
+                    .to_rs_dyn(quark, body, preamble, code, indent, submap)
+                    .await;
+                let r = self
+                    .to_rs_dyn(quark, post, preamble, code, indent, submap)
+                    .await;
 
                 code.push(format!("{ind}}};"));
 
@@ -1482,9 +1495,14 @@ impl Monomorphization {
             })
             .join("_");
 
-        let hashed_tail = format!("{base_str}_{gen_summary}_{hashed_tail}");
+        let s = if self.with.is_empty() {
+            format!("{base_str}")
+        } else {
+            format!("{base_str}_{gen_summary}_{hashed_tail}")
+        };
 
-        let hashed_tail: String = hashed_tail
+
+        let s: String = s
             .chars()
             .map(|c| match c {
                 '*' => "mul".to_owned(),
@@ -1502,7 +1520,7 @@ impl Monomorphization {
             //.filter(|c| c.is_ascii_alphanumeric() || *c == '_')
             .collect();
 
-        hashed_tail.intern()
+        s.intern()
     }
 
     pub fn from_resolved(r: ResolvedType) -> Self {

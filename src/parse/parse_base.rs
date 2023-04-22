@@ -8,7 +8,7 @@ use tracing::info;
 //use crate::ast::{StaticVariableDeclaration, TopLevel};
 use crate::cst::cst_traits::NodeInfo;
 //use crate::cst::declarations::{OuterScope, TopLevel, Namespace, TypeReference, FunctionDefinition};
-use crate::cst::{self, ScopedName, FunctionBuiltin, SyntacticTypeReferenceRef};
+use crate::cst::{self, FunctionBuiltin, ScopedName, SyntacticTypeReferenceRef};
 use crate::lex::{ParseResultError, Token};
 
 //use crate::helper::lex_wrap::LookaheadStream;
@@ -531,8 +531,7 @@ impl<'lexer> Parser<'lexer> {
         let p_end = t.take(Token::RParen).join()?.end;
 
         let return_type = if let Some(a) = t.try_take(Token::ThinArrow) {
-            self
-                .parse_type_specifier(&t, &generics)
+            self.parse_type_specifier(&t, &generics)
                 .join_hard(&mut t)
                 .catch(&mut t)?
                 .intern()
@@ -540,7 +539,7 @@ impl<'lexer> Parser<'lexer> {
             SyntacticTypeReferenceRef::from_std("std::Unit")
         };
 
-        //if let Some(v) = 
+        //if let Some(v) =
         //
         let (body, end) = if let Some(v) = t.try_take(Token::InteriorBuiltin) {
             let fast = t.take(Token::StringLiteral).join()?;
@@ -570,8 +569,6 @@ impl<'lexer> Parser<'lexer> {
             let end = body.as_node().start().expect("Some(_) body has None end");
             (Either::Left(body), end)
         };
-
-
 
         let info = NodeInfo::from_indices(start, end);
 

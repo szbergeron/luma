@@ -1,6 +1,9 @@
 use std::{rc::Rc, sync::atomic::AtomicUsize};
 
-use crate::{helper::interner::{IStr, Internable}, mir::{quark::ResolvedType, expressions::VarID}};
+use crate::{
+    helper::interner::{IStr, Internable},
+    mir::{expressions::VarID, quark::ResolvedType},
+};
 
 pub enum Lower {
     Goto(Label),
@@ -18,7 +21,7 @@ pub enum Lower {
     /// Emit a label at the current point, starting a BB
     Label(Label),
 
-    /// Store 
+    /// Store
     BoxOf(Variable, Variable),
 
     /// (load_from, fname, store_into)
@@ -50,13 +53,17 @@ impl UntypedVar {
     pub fn temp() -> Self {
         let id = GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
-        Self { name: format!("temp_{id}").intern() }
+        Self {
+            name: format!("temp_{id}").intern(),
+        }
     }
 
     pub fn from(v: VarID) -> Self {
         let id = v.0;
 
-        Self { name: format!("var_{id}").intern() }
+        Self {
+            name: format!("var_{id}").intern(),
+        }
     }
 }
 

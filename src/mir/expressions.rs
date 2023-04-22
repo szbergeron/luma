@@ -4,6 +4,7 @@ use itertools::Itertools;
 use tracing::info;
 
 use crate::{
+    ast::tree::CtxID,
     avec::AtomicVec,
     cst::{
         self, CastExpression, ExpressionWrapper, FunctionCall, IdentifierExpression,
@@ -11,7 +12,7 @@ use crate::{
         NodeInfo, ScopedName, StatementExpression, StructLiteralExpression,
         SyntacticTypeReferenceRef,
     },
-    helper::interner::{IStr, Internable}, ast::tree::CtxID,
+    helper::interner::{IStr, Internable},
 };
 
 pub type ExpressionID = crate::avec::AtomicVecIndex;
@@ -378,7 +379,8 @@ impl AnyExpression {
                     id
                 }
 
-                let self_id = let_recursive(primary_component.clone(), within, from_exp_id, bindings);
+                let self_id =
+                    let_recursive(primary_component.clone(), within, from_exp_id, bindings);
 
                 self_id
             }
@@ -416,7 +418,11 @@ impl AnyExpression {
                 let then_do = AnyExpression::from_ast(within, then_exp, bindings);
                 let else_do = AnyExpression::from_ast(within, else_exp, bindings);
 
-                let if_e = If { condition, then_do, else_do: Some(else_do) };
+                let if_e = If {
+                    condition,
+                    then_do,
+                    else_do: Some(else_do),
+                };
 
                 within.add(AnyExpression::If(if_e)).0
             }
@@ -431,7 +437,10 @@ impl AnyExpression {
                     .map(|box e| AnyExpression::from_ast(within, &e, &mut cs))
                     .collect_vec();
 
-                let final_expr = b.final_expr.clone().map(|box e| AnyExpression::from_ast(within, &e, &mut cs));
+                let final_expr = b
+                    .final_expr
+                    .clone()
+                    .map(|box e| AnyExpression::from_ast(within, &e, &mut cs));
 
                 let ae = AnyExpression::Block(StringBlock {
                     statements,
@@ -482,16 +491,12 @@ impl AnyExpression {
                 } = li;
 
                 let value_type = match contents {
-                    cst::Literal::UnitLiteral() => {
-                        SyntacticTypeReferenceRef::from_std("std::Unit")
-                    }
+                    cst::Literal::UnitLiteral() => SyntacticTypeReferenceRef::from_std("std::Unit"),
                     cst::Literal::StringLiteral(sl) => {
                         SyntacticTypeReferenceRef::from_std("std::String")
-                    },
-                    cst::Literal::f32Literal(_) => todo!(),
-                    cst::Literal::f64Literal(f) => {
-                        SyntacticTypeReferenceRef::from_std("std::f64")
                     }
+                    cst::Literal::f32Literal(_) => todo!(),
+                    cst::Literal::f64Literal(f) => SyntacticTypeReferenceRef::from_std("std::f64"),
                     cst::Literal::u128Literal(_) => todo!(),
                     cst::Literal::u64Literal(_) => todo!(),
                     cst::Literal::u32Literal(_) => todo!(),
@@ -501,7 +506,7 @@ impl AnyExpression {
                     cst::Literal::i64Literal(_) => todo!(),
                     cst::Literal::i32Literal(v) => {
                         todo!()
-                    },
+                    }
                     cst::Literal::i16Literal(_) => todo!(),
                     cst::Literal::i8Literal(_) => todo!(),
                     cst::Literal::UnknownIntegerLiteral(v) => {
@@ -509,9 +514,7 @@ impl AnyExpression {
                         //Literal::lit_i32(*v as i32)
                         SyntacticTypeReferenceRef::from_std("std::i64")
                     }
-                    cst::Literal::Boolean(b) => {
-                        SyntacticTypeReferenceRef::from_std("std::bool")
-                    },
+                    cst::Literal::Boolean(b) => SyntacticTypeReferenceRef::from_std("std::bool"),
                 };
 
                 let li = Literal {
@@ -556,7 +559,13 @@ impl AnyExpression {
                 e
             }
             ExpressionWrapper::For(f) => {
-                let cst::expressions::ForExpression { node_info, box pre, box check, box post, box body } = f;
+                let cst::expressions::ForExpression {
+                    node_info,
+                    box pre,
+                    box check,
+                    box post,
+                    box body,
+                } = f;
                 let mut pre_scope = bindings.child_scoped();
 
                 let pre = AnyExpression::from_ast(within, pre, &mut pre_scope);
@@ -573,7 +582,12 @@ impl AnyExpression {
 
                 let body = AnyExpression::from_ast(within, body, &mut body_scope);
 
-                let for_e = For { body, pre, post, condition };
+                let for_e = For {
+                    body,
+                    pre,
+                    post,
+                    condition,
+                };
 
                 within.add(AnyExpression::For(for_e)).0
             }
@@ -599,7 +613,6 @@ impl AnyExpression {
                     within.add(ae).0
                     //todo!("scoped ident?")
                 }
-
             }
             ExpressionWrapper::FunctionCall(fc) => {
                 let FunctionCall {

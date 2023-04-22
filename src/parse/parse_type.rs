@@ -1,11 +1,10 @@
 //use crate::ast::base::IntoAstNode;
 
-
 use itertools::Itertools;
 
 use crate::cst::{
-    self, CstNode, IntoCstNode, NodeInfo, ScopedName, SyntacticTypeReference,
-    SyntacticTypeReferenceRef, StructuralTyAttrs,
+    self, CstNode, IntoCstNode, NodeInfo, ScopedName, StructuralTyAttrs, SyntacticTypeReference,
+    SyntacticTypeReferenceRef,
 };
 
 /*use cst::{
@@ -150,7 +149,10 @@ impl<'lexer> Parser<'lexer> {
         let mut methods = Vec::new();
         //let mut builtin_fields: Vec<(IStr, IStr)> = Vec::new();
 
-        let is_ref = t.try_take_in(&[Token::IsRef, Token::IsNoRef]).map(|tw| tw.token).unwrap_or(Token::IsRef);
+        let is_ref = t
+            .try_take_in(&[Token::IsRef, Token::IsNoRef])
+            .map(|tw| tw.token)
+            .unwrap_or(Token::IsRef);
 
         let is_ref = match is_ref {
             Token::IsNoRef => false,
@@ -158,7 +160,10 @@ impl<'lexer> Parser<'lexer> {
             _ => unreachable!(),
         };
 
-        let is_modif = t.try_take_in(&[Token::IsMod, Token::IsNoMod]).map(|tw| tw.token).unwrap_or(Token::IsMod);
+        let is_modif = t
+            .try_take_in(&[Token::IsMod, Token::IsNoMod])
+            .map(|tw| tw.token)
+            .unwrap_or(Token::IsMod);
 
         let is_modif = match is_modif {
             Token::IsNoMod => false,
@@ -222,7 +227,7 @@ impl<'lexer> Parser<'lexer> {
                         Token::Function => {
                             todo!("function builtins plain")
                         }
-                        _ => unreachable!()
+                        _ => unreachable!(),
                     }
                 }
                 Token::Function => {

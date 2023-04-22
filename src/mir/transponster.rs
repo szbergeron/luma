@@ -24,7 +24,7 @@ use crate::{
     avec::AtomicVecIndex,
     compile::per_module::{Content, ConversationContext, Destination, Earpiece, Message, Postal},
     cst::{NodeInfo, SyntacticTypeReferenceRef},
-    errors::{CompilationError, FieldResolutionError, TypeUnificationError},
+    errors::{add_error, CompilationError, FieldResolutionError, TypeUnificationError},
     helper::{
         interner::{IStr, Internable},
         SwapWith,
@@ -89,7 +89,6 @@ pub struct Transponster {
 
     /// Matches StructDefinition::is_ref, says whether this is a ref-type
     //pub is_ref: bool,
-
     monomorphizations: RefCell<HashSet<Monomorphization>>,
 
     conversations: ConversationContext,
@@ -215,7 +214,7 @@ impl DynFieldInfo {
                 .expect("tried to commit fail a completed field")
         };
 
-        Postal::instance().send(Message {
+        /*Postal::instance().send(Message {
             to: Destination::nil(),
             from: Destination::transponster(CtxID(AtomicVecIndex::nil())),
             send_reply_to: Destination::nil(),
@@ -223,7 +222,11 @@ impl DynFieldInfo {
             content: Content::Error(CompilationError::FieldResolutionError(
                 FieldResolutionError { name: self.name },
             )),
-        })
+        })*/
+
+        add_error(CompilationError::FieldResolutionError(
+            FieldResolutionError { name: self.name },
+        ));
     }
 
     pub fn commit(&self) -> ResolvedType {

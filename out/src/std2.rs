@@ -37,6 +37,10 @@ pub fn rand_f64() -> f64 {
     r.gen()
 }
 
+pub fn panic_with<T: std::fmt::Debug>(v: T) -> ! {
+    panic!("panic: {v:?}")
+}
+
 /// Contract: the return of this is only valid for as long as no other
 /// get_field call is made on this object, as field location is not stable
 /// across hashmap resizes

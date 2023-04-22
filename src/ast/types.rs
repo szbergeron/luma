@@ -4,8 +4,8 @@ use std::{collections::HashMap, sync::RwLock};
 
 use crate::{
     cst::{
-        FunctionBuiltin, NodeInfo, ScopedName, SyntacticTypeReferenceInner,
-        SyntacticTypeReferenceRef, StructuralTyAttrs,
+        FunctionBuiltin, NodeInfo, ScopedName, StructuralTyAttrs, SyntacticTypeReferenceInner,
+        SyntacticTypeReferenceRef,
     },
     helper::interner::IStr,
 };
@@ -159,13 +159,16 @@ impl FunctionDefinition {
             info,
             name,
             is_method,
-            implementation: Some(body.map_left(|e| {
-                println!("Got a left!");
-                *e
-            }).map_right(|r| {
-                //panic!("got a right!");
-                r
-            })),
+            implementation: Some(
+                body.map_left(|e| {
+                    println!("Got a left!");
+                    *e
+                })
+                .map_right(|r| {
+                    //panic!("got a right!");
+                    r
+                }),
+            ),
             return_type,
             parameters,
             header,

@@ -1,4 +1,7 @@
-use std::{sync::atomic::{AtomicUsize, Ordering}, collections::HashMap};
+use std::{
+    collections::HashMap,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 
 use dashmap::DashMap;
 use itertools::Itertools;
@@ -264,7 +267,11 @@ pub struct SyntacticTypeReference {
 
 impl SyntacticTypeReference {
     pub fn unconstrained() -> SyntacticTypeReference {
-        Self { id: SyntacticTypeReferenceRef::new_nil(), info: NodeInfo::Builtin, inner: SyntacticTypeReferenceInner::Unconstrained() }
+        Self {
+            id: SyntacticTypeReferenceRef::new_nil(),
+            info: NodeInfo::Builtin,
+            inner: SyntacticTypeReferenceInner::Unconstrained(),
+        }
     }
 
     pub fn as_plain_type(mut self, sub_generics: &HashMap<IStr, IStr>) -> IStr {
@@ -272,7 +279,7 @@ impl SyntacticTypeReference {
             SyntacticTypeReferenceInner::Unconstrained() => todo!(),
             SyntacticTypeReferenceInner::Tuple(t) => {
                 todo!()
-            },
+            }
             SyntacticTypeReferenceInner::Single { name } => {
                 let n = name.scope.into_iter().join("::").intern();
                 //let n = name.scope.last().copied().unwrap_or("unknown".intern());
@@ -280,14 +287,19 @@ impl SyntacticTypeReference {
                 n
                 //format!("{name}").intern()
             }
-            SyntacticTypeReferenceInner::Generic { label } => sub_generics.get(&label).copied().unwrap(),
+            SyntacticTypeReferenceInner::Generic { label } => {
+                sub_generics.get(&label).copied().unwrap()
+            }
             SyntacticTypeReferenceInner::Parameterized { name, generics } => {
                 let n = name.scope.into_iter().join("::").intern();
                 //let n = name.scope.last().copied().unwrap_or("unknown".intern());
-                let g = generics.into_iter().map(|g| g.as_plain_type(sub_generics)).join(", ");
+                let g = generics
+                    .into_iter()
+                    .map(|g| g.as_plain_type(sub_generics))
+                    .join(", ");
 
                 format!("{n}<{g}>").intern()
-            },
+            }
             SyntacticTypeReferenceInner::Reference { to, mutable } => todo!(),
             SyntacticTypeReferenceInner::Pointer { to, mutable } => todo!(),
         }
@@ -319,7 +331,8 @@ impl SyntacticTypeReference {
             SyntacticTypeReferenceInner::Parameterized { name, generics } => todo!(),
             SyntacticTypeReferenceInner::Reference { to, mutable } => todo!(),
             SyntacticTypeReferenceInner::Pointer { to, mutable } => todo!(),
-        }.intern()
+        }
+        .intern()
     }
 }
 

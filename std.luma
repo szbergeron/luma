@@ -82,19 +82,21 @@ fn cosine(v: std::f64) -> std::f64 #builtin "$v.cos()" "" "luma_op_cos_slow($v)"
 
 fn print<T>(v: T) -> std::Unit #builtin "luma_print_fast($v);" "luma_print_silly" "luma_print_slow($v)";
 
+fn panic<T>(msg: std::String) -> T #builtin "panic_with($msg)" "panic_with($msg)" "panic_with($msg)";
+
+// requires T be a reference type
+fn none<T>() -> T #builtin "Default::default()" "" "Value::Uninhabited()";
+
 struct Unit noref #builtin "()" {}
 
 struct String noref #builtin "String" {
-    fn operator[_+_](self: std::String, other: std::String) -> std::String
-        #builtin
+    fn operator[_+_](self: std::String, other: std::String) -> std::String #builtin
         "{ let mut first = $self; first.push_str($other.as_str()); first }" "" "luma_op_add_slow($self, $other)";
-
-    /*
-    fn operator[_+_](self: std::String, other: std::i64) -> std::String {
-        self + other.to_string(other)
-    };
-    */
 }
+
+/*struct StringSlice noref #builtin "&str" {
+    fn 
+}*/
 
 //struct LumaVec<T> #builtin 
 
@@ -110,8 +112,11 @@ struct Vec<T> noref #builtin "FastRefHandle<Vec<$T>>" {
     fn len<T>(self: std::Vec<T>) -> std::i64 #builtin "$self.borrow_mut().len() as i64" "" "luma_vec_len_slow($self)";
 
     fn insert<T>(self: std::Vec<T>, index: std::i64, value: T)
-        #builtin "$self.borrow_mut().insert($index as usize, $value);" "" "todo!()"
+        #builtin "$self.borrow_mut().insert($index as usize, $value);" "" "todo!()";
     //fn new_i64() -> std::Vec<i64> #builtin "Vec::new" "" "";
+    /*fn iter<T>(self: std::Vec<T>) -> std::VecIterator<T> {
+        struct std::VecIterator { over: self, cur_index: 0 }
+    };*/
 }
 
 /*
@@ -162,6 +167,7 @@ struct fdf isref ismod {
 };
 
 
+/*
 fn tmain() {
 
     std::print("hello world");
@@ -225,8 +231,9 @@ fn assigntest() {
     //if c == 0 { a } else { b } = 30;
 
     //
-}
+}*/
 
+/*
 struct User {
     var name: std::String;
     var age: std::i64;
@@ -268,7 +275,8 @@ fn check_dyn_usage(u: User) {
 fn bad_dyn_usage(u: std::User) {
     //u.married = "no"
 }
-
+*/
+/*
 fn fibonacci(n: std::i64) -> std::i64 {
     if n == 0 {
         0
@@ -293,7 +301,7 @@ fn ackermann(m: std::i64, n: std::i64) -> std::i64 {
     } else {
         std::ackermann(m - 1, std::ackermann(m, n - 1))
     }
-};
+};*/
 
 /*
 struct VecOfInt {
@@ -565,4 +573,45 @@ struct reference<T> {
     var v: T;
 }
 }
+*/
+
+struct RangedIterator {
+    var end: i64;
+    var cur: i64;
+    var iter_by: i64;
+
+    fn next(self: RangedIterator) -> i64 {
+        if self.has_next() == false {
+            std::panic("tried to get next from a ranged iter with no next")
+        } else {
+            self.cur = self.cur + self.iter_by;
+            self.cur
+        }
+    };
+
+    fn has_next(self: std::RangedIterator) -> bool {
+        self.cur + self.iter_by < self.end
+    };
+};
+
+fn range(start: i64, end: i64) -> std::RangedIterator {
+    struct std::RangedIterator { cur: start, end: end, iter_by: 1 }
+};
+
+/*
+struct VecIterator<T> {
+    var over: Vec<T>;
+    var cur_index: i64;
+
+    fn next<T>(self: VecIterator<T>) -> T {
+        let t = self.over.get(self.cur_index);
+        self.cur_index = self.cur_index + 1;
+
+        t
+    };
+
+    fn has_next<T>(self: VecIterator<T>) -> bool {
+        self.cur_index < self.over.len()
+    };
+};
 */

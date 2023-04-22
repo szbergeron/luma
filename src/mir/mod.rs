@@ -14,9 +14,9 @@ pub mod expressions;
 //still useful:
 pub mod quark;
 //pub mod flat;
+pub mod instance;
 pub mod oracle;
+pub mod scribe;
 pub mod sets;
 pub mod transponster;
-pub mod instance;
-pub mod scribe;
 //mod resolve;

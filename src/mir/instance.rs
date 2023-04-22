@@ -681,7 +681,8 @@ impl Instance {
 
             (InstanceOf::Unknown(), other) | (other, InstanceOf::Unknown()) => other,
 
-            (InstanceOf::Func(f), InstanceOf::Type(t)) | (InstanceOf::Type(t), InstanceOf::Func(f)) => {
+            (InstanceOf::Func(f), InstanceOf::Type(t))
+            | (InstanceOf::Type(t), InstanceOf::Func(f)) => {
                 println!("we tried to unify a function call with a structural type? our type system doesn't allow this");
 
                 let te = TypeError {
@@ -691,9 +692,9 @@ impl Instance {
                     components: vec![],
                 };
 
-                return Err(te)
+                return Err(te);
             }
-            _ => todo!()
+            _ => todo!(),
         };
 
         let once_base = unsafe {

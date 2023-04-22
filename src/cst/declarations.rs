@@ -14,7 +14,7 @@ use super::TypeDefinition;
 use super::TypeReference;*/
 
 //use crate::types::FunctionDeclaration;
-use std::{fmt::Debug, collections::HashMap};
+use std::{collections::HashMap, fmt::Debug};
 //use std::io::Write;
 
 /*use crate::types::GlobalCtxNode;
@@ -460,7 +460,9 @@ impl CstNode for FunctionDefinition {
         //let _ = writeln!(f, " {{");
         //let _ = write!(f, "{}", indent(depth + 1));
 
-        self.body.as_ref().map_left(|b| b.as_node().pretty(f, depth));
+        self.body
+            .as_ref()
+            .map_left(|b| b.as_node().pretty(f, depth));
         //let _ = writeln!(f, "");
         //let _ = writeln!(f, "\n{}}}", indent(depth));
     }

@@ -1226,9 +1226,7 @@ impl LiteralExpression {
             Token::UnknownIntegerLiteral => {
                 Literal::UnknownIntegerLiteral(tw.slice.resolve().parse().unwrap())
             }
-            Token::FloatLiteral => {
-                Literal::f64Literal(tw.slice.resolve().parse().unwrap())
-            }
+            Token::FloatLiteral => Literal::f64Literal(tw.slice.resolve().parse().unwrap()),
             Token::i8Literal => Literal::i8Literal(tw.slice.resolve().parse().unwrap()),
             Token::i32Literal => Literal::i32Literal(slice[..slice.len() - 3].parse().unwrap()),
             Token::StringLiteral => Literal::StringLiteral(tw.slice),

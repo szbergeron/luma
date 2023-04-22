@@ -1,7 +1,8 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, path::PathBuf, sync::Arc};
 
 use colored::*;
 use itertools::Itertools;
+use once_cell::sync::OnceCell;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum CompilationError {
@@ -10,6 +11,51 @@ pub enum CompilationError {
     FieldAccessError(FieldAccessError),
     UnrestrictedTypeError(UnrestrictedTypeError),
     FieldResolutionError(FieldResolutionError),
+    ParseError(ParseResultError, Invisible<Arc<(Contents, PathBuf)>>),
+    UnresolvedSymbol(UnresolvedSymbolError),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct UnresolvedSymbolError {
+    pub symbol: ScopedName,
+    pub location: NodeInfo,
+}
+
+#[derive(Clone)]
+pub struct Invisible<T>
+where
+    T: Clone,
+{
+    pub v: T,
+}
+
+impl<T> std::cmp::PartialEq for Invisible<T>
+where
+    T: Clone,
+{
+    fn eq(&self, other: &Self) -> bool {
+        true
+    }
+}
+
+impl<T> std::cmp::Eq for Invisible<T> where T: Clone {}
+
+impl<T> std::fmt::Debug for Invisible<T>
+where
+    T: Clone,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("<invisible")
+    }
+}
+
+impl<T> std::hash::Hash for Invisible<T>
+where
+    T: Clone,
+{
+    fn hash<H: ~const std::hash::Hasher>(&self, state: &mut H) {
+        // nothing
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -49,11 +95,93 @@ pub struct FieldAccessError {
     pub error_info: String,
 }
 
+pub fn add_error(e: CompilationError) {
+    let _ = ERRORS.v.0.send(e);
+}
+
+pub fn take_error() -> Option<CompilationError> {
+    ERRORS.v.1.try_recv().ok()
+}
+
+struct Wrap<T> {
+    pub v: T,
+}
+
+lazy_static::lazy_static! {
+    static ref ERRORS: Wrap<(crossbeam::Sender<CompilationError>, crossbeam::Receiver<CompilationError>)> = {
+        Wrap { v: crossbeam::unbounded() }
+    };
+}
+
 impl CompilationError {
+    fn print_parse_err(&self, e: &ParseResultError, lines: &Vec<&str>, filename: &str) {
+        let ep = ErrorPrinter {};
+        match e {
+            ParseResultError::InternalParseIssue => {}
+            ParseResultError::EndOfFile => {
+                eprintln!("Unexpected End of File");
+            }
+            ParseResultError::NotYetParsed => {
+                panic!("Programming error, unexplored region of ast has error for us?");
+            }
+            ParseResultError::UnexpectedToken(t, expected, msg) => {
+                ep.print_context(t.start, t.end, &lines, filename);
+                eprintln!("Got unexpected token of type {:?}. Expected one of {:?}. Token with slice \"{}\" was encountered around ({}, {})",
+                        t.token,
+                        expected,
+                        t.slice.resolve(),
+                        t.start,
+                        t.end,
+                    );
+                match msg {
+                    Some(msg) => eprintln!("Hint: {}", msg),
+                    None => {}
+                };
+            }
+            ParseResultError::SemanticIssue(issue, start, end) => {
+                //self.print_context(*start, *end, &lines);
+                ep.print_context(*start, *end, &lines, filename);
+                eprintln!("Encountered a semantic issue: {}. This issue was realized around the character range ({}, {})",
+                        issue,
+                        start,
+                        end,
+                    );
+            }
+            ParseResultError::ErrorWithHint { hint, original } => {
+                for e in original.iter() {
+                    self.print_parse_err(e, lines, filename)
+                }
+                eprintln!("Hint: {}", hint);
+            }
+        }
+    }
     pub fn with_file_context(self, files: &FileRegistry) {
         let ep = ErrorPrinter {};
 
-        match self {
+        match self.clone() {
+            CompilationError::UnresolvedSymbol(us) => {
+                ep.new_error("Unresolved Symbol");
+
+                let s = us.symbol;
+                let s = s.scope.into_iter().join("::");
+                ep.line(format!("Failed to import symbol {s}"));
+
+                ep.contextualize(us.location, files, "symbol was referenced around here ^^^".intern());
+            }
+            CompilationError::ParseError(pe, handle) => {
+                ep.new_error("Parse Error");
+                let h = handle.v.clone();
+
+                let contents = &h.0;
+                let path = &h.1;
+
+                let input = contents.as_str().unwrap();
+                let lines_iter = input.lines();
+                //let v: Vec<&str> = lines.collect();
+                let lines: Vec<&str> = lines_iter.collect();
+
+                self.print_parse_err(&pe, &lines, path.to_str().expect("filename shenaniganery"))
+            }
             CompilationError::FieldResolutionError(fre) => {
                 let FieldResolutionError { name } = fre;
 
@@ -168,7 +296,11 @@ impl CompilationError {
 
                 for t in all {
                     if already_printed.insert(t.span()) {
-                        ep.contextualize(t.span(), files, "this was part of the 'all' chain".intern());
+                        ep.contextualize(
+                            t.span(),
+                            files,
+                            "this was part of the 'all' chain".intern(),
+                        );
                     }
 
                     let why = t.why();
@@ -272,10 +404,10 @@ pub struct ErrorPrinter {}
 
 use crate::{
     ast::tree::{CtxID, NodeUnion},
-    compile::file_tree::FileRegistry,
-    cst::NodeInfo,
+    compile::file_tree::{Contents, FileRegistry},
+    cst::{NodeInfo, ScopedName},
     helper::interner::{IStr, Internable, SpurHelper},
-    lex::CodeLocation,
+    lex::{CodeLocation, ParseResultError},
     mir::{instance::ArgConversionError, quark::TypeID},
 };
 

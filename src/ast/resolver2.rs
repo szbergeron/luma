@@ -13,7 +13,10 @@ use crate::{
         Content, ControlMessage, ConversationContext, Destination, Earpiece, Message, Service,
     },
     cst::{ScopedName, UseDeclaration},
-    helper::{interner::{IStr, Internable}, CopyMethod},
+    helper::{
+        interner::{IStr, Internable},
+        CopyMethod,
+    },
 };
 
 use super::{
@@ -469,7 +472,7 @@ impl Resolver {
                             self.executor.install(async move {
                                 warn!("received a doyouhave for {symbol} within {within:?}");
                                 let res = self.do_single(symbol, within).await;
-                                let content = match res {
+                                let content = match res.clone() {
                                     Ok(SimpleResolution {
                                         is_public,
                                         symbol,
@@ -480,7 +483,12 @@ impl Resolver {
                                         is_at,
                                         is_public,
                                     },
-                                    Err(e) => todo!("handle import errors {e:?}"),
+                                    Err(e) => {
+                                        //todo!("handle import errors {e:?}")
+                                        let ie = NameResolutionMessage::HasNoResolution { error: e };
+
+                                        ie
+                                    }
                                 };
 
                                 warn!("resolved a doyouhave for {symbol} which resolved to {res:?}");
@@ -892,15 +900,16 @@ impl NameResolver {
                     is_at,
                     given_root,
                 } => Ok(is_at),
-                NameResolutionMessage::HasNoResolution {
-                    error,
-                } => {
+                NameResolutionMessage::HasNoResolution { error } => {
                     fn look_direct(starting: CtxID, looking_for: &[IStr]) -> Option<CtxID> {
                         match looking_for {
                             [] => Some(starting),
-                            [first, rest @ ..] => {
-                                starting.resolve().children.get(first).map(|nid| look_direct(*nid.value(), rest)).flatten()
-                            }
+                            [first, rest @ ..] => starting
+                                .resolve()
+                                .children
+                                .get(first)
+                                .map(|nid| look_direct(*nid.value(), rest))
+                                .flatten(),
                         }
                         //let n = starting.resolve();
                     }
@@ -910,11 +919,11 @@ impl NameResolver {
                         let n = starting.resolve();
 
                         if let Some(v) = look_direct(starting, &looking_for.scope) {
-                            return Ok(v)
+                            return Ok(v);
                         } else {
                             for child in n.children.iter() {
                                 if let Ok(v) = search(*child.value(), &looking_for) {
-                                    return Ok(v)
+                                    return Ok(v);
                                 }
                             }
 
@@ -924,9 +933,9 @@ impl NameResolver {
 
                     match search(self.based_in.resolve().global.unwrap(), &self.name) {
                         Ok(v) => Ok(v),
-                        Err(_) => Err(error)
+                        Err(_) => Err(error),
                     }
-                },
+                }
                 NameResolutionMessage::CausesCircularImport { v } => todo!(),
                 _ => panic!("got another weird message?"),
             }

@@ -4,7 +4,7 @@ use crate::compile::parse_tree::ParseTreeNode;
 use crate::errors::CompilationError;
 //use crate::ast;
 
-use crate::compile::per_module::{CompilationUnit, static_pinned_leaked};
+use crate::compile::per_module::{static_pinned_leaked, CompilationUnit};
 use crate::lex::{ErrorSet, LookaheadHandle, TokenStream};
 use crate::mir::scribe::{OutputType, OUTPUT_TYPE_ONCE};
 use crate::parse::schema::TokenProvider;
@@ -269,7 +269,6 @@ async fn async_launch(args: ArgResult) {
     // down into code to resolve scoped names)
     //ResolverWorker::new(ids).resolve().await; // fix types up
     let cu = CompilationUnit::new(ids);
-
 
     cu.launch(files).await;
     //todo!("spawn all the network stuff");

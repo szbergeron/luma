@@ -1,3 +1,5 @@
+use std::{path::PathBuf, sync::Arc};
+
 use logos::Logos;
 
 #[allow(non_camel_case_types)]
@@ -437,7 +439,11 @@ fn string_literal() {
     assert!(matches!(lex.next(), None));
 }
 
-use crate::helper::interner::*;
+use crate::{
+    compile::file_tree::Contents,
+    errors::{CompilationError, Invisible},
+    helper::interner::*,
+};
 use smallvec::SmallVec;
 
 type LexResult = Result<TokenWrapper, ParseResultError>;
@@ -591,6 +597,10 @@ impl ParseResultError {
         let mut es = SmallVec::new();
         es.push(self);
         es
+    }
+
+    pub fn wrapped(self, handle: Arc<(Contents, PathBuf)>) -> CompilationError {
+        CompilationError::ParseError(self, Invisible { v: handle })
     }
 }
 

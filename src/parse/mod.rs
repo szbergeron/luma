@@ -14,7 +14,7 @@ pub use parse_spec::*;
 pub use parse_tools::*;
 pub use parse_type::*;
 
-use crate::errors::ErrorPrinter;
+use crate::errors::{add_error, ErrorPrinter};
 //use crate::helper::lex_wrap::LookaheadStream;
 //use crate::helper::lex_wrap::{CodeLocation, ParseResultError};
 use crate::helper::interner::*;
@@ -149,7 +149,7 @@ impl<'lexer> Parser<'lexer> {
         let lines: Vec<&str> = lines_iter.collect();
         //let _read_borrow = path_handle.read().unwrap();
         let stdout = std::io::stdout();
-        let handle = stdout.lock();
+        //let handle = stdout.lock();
 
         println!();
         println!("File: {}", file_handle.path().to_string_lossy());
@@ -176,16 +176,19 @@ impl<'lexer> Parser<'lexer> {
         });
 
         for e in errors.iter() {
-            println!();
-            self.print_err(e, &lines, path.to_str().expect("filename shenaniganery"));
-            println!();
+            //println!();
 
-            ep.print_bar();
+            add_error(e.clone().wrapped(handle.clone()))
 
-            println!();
+            //self.print_err(e, &lines, path.to_str().expect("filename shenaniganery"));
+            //println!();
+
+            //ep.print_bar();
+
+            //println!();
         }
-        println!();
+        //println!();
 
-        std::mem::drop(handle);
+        //std::mem::drop(handle);
     }
 }

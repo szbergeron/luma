@@ -1,5 +1,5 @@
 use crate::{
-    errors::CompilationError,
+    errors::{take_error, CompilationError},
     mir::{
         scribe::{get_lines, Monomorphization, Note, Scribe},
         transponster::Mediator,
@@ -57,9 +57,9 @@ impl CompilationUnit {
     pub async fn launch(self, files: &'static FileRegistry) {
         info!("launching CompilationUnit across domain {:?}", self.domain);
 
-        let (errors, mut er) = tokio::sync::mpsc::unbounded_channel();
+        //let (errors, mut er) = tokio::sync::mpsc::unbounded_channel();
 
-        tokio::spawn(async move {
+        /*tokio::spawn(async move {
             std::thread::sleep(Duration::from_millis(200));
             let mut so_far = HashSet::new();
             while let Some(v) = er.recv().await {
@@ -70,7 +70,7 @@ impl CompilationUnit {
                     let s = v.with_file_context(&files);
                 }
             }
-        });
+        });*/
 
         let mut senders = HashMap::new();
         let mut receivers = HashMap::new();
@@ -81,7 +81,7 @@ impl CompilationUnit {
             receivers.insert(*c, recv);
         }
 
-        let postal = Arc::new(Postal::new(senders, errors));
+        let postal = Arc::new(Postal::new(senders));
 
         let static_postal = postal.clone();
 
@@ -103,7 +103,7 @@ impl CompilationUnit {
             //StalledDog::instance().watch();
 
             let d = Director {};
-            d.entry(postal2);
+            d.entry(postal2, files);
         });
 
         let v: Vec<Group> = self
@@ -316,7 +316,24 @@ struct Director {
 }
 
 impl Director {
-    pub fn entry(&self, postal: Arc<Postal>) {
+    pub fn entry(&self, postal: Arc<Postal>, files: &'static FileRegistry) {
+        let mut errors = false;
+        let mut errors_so_far = HashSet::new();
+
+        // just parse errors so far
+        while let Some(e) = take_error() {
+            errors = true;
+
+            if errors_so_far.insert(e.clone()) {
+                e.with_file_context(&files);
+            }
+        }
+
+        if errors {
+            println!("Exiting because of errors");
+            std::process::exit(0);
+        }
+
         let begin = Instant::now();
 
         tracing::info!("entry for director");
@@ -385,43 +402,60 @@ impl Director {
 
                 st.wait_stalled();
 
+                tracing::info!("dispatching errors");
+
+                while let Some(e) = take_error() {
+                    errors = true;
+
+                    if errors_so_far.insert(e.clone()) {
+                        e.with_file_context(&files);
+                    }
+                }
+
                 // now, if no errors, start codegen
 
-                for service in [Service::Quark(), Service::Transponster()] {
-                    postal.send_broadcast_to(service, Content::StartCodeGen());
+                if !errors {
+                    for service in [Service::Quark(), Service::Transponster()] {
+                        postal.send_broadcast_to(service, Content::StartCodeGen());
+                    }
+
+                    st.wait_stalled(); // everyone has codegen now, so emit output
+
+                    let mut file = std::fs::File::create("out/src/gen.rs").unwrap();
+                    use std::io::Write;
+                    //use std::io::prelude::*;
+                    let _ = writeln!(file, "use crate::std2::*;");
+                    for line in get_lines() {
+                        //println!("{line}");
+                        let _ = writeln!(file, "{line}");
+                    }
+                    //postal.send_broadcast_to(Service::Quark(), Content::Quark(Photon::StartCodeGen()));
+
+                    //std::thread::sleep(Duration::from_secs(10));
+                    tracing::info!("Exiting system");
+
+                    let end = Instant::now();
+
+                    let delta = end - begin;
+                    let micros = delta.as_micros();
+
+                    //std::thread::sleep(Duration::from_millis(50));
+
+                    println!("Phase section took {} microseconds", micros);
+
+                    // send notifications to all nodes to ask them to emit any late errors
+                    //std::thread::sleep(Duration::from_millis(500));
+                    let _ = std::process::Command::new("cargo")
+                        .current_dir("./out/")
+                        .arg("fmt")
+                        .spawn();
+
+                    let _ = std::process::Command::new("cargo")
+                        .current_dir("./out/")
+                        .arg("fix")
+                        .arg("--allow-dirty")
+                        .spawn();
                 }
-
-                st.wait_stalled(); // everyone has codegen now, so emit output
-
-                let mut file = std::fs::File::create("out/src/gen.rs").unwrap();
-                use std::io::Write;
-                //use std::io::prelude::*;
-                let _ = writeln!(file, "use crate::std2::*;");
-                for line in get_lines() {
-                    //println!("{line}");
-                    let _ = writeln!(file, "{line}");
-                }
-                //postal.send_broadcast_to(Service::Quark(), Content::Quark(Photon::StartCodeGen()));
-
-                //std::thread::sleep(Duration::from_secs(10));
-
-                tracing::info!("Exiting system");
-
-                let end = Instant::now();
-
-                let delta = end - begin;
-                let micros = delta.as_micros();
-
-                std::thread::sleep(Duration::from_millis(50));
-
-                println!("Phase section took {} microseconds", micros);
-
-                // send notifications to all nodes to ask them to emit any late errors
-                std::thread::sleep(Duration::from_millis(500));
-                std::process::Command::new("cargo")
-                    .current_dir("./out/")
-                    .arg("fmt")
-                    .output();
                 std::process::exit(0);
             } else {
                 //println!("Values for qk and such: {qk_before}, {qk_after}, {tp_before}, {tp_after}");
@@ -436,17 +470,17 @@ impl Director {
 #[derive(Debug)]
 pub struct Postal {
     senders: HashMap<CtxID, tokio::sync::mpsc::UnboundedSender<Message>>,
-    errors: UnboundedSender<CompilationError>,
+    //errors: UnboundedSender<CompilationError>,
     exited: AtomicUsize,
 }
 
 impl Postal {
     pub fn new(
         senders: HashMap<CtxID, UnboundedSender<Message>>,
-        errors: UnboundedSender<CompilationError>,
+        //errors: UnboundedSender<CompilationError>,
     ) -> Self {
         Self {
-            errors,
+            //errors,
             senders,
             exited: AtomicUsize::new(0),
         }
@@ -469,17 +503,13 @@ impl Postal {
     }*/
 
     pub fn send(&self, msg: Message) {
-        if let Content::Error(e) = msg.content {
-            let _ = self.errors.send(e);
-        } else {
-            match self.senders.get(&msg.to.node) {
-                Some(v) => {
-                    StalledDog::inc_live_message();
-                    v.send(msg).expect("couldn't send a message through postal");
-                }
-                None => {
-                    tracing::error!("something tried to send to a nil dest! message: {msg:?}");
-                }
+        match self.senders.get(&msg.to.node) {
+            Some(v) => {
+                StalledDog::inc_live_message();
+                v.send(msg).expect("couldn't send a message through postal");
+            }
+            None => {
+                tracing::error!("something tried to send to a nil dest! message: {msg:?}");
             }
         }
     }
