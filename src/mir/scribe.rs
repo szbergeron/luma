@@ -166,8 +166,8 @@ impl Scribe {
                 }
             }
             crate::cst::SyntacticTypeReferenceInner::Generic { label } => {
-                println!("Looking for match for generic {label}");
-                println!("Mono is {within_monomorphization:?}");
+                tracing::warn!("Looking for match for generic {label}");
+                tracing::warn!("Mono is {within_monomorphization:?}");
                 //todo!("need to pass generics into typeref resolver, need to fetch them from scribe context")
                 let (gn, gt) = within_monomorphization
                     .with
@@ -1099,7 +1099,7 @@ impl<'a> ScribeOne<'a> {
             _ => self.mono.encode_name(),
         };
         //let fname = self.mono.encode_name();
-        println!("Encoding a function, named {fname}");
+        tracing::warn!("Encoding a function, named {fname}");
 
         let mut within = vec!["".to_owned()];
 
@@ -1110,11 +1110,11 @@ impl<'a> ScribeOne<'a> {
         let ret_tid = quark.meta.returns.get().copied().unwrap();
 
         let params_tid = quark.meta.params.get().cloned().unwrap();
-        println!("Resolving ret mono");
+        tracing::warn!("Resolving ret mono");
         let ret_mono = quark.resolved_type_of(ret_tid).await;
         let ret_mono = Monomorphization::from_resolved(smr.substitute_of(ret_mono));
         let ret = format!("{}*", ret_mono.encode_name());
-        println!("Got ret mono: {ret}");
+        tracing::warn!("Got ret mono: {ret}");
 
         if is_builtin.is_none() {
             /*
@@ -1288,7 +1288,7 @@ impl<'a> ScribeOne<'a> {
             }
         }
 
-        println!("Done encoding a function");
+        tracing::warn!("Done encoding a function");
 
         LINES.lock().unwrap().append(&mut within);
     }
@@ -1302,7 +1302,7 @@ impl<'a> ScribeOne<'a> {
     }
 
     async fn codegen_ty(&mut self, transponster: &Transponster) {
-        println!("Encoding a type");
+        tracing::warn!("Encoding a type");
 
         let attrs = self.mono.of.resolve().get_struct_attrs();
         let mut lines: Vec<String> = vec!["\n".to_owned()];

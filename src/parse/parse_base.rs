@@ -509,7 +509,7 @@ impl<'lexer> Parser<'lexer> {
             .catch(&mut t)?;
 
         //let mut generics = parent_generics.clone();
-        println!("pass through generics later, fix things now");
+        tracing::info!("pass through generics later, fix things now");
 
         let mut generics = Vec::new();
 

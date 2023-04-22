@@ -151,6 +151,7 @@ impl<'lexer> Parser<'lexer> {
         let stdout = std::io::stdout();
         //let handle = stdout.lock();
 
+        /*
         println!();
         println!("File: {}", file_handle.path().to_string_lossy());
         println!("{}", "Errors:".red());
@@ -159,7 +160,9 @@ impl<'lexer> Parser<'lexer> {
         }
 
         ep.print_bar();
+
         println!();
+        */
         let errors: HashSet<ParseResultError> = self.errors.clone().into_iter().collect();
 
         let mut errors: Vec<ParseResultError> = errors.into_iter().collect();

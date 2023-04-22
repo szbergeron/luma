@@ -194,9 +194,9 @@ fn print_from_root(root: CtxID, indent: usize, named: IStr) {
         }
     };
 
-    println!("{indents}== node {root:?} with name {named}");
-    println!("{indentsi} super at {nsuper:?}, global at {nglobal:?}");
-    println!("{indentsi} value of: {inner}");
+    tracing::info!("{indents}== node {root:?} with name {named}");
+    tracing::info!("{indentsi} super at {nsuper:?}, global at {nglobal:?}");
+    tracing::info!("{indentsi} value of: {inner}");
     for child in node.children.iter() {
         print_from_root(*child.value(), indent + 2, *child.key());
     }
@@ -210,7 +210,7 @@ async fn async_launch(args: ArgResult) {
 
     //roles.push(FileRole::Source(SourceFile { location: PathBuf::from_str("./std.luma").unwrap() }));
 
-    println!("Building node");
+    tracing::info!("Building node");
 
     // build the initial module tree based on file locations
     let usr_node = crate::compile::preparse_tree::from_roots(files, roles);
@@ -222,15 +222,17 @@ async fn async_launch(args: ArgResult) {
         })],
     );
 
-    println!("Built node");
+    tracing::info!("Built node");
 
     // parse the files (parallel!)
     let usr_node = ParseTreeNode::from_preparse(usr_node, vec![], &args.flags).await;
 
     let std_node = ParseTreeNode::from_preparse(std_node, vec![], &args.flags).await;
 
-    println!("usr node: {usr_node:#?}");
-    println!("std node: {std_node:#?}");
+    if args.flags.dump_tree {
+        println!("usr node: {usr_node:#?}");
+        println!("std node: {std_node:#?}");
+    }
 
     let true_root = ast::tree::Node::new(
         "root".intern(),
@@ -255,10 +257,12 @@ async fn async_launch(args: ArgResult) {
         .children
         .insert("usr".intern(), usr_root);
 
-    println!("true root is ctx {true_root:?}");
+    if args.flags.dump_tree {
+        println!("true root is ctx {true_root:?}");
 
-    println!("roots:");
-    print_from_root(true_root, 0, "root".intern());
+        println!("roots:");
+        print_from_root(true_root, 0, "root".intern());
+    }
 
     //panic!();
 

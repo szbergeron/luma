@@ -39,6 +39,7 @@
 #![allow(dead_code)]
 #![allow(incomplete_features)]
 #![allow(unused_variables)]
+#![allow(unused_imports)]
 #![allow(unreachable_code)]
 
 #[allow(unused_imports)]

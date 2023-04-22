@@ -182,7 +182,7 @@ impl Instance {
 
             generics.push(tid);
 
-            println!(
+            tracing::warn!(
                 "marks {tid:?} (gen param) as equivalent to tr {:?}",
                 resolved_generic
                     .node
@@ -200,7 +200,7 @@ impl Instance {
         unify.append(&mut additional_unify);
 
         unsafe {
-            println!(
+            tracing::warn!(
                 "From_resolved resolved fut is {}, {}",
                 inst.once_base.is_complete(),
                 inst.once_resolved.is_complete()
@@ -339,7 +339,7 @@ impl Instance {
                 let provided_field_tid =
                     field_values.get(&key).copied().expect("user omitted a key");
 
-                println!("adding unify based on key {key}");
+                tracing::warn!("adding unify based on key {key}");
 
                 unifies.push(Unify {
                     from: provided_field_tid,
@@ -388,7 +388,7 @@ impl Instance {
                 .copied()
                 .zip(generics.into_iter())
                 .for_each(|((name, a), b)| {
-                    println!("Unifying {a:?} and {b:?} since they share a generic {name}");
+                    tracing::warn!("Unifying {a:?} and {b:?} since they share a generic {name}");
 
                     unifies.push(Unify { from: a, into: b })
                 });
@@ -438,7 +438,7 @@ impl Instance {
     pub async fn resolve_base(&mut self, base: CtxID, within: &'static Quark) {
         let base_node = base.resolve();
 
-        println!(
+        tracing::warn!(
             "resolve_base resolving to exactly {:?}",
             base.resolve().canonical_typeref().resolve().unwrap()
         );
@@ -511,7 +511,7 @@ impl Instance {
 
                     let thunk = unsafe {
                         Thunk::new(within.executor, async move {
-                            println!("looking for type of method now");
+                            tracing::warn!("looking for type of method now");
                             let tid = within
                                 .resolve_typeref(
                                     ty,
@@ -555,7 +555,7 @@ impl Instance {
                 })
             }
             NodeUnion::Generic(gn) => {
-                println!("Got a generic by {gn}");
+                tracing::warn!("Got a generic by {gn}");
                 InstanceOf::Generic(*gn)
             }
             NodeUnion::Function(f, _) => {
@@ -646,11 +646,11 @@ impl Instance {
                     new_generics.push((name_a, tid_a));
                 }
                 EitherOrBoth::Left((name_a, tid_a)) => {
-                    println!("// should this happen?");
+                    tracing::warn!("// should this happen?");
                     new_generics.push((name_a, tid_a));
                 }
                 EitherOrBoth::Right((name_a, tid_a)) => {
-                    println!("// should this happen?");
+                    tracing::warn!("// should this happen?");
                     new_generics.push((name_a, tid_a));
                 }
             }
@@ -658,7 +658,7 @@ impl Instance {
 
         let new_of = match (self.of, stores_into.of) {
             (InstanceOf::Type(ta), InstanceOf::Type(tb)) => {
-                println!("do this proper later");
+                tracing::warn!("do this proper later");
                 if ta.from != tb.from {
                     let te = TypeError {
                         components: vec![],

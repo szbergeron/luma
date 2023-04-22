@@ -161,7 +161,7 @@ impl FunctionDefinition {
             is_method,
             implementation: Some(
                 body.map_left(|e| {
-                    println!("Got a left!");
+                    //println!("Got a left!");
                     *e
                 })
                 .map_right(|r| {

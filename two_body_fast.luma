@@ -114,7 +114,7 @@ fn simulate_nbody(s: Simulation) -> Vec<Vec<Vec2>> {
                 if i != j {
                     other_bodies.push(bodies.get(j));
                 }
-            };
+            }
             
             //let fv = struct ForceVector { x: 0.0, y: 0.0 };
             let fv = usr::grav_from(cur_body, other_bodies);
@@ -128,11 +128,11 @@ fn simulate_nbody(s: Simulation) -> Vec<Vec<Vec2>> {
             //std::print("new body x is " + cur_body.x.to_string());
             //std::print("new body y is " + cur_body.y.to_string());
             sample_one.push(struct Vec2 { x: cur_body.x, y: cur_body.y });
-        };
+        }
 
         //results.push(sample_one);
         changing = sample_one;
-    };
+    }
 
     remain.push(changing);
 

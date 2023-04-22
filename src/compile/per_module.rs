@@ -122,7 +122,7 @@ impl CompilationUnit {
         println!("started watchdog");
 
         std::thread::spawn(|| loop {
-            std::thread::sleep(Duration::from_millis(200));
+            std::thread::sleep(Duration::from_millis(500));
             StalledDog::summarize();
         });
 
@@ -448,13 +448,13 @@ impl Director {
                     let _ = std::process::Command::new("cargo")
                         .current_dir("./out/")
                         .arg("fmt")
-                        .spawn();
+                        .output();
 
                     let _ = std::process::Command::new("cargo")
                         .current_dir("./out/")
                         .arg("fix")
                         .arg("--allow-dirty")
-                        .spawn();
+                        .output();
                 }
                 std::process::exit(0);
             } else {

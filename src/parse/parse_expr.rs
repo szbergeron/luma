@@ -205,7 +205,7 @@ impl<'lexer> Parser<'lexer> {
             cst::SyntacticTypeReferenceInner::Pointer { to, mutable } => todo!("wheee"),
         };
 
-        println!("got a struct literal successfully");
+        tracing::info!("got a struct literal successfully");
 
         t.success(Box::new(cst::ExpressionWrapper::StructLiteral(
             StructLiteralExpression {
@@ -308,7 +308,7 @@ impl<'lexer> Parser<'lexer> {
     }
 
     pub fn parse_scope(&mut self, t: &TokenProvider) -> ParseResult<cst::ScopedNameReference> {
-        println!("parsing a scope");
+        tracing::info!("parsing a scope");
         let mut t = parse_header!(t);
 
         let mut names = Vec::new();
@@ -317,7 +317,7 @@ impl<'lexer> Parser<'lexer> {
 
         while let Some(s) = t.try_take_string([Token::Identifier, Token::DoubleColon]) {
             let ident = s[0];
-            println!("pushes {} to scope", ident.slice);
+            tracing::info!("pushes {} to scope", ident.slice);
             names.push(ident.slice);
 
             node_info = node_info.extended(ident);
@@ -599,7 +599,7 @@ impl<'lexer> Parser<'lexer> {
             Token::Identifier => {
                 t.lh.backtrack();
 
-                println!("parsing scope");
+                tracing::info!("parsing scope");
                 let mut sn = self.parse_scope(&t).join_hard(&mut t).catch(&mut t)?;
 
                 let last = t.take(Token::Identifier).join()?;
@@ -608,15 +608,15 @@ impl<'lexer> Parser<'lexer> {
 
                 sn.scope.push(last.slice);
 
-                println!("got scope, turning into ident");
+                tracing::info!("got scope, turning into ident");
                 let e = cst::IdentifierExpression {
                     node_info,
                     ident: sn.to_raw_scope(),
                 };
 
-                println!("turned into ident, it is {e:?}");
+                tracing::info!("turned into ident, it is {e:?}");
 
-                println!("info: {}", sn.node_info);
+                tracing::info!("info: {}", sn.node_info);
 
                 let e = cst::ExpressionWrapper::Identifier(e);
 
@@ -897,6 +897,7 @@ impl<'lexer> Parser<'lexer> {
                     //self.lex.advance();
                     t.take(Token::Semicolon).join()?;
                     t.predict_next((Token::Semicolon, 10.0));
+                    t.predict_next((Token::RBrace, 10.0));
 
                     if let Some(v) = last_expr.take() {
                         statements.push(v);
@@ -917,6 +918,32 @@ impl<'lexer> Parser<'lexer> {
 
                     declarations.push(exp);
                 }*/
+                Token::For => {
+                    let e = self
+                        .parse_for(&t, with_generics)
+                        .join_hard(&mut t)
+                        .catch(&mut t)
+                        .handle_here()?;
+
+                    let (v, mut _es, _s) = e.update_solution(&t).open();
+
+                    if let Some(exp) = v {
+                        statements.push(exp);
+                    }
+                }
+                Token::While => {
+                    let e = self
+                        .parse_while(&t, with_generics)
+                        .join_hard(&mut t)
+                        .catch(&mut t)
+                        .handle_here()?;
+
+                    let (v, mut _es, _s) = e.update_solution(&t).open();
+
+                    if let Some(exp) = v {
+                        statements.push(exp);
+                    }
+                }
                 _ => {
                     let e = self
                         .parse_expr(&t, with_generics)
@@ -940,6 +967,8 @@ impl<'lexer> Parser<'lexer> {
 
                         match t.try_take(Token::Semicolon) {
                             Some(s) => {
+                                t.predict_next((Token::Semicolon, 10.0));
+                                t.predict_next((Token::RBrace, 10.0));
                                 statements.push(exp);
                                 continue;
                             }
@@ -1040,14 +1069,14 @@ impl<'lexer> Parser<'lexer> {
                 r
             }
             Token::Struct => {
-                println!("parsing a struct literal");
+                tracing::info!("parsing a struct literal");
                 let r = self
                     .parse_struct_literal(&t, with_generics)
                     .join_hard(&mut t)
                     .catch(&mut t)?;
 
                 let la = t.lh.la(0);
-                println!("la is {:?}", la);
+                tracing::info!("la is {:?}", la);
 
                 r
             }
@@ -1167,8 +1196,8 @@ impl<'lexer> Parser<'lexer> {
             }
         }
 
-        println!("parex returns success of {lhs:?}");
-        println!("la is {:?}", t.lh.la(0));
+        tracing::info!("parex returns success of {lhs:?}");
+        tracing::info!("la is {:?}", t.lh.la(0));
 
         t.success(lhs)
     }

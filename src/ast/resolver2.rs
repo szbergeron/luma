@@ -442,7 +442,7 @@ impl Resolver {
                                             Ok(r) => NameResolutionMessage::RefersTo {
                                                 composite_symbol: r.name, is_at: r.is_at, given_root },
                                             Err(e) => {
-                                                eprintln!("import error: {e:?}, while looking for: {composite_symbol:?}");
+                                                tracing::error!("import error: {e:?}, while looking for: {composite_symbol:?}");
                                                 //std::process::exit(-1);
                                                 NameResolutionMessage::HasNoResolution {
                                                     /*composite_symbol,

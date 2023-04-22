@@ -351,7 +351,7 @@ impl Quark {
                 };
 
                 let b = self.instances.borrow();
-                println!("Instances: {b:#?}");
+                tracing::warn!("Instances: {b:#?}");
 
                 errors.push(CompilationError::UnrestrictedTypeError(
                     UnrestrictedTypeError {
@@ -1024,14 +1024,14 @@ impl Quark {
 
                                 self.executor.install(async move {
                                     //let direct = self.with_instance(result_ty, |instance| { instance.once_resolved.clone().wait() }).await;
-                                    println!("waits a direct for {fname} by waiting on {result_ty:?}");
+                                    tracing::warn!("waits a direct for {fname} by waiting on {result_ty:?}");
                                     let base = self.resolved_base_of(result_ty).await;
 
-                                    println!("got a base direct of {base:?} for {fname}");
+                                    tracing::warn!("got a base direct of {base:?} for {fname}");
 
                                     let direct = self.resolved_type_of(result_ty).await;
 
-                                    println!("got a direct: {direct:?} for {fname}");
+                                    tracing::warn!("got a direct: {direct:?} for {fname}");
 
                                     tracing::warn!("sends a wait for on a NotifyDirectUsage");
 
@@ -1464,12 +1464,12 @@ impl Quark {
 
         for (&gst, &gty) in self.generics.iter() {
             let gid = CtxID::new_generic(gst);
-            println!("Made a new generic node");
+            tracing::warn!("Made a new generic node");
 
             self.meta.generics_from_name.borrow_mut().insert(gst, gid);
             self.meta.generics_to_name.borrow_mut().insert(gid, gst);
 
-            println!("Makes one from generic resolved");
+            tracing::warn!("Makes one from generic resolved");
             let (inst, unify) = Instance::from_resolved(
                 ResolvedType {
                     node: gid,
@@ -1484,7 +1484,7 @@ impl Quark {
                 self.add_unify(from, into, "idk, why did we get this?");
             }
 
-            println!(
+            tracing::warn!(
                 "takes generic by name {gst} and gives it a specific cid: {gid:?} for gty {gty:?}"
             );
 
@@ -1509,7 +1509,7 @@ impl Quark {
 
             let vid = self.acting_on.borrow_mut().next_var();
 
-            println!("resolved the type of {param_name} with given type {pty_s:?} to {ptype:?}");
+            tracing::warn!("resolved the type of {param_name} with given type {pty_s:?} to {ptype:?}");
 
             self.type_of_var.borrow_mut().insert(vid, ptype);
 
@@ -1555,7 +1555,7 @@ impl Quark {
                     .expect("set prior?");
                 // we don't typecheck this, it also can't be a generic so
                 // it only requires one monomorphization
-                println!("Got a dec that we need a builtin, builtin is {:?}", fr);
+                tracing::warn!("Got a dec that we need a builtin, builtin is {:?}", fr);
                 //panic!("got something neat")
             }
         }

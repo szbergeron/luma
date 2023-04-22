@@ -600,7 +600,7 @@ impl AnyExpression {
                 let IdentifierExpression { node_info, ident } = id;
 
                 if let [one] = ident.scope.as_slice() {
-                    println!("Variable is: {:?}", ident);
+                    tracing::warn!("Variable is: {:?}", ident);
 
                     let vid = bindings
                         .binding_for(*one)
