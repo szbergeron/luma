@@ -166,7 +166,7 @@ impl CompilationError {
                 let s = s.scope.into_iter().join("::");
                 ep.line(format!("Failed to import symbol {s}"));
 
-                ep.contextualize(us.location, files, "symbol was referenced around here ^^^".intern());
+                ep.contextualize(us.location, files, "symbol was referenced around here vvv".intern());
             }
             CompilationError::ParseError(pe, handle) => {
                 ep.new_error("Parse Error");
