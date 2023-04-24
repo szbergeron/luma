@@ -105,6 +105,8 @@ pub type Score = fixed::types::I16F16;
 pub struct DynFieldInfo {
     name: IStr,
 
+    is_on: CtxID,
+
     directs: RefCell<Vec<ResolvedType>>,
 
     /// Holds a list of conversation handles to reply to once we resolve the indirects
@@ -181,13 +183,14 @@ impl DynFieldInfo {
         }
     }
 
-    pub fn new(name: IStr, within: &'static Executor) -> Self {
+    pub fn new(name: IStr, within: &'static Executor, on: CtxID) -> Self {
         Self {
             name,
             directs: RefCell::new(Vec::new()),
             indirects: RefCell::new(Vec::new()),
             committed_type: unsafe { UnsafeAsyncCompletable::new() },
             executor: within,
+            is_on: on,
         }
     }
 
@@ -225,7 +228,7 @@ impl DynFieldInfo {
         })*/
 
         add_error(CompilationError::FieldResolutionError(
-            FieldResolutionError { name: self.name },
+            FieldResolutionError { name: self.name, base: self.is_on },
         ));
     }
 
@@ -412,7 +415,7 @@ impl Mediator {
         if !immediate.is_empty() {
             // we have immediates we can apply
             for (cid, name) in immediate {
-                println!("Committing immediate {name} in {cid:?}");
+                println!("Committing immediate {name} on {:?}", cid.resolve().canonical_typeref().resolve().unwrap());
                 Postal::instance().send(Message {
                     to: Destination::transponster(cid),
                     from: Destination::mediator(),
@@ -430,6 +433,8 @@ impl Mediator {
                 .last()
                 .expect("otherwise should be nonempty")
                 .clone();
+
+            println!("Committing non-obvious {field} on {:?}", cid.resolve().canonical_typeref().resolve().unwrap());
 
             Postal::instance().send(Message {
                 to: Destination::transponster(cid),
@@ -568,7 +573,7 @@ impl Transponster {
                             let mut refm = self.dynamic_fields.borrow_mut();
                             let ent = refm
                                 .entry(of)
-                                .or_insert_with(|| DynFieldInfo::new(of, executor));
+                                .or_insert_with(|| DynFieldInfo::new(of, executor, self.for_ctx));
 
                             ent.add_indirect(m.send_reply_to, m.conversation);
                         }
@@ -576,7 +581,7 @@ impl Transponster {
                             let mut refm = self.dynamic_fields.borrow_mut();
                             let ent = refm
                                 .entry(of)
-                                .or_insert_with(|| DynFieldInfo::new(of, executor));
+                                .or_insert_with(|| DynFieldInfo::new(of, executor, self.for_ctx));
                             ent.add_direct(as_ty);
                         }
                         Memo::ResolveIndirectUsage { field, commits_to } => {
@@ -612,7 +617,7 @@ impl Transponster {
                             /*let mut s = ScribeOne::new(Either::Right(&self), m);
 
                             s.codegen().await;*/
-                            let m = Message {
+                            /*let m = Message {
                                 to: Destination::scribe(self.for_ctx),
                                 from: self.as_dest(),
                                 send_reply_to: Destination::nil(),
@@ -621,7 +626,8 @@ impl Transponster {
                                     ty: m,
                                 }),
                             };
-                            self.sender.send(m);
+                            self.sender.send(m);*/
+                            //println!("ignore this for now, figure out mono later?");
                         }
                     }
                     Content::Quark(_) => todo!(),

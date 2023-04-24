@@ -1,0 +1,76 @@
+struct Trie {
+    var root: TrieNode;
+
+    fn insert(self: Trie, s: String) {
+        self.insert_rec(self.root, s, s)
+    };
+
+    fn insert_rec(self: Trie, at_node: TrieNode, remain: String, finally: String) {
+        std::print("remain is " + remain);
+        if remain.len() == 0 {
+            std::print("inserted " + finally);
+            at_node.is_final = true;
+            at_node.string = finally;
+        } else {
+            let c = remain.head();
+            std::print("head is:");
+            std::print(c);
+
+            if !at_node.children.contains_key(c) {
+                std::print("inserting at");
+                std::print(c);
+                at_node.children.insert(c, self.make_node());
+            } else {
+                std::print("already had");
+            }
+
+            let child = at_node.children.get(c).unwrap();
+
+            self.insert_rec(child, remain.tail(), finally);
+        }
+    };
+
+    fn make_node(self: Trie) -> TrieNode {
+        let v = HashMap::new();
+
+        struct TrieNode { children: v }
+    };
+
+    fn new() -> Trie {
+        let s = struct Trie {
+            root: std::none()
+        };
+
+        s.root = s.make_node();
+
+        s
+    };
+};
+
+struct TrieNode {
+    var children: HashMap<char, TrieNode>;
+
+    fn contains(self: TrieNode, s: String) -> bool {
+        if s.len() == 0 {
+            self.is_final
+        } else {
+            if self.children.contains_key(s.head()) {
+                self.children.get(s.head()).unwrap().contains(s.tail())
+            } else {
+                false
+            }
+        }
+    }
+};
+
+fn main() {
+    let t = Trie::new();
+
+    t.insert("abc");
+    t.insert("abd");
+
+    std::print("contains of:");
+
+    std::print(t.root.contains("abc"));
+    std::print(t.root.contains("no"));
+}

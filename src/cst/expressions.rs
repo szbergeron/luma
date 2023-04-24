@@ -795,6 +795,8 @@ pub enum BinaryOperation {
     Divide,
     Add,
     Subtract,
+    LogicalOr,
+    LogicalAnd,
 }
 
 impl BinaryOperation {
@@ -804,6 +806,8 @@ impl BinaryOperation {
             Self::Divide => "/",
             Self::Add => "+",
             Self::Subtract => "-",
+            Self::LogicalOr => "||",
+            Self::LogicalAnd => "&&",
         }
     }
     pub fn from_token(t: Token) -> Option<BinaryOperation> {
@@ -812,6 +816,8 @@ impl BinaryOperation {
             Token::FSlash => Some(Self::Divide),
             Token::Plus => Some(Self::Add),
             Token::Dash => Some(Self::Subtract),
+            Token::LogicalOr => Some(Self::LogicalOr),
+            Token::LogicalAnd => Some(Self::LogicalAnd),
             _ => None,
         }
     }
@@ -1042,7 +1048,7 @@ impl CstNode for LLVMLiteralExpression {
 
 #[derive(Debug, Clone)]
 pub struct ReturnExpression {
-    node_info: NodeInfo,
+    pub node_info: NodeInfo,
 
     pub subexpr: Box<ExpressionWrapper>,
 }

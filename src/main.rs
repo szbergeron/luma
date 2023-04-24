@@ -85,6 +85,7 @@ pub mod errors;
 pub mod parse;
 pub mod traits;
 pub mod types;
+pub mod monitor;
 //pub mod bump_interner;
 
 fn main() {
@@ -124,7 +125,7 @@ pub struct MySub {
 
 impl Subscriber for MySub {
     fn enabled(&self, metadata: &tracing::Metadata<'_>) -> bool {
-        let allow_all = false;
+        let allow_all = true;
         let allow_any = false;
 
         metadata.file().is_some_and(|f| {

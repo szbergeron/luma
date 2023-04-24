@@ -9,7 +9,7 @@ use std::{
     thread::panicking,
 };
 
-use rand::Rng;
+use rand::{rngs::SmallRng, Rng, SeedableRng};
 
 const IS_DYN: bool = true;
 
@@ -27,14 +27,18 @@ pub fn luma_print_slow(v: Value) -> Value {
     Value::Uninhabited()
 }
 
+//static RNG: UnsafeCell<
+
 pub fn rand_i64() -> i64 {
     let mut r = rand::thread_rng();
-    r.gen()
+    let mut sng = SmallRng::from_rng(&mut r).unwrap();
+    sng.gen()
 }
 
 pub fn rand_f64() -> f64 {
     let mut r = rand::thread_rng();
-    r.gen()
+    let mut sng = SmallRng::from_rng(&mut r).unwrap();
+    sng.gen()
 }
 
 pub fn panic_with<T: std::fmt::Debug>(v: T) -> ! {
@@ -159,7 +163,7 @@ impl<T> FastHandleTarget<T> {
 }
 
 pub struct FastRefHandle<T> {
-    pub inner: Option<Pin<Rc<FastHandleTarget<T>>>>,
+    pub inner: Pin<Rc<FastHandleTarget<T>>>,
 }
 
 pub struct FastValHandle<T> {
@@ -177,9 +181,14 @@ where
     }
 }
 
-impl<T> std::default::Default for FastRefHandle<T> {
+impl<T> std::default::Default for FastRefHandle<T>
+where
+    T: std::default::Default,
+{
     fn default() -> Self {
-        Self { inner: None }
+        Self {
+            inner: Rc::pin(FastHandleTarget::new(T::default())),
+        }
     }
 }
 
@@ -226,7 +235,7 @@ pub struct FastRVal<T> {
 impl<T> FastRefHandle<T> {
     pub fn from_val(v: T) -> Self {
         Self {
-            inner: Some(Rc::pin(FastHandleTarget::new(v))),
+            inner: Rc::pin(FastHandleTarget::new(v)),
         }
     }
 
@@ -236,7 +245,7 @@ impl<T> FastRefHandle<T> {
         unsafe {
             self.inner
                 .as_ref()
-                .expect("tried to read from a None variable or ref field")
+                //.expect("tried to read from a None variable or ref field")
                 .inner
                 .get()
                 .as_mut()

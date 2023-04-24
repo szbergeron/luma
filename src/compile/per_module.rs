@@ -3,7 +3,7 @@ use crate::{
     mir::{
         scribe::{get_lines, Monomorphization, Note, Scribe},
         transponster::Mediator,
-    },
+    }, monitor::Monitor,
 };
 use futures::future::join_all;
 use local_channel::mpsc::{Receiver as LocalReceiver, Sender as LocalSender};
@@ -20,7 +20,7 @@ use std::{
         atomic::{fence, AtomicIsize, AtomicUsize, Ordering},
         Arc,
     },
-    time::{Duration, Instant},
+    time::{Duration, Instant}, process::Stdio,
 };
 
 use crate::{
@@ -448,14 +448,20 @@ impl Director {
                     let _ = std::process::Command::new("cargo")
                         .current_dir("./out/")
                         .arg("fmt")
-                        .output();
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null())
+                        .spawn();
 
                     let _ = std::process::Command::new("cargo")
                         .current_dir("./out/")
                         .arg("fix")
                         .arg("--allow-dirty")
-                        .output();
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null())
+                        .spawn();
                 }
+                Monitor::instance().emit_alerts();
+
                 std::process::exit(0);
             } else {
                 //println!("Values for qk and such: {qk_before}, {qk_after}, {tp_before}, {tp_after}");

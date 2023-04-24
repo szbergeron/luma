@@ -13,11 +13,18 @@ pub enum CompilationError {
     FieldResolutionError(FieldResolutionError),
     ParseError(ParseResultError, Invisible<Arc<(Contents, PathBuf)>>),
     UnresolvedSymbol(UnresolvedSymbolError),
+    UnknownVariable(UnknownVariableError),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct UnresolvedSymbolError {
     pub symbol: ScopedName,
+    pub location: NodeInfo,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct UnknownVariableError {
+    pub variable: IStr,
     pub location: NodeInfo,
 }
 
@@ -61,6 +68,7 @@ where
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct FieldResolutionError {
     pub name: IStr,
+    pub base: CtxID,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -159,6 +167,15 @@ impl CompilationError {
         let ep = ErrorPrinter {};
 
         match self.clone() {
+            CompilationError::UnknownVariable(uv) => {
+                let UnknownVariableError { variable, location } = uv;
+
+                ep.new_error("Unknown Variable");
+
+                ep.line(format!("Failed to find variable {variable} within the current scope"));
+
+                ep.contextualize(location, files, "variable was referenced around here vvv".intern());
+            }
             CompilationError::UnresolvedSymbol(us) => {
                 ep.new_error("Unresolved Symbol");
 
@@ -183,11 +200,12 @@ impl CompilationError {
                 self.print_parse_err(&pe, &lines, path.to_str().expect("filename shenaniganery"))
             }
             CompilationError::FieldResolutionError(fre) => {
-                let FieldResolutionError { name } = fre;
+                let FieldResolutionError { name, base } = fre;
+                let base = base.resolve().canonical_typeref().resolve().unwrap();
 
                 ep.new_error("Dynamic Field Type Resolution Error");
 
-                ep.line(format!("Could not resolve the type of field {name}"));
+                ep.line(format!("Could not resolve the type of field {name} on base {base:?}"));
             }
             CompilationError::TypeError(te) => {
                 ep.new_error("Type Unification Error");

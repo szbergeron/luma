@@ -1,5 +1,6 @@
 //use crate::ast;
 use crate::cst::{self, StructLiteralExpression, SyntacticTypeReference};
+use crate::helper::VecOps;
 use crate::lex::{CodeLocation, ParseResultError, Token};
 use either::Either;
 use itertools::Itertools;
@@ -303,8 +304,35 @@ impl<'lexer> Parser<'lexer> {
         r
     }*/
 
-    pub fn parse_array_literal(&mut self, _t: &TokenProvider) -> ExpressionResult {
-        todo!()
+    pub fn parse_array_literal(&mut self, t: &TokenProvider) -> ExpressionResult {
+        let mut t = parse_header!(t, [Token::LBracket => 10.0, Token::RBracket => 10.0]);
+
+        let start = t.take(Token::LBracket).join()?;
+        let start = start.start;
+        let end = t.take(Token::RBracket).join()?.end;
+        let node_info = NodeInfo::from_indices(start, end);
+
+        // just for now
+        //let os = cst::OuterScope {};
+        let os = Box::new(cst::ExpressionWrapper::Identifier(
+            cst::IdentifierExpression {
+                node_info,
+                ident: cst::ScopedName::from_many("std::Vec::new"),
+            },
+        ));
+        let args = Box::new(cst::ExpressionWrapper::Tuple(cst::Tuple {
+            node_info,
+            expressions: vec![],
+        }));
+        let fc = cst::FunctionCall {
+            node_info,
+            function: os,
+            args,
+        };
+
+        let fc = Box::new(cst::ExpressionWrapper::FunctionCall(fc));
+
+        t.success(fc)
     }
 
     pub fn parse_scope(&mut self, t: &TokenProvider) -> ParseResult<cst::ScopedNameReference> {
@@ -529,8 +557,17 @@ impl<'lexer> Parser<'lexer> {
 
                 t.success(e)
             }
-            Token::RBracket => {
-                todo!("Array access not yet implemented")
+            Token::LBracket => {
+                let access = self
+                    .parse_expr(&t, with_generics)
+                    .join_hard(&mut t)
+                    .catch(&mut t)?;
+
+                let end = t.take(Token::RBracket).join()?;
+
+                //
+
+                todo!()
             }
             _ => unreachable!(),
         }
@@ -685,10 +722,20 @@ impl<'lexer> Parser<'lexer> {
 
         let ni = NodeInfo::from_indices(start, end);
 
-        let ex = if exprs.len() == 1 && !must_tuple {
-            exprs.get(0).cloned().unwrap()
-        } else {
-            cst::Tuple::new_expr(ni, exprs)
+        let ex = match (exprs.len(), must_tuple) {
+            (0, false) => {
+                /*let sle = cst::StructLiteralExpression {
+                    info: ni,
+                    struct_base: cst::ScopedName::from_many("std::Unit"),
+                    generics: vec![],
+                    bind_from: vec![],
+                };*/
+                let l = cst::LiteralExpression { node_info: ni, contents: cst::Literal::UnitLiteral() };
+
+                Box::new(cst::ExpressionWrapper::Literal(l))
+            }
+            (1, false) => exprs.get(0).cloned().unwrap(),
+            other => cst::Tuple::new_expr(ni, exprs),
         };
 
         t.success(ex)
@@ -768,16 +815,19 @@ impl<'lexer> Parser<'lexer> {
             .hint("Tried to parse if-else with no beginning if")
             .join()?
             .start;
+
         let if_exp = self.parse_expr(&t, with_generics).hint("An 'if' must be followed by a conditional expression followed by a then expression").join_hard(&mut t).catch(&mut t)?;
         let then_exp = self
-            .parse_expr(&t, with_generics)
+            .syntactic_block(&t, with_generics)
             .join_hard(&mut t)
             .catch(&mut t)?;
+
         let (else_exp, end) = if t.try_take(Token::Else).is_some() {
             let exp = self
-                .parse_expr(&t, with_generics)
+                .syntactic_block(&t, with_generics)
                 .join_hard(&mut t)
                 .catch(&mut t)?;
+
             let end = exp
                 .as_node()
                 .end()
@@ -812,13 +862,27 @@ impl<'lexer> Parser<'lexer> {
             .join_hard(&mut t)
             .catch(&mut t)?;
         let do_exp = self
-            .parse_expr(&t, with_generics)
+            .syntactic_block(&t, with_generics)
             .join_hard(&mut t)
             .catch(&mut t)?;
 
         let node_info = NodeInfo::from_indices(start, do_exp.as_node().end().unwrap_or(start));
 
         t.success(cst::WhileExpression::new_expr(node_info, while_exp, do_exp))
+    }
+
+    pub fn parse_return(&mut self, t: &TokenProvider, with_generics: &Vec<IStr>) -> ExpressionResult {
+        let mut t = parse_header!(t);
+
+        let start = t.take(Token::Return).join()?.start;
+
+        let e = self.parse_expr(&t, with_generics).join_hard(&mut t).catch(&mut t)?;
+
+        let ni = NodeInfo::from_indices(start, e.as_node().end().unwrap_or(CodeLocation::Builtin));
+
+        let e = cst::ReturnExpression::new_expr(ni, e);
+
+        t.success(e)
     }
 
     pub fn parse_for(&mut self, t: &TokenProvider, with_generics: &Vec<IStr>) -> ExpressionResult {
@@ -850,7 +914,7 @@ impl<'lexer> Parser<'lexer> {
         t.take(Token::RParen).join()?;
 
         let body = self
-            .parse_expr(&t, with_generics)
+            .syntactic_block(&t, with_generics)
             .join_hard(&mut t)
             .catch(&mut t)?;
 
@@ -919,6 +983,8 @@ impl<'lexer> Parser<'lexer> {
                     declarations.push(exp);
                 }*/
                 Token::For => {
+                    statements = statements.appended_opt(last_expr.take());
+
                     let e = self
                         .parse_for(&t, with_generics)
                         .join_hard(&mut t)
@@ -930,8 +996,15 @@ impl<'lexer> Parser<'lexer> {
                     if let Some(exp) = v {
                         statements.push(exp);
                     }
+
+                    println!("lookahead after for is {:?}", t.lh.la(0));
+
+                    continue;
                 }
                 Token::While => {
+                    statements = statements.appended_opt(last_expr.take()); // prior exp becomes
+                                                                            // stmt
+
                     let e = self
                         .parse_while(&t, with_generics)
                         .join_hard(&mut t)
@@ -943,8 +1016,12 @@ impl<'lexer> Parser<'lexer> {
                     if let Some(exp) = v {
                         statements.push(exp);
                     }
+
+                    continue;
                 }
                 Token::If => {
+                    statements = statements.appended_opt(last_expr.take());
+
                     let e = self
                         .parse_if_then_else(&t, with_generics)
                         .join_hard(&mut t)
@@ -955,12 +1032,10 @@ impl<'lexer> Parser<'lexer> {
 
                     if let Some(exp) = v {
                         //statements.push(exp);
-                        let prior = last_expr.replace(exp);
 
-                        if let Some(e) = prior {
-                            statements.push(e);
-                        }
+                        last_expr = Some(exp);
                     }
+                    continue;
                 }
                 _ => {
                     let e = self
@@ -970,6 +1045,8 @@ impl<'lexer> Parser<'lexer> {
                         .handle_here()?;
 
                     let (v, mut _es, _s) = e.update_solution(&t).open();
+
+                    statements = statements.appended_opt(last_expr.take());
 
                     if let Some(exp) = v {
                         /*let exp = match t.try_take(Token::Semicolon) {
@@ -982,11 +1059,12 @@ impl<'lexer> Parser<'lexer> {
                             }
                             None => exp,
                         };*/
-                        if let Some(v) = last_expr.take() {
-                            statements.push(v);
-                        }
 
-                        match t.try_take(Token::Semicolon) {
+                        last_expr = Some(exp);
+
+                        continue;
+
+                        /*match t.try_take(Token::Semicolon) {
                             Some(s) => {
                                 t.predict_next((Token::Semicolon, 10.0));
                                 t.predict_next((Token::RBrace, 10.0));
@@ -997,7 +1075,7 @@ impl<'lexer> Parser<'lexer> {
                                 last_expr = Some(exp);
                                 break;
                             }
-                        }
+                        }*/
                     }
 
                     //self.expect(Token::Semicolon)?; // TODO: eval if this is required
@@ -1109,6 +1187,11 @@ impl<'lexer> Parser<'lexer> {
 
                 r
             }
+            Token::Return => {
+                let r = self.parse_return(&t, with_generics).join_hard(&mut t).catch(&mut t)?;
+
+                r
+            }
             /*Token::Let => {
                 let pattern = self.parse_atomic(0, level);
 
@@ -1141,6 +1224,7 @@ impl<'lexer> Parser<'lexer> {
                 /*let ae = self.atomic_expression(&t).join_hard(&mut t).catch(&mut t)?;
                 tracing::info!("ae is: {ae:?}");
                 ae*/
+                println!("Parsing operand because got {tok:?}");
                 let operand = self
                     .parse_operand(&t, with_generics)
                     .join_hard(&mut t)
@@ -1255,7 +1339,7 @@ impl<'lexer> Parser<'lexer> {
         let t = parse_header!(t);
 
         match token {
-            Token::Plus | Token::Dash | Token::Asterisk | Token::FSlash => t.success(
+            Token::Plus | Token::Dash | Token::Asterisk | Token::FSlash | Token::LogicalAnd | Token::LogicalOr => t.success(
                 cst::BinaryOperationExpression::new_expr(node_info, token, lhs, rhs),
             ),
             //Token::As => Ok(CastExpression::new_expr(node_info, lhs, rhs)),

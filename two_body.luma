@@ -1,10 +1,10 @@
 struct Body noref {
-    fn distance(self: usr::Body, b: usr::Body) -> std::f64 {
+    fn distance(self: Body, b: Body) -> f64 {
         let delta_x = self.x - b.x;
         let delta_y = self.y - b.y;
         (delta_x.pow(2.0) + delta_y.pow(2.0)).sqrt()
-    };
-};
+    }
+}
 
 /*
  * F = (G m_1 m_2) / r^2 by Newton's law of gravitation
@@ -14,16 +14,16 @@ struct Body noref {
  */
 
 struct ForceVector {
-    var x: std::f64;
-    var y: std::f64;
+    x: f64,
+    y: f64,
 
-    fn from_vec2(v2: usr::Vec2) -> usr::ForceVector {
-        struct usr::ForceVector { x: v2.x, y: v2.y }
+    fn from_vec2(v2: Vec2) -> ForceVector {
+        struct ForceVector { x: v2.x, y: v2.y }
     }
-};
+}
 
-fn grav_from(on: usr::Body, from: std::Vec<Body>) -> usr::ForceVector {
-    let v2 = struct usr::Vec2 { x: 0.0, y: 0.0 };
+fn grav_from(on: Body, from: Vec<Body>) -> ForceVector {
+    let v2 = struct Vec2 { x: 0.0, y: 0.0 };
 
     for ( let i = 0; i < from.len(); i = i + 1 ) {
         //std::print("doing newton stuff");
@@ -43,23 +43,23 @@ fn grav_from(on: usr::Body, from: std::Vec<Body>) -> usr::ForceVector {
 
             v2 = v2 + scaled;
         }
-    };
+    }
 
     usr::ForceVector::from_vec2(v2)
 
     //struct usr::ForceVector { x: 0.0, y: 0.0 }
-};
+}
 
 // compute the unit vector from a to b
-fn r_hat(a: usr::Body, b: usr::Body) -> usr::Vec2 {
+fn r_hat(a: Body, b: Body) -> Vec2 {
     let x = (a.x - b.x) / a.distance(b);
     let y = (a.y - b.y) / a.distance(b);
 
-    struct usr::Vec2 { x: x, y: y }
+    struct Vec2 { x: x, y: y }
 }
 
 
-fn generate_body(x: std::f64, y: std::f64, mass: std::f64) -> Body {
+fn generate_body(x: f64, y: f64, mass: f64) -> Body {
     let b = struct Body {};
 
     b.x = x;
@@ -70,33 +70,34 @@ fn generate_body(x: std::f64, y: std::f64, mass: std::f64) -> Body {
     b.v_y = std::cosine(y); // just almost random
 
     b
-};
+}
 
 struct Simulation {
-    var bodies: std::Vec<usr::Body>;
-};
+    bodies: Vec<Body>,
+}
 
 struct Vec2 noref {
-    var x: std::f64;
-    var y: std::f64;
+    x: f64,
+    y: f64,
 
-    fn scale(self: usr::Vec2, by: std::f64) -> usr::Vec2 {
+    fn scale(self: Vec2, by: f64) -> Vec2 {
         struct usr::Vec2 { x: self.x * by, y: self.y * by }
-    };
+    }
 
-    fn operator[_+_](self: usr::Vec2, other: usr::Vec2) -> usr::Vec2 {
+    fn operator[_+_](self: usr::Vec2, other: Vec2) -> Vec2 {
         struct usr::Vec2 { x: self.x + other.x, y: self.y + other.y }
-    };
-};
+    }
+}
 
-fn simulate_nbody(s: usr::Simulation) -> std::Vec<std::Vec<usr::Vec2>> {
+fn simulate_nbody(s: Simulation) -> Vec<Vec<Vec2>> {
     //let results = std::Vec::with_capacity(s.samples);
-    let results = std::Vec::new();
+    //let results = std::Vec::new();
+    let results = [];
 
     std::print("simulating bodies");
     let bodies = s.bodies;
     for (let sample = 0; sample < s.samples; sample = sample + 1) {
-        let sample_one = std::Vec::new();
+        let sample_one = [];
 
         std::print("doing sample " + sample.to_string());
         for (let i = 0; i < bodies.len(); i = i + 1) {
@@ -104,14 +105,14 @@ fn simulate_nbody(s: usr::Simulation) -> std::Vec<std::Vec<usr::Vec2>> {
 
             let cur_body = bodies.get(i);
 
-            let other_bodies = std::Vec::new();
+            let other_bodies = [];
 
             for (let j = 0; j < bodies.len(); j = j + 1) {
                 //std::print("pushing body " + j.to_string());
                 if i != j {
                     other_bodies.push(bodies.get(j));
                 }
-            };
+            }
             
             //let fv = struct ForceVector { x: 0.0, y: 0.0 };
             let fv = usr::grav_from(cur_body, other_bodies);
@@ -124,37 +125,40 @@ fn simulate_nbody(s: usr::Simulation) -> std::Vec<std::Vec<usr::Vec2>> {
 
             //std::print("new body x is " + cur_body.x.to_string());
             //std::print("new body y is " + cur_body.y.to_string());
-            sample_one.push(struct usr::Vec2 { x: cur_body.x, y: cur_body.y });
-        };
+            sample_one.push(struct Vec2 { x: cur_body.x, y: cur_body.y });
+        }
 
         results.push(sample_one);
-    };
+    }
 
     results
-};
+}
 
 fn main() {
     /*let b1 = usr::generate_body(10.0, 20.0, 5.0);
     let b2 = usr::generate_body(30.0, 10.0, 3.0);
     let b3 = usr::generate_body(0.0, 10.0, 1.0);*/
 
-    let b = std::Vec::new();
+    let b = [];
 
     for (let i = 0; i < 100; i = i + 1) {
-        let x = std::f64::rand();
-        let y = std::f64::rand();
-        let mass = std::f64::rand().abs().modulo(1000.0);
+        let x = f64::rand();
+        let y = f64::rand();
+        let mass = f64::rand().abs().modulo(1000.0);
         let body = usr::generate_body(x, y, mass);
 
         b.push(body);
-    };
+    }
 
-    let s = struct usr::Simulation { bodies: b };
+    let s = struct Simulation { bodies: b };
 
     //s.samples = 1000000;
     //s.samples = 10000;
-    s.samples = 100;
+    s.samples = 100000;
     s.step_time = 0.1;
+
+    //s.results = std::Vec::new();
+    
     //s.pr = std::print;
     //s.pr = usr::simulate_nbody;
 

@@ -1,0 +1,79 @@
+struct LinkedNode {
+    //next: Option<LinkedNode>,
+    //prev: Option<LinkedNode>,
+}
+
+struct LinkedList {
+    var head: Option<LinkedNode>;
+    var tail: Option<LinkedNode>;
+
+    fn new_last(self: LinkedList) -> LinkedNode {
+        let n = struct LinkedNode {};
+
+        if self.head.is_none() {
+            self.head = Option::some(n);
+            self.tail = Option::some(n);
+
+            n
+        } else {
+            self.tail.unwrap().next = Option::some(n);
+            self.tail = Option::some(n);
+
+            n
+        }
+    }
+}
+
+struct LinkedIntSet {
+    var ll: LinkedList,
+
+    fn insert(self: LinkedIntSet, val: i64) -> bool {
+        if self.contains(val) {
+            false
+        } else {
+            self.ll.new_last().val = val;
+            true
+        }
+    }
+
+    fn contains(self: LinkedIntSet, val: i64) -> bool {
+        let found = false;
+
+        for(let h = self.ll.head; h.is_some(); ()) {
+            let v = h.unwrap();
+            if v.val == val {
+                return true;
+            } else {
+                h = h.unwrap().next;
+            }
+
+        }
+
+        false
+    }
+
+    fn new() -> LinkedIntSet {
+        struct LinkedIntSet { ll: struct LinkedList { head: Option::none(), tail: Option::none() } }
+    }
+}
+
+fn main() {
+    let s = LinkedIntSet::new();
+
+    let contained = 0;
+    let iters = 100000;
+
+    for(let i = 0; i < iters; i = i + 1) {
+        let v = i64::rand().abs().modulo(iters);
+
+        //std::print("v is " + v.to_string());
+
+        let was_new = s.insert(v);
+
+        if !was_new {
+            contained = contained + 1;
+        }
+    }
+
+    std::print("pre-contained count:" + contained.to_string());
+}

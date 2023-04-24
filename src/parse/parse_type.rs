@@ -62,9 +62,15 @@ impl<'lexer> Parser<'lexer> {
         tracing::info!("Parsing a field");
         let mut t = parse_header!(t);
 
-        let start = t.take(Token::Var).join()?.start;
+        let start = t.try_take(Token::Var);
 
         let name = t.take(Token::Identifier).hint("A field declaration should have the name of the field directly following the <var> keyword").join()?;
+
+        let start = if let Some(v) = start {
+            v.start
+        } else {
+            name.start
+        };
 
         t.take(Token::Colon).join()?;
 
@@ -193,15 +199,17 @@ impl<'lexer> Parser<'lexer> {
 
         //while let Ok(Token::Var) = t.lh.la(0).map(|tw| tw.token) {
         while let next = t
-            .take_in(&[Token::Var, Token::RBrace, Token::Function])
+            .take_in(&[Token::Var, Token::RBrace, Token::Function, Token::Semicolon, Token::Comma, Token::Identifier])
             .join()?
         {
             match next.token {
                 Token::RBrace => {
+                    end = next.end;
                     tracing::info!("Got a brace");
                     break;
                 }
-                Token::Var => {
+                Token::Comma | Token::Semicolon => continue,
+                Token::Var | Token::Identifier => {
                     t.lh.backtrack();
                     tracing::info!("getting a var");
 
@@ -217,6 +225,8 @@ impl<'lexer> Parser<'lexer> {
                     if let Some(v) = field {
                         fields.push(v);
                     }
+
+                    continue;
                 }
                 Token::InteriorBuiltin => {
                     // look for a builtin field/func
@@ -245,13 +255,16 @@ impl<'lexer> Parser<'lexer> {
                     if let Some(v) = method {
                         methods.push(v);
                     }
+
+                    continue;
                 }
                 _ => unreachable!(),
             }
 
-            let ending = t.take_in(&[Token::Semicolon, Token::RBrace]).join()?;
+            let ending = t.take_in(&[Token::Semicolon, Token::Comma, Token::RBrace]).join()?;
+
             match ending.token {
-                Token::Semicolon => {
+                Token::Semicolon | Token::Comma => {
                     t.predict_next((Token::Semicolon, 10.0));
                     continue;
                 }

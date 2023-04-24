@@ -133,10 +133,10 @@ pub enum Token {
     #[token("}")]
     RBrace,
 
-    #[token("[")]
+    #[token("]")]
     RBracket,
 
-    #[token("]")]
+    #[token("[")]
     LBracket,
 
     #[token("(")]
@@ -239,7 +239,7 @@ pub enum Token {
     #[regex("[_]")]
     Underscore,
 
-    #[regex("[0-9]+")]
+    #[regex("-?[0-9]+")]
     UnknownIntegerLiteral,
 
     #[regex("[0-9]+u128")]
@@ -281,7 +281,7 @@ pub enum Token {
     #[regex("-?[0-9]+\\.[0-9]+")]
     FloatLiteral,
 
-    #[regex(r"operator\[(\[\]|[/_\+\-\~`\*\&\^%\$\#=<>@!a-zA-Z]+)\]")]
+    #[regex(r"operator\[(_\[_\]|[/_\+\-\~`\*\&\^%\$\#=<>@!a-zA-Z]+)\]")]
     FnOperator,
 
     #[token(" ")]

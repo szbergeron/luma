@@ -231,7 +231,7 @@ async fn async_launch(args: ArgResult) {
 
     if args.flags.dump_tree {
         println!("usr node: {usr_node:#?}");
-        println!("std node: {std_node:#?}");
+        //println!("std node: {std_node:#?}");
     }
 
     let true_root = ast::tree::Node::new(
@@ -351,16 +351,18 @@ fn parse_args(args: &[&str]) -> Result<ArgResult, &'static str> {
     for s in args.iter() {
         let slice = &s[..];
         println!("got arg '{}'", slice);
-        match slice {
+        match slice { // this isn't quite right since '-i' should itself be possible to provide as
+                      // an input file arg, so need to check state and then grab instead of just
+                      // matching directly
             "-o" | "--output" => state = State::ExpectOutput,
             "-i" | "--input" => state = State::ExpectSourceInput,
             "-s" | "--spec" => state = State::ExpectSpecInput,
             "-r" | "--root" => state = State::ExpectSourceInput,
-            "-Cthreads" => state = State::ExpectThreadCount,
             "-Bvar" => state = State::ExpectBuildVariant,
-            "-Dtree" => cflags.dump_tree = true,
-            "-Dpretty" => cflags.dump_pretty = true,
-            "-Esilent" => cflags.eflags.silence_errors = true,
+            "-Cthreads" => state = State::ExpectThreadCount,
+            "-Ddtree" => cflags.dump_tree = true,
+            "-Ddpretty" => cflags.dump_pretty = true,
+            "-Desilent" => cflags.eflags.silence_errors = true,
             //"-Olib" => cflags.output_library = true,
             //"-Obin" => cflags.output_binary = true,
             other => {
@@ -422,26 +424,3 @@ fn parse_args(args: &[&str]) -> Result<ArgResult, &'static str> {
         flags: cflags,
     })
 }
-
-pub fn parse<'a>(n: PreParseTreeNode<'a>) {}
-
-/*
-pub fn prepass<'a>(p: &Arc<ScopeContext>) {
-    println!("Prepass called on SC: {:#?}", &*p);
-}
-
-pub fn analyze<'a>(_p: &Arc<ScopeContext>) {}
-
-pub fn tollvm<'a>(p: &Arc<ScopeContext>, egctx: &EncodeGlobalContext) {
-    let mut lctx = EncodeLocalContext::new(egctx);
-
-    lctx.writeln(format!(
-        "; start encode for ctx of {:#?}",
-        p.scope
-            .iter()
-            .map(|spur| spur.resolve())
-            .collect::<Vec<&str>>()
-    ));
-    lctx.flush();
-}
-*/

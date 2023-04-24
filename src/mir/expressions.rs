@@ -12,6 +12,7 @@ use crate::{
         NodeInfo, ScopedName, StatementExpression, StructLiteralExpression,
         SyntacticTypeReferenceRef,
     },
+    errors::{add_error, CompilationError},
     helper::interner::{IStr, Internable},
 };
 
@@ -78,6 +79,8 @@ pub enum AnyExpression {
     For(For),
     Branch(Branch),
 
+    Return(Return),
+
     If(If),
 
     //Expire(VarID),
@@ -135,6 +138,12 @@ pub struct If {
     pub condition: ExpressionID,
     pub then_do: ExpressionID,
     pub else_do: Option<ExpressionID>,
+}
+
+#[derive(Clone, Debug)]
+pub struct Return {
+    pub info: NodeInfo,
+    pub inner_exp: ExpressionID,
 }
 
 #[derive(Clone, Debug)]
@@ -236,8 +245,11 @@ impl AnyExpression {
                     cst::BinaryOperation::Divide => "operator[_/_]",
                     cst::BinaryOperation::Add => "operator[_+_]",
                     cst::BinaryOperation::Subtract => "operator[_-_]",
+                    cst::BinaryOperation::LogicalOr => "operator[_||_]",
+                    cst::BinaryOperation::LogicalAnd => "operator[_&&_]",
                 }
                 .intern();
+
 
                 // for now just have binary expressions be
                 // called on LHS regardless of actual associativity
@@ -253,6 +265,15 @@ impl AnyExpression {
                 //let (self_id, _self_ref) = within.add(self_node);
 
                 self_id
+            }
+            ExpressionWrapper::Return(r) => {
+                let cst::ReturnExpression { node_info, subexpr } = r;
+
+                let e = Return { info: *node_info, inner_exp: AnyExpression::from_ast(within, &subexpr, bindings) };
+
+                let ae = AnyExpression::Return(e);
+
+                within.add(ae).0
             }
             ExpressionWrapper::UnaryOperation(uo) => {
                 let cst::UnaryOperationExpression {
@@ -593,22 +614,41 @@ impl AnyExpression {
             }
             ExpressionWrapper::While(_) => todo!(),
             ExpressionWrapper::Tuple(_) => todo!(),
-            ExpressionWrapper::Return(_) => todo!(),
             ExpressionWrapper::Wildcard(_) => todo!(),
             ExpressionWrapper::LLVMLiteral(_) => todo!(),
             ExpressionWrapper::Identifier(id) => {
                 let IdentifierExpression { node_info, ident } = id;
+                let node_info = *node_info;
 
                 if let [one] = ident.scope.as_slice() {
                     tracing::warn!("Variable is: {:?}", ident);
 
-                    let vid = bindings
-                        .binding_for(*one)
-                        .expect("variable was not in scope");
+                    let vid = bindings.binding_for(*one);
+                    //.expect("variable was not in scope");
+                    match vid {
+                        Some(v) => within.add(AnyExpression::Variable(v, node_info)).0,
+                        None => {
+                            add_error(CompilationError::UnknownVariable(
+                                crate::errors::UnknownVariableError {
+                                    variable: *one,
+                                    location: node_info,
+                                },
+                            ));
 
-                    within.add(AnyExpression::Variable(vid, *node_info)).0
+                            //let c = Composite::unit_composite(node_info);
+                            //let c = ExpressionWrapper::Literal()
+                            //let c = Expr;
+
+                            //let id = AnyExpression::from_ast(within, &c, bindings);
+                            let b = AnyExpression::Block(StringBlock { info: node_info, statements: vec![], final_expr: None });
+
+                            let id = within.add(b).0;
+
+                            id
+                        }
+                    }
                 } else {
-                    let ae = AnyExpression::OuterReference(ident.clone(), *node_info);
+                    let ae = AnyExpression::OuterReference(ident.clone(), node_info);
 
                     within.add(ae).0
                     //todo!("scoped ident?")
@@ -907,11 +947,16 @@ pub struct Composite {
     pub fields: HashMap<IStr, ExpressionID>,
 }
 
-#[derive(Clone, Debug)]
-struct Return {
-    //meta: MetaData,
-    value: ExpressionID,
+/*
+impl Composite {
+    pub fn unit_composite(loc: NodeInfo) -> ExpressionWrapper {
+        //let v = Self { info: loc, base_type: ScopedName::from_many("std::Unit"), generics: vec![], fields: HashMap::new() };
+        let sle = StructLiteralExpression { info: loc, struct_base: ScopedName::from_many("std::Unit"), generics: vec![], bind_from: vec![] };
+
+        ExpressionWrapper::StructLiteral(sle)
+    }
 }
+*/
 
 #[derive(Clone, Debug)]
 struct Break {

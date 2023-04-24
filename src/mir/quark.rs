@@ -1,7 +1,7 @@
 use crate::avec::AtomicVecIndex;
 use crate::compile::per_module::Photon;
 use crate::cst::{FunctionBuiltin, SyntacticTypeReference};
-use crate::errors::{add_error, FieldAccessError, UnrestrictedTypeError, UnresolvedSymbolError};
+use crate::errors::{add_error, FieldAccessError, UnresolvedSymbolError, UnrestrictedTypeError};
 use crate::helper::CopyMethod;
 use crate::mir::expressions::{Binding, For, If};
 use crate::mir::scribe::ScribeOne;
@@ -435,7 +435,10 @@ impl Quark {
                     }
                     Err(e) => {
                         //todo!("need to handle import errors with Instances, err was {e:?}");
-                        add_error(CompilationError::UnresolvedSymbol(UnresolvedSymbolError { symbol: name, location: tr.resolve().unwrap().info }));
+                        add_error(CompilationError::UnresolvedSymbol(UnresolvedSymbolError {
+                            symbol: name,
+                            location: tr.resolve().unwrap().info,
+                        }));
 
                         // once we've propagated the error, we just treat this as unconstrained
                         // to let us find as many errors as possible
@@ -469,7 +472,7 @@ impl Quark {
                 existing_tid
             }
             SyntacticTypeReferenceInner::Tuple(t) => {
-                todo!("need to actually make tuple types")
+                todo!("need to actually make tuple types, from {t:?}")
             }
             SyntacticTypeReferenceInner::Parameterized { name, generics } => {
                 let base = NameResolver {
@@ -482,7 +485,10 @@ impl Quark {
 
                 let base = match base {
                     Err(e) => {
-                        add_error(CompilationError::UnresolvedSymbol(UnresolvedSymbolError { symbol: name, location: tr.resolve().unwrap().info }));
+                        add_error(CompilationError::UnresolvedSymbol(UnresolvedSymbolError {
+                            symbol: name,
+                            location: tr.resolve().unwrap().info,
+                        }));
 
                         tracing::error!("report import errors");
                         return self.new_tid(
@@ -881,6 +887,16 @@ impl Quark {
 
                 body_ty
             }
+            AnyExpression::Return(r) => {
+                // don't restrict the result type
+                let inner_ty = self.do_the_thing_rec(r.inner_exp, is_lval);
+
+                self.add_unify(inner_ty, self.meta.returns.get().copied().unwrap(), "a return should return the type of the fn");
+
+                let oty = self.new_tid(r.info, "a return statement unifies with anything", false);
+
+                oty
+            }
             AnyExpression::Convert(c) => todo!(),
             AnyExpression::While(_) => todo!(),
             AnyExpression::Branch(_) => todo!(),
@@ -1011,7 +1027,9 @@ impl Quark {
                                     panic!("generic? {g}");
                                 },
                                 InstanceOf::Unknown() => {
-                                    panic!("stop");
+                                    println!("stop...{}", sa.field);
+
+                                    (None, None)
                                 }
                             }
                         });
@@ -1090,7 +1108,7 @@ impl Quark {
                                                 FieldAccessError {
                                                     base_expr_span: sa.info,
                                                     field_span: sa.info,
-                                                    error_info: format!("this field did not exist, and its dynamic property type could not be successfully inferred. It was accessed on type {st:?}"),
+                                                    error_info: format!("this field did not exist, and its dynamic property type could not be successfully inferred. It was accessed on type {st:?}, the field is {fname}"),
                                                 }))
                                     }
                                 }, "once we get a resolved notification back from the dynfield, we should unify that value");
@@ -1371,7 +1389,13 @@ impl Quark {
                                 Photon::StartCodeGen() => {}
                             },
                             Content::StartCodeGen() => {
-                                tracing::error!("Codegen not implemented yet");
+                                let q = self
+                                    .node_id
+                                    .resolve()
+                                    .canonical_typeref()
+                                    .resolve()
+                                    .unwrap();
+                                println!("Got codegen message at quark {:?}", q);
 
                                 if self.node_id.resolve().generics.is_empty() {
                                     self.monomorphizations
@@ -1382,7 +1406,7 @@ impl Quark {
                                         });
                                 }
 
-                                for mono in self.monomorphizations.borrow().iter() {
+                                if self.generics.is_empty() {
                                     let m = Message {
                                         to: Destination::scribe(self.node_id),
                                         from: self.as_dest(),
@@ -1390,11 +1414,19 @@ impl Quark {
                                         conversation: Uuid::new_v4(),
                                         content: Content::Scribe(
                                             crate::mir::scribe::Note::MonoFunc {
-                                                func: mono.clone(),
+                                                func: Monomorphization::from_resolved(
+                                                    ResolvedType {
+                                                        node: self.node_id,
+                                                        generics: vec![],
+                                                    },
+                                                ),
                                             },
                                         ),
                                     };
                                     self.sender.send(m).unwrap();
+                                }
+
+                                for mono in self.monomorphizations.borrow().iter() {
                                     /*let mut s =
                                         ScribeOne::new(either::Either::Left(self), mono.clone());
                                     unsafe {
@@ -1509,7 +1541,9 @@ impl Quark {
 
             let vid = self.acting_on.borrow_mut().next_var();
 
-            tracing::warn!("resolved the type of {param_name} with given type {pty_s:?} to {ptype:?}");
+            tracing::warn!(
+                "resolved the type of {param_name} with given type {pty_s:?} to {ptype:?}"
+            );
 
             self.type_of_var.borrow_mut().insert(vid, ptype);
 

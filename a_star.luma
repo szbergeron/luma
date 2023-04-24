@@ -1,0 +1,128 @@
+struct Graph {
+    /*
+    This class represents a directed graph using
+    adjacency matrix representation.
+    */
+
+    fn new(graph: Vec<Vec<f64>>) -> Graph {
+        let self = struct Graph {};
+        self.graph = graph;  // residual graph
+        self.row = graph.len();
+
+        self
+    }
+
+    fn bfs(self: Graph, s: i64, t: i64, parent: Vec<i64>) -> bool {
+        /*
+        Returns true if there is a path from
+        source 's' to sink 't' in residual graph.
+        Also fills parent[] to store the path.
+        */
+
+        // Mark all the vertices as not visited
+        //visited = [False] * self.row;
+        let visited = [];
+
+        for(let i = 0; i < self.row; i = i + 1) {
+            visited.push(false);
+        }
+
+        // Create a queue for BFS
+        let queue = Queue::new();
+
+        // Mark the source node as visited and enqueue it
+        queue.push_back(s);
+        //visited[s] = true;
+        visited.set(s, true);
+
+        // Standard BFS loop
+        for((); queue.len() > 0; ()) {
+            let u = queue.pop_front().unwrap();
+
+            // Get all adjacent vertices of the dequeued vertex u
+            // If an adjacent has not been visited, then mark it
+            // visited and enqueue it
+            for(let ind = 0; ind < self.graph.get(u).len(); ind = ind + 1) {
+                let val = self.graph.get(u).get(ind);
+
+                if !visited.get(ind) && val > 0.0 {
+                    queue.push_back(ind);
+                    visited.set(ind, true);
+                    parent.set(ind, u);
+                }
+            }
+        }
+
+        // If we reached sink in BFS starting from source, then return
+        // true, else false
+        visited.get(t)
+    }
+
+    // Returns the maximum flow from s to t in the given graph
+    fn edmonds_karp(self: Graph, source: i64, sink: i64) -> f64 {
+        // This array is filled by BFS and to store path
+        //parent = [-1] * self.row;
+        let parent = [];
+        for (let i = 0; i < self.row; i = i + 1) {
+            parent.push(-1);
+        }
+
+        let max_flow = 0.0;  // There is no flow initially
+
+        // Augment the flow while there is path from source to sink
+        for((); self.bfs(source, sink, parent); ()) {
+            // Find minimum residual capacity of the edges along the
+            // path filled by BFS. Or we can say find the maximum flow
+            // through the path found.
+            let path_flow = f64::inf();
+            let s = sink;
+            for((); s != source; ()) {
+                let pf1 = self.graph.get(parent.get(s)).get(s);
+                if pf1 < path_flow {
+                    path_flow = pf1;
+                }
+                //path_flow = min(path_flow, self.graph[parent[s]][s])
+                //s = parent[s]
+                s = parent.get(s);
+            }
+
+            // Add path flow to overall flow
+            max_flow = path_flow + max_flow;
+
+            // update residual capacities of the edges and reverse edges
+            // along the path
+            let v = sink;
+            for((); v != source; ()) {
+                //u = parent[v];
+                //self.graph[u][v] -= path_flow;
+                //self.graph[v][u] += path_flow;
+                //v = parent[v];
+                let u = parent.get(v);
+
+                self.graph.get(u).set(v, self.graph.get(u).get(v) - path_flow); 
+                self.graph.get(v).set(u, self.graph.get(v).get(u) - path_flow); 
+                v = parent.get(v);
+            }
+        }
+
+
+        max_flow
+    }
+}
+
+fn main() {
+    let residuals = [];
+
+    let vertices = 1000;
+
+    for (let x = 0; x < vertices; x = x + 1) {
+        for (let edge = 0; edge < vertices; edge = edge + 1) {
+        }
+        let flow = f64::rand().abs().modulo(100.0);
+
+    }
+
+    let g = Graph::new(residuals);
+
+    g.edmonds_karp(i64::rand().abs().modulo(dim_x * dim_y), i64::rand().abs().modulo(dim_x * dim_y));
+}

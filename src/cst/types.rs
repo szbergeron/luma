@@ -274,7 +274,7 @@ impl SyntacticTypeReference {
         }
     }
 
-    pub fn as_plain_type(mut self, sub_generics: &HashMap<IStr, IStr>) -> IStr {
+    pub fn as_plain_type(self, sub_generics: &HashMap<IStr, IStr>) -> IStr {
         match self.inner {
             SyntacticTypeReferenceInner::Unconstrained() => todo!(),
             SyntacticTypeReferenceInner::Tuple(t) => {

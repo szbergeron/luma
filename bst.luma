@@ -1,0 +1,18 @@
+struct Node {
+    var value: T;
+
+    var left: Node<T>;
+    var right: Node<T>;
+};
+
+struct User {
+    var name: String;
+}
+
+struct BST<T> {
+    var root: Node<T>;
+
+    fn empty<T>() -> BST<T> {
+        struct BST { root: std::none() }
+    };
+}

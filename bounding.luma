@@ -1,0 +1,12 @@
+struct Point {
+    var x: f64;
+    var y: f64;
+    var z: f64;
+}
+
+struct BoundingBox {
+}
+
+fn generate_points(count: i64) -> std::Vec<Point> {
+    //
+}

@@ -1,7 +1,7 @@
 use std::{
     borrow::Borrow,
     cell::RefCell,
-    collections::{hash_map::DefaultHasher, HashMap},
+    collections::{hash_map::DefaultHasher, HashMap, HashSet},
     fmt::format,
     hash::{Hash, Hasher},
     sync::Mutex,
@@ -25,7 +25,8 @@ use crate::{
     },
     avec::AtomicVec,
     compile::per_module::{
-        static_pinned_leaked, Content, ConversationContext, Earpiece, Message, Service,
+        static_pinned_leaked, Content, ConversationContext, Destination, Earpiece, Message, Postal,
+        Service,
     },
     cst::{self, LiteralExpression, ScopedName, StructuralTyAttrs, SyntacticTypeReference},
     helper::{
@@ -33,7 +34,7 @@ use crate::{
         SwapWith,
     },
     lir::expressions::{Lower, UntypedVar, VarType, Variable},
-    mir::expressions::{For, StaticAccess},
+    mir::expressions::{For, StaticAccess}, monitor::Monitor,
 };
 
 use super::{
@@ -63,6 +64,8 @@ pub struct Scribe {
 
     monomorphization_workers: RefCell<HashMap<ResolvedType, Thunk<()>>>,
 
+    mono_set: RefCell<HashSet<Monomorphization>>,
+
     executor: &'static Executor,
 
     for_node: CtxID,
@@ -79,6 +82,7 @@ impl Scribe {
         let cs = sender.clone();
 
         Self {
+            mono_set: Default::default(),
             for_node,
             monomorphization_workers: Default::default(),
             local_transponster: transponster,
@@ -125,6 +129,11 @@ impl Scribe {
     }
 
     pub fn handle(&'static self, mono: Monomorphization) {
+        if !self.mono_set.borrow_mut().insert(mono.clone()) {
+            //println!("Tried to re-mono a ty");
+            return;
+        }
+
         let which = match &mono.of.resolve().inner {
             NodeUnion::Type(_) => Either::Right(self.local_transponster),
             NodeUnion::Function(_, _) => Either::Left(self.local_quark),
@@ -353,6 +362,9 @@ impl<'a> ScribeOne<'a> {
                         };
                         write!(code, "({formatted})").unwrap();
                     }
+                    cst::Literal::UnitLiteral() => {
+                        write!(code, "()").unwrap();
+                    }
                     other => todo!("don't handle {other:?} literals"),
                 }
             }
@@ -455,6 +467,11 @@ impl<'a> ScribeOne<'a> {
                 };
 
                 let _ = writeln!(code, "if {if_is} {{ {then_do} }} else {{ {else_do} }}");
+            }
+            AnyExpression::Return(r) => {
+                let v = self.to_rs_nondyn(quark, submap, r.inner_exp, indent, false).await;
+
+                let _ = writeln!(code, "return {v}");
             }
             AnyExpression::For(f) => {
                 let For {
@@ -816,6 +833,11 @@ impl<'a> ScribeOne<'a> {
 
                         "std::i64"
                     }
+                    cst::Literal::UnitLiteral() => {
+                        code.push(format!("{ind}let mut {uv} = Value::Uninhabited();"));
+
+                        "std::Unit"
+                    }
                     cst::Literal::u64Literal(u) => {
                         code.push(format!(
                             "{ind}let mut {uv} = Value::I64({u}, {methods_object});"
@@ -895,7 +917,9 @@ impl<'a> ScribeOne<'a> {
                 .await
                 .unwrap();*/
 
+                let ah = Monitor::instance().set_alert(format!("resolving type of eid {:?}", cur_eid).intern());
                 let r = quark.resolved_type_of(quark.typeofs.get(cur_eid)).await;
+                Monitor::instance().unset_alert(ah);
                 let r = submap.substitute_of(r);
 
                 let now_mono = Monomorphization::from_resolved(r);
@@ -1099,7 +1123,7 @@ impl<'a> ScribeOne<'a> {
             _ => self.mono.encode_name(),
         };
         //let fname = self.mono.encode_name();
-        tracing::warn!("Encoding a function, named {fname}");
+        println!("Encoding a function, named {fname}");
 
         let mut within = vec!["".to_owned()];
 
@@ -1111,7 +1135,9 @@ impl<'a> ScribeOne<'a> {
 
         let params_tid = quark.meta.params.get().cloned().unwrap();
         tracing::warn!("Resolving ret mono");
+        let ah = Monitor::instance().set_alert(format!("waiting for rtype of {fname} to resolve").intern());
         let ret_mono = quark.resolved_type_of(ret_tid).await;
+        Monitor::instance().unset_alert(ah);
         let ret_mono = Monomorphization::from_resolved(smr.substitute_of(ret_mono));
         let ret = format!("{}*", ret_mono.encode_name());
         tracing::warn!("Got ret mono: {ret}");
@@ -1144,7 +1170,9 @@ impl<'a> ScribeOne<'a> {
                         let v = UntypedVar::from(*pid);
 
                         async move {
+                            let ah = Monitor::instance().set_alert(format!("waiting to resolve pt of p by name {pn}").intern());
                             let t = quark.resolved_type_of(*pt).await;
+                            Monitor::instance().unset_alert(ah);
                             let t = smr.substitute_of(t);
                             let m = Monomorphization::from_resolved(t);
 
@@ -1470,8 +1498,49 @@ impl Monomorphization {
         gen_sub_map
     }
 
+    pub fn to_resolved(&self) -> ResolvedType {
+        ResolvedType {
+            node: self.of,
+            generics: self.with.clone().into_iter().map(|(_, t)| t).collect_vec(),
+        }
+    }
+
+    pub fn has_generics(&self) -> bool {
+        fn s(r: &ResolvedType) -> bool {
+            if let NodeUnion::Generic(g) = r.node.resolve().inner {
+                println!("found a mono who is generic, gen is {g}");
+                return true;
+            } else {
+                for rt in r.generics.iter() {
+                    if s(rt) {
+                        return true;
+                    }
+                }
+
+                false
+            }
+        }
+
+        s(&self.to_resolved())
+    }
+
     pub fn encode_name(&self) -> IStr {
         let tr = self.of.resolve().canonical_typeref().resolve().unwrap();
+
+        if !self.has_generics() {
+            match &self.of.resolve().inner {
+                NodeUnion::Generic(n) => todo!("Why are we encoding a generic's name? Name: {n}"),
+                NodeUnion::Type(_) => Postal::instance().send_and_forget(
+                    Destination::scribe(self.of),
+                    Content::Scribe(Note::MonoType { ty: self.clone() }),
+                ),
+                NodeUnion::Function(_, _) => Postal::instance().send_and_forget(
+                    Destination::scribe(self.of),
+                    Content::Scribe(Note::MonoFunc { func: self.clone() }),
+                ),
+                _ => unreachable!(),
+            }
+        }
 
         let base_str = tr.as_c_id().resolve();
 
@@ -1500,7 +1569,6 @@ impl Monomorphization {
         } else {
             format!("{base_str}_{gen_summary}_{hashed_tail}")
         };
-
 
         let s: String = s
             .chars()
