@@ -154,6 +154,9 @@ pub struct Meta {
 
     pub generics_from_name: RefCell<HashMap<IStr, CtxID>>,
     pub generics_to_name: RefCell<HashMap<CtxID, IStr>>,
+
+    /// how many each variable is referenced post-binding
+    pub uses_of: RefCell<HashMap<VarID, isize>>,
 }
 
 pub struct ErrorState {
@@ -1155,6 +1158,8 @@ impl Quark {
                 let vt = self.new_tid(n, "variable ref ty", false);
 
                 self.add_unify(ovt, vt, "a variable has the type of its binding");
+
+                *self.meta.uses_of.borrow_mut().entry(v).or_insert(0) += 1;
 
                 tracing::info!("it's on a variable: {v:?}");
 

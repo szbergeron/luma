@@ -4,10 +4,11 @@ use std::{
     cmp::Ordering,
     collections::HashMap,
     pin::Pin,
-    rc::Rc,
     sync::{atomic::AtomicU16, Arc, Mutex},
     thread::panicking,
 };
+
+use rclite::Rc;
 
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 

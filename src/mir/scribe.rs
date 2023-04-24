@@ -257,6 +257,27 @@ pub fn indents(amount: usize) -> String {
 
 lazy_static! {}
 
+struct VarDesc {
+    var: IStr,
+    is_rval: bool,
+}
+
+impl std::fmt::Display for VarDesc {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.var.fmt(f)
+    }
+}
+
+impl VarDesc {
+    pub fn from_rval(var: IStr) -> Self {
+        Self { var, is_rval: true }
+    }
+
+    pub fn from_lval(var: IStr) -> Self {
+        Self { var, is_rval: false }
+    }
+}
+
 impl<'a> ScribeOne<'a> {
     pub fn new(
         using: Either<&'static Quark, &'a Transponster>,
@@ -278,6 +299,7 @@ impl<'a> ScribeOne<'a> {
             Either::Right(t) => self.codegen_ty(t).await,
         }
     }
+
     #[async_recursion(?Send)]
     async fn to_rs_nondyn(
         &mut self,
@@ -288,7 +310,9 @@ impl<'a> ScribeOne<'a> {
         //code: &mut Vec<String>,
         indent: usize,
         is_lval: bool,
-    ) -> IStr {
+    ) -> VarDesc {
+        let mut is_rval = false; // assume lval unless sure
+
         let exp = quark.acting_on.borrow().get(cur_eid).clone();
         let ind = indents(indent);
 
@@ -318,7 +342,12 @@ impl<'a> ScribeOne<'a> {
                         .await;
 
                     writeln!(code, "{ind}{e}").unwrap();
+
+                    if e.is_rval {
+                        is_rval = true;
+                    }
                 }
+
 
                 //let exps = results.into_iter().join(format!("{ind};\n").as_str());
 
@@ -367,11 +396,32 @@ impl<'a> ScribeOne<'a> {
                     }
                     other => todo!("don't handle {other:?} literals"),
                 }
+
+                is_rval = true;
             }
             AnyExpression::Variable(v, _i) => {
-                let v = UntypedVar::from(v);
+                //let v = UntypedVar::from(v);
 
-                let _ = write!(code, "({v})");
+                let use_count = quark.meta.uses_of.borrow_mut().get_mut(&v).map(|v| {
+                    let r = *v;
+                    //*v -= 1;
+                    r
+                }).unwrap();
+                //let use_count = quark.meta.uses_of.borrow().get(&v).copied().unwrap();
+
+                let uv = UntypedVar::from(v);
+
+                let _ = write!(code, "({uv})");
+
+                /*if use_count > 1 {
+                    return VarDesc::from_lval(code.intern());
+                } else {
+                    return VarDesc::from_rval(code.intern());
+                }*/
+
+                if use_count <= 1 {
+                    is_rval = true;
+                }
             }
             AnyExpression::Binding(b) => {
                 let Binding {
@@ -389,7 +439,11 @@ impl<'a> ScribeOne<'a> {
                     .to_rs_nondyn(quark, submap, from_source, indent + 1, false)
                     .await;
 
-                let _ = write!(code, "{ind}let mut {v} = {e}.clone();");
+                if e.is_rval {
+                    let _ = write!(code, "{ind}let mut {v} = {e};");
+                } else {
+                    let _ = write!(code, "{ind}let mut {v} = {e}.clone();");
+                }
             }
             AnyExpression::OuterReference(sn, _i) => {
                 /*let refs = self
@@ -416,7 +470,12 @@ impl<'a> ScribeOne<'a> {
                 let lhs_e = self
                     .to_rs_nondyn(quark, submap, lhs, indent + 1, true)
                     .await;
-                let _ = writeln!(code, "{ind}{lhs_e} = {rhs_e}.clone()");
+
+                if rhs_e.is_rval {
+                    let _ = writeln!(code, "{ind}{lhs_e} = {rhs_e}");
+                } else {
+                    let _ = writeln!(code, "{ind}{lhs_e} = {rhs_e}.clone()");
+                }
             }
             AnyExpression::StaticAccess(sa) => {
                 let StaticAccess { on, field, info } = sa;
@@ -463,10 +522,14 @@ impl<'a> ScribeOne<'a> {
                     self.to_rs_nondyn(quark, submap, v, indent + 1, is_lval)
                         .await
                 } else {
-                    "()".intern()
+                    VarDesc::from_rval("()".intern())
                 };
 
                 let _ = writeln!(code, "if {if_is} {{ {then_do} }} else {{ {else_do} }}");
+
+                if then_do.is_rval &&else_do.is_rval {
+                    is_rval = true;
+                }
             }
             AnyExpression::Return(r) => {
                 let v = self.to_rs_nondyn(quark, submap, r.inner_exp, indent, false).await;
@@ -527,13 +590,19 @@ impl<'a> ScribeOne<'a> {
                     let arg = self
                         .to_rs_nondyn(quark, submap, arg, indent + 1, false)
                         .await;
-                    let arg = format!("\n{arg}.clone()").intern();
+                    let arg = if arg.is_rval {
+                        format!("\n{arg}").intern()
+                    } else {
+                        format!("\n{arg}.clone()").intern()
+                    };
                     args_s.push(arg);
                 }
 
                 let args = args_s.into_iter().join(",");
 
                 let _ = writeln!(code, "{on}({args})");
+
+                is_rval = true;
             }
             AnyExpression::Composite(c) => {
                 let Composite {
@@ -582,6 +651,8 @@ impl<'a> ScribeOne<'a> {
 
                 let _ = writeln!(code, "{ind}}}");
 
+                is_rval = true;
+
                 //Some(into_var)
             }
             _ => {
@@ -589,7 +660,11 @@ impl<'a> ScribeOne<'a> {
             }
         }
 
-        code.intern()
+        if is_rval {
+            VarDesc::from_rval(code.intern())
+        } else {
+            VarDesc::from_lval(code.intern())
+        }
     }
 
     #[async_recursion(?Send)]

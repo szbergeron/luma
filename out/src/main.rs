@@ -12,6 +12,9 @@
     //unused_braces
 )]
 
+//#[global_allocator]
+//static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
 use std::cell::RefCell;
 use std::time::Instant;
 
