@@ -278,6 +278,22 @@ impl VarDesc {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
+struct DownwardInfo {
+    within_loop: bool,
+    is_lval: bool,
+}
+
+impl DownwardInfo {
+    pub fn with_within_loop(self, within_loop: bool) -> DownwardInfo {
+        Self { within_loop, ..self }
+    }
+
+    pub fn with_is_lval(self, is_lval: bool) -> DownwardInfo {
+        Self { is_lval, ..self }
+    }
+}
+
 impl<'a> ScribeOne<'a> {
     pub fn new(
         using: Either<&'static Quark, &'a Transponster>,
@@ -309,7 +325,7 @@ impl<'a> ScribeOne<'a> {
         //preamble: &mut Vec<String>,
         //code: &mut Vec<String>,
         indent: usize,
-        is_lval: bool,
+        downward_info: DownwardInfo,
     ) -> VarDesc {
         let mut is_rval = false; // assume lval unless sure
 
@@ -330,7 +346,7 @@ impl<'a> ScribeOne<'a> {
 
                 for exp in b.statements {
                     let e = self
-                        .to_rs_nondyn(quark, submap, exp, indent + 1, false)
+                        .to_rs_nondyn(quark, submap, exp, indent + 1, downward_info.with_is_lval(false))
                         .await;
 
                     writeln!(code, "{ind}{e};").unwrap();
@@ -338,7 +354,7 @@ impl<'a> ScribeOne<'a> {
 
                 if let Some(e) = b.final_expr {
                     let e = self
-                        .to_rs_nondyn(quark, submap, e, indent + 1, is_lval)
+                        .to_rs_nondyn(quark, submap, e, indent + 1, downward_info)
                         .await;
 
                     writeln!(code, "{ind}{e}").unwrap();
@@ -356,7 +372,7 @@ impl<'a> ScribeOne<'a> {
                 writeln!(code, "{ind}}}").unwrap();
             }
             AnyExpression::Literal(l) => {
-                assert!(!is_lval, "literal can't be an lval");
+                assert!(!downward_info.is_lval, "literal can't be an lval");
 
                 let Literal {
                     info,
@@ -404,7 +420,9 @@ impl<'a> ScribeOne<'a> {
 
                 let use_count = quark.meta.uses_of.borrow_mut().get_mut(&v).map(|v| {
                     let r = *v;
-                    //*v -= 1;
+                    if !downward_info.within_loop {
+                        *v -= 1;
+                    }
                     r
                 }).unwrap();
                 //let use_count = quark.meta.uses_of.borrow().get(&v).copied().unwrap();
@@ -436,7 +454,7 @@ impl<'a> ScribeOne<'a> {
 
                 let v = UntypedVar::from(introduced_as);
                 let e = self
-                    .to_rs_nondyn(quark, submap, from_source, indent + 1, false)
+                    .to_rs_nondyn(quark, submap, from_source, indent + 1, downward_info.with_is_lval(false))
                     .await;
 
                 if e.is_rval {
@@ -465,10 +483,10 @@ impl<'a> ScribeOne<'a> {
                 let Assign { info, rhs, lhs } = a;
 
                 let rhs_e = self
-                    .to_rs_nondyn(quark, submap, rhs, indent + 1, false)
+                    .to_rs_nondyn(quark, submap, rhs, indent + 1, downward_info.with_is_lval(false))
                     .await;
                 let lhs_e = self
-                    .to_rs_nondyn(quark, submap, lhs, indent + 1, true)
+                    .to_rs_nondyn(quark, submap, lhs, indent + 1, downward_info.with_is_lval(true))
                     .await;
 
                 if rhs_e.is_rval {
@@ -480,7 +498,7 @@ impl<'a> ScribeOne<'a> {
             AnyExpression::StaticAccess(sa) => {
                 let StaticAccess { on, field, info } = sa;
                 let on_s = self
-                    .to_rs_nondyn(quark, submap, on, indent + 1, false)
+                    .to_rs_nondyn(quark, submap, on, indent + 1, downward_info.with_is_lval(false))
                     .await;
 
                 if let Some(tid) = quark.meta.are_methods.borrow().get(&cur_eid) {
@@ -513,13 +531,13 @@ impl<'a> ScribeOne<'a> {
                 } = i;
 
                 let if_is = self
-                    .to_rs_nondyn(quark, submap, condition, indent + 1, false)
+                    .to_rs_nondyn(quark, submap, condition, indent + 1, downward_info.with_is_lval(false))
                     .await;
                 let then_do = self
-                    .to_rs_nondyn(quark, submap, then_do, indent + 1, is_lval)
+                    .to_rs_nondyn(quark, submap, then_do, indent + 1, downward_info)
                     .await;
                 let else_do = if let Some(v) = else_do {
-                    self.to_rs_nondyn(quark, submap, v, indent + 1, is_lval)
+                    self.to_rs_nondyn(quark, submap, v, indent + 1, downward_info)
                         .await
                 } else {
                     VarDesc::from_rval("()".intern())
@@ -532,7 +550,7 @@ impl<'a> ScribeOne<'a> {
                 }
             }
             AnyExpression::Return(r) => {
-                let v = self.to_rs_nondyn(quark, submap, r.inner_exp, indent, false).await;
+                let v = self.to_rs_nondyn(quark, submap, r.inner_exp, indent, downward_info.with_is_lval(false)).await;
 
                 let _ = writeln!(code, "return {v}");
             }
@@ -545,16 +563,16 @@ impl<'a> ScribeOne<'a> {
                 } = f;
 
                 let pre_s = self
-                    .to_rs_nondyn(quark, submap, pre, indent + 1, false)
+                    .to_rs_nondyn(quark, submap, pre, indent + 1, downward_info.with_is_lval(false))
                     .await;
                 let cond_s = self
-                    .to_rs_nondyn(quark, submap, condition, indent + 1, false)
+                    .to_rs_nondyn(quark, submap, condition, indent + 1, downward_info.with_is_lval(false).with_within_loop(true))
                     .await;
                 let post_s = self
-                    .to_rs_nondyn(quark, submap, post, indent + 1, false)
+                    .to_rs_nondyn(quark, submap, post, indent + 1, downward_info.with_is_lval(false).with_within_loop(true))
                     .await;
                 let body_s = self
-                    .to_rs_nondyn(quark, submap, body, indent + 1, false)
+                    .to_rs_nondyn(quark, submap, body, indent + 1, downward_info.with_is_lval(false).with_within_loop(true))
                     .await;
 
                 let _ = writeln!(code, "{ind}//for loop");
@@ -581,14 +599,14 @@ impl<'a> ScribeOne<'a> {
                 } = i;
 
                 let on = self
-                    .to_rs_nondyn(quark, submap, target_fn, indent + 1, false)
+                    .to_rs_nondyn(quark, submap, target_fn, indent + 1, downward_info.with_is_lval(false))
                     .await;
 
                 let mut args_s = Vec::new();
 
                 for arg in args {
                     let arg = self
-                        .to_rs_nondyn(quark, submap, arg, indent + 1, false)
+                        .to_rs_nondyn(quark, submap, arg, indent + 1, downward_info.with_is_lval(false))
                         .await;
                     let arg = if arg.is_rval {
                         format!("\n{arg}").intern()
@@ -637,7 +655,7 @@ impl<'a> ScribeOne<'a> {
                 let _ = writeln!(code, "let {into_var} = {ind}{base_mono_name} {{");
 
                 for (fname, fexp) in fields {
-                    let v = self.to_rs_nondyn(quark, submap, fexp, indent, false).await;
+                    let v = self.to_rs_nondyn(quark, submap, fexp, indent, downward_info.with_is_lval(false)).await;
 
                     let _ = writeln!(code, "{ind}        {fname}: {v},");
                 }
@@ -1263,7 +1281,7 @@ impl<'a> ScribeOne<'a> {
                     within.push(format!("pub fn {fname}({params}) -> {rt}"));
 
                     let res = self
-                        .to_rs_nondyn(quark, &submap, entry_fn_id, 2, false)
+                        .to_rs_nondyn(quark, &submap, entry_fn_id, 2, DownwardInfo { within_loop: false, is_lval: false })
                         .await;
 
                     within.push(format!("{res}"));

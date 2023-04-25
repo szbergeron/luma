@@ -62,8 +62,8 @@ let contained = 0;
 const iters = 100000;
 
 for (let i = 0; i < iters; i++) {
-    //const v = Math.floor(Math.random() * iters);
-    const v = i;
+    const v = Math.floor(Math.random() * iters);
+    //const v = i;
 
     const was_new = s.insert(v);
 
