@@ -570,7 +570,9 @@ impl Instance {
 
                 let mut parameters = Vec::new();
 
-                for (pname, pty) in f.parameters.clone() {
+                for pi in f.parameters.clone() {
+                    let pname = pi.name;
+                    let pty = pi.typ;
                     let tid = within
                         .resolve_typeref(
                             pty,

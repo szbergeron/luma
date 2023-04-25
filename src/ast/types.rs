@@ -112,6 +112,13 @@ pub struct StructuralDataDefinition {
 }
 
 #[derive(Debug, Clone)]
+pub struct ParamInfo {
+    pub typ: SyntacticTypeReferenceRef,
+    pub name: IStr,
+    pub byref: bool,
+}
+
+#[derive(Debug, Clone)]
 pub struct FunctionDefinition {
     pub info: cst::NodeInfo,
     pub header: cst::NodeInfo,
@@ -119,7 +126,7 @@ pub struct FunctionDefinition {
 
     pub is_method: bool,
 
-    pub parameters: Vec<(IStr, SyntacticTypeReferenceRef)>,
+    pub parameters: Vec<ParamInfo>,
     pub return_type: SyntacticTypeReferenceRef,
 
     pub implementation: Option<Either<cst::expressions::ExpressionWrapper, FunctionBuiltin>>, // quark removes this to do
@@ -148,7 +155,7 @@ impl FunctionDefinition {
         let parameters = params
             .into_iter()
             //.map(|(name, tr)| (name, AbstractTypeReference::from_cst(tr, generic_names.as_slice())))
-            .map(|(name, ty)| (name, ty))
+            .map(|pi| pi)
             .collect();
 
         //[1, 2].into_iter().coll

@@ -2,7 +2,7 @@ use either::Either;
 
 use super::{expressions::ExpressionWrapper, ScopedName};
 
-use crate::{cst, mir::scribe::OutputType};
+use crate::{cst, mir::scribe::OutputType, ast::types::ParamInfo};
 
 //use crate::ast::tree::GenericHandle;
 /*use super::EnumDefinition;
@@ -435,7 +435,7 @@ pub struct FunctionDefinition {
 
     pub return_type: cst::SyntacticTypeReferenceRef,
     //pub params: Vec<(Box<super::ExpressionWrapper>, super::TypeReference)>,
-    pub params: Vec<(IStr, cst::SyntacticTypeReferenceRef)>,
+    pub params: Vec<ParamInfo>,
 
     pub generics: Vec<(IStr, cst::SyntacticTypeReferenceRef)>,
 }
@@ -449,8 +449,8 @@ impl CstNode for FunctionDefinition {
     fn pretty(&self, f: &mut dyn std::fmt::Write, depth: usize) {
         let _ = write!(f, "fn {} (", self.name.resolve(),);
         for p in self.params.iter() {
-            let _ = write!(f, "{}:", p.0.resolve());
-            p.1.resolve().unwrap().pretty(f, depth + 1);
+            let _ = write!(f, "{}:", p.name.resolve());
+            p.typ.resolve().unwrap().pretty(f, depth + 1);
             let _ = write!(f, ", ");
         }
         let _ = write!(f, ") -> ");

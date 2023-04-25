@@ -44,7 +44,7 @@ struct LinkedIntSet {
             if v.val == val {
                 return true;
             } else {
-                h = h.unwrap().next;
+                h = v.next;
             }
 
         }

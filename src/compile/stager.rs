@@ -182,7 +182,7 @@ fn print_from_root(root: CtxID, indent: usize, named: IStr) {
                 .parameters
                 .clone()
                 .into_iter()
-                .map(|(name, strr)| (name, strr.resolve().unwrap().clone()))
+                .map(|pi| (pi.name, pi.typ.resolve().unwrap().clone()))
                 .collect_vec();
             let rtype = fd.return_type.resolve().unwrap().clone();
             format!("fn {name}({args:?}) -> {rtype:?}")

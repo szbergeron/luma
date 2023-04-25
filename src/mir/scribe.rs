@@ -34,7 +34,8 @@ use crate::{
         SwapWith,
     },
     lir::expressions::{Lower, UntypedVar, VarType, Variable},
-    mir::expressions::{For, StaticAccess}, monitor::Monitor,
+    mir::expressions::{For, StaticAccess},
+    monitor::Monitor,
 };
 
 use super::{
@@ -274,7 +275,10 @@ impl VarDesc {
     }
 
     pub fn from_lval(var: IStr) -> Self {
-        Self { var, is_rval: false }
+        Self {
+            var,
+            is_rval: false,
+        }
     }
 }
 
@@ -286,7 +290,10 @@ struct DownwardInfo {
 
 impl DownwardInfo {
     pub fn with_within_loop(self, within_loop: bool) -> DownwardInfo {
-        Self { within_loop, ..self }
+        Self {
+            within_loop,
+            ..self
+        }
     }
 
     pub fn with_is_lval(self, is_lval: bool) -> DownwardInfo {
@@ -346,7 +353,13 @@ impl<'a> ScribeOne<'a> {
 
                 for exp in b.statements {
                     let e = self
-                        .to_rs_nondyn(quark, submap, exp, indent + 1, downward_info.with_is_lval(false))
+                        .to_rs_nondyn(
+                            quark,
+                            submap,
+                            exp,
+                            indent + 1,
+                            downward_info.with_is_lval(false),
+                        )
                         .await;
 
                     writeln!(code, "{ind}{e};").unwrap();
@@ -361,9 +374,10 @@ impl<'a> ScribeOne<'a> {
 
                     if e.is_rval {
                         is_rval = true;
+                    } else {
+                        is_rval = false;
                     }
                 }
-
 
                 //let exps = results.into_iter().join(format!("{ind};\n").as_str());
 
@@ -418,13 +432,19 @@ impl<'a> ScribeOne<'a> {
             AnyExpression::Variable(v, _i) => {
                 //let v = UntypedVar::from(v);
 
-                let use_count = quark.meta.uses_of.borrow_mut().get_mut(&v).map(|v| {
-                    let r = *v;
-                    if !downward_info.within_loop {
-                        *v -= 1;
-                    }
-                    r
-                }).unwrap();
+                let use_count = quark
+                    .meta
+                    .uses_of
+                    .borrow_mut()
+                    .get_mut(&v)
+                    .map(|v| {
+                        let r = *v;
+                        if !downward_info.within_loop {
+                            //*v -= 1;
+                        }
+                        r
+                    })
+                    .unwrap();
                 //let use_count = quark.meta.uses_of.borrow().get(&v).copied().unwrap();
 
                 let uv = UntypedVar::from(v);
@@ -438,7 +458,10 @@ impl<'a> ScribeOne<'a> {
                 }*/
 
                 if use_count <= 1 {
+                    println!("variable {uv} is used lte 1 time");
                     is_rval = true;
+                } else {
+                    is_rval = false;
                 }
             }
             AnyExpression::Binding(b) => {
@@ -454,7 +477,13 @@ impl<'a> ScribeOne<'a> {
 
                 let v = UntypedVar::from(introduced_as);
                 let e = self
-                    .to_rs_nondyn(quark, submap, from_source, indent + 1, downward_info.with_is_lval(false))
+                    .to_rs_nondyn(
+                        quark,
+                        submap,
+                        from_source,
+                        indent + 1,
+                        downward_info.with_is_lval(false),
+                    )
                     .await;
 
                 if e.is_rval {
@@ -462,6 +491,8 @@ impl<'a> ScribeOne<'a> {
                 } else {
                     let _ = write!(code, "{ind}let mut {v} = {e}.clone();");
                 }
+
+                is_rval = false;
             }
             AnyExpression::OuterReference(sn, _i) => {
                 /*let refs = self
@@ -478,15 +509,29 @@ impl<'a> ScribeOne<'a> {
                 let name = now_mono.encode_name();
 
                 let _ = writeln!(code, "{name}");
+
+                is_rval = true;
             }
             AnyExpression::Assign(a) => {
                 let Assign { info, rhs, lhs } = a;
 
                 let rhs_e = self
-                    .to_rs_nondyn(quark, submap, rhs, indent + 1, downward_info.with_is_lval(false))
+                    .to_rs_nondyn(
+                        quark,
+                        submap,
+                        rhs,
+                        indent + 1,
+                        downward_info.with_is_lval(false),
+                    )
                     .await;
                 let lhs_e = self
-                    .to_rs_nondyn(quark, submap, lhs, indent + 1, downward_info.with_is_lval(true))
+                    .to_rs_nondyn(
+                        quark,
+                        submap,
+                        lhs,
+                        indent + 1,
+                        downward_info.with_is_lval(true),
+                    )
                     .await;
 
                 if rhs_e.is_rval {
@@ -494,11 +539,19 @@ impl<'a> ScribeOne<'a> {
                 } else {
                     let _ = writeln!(code, "{ind}{lhs_e} = {rhs_e}.clone()");
                 }
+
+                is_rval = false;
             }
             AnyExpression::StaticAccess(sa) => {
                 let StaticAccess { on, field, info } = sa;
                 let on_s = self
-                    .to_rs_nondyn(quark, submap, on, indent + 1, downward_info.with_is_lval(false))
+                    .to_rs_nondyn(
+                        quark,
+                        submap,
+                        on,
+                        indent + 1,
+                        downward_info.with_is_lval(false),
+                    )
                     .await;
 
                 if let Some(tid) = quark.meta.are_methods.borrow().get(&cur_eid) {
@@ -531,7 +584,13 @@ impl<'a> ScribeOne<'a> {
                 } = i;
 
                 let if_is = self
-                    .to_rs_nondyn(quark, submap, condition, indent + 1, downward_info.with_is_lval(false))
+                    .to_rs_nondyn(
+                        quark,
+                        submap,
+                        condition,
+                        indent + 1,
+                        downward_info.with_is_lval(false),
+                    )
                     .await;
                 let then_do = self
                     .to_rs_nondyn(quark, submap, then_do, indent + 1, downward_info)
@@ -545,14 +604,26 @@ impl<'a> ScribeOne<'a> {
 
                 let _ = writeln!(code, "if {if_is} {{ {then_do} }} else {{ {else_do} }}");
 
-                if then_do.is_rval &&else_do.is_rval {
+                if then_do.is_rval && else_do.is_rval {
                     is_rval = true;
+                } else {
+                    is_rval = false;
                 }
             }
             AnyExpression::Return(r) => {
-                let v = self.to_rs_nondyn(quark, submap, r.inner_exp, indent, downward_info.with_is_lval(false)).await;
+                let v = self
+                    .to_rs_nondyn(
+                        quark,
+                        submap,
+                        r.inner_exp,
+                        indent,
+                        downward_info.with_is_lval(false),
+                    )
+                    .await;
 
                 let _ = writeln!(code, "return {v}");
+
+                is_rval = true;
             }
             AnyExpression::For(f) => {
                 let For {
@@ -563,16 +634,40 @@ impl<'a> ScribeOne<'a> {
                 } = f;
 
                 let pre_s = self
-                    .to_rs_nondyn(quark, submap, pre, indent + 1, downward_info.with_is_lval(false))
+                    .to_rs_nondyn(
+                        quark,
+                        submap,
+                        pre,
+                        indent + 1,
+                        downward_info.with_is_lval(false),
+                    )
                     .await;
                 let cond_s = self
-                    .to_rs_nondyn(quark, submap, condition, indent + 1, downward_info.with_is_lval(false).with_within_loop(true))
+                    .to_rs_nondyn(
+                        quark,
+                        submap,
+                        condition,
+                        indent + 1,
+                        downward_info.with_is_lval(false).with_within_loop(true),
+                    )
                     .await;
                 let post_s = self
-                    .to_rs_nondyn(quark, submap, post, indent + 1, downward_info.with_is_lval(false).with_within_loop(true))
+                    .to_rs_nondyn(
+                        quark,
+                        submap,
+                        post,
+                        indent + 1,
+                        downward_info.with_is_lval(false).with_within_loop(true),
+                    )
                     .await;
                 let body_s = self
-                    .to_rs_nondyn(quark, submap, body, indent + 1, downward_info.with_is_lval(false).with_within_loop(true))
+                    .to_rs_nondyn(
+                        quark,
+                        submap,
+                        body,
+                        indent + 1,
+                        downward_info.with_is_lval(false).with_within_loop(true),
+                    )
                     .await;
 
                 let _ = writeln!(code, "{ind}//for loop");
@@ -590,6 +685,8 @@ impl<'a> ScribeOne<'a> {
                 let _ = writeln!(code, "{ind}}}");
 
                 let _ = writeln!(code, "{ind}}}");
+
+                is_rval = false;
             }
             AnyExpression::Invoke(i) => {
                 let Invoke {
@@ -599,16 +696,40 @@ impl<'a> ScribeOne<'a> {
                 } = i;
 
                 let on = self
-                    .to_rs_nondyn(quark, submap, target_fn, indent + 1, downward_info.with_is_lval(false))
+                    .to_rs_nondyn(
+                        quark,
+                        submap,
+                        target_fn,
+                        indent + 1,
+                        downward_info.with_is_lval(false),
+                    )
                     .await;
+
+                let trt = quark.resolved_base_of(quark.typeofs.get(target_fn)).await;
+                let args_byref = match &trt.resolve().inner {
+                    NodeUnion::Function(fd, _) => {
+                        fd.parameters.iter().map(|f| {
+                            f.byref
+                        }).collect_vec()
+                    },
+                    _ => unreachable!()
+                };
 
                 let mut args_s = Vec::new();
 
-                for arg in args {
+                for (ai, arg) in args.into_iter().enumerate() {
                     let arg = self
-                        .to_rs_nondyn(quark, submap, arg, indent + 1, downward_info.with_is_lval(false))
+                        .to_rs_nondyn(
+                            quark,
+                            submap,
+                            arg,
+                            indent + 1,
+                            downward_info.with_is_lval(false),
+                        )
                         .await;
-                    let arg = if arg.is_rval {
+                    let arg = if args_byref[ai] == true {
+                        format!("\n&{arg}").intern()
+                    } else if arg.is_rval && !downward_info.within_loop {
                         format!("\n{arg}").intern()
                     } else {
                         format!("\n{arg}.clone()").intern()
@@ -655,7 +776,15 @@ impl<'a> ScribeOne<'a> {
                 let _ = writeln!(code, "let {into_var} = {ind}{base_mono_name} {{");
 
                 for (fname, fexp) in fields {
-                    let v = self.to_rs_nondyn(quark, submap, fexp, indent, downward_info.with_is_lval(false)).await;
+                    let v = self
+                        .to_rs_nondyn(
+                            quark,
+                            submap,
+                            fexp,
+                            indent,
+                            downward_info.with_is_lval(false),
+                        )
+                        .await;
 
                     let _ = writeln!(code, "{ind}        {fname}: {v},");
                 }
@@ -1010,7 +1139,8 @@ impl<'a> ScribeOne<'a> {
                 .await
                 .unwrap();*/
 
-                let ah = Monitor::instance().set_alert(format!("resolving type of eid {:?}", cur_eid).intern());
+                let ah = Monitor::instance()
+                    .set_alert(format!("resolving type of eid {:?}", cur_eid).intern());
                 let r = quark.resolved_type_of(quark.typeofs.get(cur_eid)).await;
                 Monitor::instance().unset_alert(ah);
                 let r = submap.substitute_of(r);
@@ -1122,6 +1252,8 @@ impl<'a> ScribeOne<'a> {
             }
             other => todo!("handle {other:?}"),
         }
+
+
     }
 
     async fn emit_composite_builtup(
@@ -1227,8 +1359,14 @@ impl<'a> ScribeOne<'a> {
         let ret_tid = quark.meta.returns.get().copied().unwrap();
 
         let params_tid = quark.meta.params.get().cloned().unwrap();
+        let params_from_fd = match &quark.node_id.resolve().inner {
+            NodeUnion::Function(fd, _) => fd.parameters.clone(),
+            _ => unreachable!(),
+        };
+
         tracing::warn!("Resolving ret mono");
-        let ah = Monitor::instance().set_alert(format!("waiting for rtype of {fname} to resolve").intern());
+        let ah = Monitor::instance()
+            .set_alert(format!("waiting for rtype of {fname} to resolve").intern());
         let ret_mono = quark.resolved_type_of(ret_tid).await;
         Monitor::instance().unset_alert(ah);
         let ret_mono = Monomorphization::from_resolved(smr.substitute_of(ret_mono));
@@ -1263,7 +1401,9 @@ impl<'a> ScribeOne<'a> {
                         let v = UntypedVar::from(*pid);
 
                         async move {
-                            let ah = Monitor::instance().set_alert(format!("waiting to resolve pt of p by name {pn}").intern());
+                            let ah = Monitor::instance().set_alert(
+                                format!("waiting to resolve pt of p by name {pn}").intern(),
+                            );
                             let t = quark.resolved_type_of(*pt).await;
                             Monitor::instance().unset_alert(ah);
                             let t = smr.substitute_of(t);
@@ -1277,11 +1417,20 @@ impl<'a> ScribeOne<'a> {
 
                     let rt = ret_mono.encode_ref();
 
-                    //within.push(format!("#[inline(never)]"));
+                    within.push(format!("#[inline(always)]"));
                     within.push(format!("pub fn {fname}({params}) -> {rt}"));
 
                     let res = self
-                        .to_rs_nondyn(quark, &submap, entry_fn_id, 2, DownwardInfo { within_loop: false, is_lval: false })
+                        .to_rs_nondyn(
+                            quark,
+                            &submap,
+                            entry_fn_id,
+                            2,
+                            DownwardInfo {
+                                within_loop: false,
+                                is_lval: false,
+                            },
+                        )
                         .await;
 
                     within.push(format!("{res}"));
@@ -1331,19 +1480,25 @@ impl<'a> ScribeOne<'a> {
 
                     let mut param_names = Vec::new();
 
-                    let params = join_all(params_tid.iter().map(|(pn, pt, pid)| {
-                        let v = UntypedVar::from(*pid);
+                    let params_fused = params_tid.into_iter().zip(params_from_fd.into_iter());
+
+                    let params = join_all(params_fused.map(|((pn, pt, pid), (pi))| {
+                        let v = UntypedVar::from(pid);
 
                         param_vars.push(v.clone());
 
                         param_names.push((pn.resolve(), format!("{v}")));
 
                         async move {
-                            let t = quark.resolved_type_of(*pt).await;
+                            let t = quark.resolved_type_of(pt).await;
                             let t = smr.substitute_of(t);
                             let m = Monomorphization::from_resolved(t);
 
-                            format!("mut {v}: {}", m.encode_ref())
+                            if pi.byref {
+                                format!("{v}: &{}", m.encode_ref())
+                            } else {
+                                format!("mut {v}: {}", m.encode_ref())
+                            }
                         }
                     }))
                     .await

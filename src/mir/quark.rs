@@ -1532,7 +1532,9 @@ impl Quark {
             //self.introduce_instance(gty, inst, true);
         }
 
-        for (param_name, param_type) in f.parameters.clone() {
+        for pi in f.parameters.clone() {
+            let param_name = pi.name;
+            let param_type = pi.typ;
             let ptype = self
                 .resolve_typeref(
                     param_type,

@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use either::Either;
 use tracing::info;
 
+use crate::ast::types::ParamInfo;
 #[allow(non_upper_case_globals)]
 //use crate::ast;
 //use crate::ast::{StaticVariableDeclaration, TopLevel};
@@ -463,11 +464,11 @@ impl<'lexer> Parser<'lexer> {
         &mut self,
         t: &TokenProvider,
         with_generics: &Vec<IStr>,
-    ) -> ParseResult<Vec<(IStr, cst::SyntacticTypeReferenceRef)>> {
+    ) -> ParseResult<Vec<ParamInfo>> {
         //let mut t = t.child();
         let mut t = parse_header!(t);
 
-        let mut rvec: Vec<(IStr, cst::SyntacticTypeReferenceRef)> = Vec::new();
+        let mut rvec: Vec<_> = Vec::new();
 
         while let Some(i) = t.try_take(Token::Identifier) {
             t.take(Token::Colon).join()?;
@@ -477,7 +478,17 @@ impl<'lexer> Parser<'lexer> {
                 .catch(&mut t)?
                 .intern();
 
-            let r = (i.slice, tr);
+            let br = t.try_take_in(&[Token::IsRef, Token::IsNoRef]);
+
+            let br = match br.map(|tw| tw.token) {
+                None => false,
+                Some(Token::IsNoRef) => false,
+                Some(Token::IsRef) => true,
+                _ => unreachable!()
+            };
+
+            //let r = (i.slice, tr);
+            let r = ParamInfo { typ: tr, name: i.slice, byref: br };
 
             rvec.push(r);
 
