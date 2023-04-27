@@ -29,8 +29,10 @@ struct LinkedIntSet {
 
     fn insert(self: LinkedIntSet, val: i64) -> bool {
         if self.contains(val) {
+            std::print("doesn't insert since contained " + val.to_string());
             false
         } else {
+            std::print("inserts the value into the list");
             self.ll.new_last().val = val;
             true
         }
@@ -42,6 +44,7 @@ struct LinkedIntSet {
         for(let h = self.ll.head; h.is_some(); ()) {
             let v = h.unwrap();
             if v.val == val {
+                std::print("did contain val " + val.to_string())
                 return true;
             } else {
                 h = v.next;
@@ -49,6 +52,7 @@ struct LinkedIntSet {
 
         }
 
+        std::print("did not contain val " + val.to_string());
         false
     }
 
@@ -57,23 +61,57 @@ struct LinkedIntSet {
     }
 }
 
-fn main() {
+struct IterDesc {
+    contained: i64,
+}
+
+fn do_inner(iters: i64) -> IterDesc {
+    let id = struct IterDesc { contained: 0 };
+
     let s = LinkedIntSet::new();
-
-    let contained = 0;
-    let iters = 100000;
-
+    let rands = [];
     for(let i = 0; i < iters; i = i + 1) {
         let v = i64::rand().abs().modulo(iters);
+        rands.push(v);
+    }
+
+    let start = Time::now();
+
+    for(let v = rands.pop_back(); v.is_some(); v = rands.pop_back()) {
         //let v = i;
 
         //std::print("v is " + v.to_string());
 
-        let was_new = s.insert(v);
+        let was_new = s.insert(v.unwrap());
 
         if !was_new {
-            contained = contained + 1;
+            id.contained = id.contained + 1;
         }
+    }
+
+    let end = Time::now();
+
+    let dur = end - start;
+
+    id.dur = dur;
+
+    id
+}
+
+fn main() {
+
+    let contained = 0;
+
+    let inner_iters = 10;
+
+    let total_iters = 1;
+
+    for(let o = 0; o < total_iters; o = o + 1) {
+        let id = usr::do_inner(inner_iters);
+
+        id.dur.print("");
+
+        contained = contained + id.contained;
     }
 
     std::print("pre-contained count:" + contained.to_string());

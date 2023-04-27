@@ -87,20 +87,24 @@ function generate_body(x, y, mass) {
 function simulate_nbody(s) {
     let results = [];
 
+    let last_sample = [];
+
     for (let sample = 0; sample < s.samples; sample++) {
         let sample_one = [];
         for (let i = 0; i < s.bodies.length; i++) {
             let cur_body = s.bodies[i];
 
-            let others = [];
+            //let others = [];
 
+            /*
             for (let j = 0; j < s.bodies.length; j++) {
                 if (j !== i) {
                     others.push(s.bodies[j]);
                 }
             }
+            */
 
-            let fv = grav_from(cur_body, others);
+            let fv = grav_from(cur_body, s.bodies);
 
             cur_body.v_x = cur_body.v_x + (fv.x / cur_body.mass); // f = ma, a = f / m
             cur_body.v_y = cur_body.v_y + (fv.y / cur_body.mass);
@@ -117,6 +121,8 @@ function simulate_nbody(s) {
 
         results.push(sample_one);
     }
+
+    return results;
 }
 
 let bodies = [];
@@ -138,11 +144,26 @@ s.bodies = bodies
 s.samples = 100000
 s.step_time = 0.1
 
+let l = 0;
+
 for (let i = 0; i < 100; i++) {
-    console.time()
+    //console.time()
 
-    simulate_nbody(s)
+    start = new Date();
 
-    console.timeEnd()
+    let r = simulate_nbody(s);
+
+    end = new Date();
+
+    elapsed_secs = (end - start) / 1000.0;
+
+    console.log(elapsed_secs)
+
+
+    //console.timeEnd()
+
+    l += r.length;
+
+    //console.log(r.pop());
 
 }

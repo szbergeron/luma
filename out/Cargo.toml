@@ -9,10 +9,11 @@ edition = "2021"
 lazy_static = "1.4.0"
 rand = { version = "0.8.5", features = ["small_rng"] }
 rclite = "0.2.2"
+hashbrown = "0.3"
 # tikv-jemallocator = "0.4.0"
 
 [profile.release]
-lto = "fat"
+#lto = "fat"
 panic = "abort"
 #debug = true
 

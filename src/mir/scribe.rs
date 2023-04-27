@@ -708,11 +708,9 @@ impl<'a> ScribeOne<'a> {
                 let trt = quark.resolved_base_of(quark.typeofs.get(target_fn)).await;
                 let args_byref = match &trt.resolve().inner {
                     NodeUnion::Function(fd, _) => {
-                        fd.parameters.iter().map(|f| {
-                            f.byref
-                        }).collect_vec()
-                    },
-                    _ => unreachable!()
+                        fd.parameters.iter().map(|f| f.byref).collect_vec()
+                    }
+                    _ => unreachable!(),
                 };
 
                 let mut args_s = Vec::new();
@@ -830,7 +828,7 @@ impl<'a> ScribeOne<'a> {
         match exp {
             AnyExpression::Block(b) => {
                 let tv = UntypedVar::temp();
-                code.push(format!("{ind}let mut {tv} = Value::Uninhabited();"));
+                code.push(format!("{ind}let mut {tv} = new_none();"));
 
                 //
                 if let Some(v) = b.final_expr {}
@@ -877,9 +875,7 @@ impl<'a> ScribeOne<'a> {
 
                 // don't need this in preamble, since because of binding it can get dropped at end
                 // of scope and this is naturally handled by rust itself
-                code.push(format!(
-                    "{ind}let mut {var_for}: Value = Value::Uninhabited();"
-                ));
+                code.push(format!("{ind}let mut {var_for}: Value = new_none();"));
 
                 let from = self
                     .to_rs_dyn(quark, from_source, preamble, code, indent + 1, submap)
@@ -1056,7 +1052,7 @@ impl<'a> ScribeOne<'a> {
                         "std::i64"
                     }
                     cst::Literal::UnitLiteral() => {
-                        code.push(format!("{ind}let mut {uv} = Value::Uninhabited();"));
+                        code.push(format!("{ind}let mut {uv} = new_none();"));
 
                         "std::Unit"
                     }
@@ -1168,7 +1164,7 @@ impl<'a> ScribeOne<'a> {
 
                 let res_var = UntypedVar::temp();
 
-                code.push(format!("{ind}let mut {res_var} = Value::Uninhabited();"));
+                code.push(format!("{ind}let mut {res_var} = new_none();"));
 
                 code.push(format!("{ind}{{"));
 
@@ -1250,10 +1246,22 @@ impl<'a> ScribeOne<'a> {
 
                 Some(res_var)
             }
+            AnyExpression::Return(r) => {
+                let res = UntypedVar::temp();
+                let e = self
+                    .to_rs_dyn(quark, r.inner_exp, preamble, code, indent + 1, submap)
+                    .await;
+
+                if let Some(e) = e {
+                    code.push(format!("return {e};"));
+                } else {
+                    code.push(format!("return new_none();"));
+                }
+
+                Some(res)
+            }
             other => todo!("handle {other:?}"),
         }
-
-
     }
 
     async fn emit_composite_builtup(
@@ -1372,6 +1380,10 @@ impl<'a> ScribeOne<'a> {
         let ret_mono = Monomorphization::from_resolved(smr.substitute_of(ret_mono));
         let ret = format!("{}*", ret_mono.encode_name());
         tracing::warn!("Got ret mono: {ret}");
+        let params_fused = params_tid
+            .clone()
+            .into_iter()
+            .zip(params_from_fd.into_iter());
 
         if is_builtin.is_none() {
             /*
@@ -1397,19 +1409,24 @@ impl<'a> ScribeOne<'a> {
                 OutputType::FullInf() => {
                     //let params = Vec::new();
 
-                    let params = join_all(params_tid.iter().map(|(pn, pt, pid)| {
-                        let v = UntypedVar::from(*pid);
+                    //let params = join_all(params_tid.iter().map(|(pn, pt, pid)| {
+                    let params = join_all(params_fused.map(|((pn, pt, pid), (pi))| {
+                        let v = UntypedVar::from(pid);
 
                         async move {
                             let ah = Monitor::instance().set_alert(
                                 format!("waiting to resolve pt of p by name {pn}").intern(),
                             );
-                            let t = quark.resolved_type_of(*pt).await;
+                            let t = quark.resolved_type_of(pt).await;
                             Monitor::instance().unset_alert(ah);
                             let t = smr.substitute_of(t);
                             let m = Monomorphization::from_resolved(t);
 
-                            format!("mut {v}: {}", m.encode_ref())
+                            if pi.byref {
+                                format!("{v}: &{}", m.encode_ref())
+                            } else {
+                                format!("mut {v}: {}", m.encode_ref())
+                            }
                         }
                     }))
                     .await
@@ -1445,6 +1462,13 @@ impl<'a> ScribeOne<'a> {
                         })
                         .join(", ");
                     within.push(format!("pub fn {fname}({params}) -> Value {{"));
+                    let fparams = params_tid
+                        .iter()
+                        .map(|(n, _, v)| format!("{{{}:?}}", UntypedVar::from(*v)))
+                        .join(", ");
+                    within.push(format!(
+                        "println!(\"called fn {fname} with params {fparams}\");"
+                    ));
                     let mut preamble = Vec::new();
                     let mut code = Vec::new();
                     let res = self
@@ -1479,8 +1503,6 @@ impl<'a> ScribeOne<'a> {
                     let mut param_vars = Vec::new();
 
                     let mut param_names = Vec::new();
-
-                    let params_fused = params_tid.into_iter().zip(params_from_fd.into_iter());
 
                     let params = join_all(params_fused.map(|((pn, pt, pid), (pi))| {
                         let v = UntypedVar::from(pid);
@@ -1543,6 +1565,13 @@ impl<'a> ScribeOne<'a> {
                     let args = param_vars.iter().map(|v| v).join(", ");
 
                     within.push(format!("pub fn {fname}({params}) -> Value {{"));
+                    let fparams = params_tid
+                        .iter()
+                        .map(|(n, _, v)| format!("{{{}:?}}", UntypedVar::from(*v)))
+                        .join(", ");
+                    within.push(format!(
+                        "println!(\"called fn {fname} with params {fparams}\");"
+                    ));
                     //within.push(format!("    {builtin_inner}({args})"));
 
                     let mut builtin_substituted = builtin_inner.resolve().to_owned();

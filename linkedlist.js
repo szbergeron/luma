@@ -54,24 +54,41 @@ class LinkedIntSet {
   }
 }
 
-console.time();
 
 const s = new LinkedIntSet();
 
+let total_iters = 100;
+
 let contained = 0;
-const iters = 100000;
+for (let v = 0; v < total_iters; v = v + 1) {
+    const iters = 100000;
 
-for (let i = 0; i < iters; i++) {
-    const v = Math.floor(Math.random() * iters);
-    //const v = i;
+    let rands = [];
 
-    const was_new = s.insert(v);
-
-    if (!was_new) {
-      contained++;
+    for (let i = 0; i < iters; i++) {
+        const v = Math.floor(Math.random() * iters);
+        //const v = i;
+        rands.push(v);
     }
+
+    start = new Date();
+
+    for (let i = 0; i < iters; i++) {
+        //const v = Math.floor(Math.random() * iters);
+        const v = rands.pop();
+
+        const was_new = s.insert(v);
+
+        if (!was_new) {
+          contained++;
+        }
+    }
+
+    end = new Date();
+
+    elapsed_secs = (end - start) / 1000.0;
+
+    console.log(elapsed_secs)
 }
 
 console.log(`pre-contained count: ${contained}`);
-
-console.timeEnd();

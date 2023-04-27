@@ -1,27 +1,27 @@
 struct Trie {
     var root: TrieNode;
 
-    fn insert(self: Trie, s: String) {
+    fn insert(self: Trie isref, s: String isref) {
         self.insert_rec(self.root, s, s)
     };
 
-    fn insert_rec(self: Trie, at_node: TrieNode, remain: String, finally: String) {
-        std::print("remain is " + remain);
+    fn insert_rec(self: Trie isref, at_node: TrieNode isref, remain: String isref, finally: String isref) {
+        //std::print("remain is " + remain);
         if remain.len() == 0 {
-            std::print("inserted " + finally);
+            //std::print("inserted " + finally);
             at_node.is_final = true;
             at_node.string = finally;
         } else {
             let c = remain.head();
-            std::print("head is:");
-            std::print(c);
+            //std::print("head is:");
+            //std::print(c);
 
             if !at_node.children.contains_key(c) {
-                std::print("inserting at");
-                std::print(c);
-                at_node.children.insert(c, self.make_node());
+                //std::print("inserting at");
+                //std::print(c);
+                at_node.children.insert(c, Trie::make_node());
             } else {
-                std::print("already had");
+                //std::print("already had");
             }
 
             let child = at_node.children.get(c).unwrap();
@@ -30,7 +30,7 @@ struct Trie {
         }
     };
 
-    fn make_node(self: Trie) -> TrieNode {
+    fn make_node() -> TrieNode {
         let v = HashMap::new();
 
         struct TrieNode { children: v }
@@ -38,19 +38,17 @@ struct Trie {
 
     fn new() -> Trie {
         let s = struct Trie {
-            root: std::none()
+            root: Trie::make_node()
         };
-
-        s.root = s.make_node();
 
         s
     };
 };
 
 struct TrieNode {
-    var children: HashMap<char, TrieNode>;
+    var children: HashMap<u8, TrieNode>;
 
-    fn contains(self: TrieNode, s: String) -> bool {
+    fn contains(self: TrieNode isref, s: String isref) -> bool {
         if s.len() == 0 {
             self.is_final
         } else {
@@ -64,13 +62,49 @@ struct TrieNode {
 };
 
 fn main() {
-    let t = Trie::new();
 
-    t.insert("abc");
-    t.insert("abd");
+
+    let samples = 1000000;
+
+    let total_iters = 100;
+    let contained = 0;
+
+    for(let o = 0; o < total_iters; o = o + 1) {
+
+        let rand_strings = [];
+        for (let i = 0; i < samples; i = i + 1) {
+            let strlen = i64::rand().abs().modulo(6) + 3; // range 5 through 10
+
+            /*for (let j = 0; j < strlen; j = j + 1) {
+            }*/
+            let s = String::rand_of_len(strlen);
+
+            rand_strings.push(s);
+        }
+
+        let before = Time::now();
+
+
+        let t = Trie::new();
+
+        for (let i = 0; i < rand_strings.len(); i = i + 1) {
+            let s = rand_strings.get(i);
+            if t.root.contains(s) {
+                contained = contained + 1;
+            } else {
+                t.insert(s);
+            }
+        }
+
+
+        let after = Time::now();
+        let dur = after - before;
+
+        dur.print("");
+    }
 
     std::print("contains of:");
+    std::print(contained);
 
-    std::print(t.root.contains("abc"));
-    std::print(t.root.contains("no"));
+
 }

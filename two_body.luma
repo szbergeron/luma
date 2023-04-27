@@ -13,7 +13,7 @@ struct Body noref {
  *
  */
 
-struct ForceVector {
+struct ForceVector noref {
     x: f64,
     y: f64,
 
@@ -94,17 +94,18 @@ fn simulate_nbody(s: Simulation) -> Vec<Vec<Vec2>> {
     //let results = std::Vec::new();
     let results = [];
 
-    std::print("simulating bodies");
+    //std::print("simulating bodies");
     let bodies = s.bodies;
     for (let sample = 0; sample < s.samples; sample = sample + 1) {
         let sample_one = [];
 
-        std::print("doing sample " + sample.to_string());
+        //std::print("doing sample " + sample.to_string());
         for (let i = 0; i < bodies.len(); i = i + 1) {
             //std::print("doing body " + i.to_string());
 
             let cur_body = bodies.get(i);
 
+            /*
             let other_bodies = [];
 
             for (let j = 0; j < bodies.len(); j = j + 1) {
@@ -113,15 +114,18 @@ fn simulate_nbody(s: Simulation) -> Vec<Vec<Vec2>> {
                     other_bodies.push(bodies.get(j));
                 }
             }
+            */
             
             //let fv = struct ForceVector { x: 0.0, y: 0.0 };
-            let fv = usr::grav_from(cur_body, other_bodies);
+            let fv = usr::grav_from(cur_body, bodies);
 
             cur_body.v_x = cur_body.v_x + (fv.x / cur_body.mass); // f = ma, a = f / m
             cur_body.v_y = cur_body.v_y + (fv.y / cur_body.mass);
 
             cur_body.x = cur_body.x + (cur_body.v_x * s.step_time);
             cur_body.y = cur_body.y + (cur_body.v_y * s.step_time);
+
+            bodies.set(i, cur_body);
 
             //std::print("new body x is " + cur_body.x.to_string());
             //std::print("new body y is " + cur_body.y.to_string());
@@ -153,17 +157,32 @@ fn main() {
     let s = struct Simulation { bodies: b };
 
     //s.samples = 1000000;
-    //s.samples = 10000;
-    s.samples = 100000;
+    s.samples = 10000;
+    //s.samples = 250;
     s.step_time = 0.1;
 
     //s.results = std::Vec::new();
     
     //s.pr = std::print;
     //s.pr = usr::simulate_nbody;
+    let result = [];
 
-    let result = usr::simulate_nbody(s);
+    for (let i = 0; i < 100; i = i + 1) {
+        let start = Time::now();
 
-    std::print("result of final state:");
-    std::print(result.get(result.len() - 1));
+        result = usr::simulate_nbody(s);
+
+        let end = Time::now();
+
+        let dur = end - start;
+
+        //dur.print("Time to complete simulation");
+        dur.print("");
+
+        std::blackhole(result);
+    }
+
+    let ind = i64::rand().abs().modulo(result.len() - 1);
+    std::print("result of final state at ind: " + ind.to_string());
+    std::print(result.get(ind));
 }

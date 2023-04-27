@@ -20,12 +20,15 @@ struct i64 noref #builtin "i64" {
     fn operator[_>_](self: std::i64 isref, other: std::i64 isref) -> std::bool
         #builtin "$self > $other" "luma_i64_op_gt_silly($self, $other)" "luma_op_gt_slow($self, $other)"
 
+    fn operator[_>=_](self: std::i64 isref, other: std::i64 isref) -> std::bool
+        #builtin "$self >= $other" "luma_i64_op_gt_silly($self, $other)" "todo!()"
+
     fn to_string(self: std::i64 isref) -> std::String
         #builtin "$self.to_string()" "" "luma_to_string_slow($self)"
 
     fn rand() -> i64 #builtin "rand_i64()" "" "luma_i64_rand_slow()"
 
-    fn abs(self: i64 isref) -> i64 #builtin "$self.abs()" "" ""
+    fn abs(self: i64 isref) -> i64 #builtin "$self.abs()" "" "unreachable!()"
 
     fn modulo(self: std::i64 isref, modby: std::i64 isref) -> std::i64
         #builtin "$self % $modby" "" "luma_op_modulo_slow($self, $modby)"
@@ -57,27 +60,51 @@ struct f64 noref #builtin "f64" {
     fn operator[_>_](self: std::f64, other: std::f64) -> std::bool
         #builtin "$self > $other" "luma_i64_op_gt_silly($self, $other)" "luma_op_gt_slow($self, $other)";
 
+    fn operator[_>=_](self: std::f64, other: std::f64) -> std::bool
+        #builtin "$self >= $other" "luma_i64_op_gte_silly($self, $other)" "luma_op_gte_slow($self, $other)";
+
     fn to_string(self: std::f64) -> std::String
         #builtin "$self.to_string()" "" "luma_to_string_slow($self)";
 
     fn pow(self: std::f64, p: std::f64) -> std::f64
-        #builtin "$self.powf($p)" "" "luma_op_pow_slow($self, $p)";
+        #builtin "$self.powf($p)" "" "unreachable!()";
 
     fn sqrt(self: std::f64) -> std::f64
-        #builtin "$self.sqrt()" "" "luma_op_sqrt_slow($self)";
+        #builtin "$self.sqrt()" "" "unreachable!()";
 
-    fn abs(self: std::f64) -> std::f64 #builtin "$self.abs()" "" "luma_op_abs_slow($self)";
+    fn abs(self: std::f64) -> std::f64 #builtin "$self.abs()" "" "unreachable!()";
+
+    fn operator[-_](self: std::f64) -> std::f64 #builtin "-$self" "" "unreachable!()";
 
     fn modulo(self: std::f64, modby: std::f64) -> std::f64
         #builtin "$self % $modby" "" "luma_op_modulo_slow($self, $modby)";
 
     fn rand() -> std::f64 #builtin "rand_f64()" "" "luma_f64_rand_slow()";
 
-    fn inf() -> std::f64 #builtin "f64::INFINITY" "" "";
+    
+    fn inf() -> std::f64 #builtin "f64::INFINITY" "" "Value::F64(f64::INFINITY, FLOAT_OBJ.clone())";
 
     fn cos(self: std::f64) -> std::f64 {
         std::cosine(self)
     };
+
+    fn ffloor(self: std::f64) -> std::f64 {
+        if self < 0.0 {
+            0.0
+        } else {
+            self
+        }
+    };
+}
+
+struct Time noref #builtin "std::time::Instant" {
+    fn now() -> Time #builtin "std::time::Instant::now()" "" "luma_instant_new_slow()";
+
+    fn operator[_-_](self: Time, other: Time) -> Duration #builtin "$self - $other" "" "luma_op_subtract_slow($self, $other)";
+}
+
+struct Duration noref #builtin "std::time::Duration" {
+    fn print(self: Duration, msg: String) #builtin "luma_print_dur($self, $msg)" "" "luma_print_slow($self)";
 }
 
 struct bool noref #builtin "bool" {
@@ -94,23 +121,21 @@ struct bool noref #builtin "bool" {
             "todo!()"
 
     fn operator[!_](self: bool) -> bool
-        #builtin "!$self" "" ""
+        #builtin "!$self" "" "unreachable!()"
 }
 
 struct Option<T> noref #builtin "Option<$T>" {
     // todo: need to prop generics properly through mono
-    fn is_some<T>(self: Option<T> isref) -> bool #builtin "$self.is_some()" "" "";
+    fn is_some<T>(self: Option<T> isref) -> bool #builtin "$self.is_some()" "" "unreachable!()";
 
-    fn is_none<T>(self: Option<T> isref) -> bool #builtin "!$self.is_some()" "" "";
+    fn is_none<T>(self: Option<T> isref) -> bool #builtin "!$self.is_some()" "" "unreachable!()";
 
-    fn none<T>() -> Option<T> #builtin "None" "" "";
+    fn none<T>() -> Option<T> #builtin "None" "" "new_none()";
 
-    fn some<T>(v: T) -> Option<T> #builtin "Some($v)" "" "";
+    fn some<T>(v: T noref) -> Option<T> #builtin "Some($v)" "" "new_some($v)";
 
-    fn unwrap<T>(self: Option<T>) -> T #builtin "$self.unwrap()" "" "";
+    fn unwrap<T>(self: Option<T> noref) -> T #builtin "$self.unwrap()" "" "";
 }
-
-fn is_null<T>(v: T) -> bool #builtin "$v.inner.is_some()" "" "$v == Value::Uninhabited()"
 
 fn cosine(v: std::f64) -> std::f64 #builtin "$v.cos()" "" "luma_op_cos_slow($v)";
 
@@ -118,24 +143,30 @@ fn print<T>(v: T) -> std::Unit #builtin "luma_print_fast($v);" "luma_print_silly
 
 fn panic<T>(msg: std::String) -> T #builtin "panic_with($msg)" "panic_with($msg)" "panic_with($msg)";
 
+// This is used to take a value and "use" it so the compiler won't fold it out
+fn blackhole<T>(v: T) -> i64 #builtin "luma_blackhole($v)" "" "Value::I64(luma_blackhole($v), INT_OBJ.clone())";
+
 // requires T be a reference type
-fn none<T>() -> T #builtin "Default::default()" "" "Value::Uninhabited()";
+//fn none<T>() -> T #builtin "Default::default()" "" "Value::Uninhabited()";
 
 struct Unit noref #builtin "()" {}
 
 struct String noref #builtin "String" {
-    fn operator[_+_](self: std::String, other: std::String) -> std::String #builtin
+    fn operator[_+_](self: std::String, other: std::String isref) -> std::String #builtin
         "{ let mut first = $self; first.push_str($other.as_str()); first }" "" "luma_op_add_slow($self, $other)";
 
-    fn head(self: String) -> std::char #builtin "$self.chars().next().unwrap()" "" "";
+    // for now just support ascii
+    fn head(self: String isref) -> std::u8 #builtin "$self.chars().next().unwrap() as u8" "" "luma_str_op_head($self)";
 
-    fn tail(self: String) -> std::String #builtin "$self[1..].to_owned()" "" "";
+    fn tail(self: String isref) -> std::String #builtin "$self[1..].to_owned()" "" "luma_str_op_tail($self)";
 
-    fn len(self: String isref) -> std::i64 #builtin "$self.len() as i64" "" "";
+    fn len(self: String isref) -> std::i64 #builtin "$self.len() as i64" "" "luma_str_op_len($self)";
+
+    fn rand_of_len(len: i64) -> String #builtin "rand_of_len_fast($len)" "" "rand_of_len_slow($len)";
 };
 
-struct char noref #builtin "char" {
-    fn as_int(self: char) -> std::i64 #builtin "$self as i64" "" "";
+struct u8 noref #builtin "u8" {
+    fn as_int(self: u8) -> std::i64 #builtin "$self as i64" "" "luma_u8_op_as_int($self)";
 }
 
 /*struct StringSlice noref #builtin "&str" {
@@ -145,25 +176,25 @@ struct char noref #builtin "char" {
 //struct LumaVec<T> #builtin 
 
 struct Queue<T> noref #builtin "FastRefHandle<std::collections::VecDeque<$T>>" {
-    fn push_back<T>(self: Queue<T>, val: T) #builtin "$self.borrow_mut().push_back($val)" "" "";
+    fn push_back<T>(self: Queue<T> isref, val: T) #builtin "$self.borrow_mut().push_back($val)" "" "";
 
-    fn push_front<T>(self: Queue<T>, val: T) #builtin "$self.borrow_mut().push_front($val)" "" "";
+    fn push_front<T>(self: Queue<T> isref, val: T) #builtin "$self.borrow_mut().push_front($val)" "" "";
 
-    fn len<T>(self: Queue<T>) -> i64 #builtin "$self.borrow_mut().len() as i64" "" "";
+    fn len<T>(self: Queue<T> isref) -> i64 #builtin "$self.borrow_mut().len() as i64" "" "";
 
-    fn pop_front<T>(self: Queue<T>) -> Option<T> #builtin "$self.borrow_mut().pop_front()" "" "";
+    fn pop_front<T>(self: Queue<T> isref) -> Option<T> #builtin "$self.borrow_mut().pop_front()" "" "";
 
     fn new<T>() -> std::Queue<T> #builtin "FastRefHandle::from_val(std::collections::VecDeque::new())" "" "luma_queue_new_slow()";
 }
 
-struct HashMap<K, V> noref #builtin "FastRefHandle<std::collections::HashMap<$K, $V>>" {
-    fn contains_key<K, V>(self: HashMap<K, V>, key: K) -> bool #builtin "$self.borrow_mut().contains_key(&$key)" "" ""
+struct HashMap<K, V> noref #builtin "FastRefHandle<hashbrown::HashMap<$K, $V>>" {
+    fn contains_key<K, V>(self: HashMap<K, V> isref, key: K isref) -> bool #builtin "$self.borrow_mut().contains_key($key)" "" ""
 
-    fn new<K, V>() -> HashMap<K, V> #builtin "FastRefHandle::from_val(std::collections::HashMap::new())" "" ""
+    fn new<K, V>() -> HashMap<K, V> #builtin "FastRefHandle::from_val(hashbrown::HashMap::new())" "" ""
 
-    fn insert<K, V>(self: HashMap<K, V>, k: K, v: V) #builtin "$self.borrow_mut().insert($k, $v);" "" ""
+    fn insert<K, V>(self: HashMap<K, V> isref, k: K, v: V) #builtin "$self.borrow_mut().insert($k, $v);" "" ""
 
-    fn get<K, V>(self: HashMap<K, V>, k: K) -> Option<V> #builtin "$self.borrow_mut().get(&$k).cloned()" "" ""
+    fn get<K, V>(self: HashMap<K, V> isref, k: K) -> Option<V> #builtin "$self.borrow_mut().get(&$k).cloned()" "" ""
 }
 
 //struct MutRef<T> 
@@ -174,6 +205,10 @@ struct Vec<T> noref #builtin "FastRefHandle<Vec<$T>>" {
     fn try_get<T>(self: std::Vec<T> isref, ind: std::i64) -> Option<T> #builtin "$self.borrow_mut().get($ind as usize).cloned()" "" "luma_vec_get_slow($self, $ind)"
 
     fn get<T>(self: std::Vec<T> isref, ind: std::i64) -> T #builtin "$self.borrow_mut().get($ind as usize).cloned().unwrap()" "" "luma_vec_get_slow($self, $ind)"
+
+    fn pop_back<T>(self: Vec<T> isref) -> Option<T> #builtin "$self.borrow_mut().pop()" "" ""
+
+    fn clear<T>(self: Vec<T> isref) #builtin "$self.borrow_mut().clear()" "" ""
 
     /*
     fn get<T>(self: std::Vec<T>, ind: std::i64) -> T {
@@ -188,7 +223,7 @@ struct Vec<T> noref #builtin "FastRefHandle<Vec<$T>>" {
     fn len<T>(self: std::Vec<T> isref) -> std::i64 #builtin "$self.borrow_mut().len() as i64" "" "luma_vec_len_slow($self)"
 
     fn set<T>(self: std::Vec<T> isref, index: std::i64, value: T)
-        #builtin "$self.borrow_mut().insert($index as usize, $value);" "" "todo!()"
+        #builtin "$self.borrow_mut()[$index as usize] = $value;" "" "todo!()"
     //fn new_i64() -> std::Vec<i64> #builtin "Vec::new" "" "";
     /*fn iter<T>(self: std::Vec<T>) -> std::VecIterator<T> {
         struct std::VecIterator { over: self, cur_index: 0 }

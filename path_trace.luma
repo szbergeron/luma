@@ -1,0 +1,171 @@
+struct Ray noref {}
+
+struct Vec3 noref {
+    fn zeroed() -> Vec3 {
+        let v = struct Vec3 {};
+        v.x = 0.0;
+        v.y = 0.0;
+        v.z = 0.0;
+
+        v
+    }
+
+    fn normalize(self: Vec3) -> Vec3 {
+        let new = Vec3::zeroed();
+
+        new.x = self.x / self.length();
+        new.y = self.y / self.length();
+        new.z = self.z / self.length();
+
+        new
+    }
+
+    fn length(self: Vec3) -> f64 {
+        let length = (self.x.pow(2.0) + self.y.pow(2.0) + self.z.pow(2.0)).sqrt();
+
+        length
+    }
+
+    fn dot(self: Vec3, other: Vec3) -> f64 {
+        let new = Vec3::zeroed();
+
+        new.x = self.x * other.x;
+        new.y = self.y * other.y;
+        new.z = self.z * other.z;
+
+        new.x + new.y + new.z
+    }
+
+    fn operator[_*_](self: Vec3, other: Vec3) -> Vec3 {
+        let n = Vec3::zeroed();
+
+        n.x = self.x * other.x;
+        n.y = self.y * other.y;
+        n.z = self.z * other.z;
+
+        n
+    }
+
+    fn operator[_+_](self: Vec3, other: Vec3) -> Vec3 {
+        let n = Vec3::zeroed();
+
+        n.x = self.x + other.x;
+        n.y = self.y + other.y;
+        n.z = self.z + other.z;
+
+        n
+    }
+
+    fn operator[-_](self: Vec3) -> Vec3 {
+        let n = Vec3::zeroed();
+
+        n.x = -self.x;
+        n.y = -self.y;
+        n.z = -self.z;
+
+        n
+    }
+
+    fn scale(self: Vec3, by: f64) -> Vec3 {
+        let n = Vec3::zeroed();
+
+        n.x = n.x * by;
+        n.y = n.y * by;
+        n.z = n.z * by;
+
+        n
+    }
+}
+
+fn mirror_direction(L: Vec3, N: Vec3) -> Vec3 {
+    std::panic("todo")
+}
+
+struct Point noref {}
+
+struct Sphere noref {}
+
+struct Color noref {
+    fn black() -> Color {
+        let c = struct Color {};
+
+        c.r = 0.0;
+        c.g = 0.0;
+        c.b = 0.0;
+
+        c
+    }
+
+    fn background() -> Color {
+        let c = Color::black();
+        c.r = 0.5;
+        c.g = 0.5;
+        c.b = 0.5;
+
+        c
+    }
+}
+
+struct Params noref {}
+
+struct Light noref {}
+//
+struct Material noref {}
+
+struct Collision noref {}
+
+fn color_collision(collision: Collision, ray: Ray, scene_lights: Vec<Light>) -> Color {
+    let color = Color::black();
+
+    let v = Vec3::zeroed();
+    v = ray.V;
+
+    if ray.V.scale(-1.0).dot(collision.normal) >= 0.0 {
+        for (let l = 0; l < scene_lights.len(); l = l + 1) {
+            let light = scene_lights.get(l);
+        }
+    }
+
+    std::panic("todo")
+}
+
+fn local_illumination(V_i: Vec3, N_i: Vec3, L_i: Vec3, material: Material, clight: Vec3) -> Vec3 {
+    let zero_v = Vec3::zeroed();
+
+    let V = V_i.normalize();
+    let N = N_i.normalize();
+    let L = L_i.normalize();
+
+    if N.dot(V) < 0.0 {
+        // back face
+        return zero_v;
+    }
+
+    if N.dot(L) < 0.0 {
+        // I forget why
+        return zero_v;
+    }
+
+    //let K_a = material.ambient;
+    let K_d = material.diffuse;
+    let K_s = material.specular;
+
+    let R = usr::mirror_direction(-L, N).normalize();
+
+    //let shinies = R.dot(V).ffloor();
+    //shinies = shinies.pow(material.shininess);
+
+    let i_si = (clight * K_s).scale((R.dot(V)).ffloor().pow(material.shininess));
+
+    let i_di = (clight * K_d).scale(N.dot(L).ffloor());
+
+    i_di + i_si
+}
+
+fn trace(params: Params, ray: Ray, depth: i64, scene: Vec<Sphere>, lights: Vec<Light>) -> Color {
+    if depth >= params.max_depth {
+        return Color::black();
+    }
+
+    std::panic("todo")
+}
