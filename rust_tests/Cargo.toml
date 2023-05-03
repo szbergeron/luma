@@ -10,5 +10,5 @@ rand = {version = "0.8.5", features = ["small_rng", "simd_support", "packed_simd
 hashbrown = "*"
 
 [profile.release]
-lto = "fat"
+#lto = "fat"
 panic = "abort"

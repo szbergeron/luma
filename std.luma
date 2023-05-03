@@ -152,8 +152,8 @@ fn blackhole<T>(v: T) -> i64 #builtin "luma_blackhole($v)" "" "Value::I64(luma_b
 struct Unit noref #builtin "()" {}
 
 struct String noref #builtin "String" {
-    fn operator[_+_](self: std::String, other: std::String isref) -> std::String #builtin
-        "{ let mut first = $self; first.push_str($other.as_str()); first }" "" "luma_op_add_slow($self, $other)";
+    fn operator[_+_]<T>(self: std::String, other: T isref) -> std::String #builtin
+        "{ let mut first = $self; first.push_str(luma_to_string_fast($other).as_str()); first }" "" "luma_op_add_slow($self, $other)";
 
     // for now just support ascii
     fn head(self: String isref) -> std::u8 #builtin "$self.chars().next().unwrap() as u8" "" "luma_str_op_head($self)";
@@ -163,6 +163,10 @@ struct String noref #builtin "String" {
     fn len(self: String isref) -> std::i64 #builtin "$self.len() as i64" "" "luma_str_op_len($self)";
 
     fn rand_of_len(len: i64) -> String #builtin "rand_of_len_fast($len)" "" "rand_of_len_slow($len)";
+
+    fn quoted(self: String isref) -> String {
+        "'" + self + "'"
+    }
 };
 
 struct u8 noref #builtin "u8" {
@@ -229,6 +233,31 @@ struct Vec<T> noref #builtin "FastRefHandle<Vec<$T>>" {
         struct std::VecIterator { over: self, cur_index: 0 }
     };*/
 }
+
+/*
+struct RangedIterator {
+    var end: i64;
+    var cur: i64;
+    var iter_by: i64;
+
+    fn next(self: RangedIterator) -> i64 {
+        if self.has_next() == false {
+            std::panic("tried to get next from a ranged iter with no next")
+        } else {
+            self.cur = self.cur + self.iter_by;
+            self.cur
+        }
+    };
+
+    fn has_next(self: std::RangedIterator) -> bool {
+        self.cur + self.iter_by < self.end
+    };
+};
+
+fn range(start: i64, end: i64) -> std::RangedIterator {
+    struct std::RangedIterator { cur: start, end: end, iter_by: 1 }
+};
+*/
 
 /*
 // don't use, this is broken for some reason

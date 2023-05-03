@@ -61,6 +61,10 @@ pub fn luma_print_dur(dur: Duration, m: String) {
     println!("{m}{}", dur.as_secs_f64());
 }
 
+pub fn luma_to_string_fast<T: std::fmt::Display>(v: T) -> String {
+    format!("{v}")
+}
+
 pub fn rand_i64() -> i64 {
     let mut r = rand::thread_rng();
     let mut sng = SmallRng::from_rng(&mut r).unwrap();
@@ -788,21 +792,19 @@ pub fn luma_instant_new_slow() -> Value {
 pub fn luma_blackhole<T: std::fmt::Debug>(v: T) -> i64 {
     let as_fmt = format!("{v:?}");
     let mut s = 0i64;
-    unsafe {
-        /*let p = (&v as *const T) as *const u8;
+    /*let p = (&v as *const T) as *const u8;
 
-        for byte in 0..std::mem::size_of::<T>() {
-            let b = *p;
-            let bb = b as i64;
+    for byte in 0..std::mem::size_of::<T>() {
+        let b = *p;
+        let bb = b as i64;
 
-            s += bb;
-        }*/
+        s += bb;
+    }*/
 
-        for c in as_fmt.chars() {
-            let ai = c as i64;
+    for c in as_fmt.chars() {
+        let ai = c as i64;
 
-            s += ai;
-        }
+        s += ai;
     }
 
     s

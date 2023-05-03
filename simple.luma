@@ -1,0 +1,24 @@
+struct A {}
+
+struct B {}
+
+fn transitive(a: A, b: B) {
+    b.bar = a.foo;
+}
+
+fn direct(a: A, v: String) {
+    a.foo = v;
+}
+
+fn main() {
+    let a = struct A {};
+    let b = struct B {};
+
+    // puts "hello world" into a.foo
+    usr::direct(a, "hello world");
+
+    // copies "hello world" from a.foo to b.bar
+    usr::transitive(a, b);
+
+    std::print("bar is " + b.bar.quoted());
+}

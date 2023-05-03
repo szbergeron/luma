@@ -1410,7 +1410,7 @@ impl<'a> ScribeOne<'a> {
                     //let params = Vec::new();
 
                     //let params = join_all(params_tid.iter().map(|(pn, pt, pid)| {
-                    let params = join_all(params_fused.map(|((pn, pt, pid), (pi))| {
+                    let params = join_all(params_fused.map(|((pn, pt, pid), pi)| {
                         let v = UntypedVar::from(pid);
 
                         async move {
@@ -1504,7 +1504,7 @@ impl<'a> ScribeOne<'a> {
 
                     let mut param_names = Vec::new();
 
-                    let params = join_all(params_fused.map(|((pn, pt, pid), (pi))| {
+                    let params = join_all(params_fused.map(|((pn, pt, pid), pi)| {
                         let v = UntypedVar::from(pid);
 
                         param_vars.push(v.clone());

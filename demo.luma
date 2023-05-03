@@ -1,0 +1,61 @@
+struct User {
+    id: i64,
+    name: String,
+}
+
+struct House {
+    address: String,
+}
+
+// indicates b depends on a
+fn depends(a: User, b: User) {
+    std::print("depends " + b.id + " on " + a.id);
+    a.dependents.push(b.id);
+    b.depends_on = Option::some(a);
+}
+
+fn moves_into(u: User, into: House) {
+    // user no longer in old household, break ties
+    u.dependents = [];
+    if u.depends_on.is_some() {
+        // remove self from the existing dependents of the old depends_on
+        let dep_on = u.depends_on.unwrap();
+        let new_dependents = [];
+        for (let i = 0; i < dep_on.dependents.len(); i = i + 1) {
+            let dep_id = dep_on.dependents.get(i);
+            if u.id != dep_id {
+                new_dependents.push(dep_id);
+            } else {
+                std::print("removes dep of " + dep_on.id + " on " + dep_id);
+            }
+        }
+
+        dep_on.dependents = new_dependents;
+    }
+    u.depends_on = Option::none();
+    u.lives_in = into;
+}
+
+fn new_user(name: String) -> User {
+    let u = struct User { name: name, id: i64::rand().abs() };
+
+    u
+}
+
+fn main() {
+    let bob = usr::new_user("Bob Bobertson");
+
+    let sue = usr::new_user("Sue Joe");
+
+    //usr::depends(sue, bob);
+    usr::depends(bob, sue);
+
+    let house = struct House { address: "123 City Lane" };
+
+    sue.lives_in = house;
+    bob.lives_in = house;
+
+    let house2 = struct House { address: "456 Country Rd" };
+
+    usr::moves_into(sue, house2);
+}

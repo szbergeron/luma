@@ -1224,7 +1224,7 @@ impl<'lexer> Parser<'lexer> {
                 /*let ae = self.atomic_expression(&t).join_hard(&mut t).catch(&mut t)?;
                 tracing::info!("ae is: {ae:?}");
                 ae*/
-                println!("Parsing operand because got {tok:?}");
+                tracing::debug!("Parsing operand because got {tok:?}");
                 let operand = self
                     .parse_operand(&t, with_generics)
                     .join_hard(&mut t)

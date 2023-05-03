@@ -13,7 +13,7 @@ hashbrown = "0.3"
 # tikv-jemallocator = "0.4.0"
 
 [profile.release]
-#lto = "fat"
+lto = "fat"
 panic = "abort"
 #debug = true
 

@@ -22,7 +22,7 @@ struct ForceVector noref {
     }
 }
 
-fn grav_from(on: Body, from: Vec<Body>) -> ForceVector {
+fn grav_from(on: Body, from: Vec<Body> isref) -> ForceVector {
     let v2 = struct Vec2 { x: 0.0, y: 0.0 };
 
     for ( let i = 0; i < from.len(); i = i + 1 ) {
@@ -90,9 +90,9 @@ struct Vec2 noref {
 }
 
 fn simulate_nbody(s: Simulation) -> Vec<Vec<Vec2>> {
-    //let results = std::Vec::with_capacity(s.samples);
+    let results = std::Vec::with_capacity(s.samples);
     //let results = std::Vec::new();
-    let results = [];
+    //let results = [];
 
     //std::print("simulating bodies");
     let bodies = s.bodies;
@@ -157,7 +157,7 @@ fn main() {
     let s = struct Simulation { bodies: b };
 
     //s.samples = 1000000;
-    s.samples = 10000;
+    s.samples = 100000;
     //s.samples = 250;
     s.step_time = 0.1;
 

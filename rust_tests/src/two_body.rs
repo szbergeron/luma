@@ -108,6 +108,8 @@ impl std::ops::Add for Vec2 {
     }
 }
 
+/// don't inline so we can inspect ASM
+#[inline(never)]
 fn simulate_nbody(s: &mut Simulation) -> Vec<Vec<Vec2>> {
     //let results = std::Vec::with_capacity(s.samples);
     //let results = std::Vec::new();
@@ -197,8 +199,8 @@ pub fn entry() {
 
         
         let mut stdn = std::io::sink();
-        writeln!(stdn, "result of final state:");
-        writeln!(stdn, "{:?}", result.get(result.len() - 1));
+        writeln!(stdn, "result of final state:").unwrap();
+        writeln!(stdn, "{:?}", result.get(result.len() - 1)).unwrap();
     }
 
 
