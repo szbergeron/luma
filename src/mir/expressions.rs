@@ -628,6 +628,8 @@ impl AnyExpression {
                     match vid {
                         Some(v) => within.add(AnyExpression::Variable(v, node_info)).0,
                         None => {
+                            // see if it exists as a plain symbol?
+
                             add_error(CompilationError::UnknownVariable(
                                 crate::errors::UnknownVariableError {
                                     variable: *one,

@@ -10,6 +10,10 @@ fn direct(a: A, v: String) {
     a.foo = v;
 }
 
+fn is_int(a: A) {
+    a.foo = 10;
+}
+
 fn main() {
     let a = struct A {};
     let b = struct B {};

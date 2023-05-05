@@ -60,7 +60,7 @@ impl<T> std::hash::Hash for Invisible<T>
 where
     T: Clone,
 {
-    fn hash<H: ~const std::hash::Hasher>(&self, state: &mut H) {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         // nothing
     }
 }
