@@ -27,3 +27,14 @@ fn generate_body(x: std::f64, y: std::f64, mass: std::f64) -> Body {
     b
 };
 ```
+
+If you're looking to hack on the "new bits" that come with Luma, or just want to see how the core of the inferencing engine works,
+take a look at `src/mir/quark.rs`, `src/mir/instance.rs`, and `src/mir/transponster.rs`.
+
+Good entry points for the compiler "as a whole" are `src/compile/stager.rs` for the "biggest picture" and setup orchestration, and `src/compile/per_module.rs`
+for most coordination of the compilation process after the parse and setup stage. Luma doesn't follow the typical pass segmentation structure you
+see in many toolchains, and instead relies on coordinated phase changes for the "big picture" passes. Name resolution is done/can be done at any phase
+after parsing, and at some point monomorphization/codegen and type inference will happen during overlapping time spans.
+
+Async-await is used pervasively through the post-parse stages of compilation, and forms the core of the inner computation engine where
+resolutions (of symbols, types, unifications, etc) are kept around as futures, and can be waited on by their dependents.
