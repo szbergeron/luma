@@ -3,3 +3,6 @@
 .vscode
 package-lock.json
 package.json
+out
+*.DS_STORE
+.idea

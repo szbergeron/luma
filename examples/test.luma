@@ -1,0 +1,45 @@
+struct Point {};
+
+struct Point;
+
+struct box<T> {
+    value: *T;
+    count: *i64;
+
+    fn operator[_copy]<T>(self: box<T>) -> box<T> {
+        // builtin
+        *self.count = *self.count + 1;
+
+        struct box { value: self.value, count: self.count }
+    }
+
+    fn operator[_drop]<T>(self: box<T>) {
+        // builtin
+        *self.count = *self.count - 1;
+        if *self.count == 0 {
+            free(self.value);
+            //bump_free(self.count);
+        }
+    }
+
+    fn new<T>(v: T) -> box<T> {
+        // builtin
+        c_box_val(&v, sizeof(v))
+    }
+}
+
+fn cluster(points: Vec<Point>) -> Vec<Vec<Point>> {
+}
+
+fn boxing(v: i64) {
+    let b = box v;
+    let c = b.clone();
+    takes_box(b);
+}
+
+fn takes_box(v: box i64) {
+}
+
+struct ThingWithRc {
+    v: Rc<i64>;
+}
