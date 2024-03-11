@@ -1,7 +1,5 @@
 use std::{collections::HashMap, sync::RwLock};
 
-//use dashmap::lock::RwLock;
-
 use crate::{
     cst::{
         FunctionBuiltin, NodeInfo, ScopedName, StructuralTyAttrs, SyntacticTypeReferenceInner,
@@ -14,8 +12,6 @@ use crate::cst;
 
 use super::tree::CtxID;
 
-//use itertoo
-
 use either::Either;
 use itertools::Itertools;
 
@@ -24,7 +20,6 @@ use itertools::Itertools;
 /// Each `+` is represented by an entry in `bases`
 #[derive(Debug)]
 pub struct AbstractTypeReference {
-    //pub id: AbstractTypeReferenceRef,
     pub inner: RwLock<TypeBase>,
 }
 
@@ -33,7 +28,6 @@ impl AbstractTypeReference {
         let cst = cst.resolve().unwrap();
         match &cst.inner {
             SyntacticTypeReferenceInner::Single { name } => Self {
-                //id: AbstractTypeReferenceRef::new_nil(),
                 inner: RwLock::new(TypeBase::UnResolved(UnResolvedType {
                     from: cst.info,
                     named: name.clone(),

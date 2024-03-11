@@ -1702,9 +1702,6 @@ pub fn get_lines() -> Vec<String> {
     r
 }
 
-//const OUTPUT_TYPE: OutputType = OutputType::AssumeTypeUnsafe();
-//const OUTPUT_TYPE: OutputType = OutputType::FullInf();
-
 lazy_static! {
     pub static ref OUTPUT_TYPE_ONCE: OnceCell<OutputType> = OnceCell::new();
 }
