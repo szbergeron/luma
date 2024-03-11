@@ -19,4 +19,5 @@ pub mod oracle;
 pub mod scribe;
 pub mod sets;
 pub mod transponster;
+//mod solver;
 //mod resolve;

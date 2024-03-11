@@ -116,13 +116,14 @@ struct Satisfier {
 }
 
 impl Satisfier {
-    /// This satisfier is "complete", so notify all dependants that
-    /// we're done
+
     pub fn dependants(&self) -> Vec<ValueID> {
         self.required_for.clone()
     }
 
     pub fn notify(&mut self, completed: ValueID) {
+        /// This satisfier is "complete", so notify all dependants that
+        /// we're done
         if self.requires.contains(&completed) {
             self.value_requirements_remaining -= 1;
         }

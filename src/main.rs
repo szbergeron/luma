@@ -3,7 +3,6 @@
 //#![feature(associated_type_defaults)]
 //#![feature(option_expect_none)]
 #![feature(
-    once_cell,
     new_uninit,
     iter_intersperse,
     vec_into_raw_parts,
@@ -29,9 +28,7 @@
     generic_const_exprs,
     const_trait_impl,
     box_patterns,
-    default_free_fn,
     map_many_mut,
-    is_some_and,
     async_iterator,
     closure_track_caller
 )]

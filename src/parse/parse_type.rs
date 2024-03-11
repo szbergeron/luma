@@ -4,7 +4,7 @@ use itertools::Itertools;
 
 use crate::cst::{
     self, CstNode, IntoCstNode, NodeInfo, ScopedName, StructuralTyAttrs, SyntacticTypeReference,
-    SyntacticTypeReferenceRef,
+    SyntacticTypeReferenceRef, VisibilityQualifier,
 };
 
 /*use cst::{
@@ -523,6 +523,7 @@ impl<'lexer> Parser<'lexer> {
 
         t.success(cst::TraitDefinition {
             info: NodeInfo::from_indices(start, end),
+            vis: VisibilityQualifier {},
             generics,
             name,
             functions,

@@ -15,7 +15,7 @@ use tracing::info;
 use crate::ast;
 
 use std::collections::HashMap;
-use std::default::default;
+use std::default;
 use std::{
     ptr::NonNull,
     sync::{
@@ -301,7 +301,7 @@ impl Node {
                     let s = build_back_up(p);
                     s
                 }
-                None => ScopedName { scope: default() },
+                None => ScopedName { scope: Default::default() },
             };
 
             base.scope.push(n.name);

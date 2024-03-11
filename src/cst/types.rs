@@ -15,6 +15,11 @@ use crate::{
 use super::{CstNode, FunctionDefinition, IntoCstNode, NodeInfo};
 
 #[derive(Clone, Debug)]
+pub struct VisibilityQualifier {
+
+}
+
+#[derive(Clone, Debug)]
 pub struct StructDefinition {
     pub info: NodeInfo,
 
@@ -71,6 +76,8 @@ impl CstNode for ImplementationDefinition {
 #[derive(Clone, Debug)]
 pub struct TraitDefinition {
     pub info: NodeInfo,
+
+    pub vis: VisibilityQualifier,
 
     pub generics: Vec<(IStr, SyntacticTypeReferenceRef)>,
 

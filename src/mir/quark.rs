@@ -242,7 +242,6 @@ impl Quark {
         tracing::debug!("New status for sets:");
 
         let b = self.instances.borrow();
-        //tracing::debug!("{:#?}", b);
     }
 
     #[track_caller]
@@ -257,6 +256,10 @@ impl Quark {
     pub async fn resolved_base_of(&'static self, t: TypeID) -> CtxID {
         self.with_instance(t, |inst| unsafe { inst.once_base.clone().wait() })
             .await
+    }
+
+    pub async fn resolved_either(&'static self, t: TypeID) -> Result<Result<ResolvedType, CtxID>, !> {
+        todo!()
     }
 
     /// When each quark phase completes we get one message here to flush errors
