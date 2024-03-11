@@ -2,6 +2,5 @@
 //! has a fully resolved module structure and types
 pub mod tree;
 pub mod types;
-//pub mod resolver;
 pub mod executor;
-pub mod resolver2;
+pub mod resolver;

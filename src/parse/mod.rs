@@ -1,17 +1,17 @@
-mod parse_base;
-mod parse_expr;
-mod parse_helper;
-mod parse_spec;
-mod parse_tools;
+mod base;
+mod expr;
+mod helper;
+mod spec;
+mod tools;
 mod parse_type;
 
 use std::collections::HashSet;
 
-pub use parse_base::*;
-pub use parse_expr::*;
-pub use parse_helper::*;
-pub use parse_spec::*;
-pub use parse_tools::*;
+pub use base::*;
+pub use expr::*;
+pub use helper::*;
+pub use spec::*;
+pub use tools::*;
 pub use parse_type::*;
 
 use crate::errors::{add_error, ErrorPrinter};

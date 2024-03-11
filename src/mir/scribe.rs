@@ -20,7 +20,7 @@ use smallstr::SmallString;
 use crate::{
     ast::{
         executor::{Executor, Thunk},
-        resolver2::{ImportError, NameResolver},
+        resolver::{ImportError, NameResolver},
         tree::{CtxID, NodeUnion, SubMap},
     },
     avec::AtomicVec,

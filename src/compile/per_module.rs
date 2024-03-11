@@ -26,8 +26,8 @@ use std::{
 use crate::{
     ast::{
         executor::{Executor, UnsafeAsyncCompletable, UnsafeAsyncCompletableFuture},
-        resolver2::NameResolutionMessage,
-        resolver2::Resolver,
+        resolver::NameResolutionMessage,
+        resolver::Resolver,
         tree::CtxID,
     },
     avec::AtomicVecIndex,

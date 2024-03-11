@@ -22,7 +22,7 @@ use uuid::Uuid;
 
 use crate::{
     ast::{
-        self, executor::Executor, resolver2::NameResolver, tree::CtxID, types::FunctionDefinition,
+        self, executor::Executor, resolver::NameResolver, tree::CtxID, types::FunctionDefinition,
     },
     compile::per_module::{
         Content, ControlMessage, ConversationContext, Destination, Earpiece, Message, Service,

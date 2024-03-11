@@ -1,0 +1,13 @@
+struct bool {
+    __data_size: 4,
+}
+
+impl bool {
+    fn operator[[!]](self) {
+        llvm
+    }
+}
+
+struct i32 {
+    __data_size: 4,
+}
