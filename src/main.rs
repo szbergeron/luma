@@ -1,7 +1,3 @@
-//#![feature(generic_associated_types)]
-//#[macro_use] extern crate lalrpop_util;
-//#![feature(associated_type_defaults)]
-//#![feature(option_expect_none)]
 #![feature(
     new_uninit,
     iter_intersperse,
@@ -46,42 +42,21 @@ extern crate static_assertions;
 #[macro_use]
 extern crate lazy_static;
 
-//use console_subscriber;
-
-//#[macro_use]
-//extern crate ouroboros;
-
-//#[macro_use]
-//extern crate enum_display_derive;
-
-//lalrpop_mod!(pub rsh);
-
-//#[macro_use]
-//extern crate lazy_static;
-
 use std::env;
 
 use tracing::{dispatcher, span, Dispatch, Subscriber};
 
 pub mod ast;
 pub mod avec;
-pub mod build_expr;
 pub mod compile;
 pub mod cst;
 pub mod helper;
-pub mod lalrpop_lexer;
 pub mod lex;
 pub mod lir;
-//pub mod llvm;
-//pub mod lowered;
-pub mod mir; // just until we fix lowering, reduce error count
-             //pub mod mid_repr;
+pub mod mir;
 pub mod errors;
 pub mod parse;
-pub mod traits;
-pub mod types;
 pub mod monitor;
-//pub mod bump_interner;
 
 fn main() {
     //console_subscriber::init();
