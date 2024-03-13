@@ -1,4 +1,7 @@
-use std::{time::{Duration, Instant}, collections::LinkedList};
+use std::{
+    collections::LinkedList,
+    time::{Duration, Instant},
+};
 
 use crate::rand_i64;
 

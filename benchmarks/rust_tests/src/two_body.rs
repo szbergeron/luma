@@ -1,5 +1,5 @@
-use std::time::Instant;
 use std::io::Write;
+use std::time::Instant;
 
 use crate::rand_f64;
 
@@ -31,7 +31,6 @@ impl Body {
 struct ForceVector {
     x: f64,
     y: f64,
-
 }
 
 impl ForceVector {
@@ -54,7 +53,8 @@ fn grav_from(on: &Body, from: &Vec<Body>) -> ForceVector {
         let bottom = on.distance(other).powf(2.0);
         let r_hat = r_hat(on, other);
 
-        if (bottom != 0.0) { // prevent NaNs
+        if (bottom != 0.0) {
+            // prevent NaNs
             let scale = top / bottom;
 
             let scaled = r_hat.scale(scale);
@@ -76,9 +76,14 @@ fn r_hat(a: &Body, b: &Body) -> Vec2 {
     Vec2 { x, y }
 }
 
-
 fn generate_body(x: f64, y: f64, mass: f64) -> Body {
-    let b = Body { x, y, mass, v_x: x.cos(), v_y: y.cos() };
+    let b = Body {
+        x,
+        y,
+        mass,
+        v_x: x.cos(),
+        v_y: y.cos(),
+    };
 
     b
 }
@@ -97,14 +102,20 @@ struct Vec2 {
 
 impl Vec2 {
     fn scale(self, by: f64) -> Vec2 {
-        Vec2 { x: self.x * by, y: self.y * by }
+        Vec2 {
+            x: self.x * by,
+            y: self.y * by,
+        }
     }
 }
 
 impl std::ops::Add for Vec2 {
     type Output = Vec2;
     fn add(self, rhs: Self) -> Self::Output {
-        Vec2 { x: self.x + rhs.x, y: self.y + rhs.y }
+        Vec2 {
+            x: self.x + rhs.x,
+            y: self.y + rhs.y,
+        }
     }
 }
 
@@ -125,7 +136,6 @@ fn simulate_nbody(s: &mut Simulation) -> Vec<Vec<Vec2>> {
         for i in 0..bodies.len() {
             //std::print("doing body " + i.to_string());
 
-
             //let mut other_bodies = vec![];
 
             //for (let j = 0; j < bodies.len(); j = j + 1) {
@@ -136,7 +146,6 @@ fn simulate_nbody(s: &mut Simulation) -> Vec<Vec<Vec2>> {
                 }
             }
 
-            
             //let fv = struct ForceVector { x: 0.0, y: 0.0 };
             let fv = grav_from(&bodies[i], &bodies);
 
@@ -150,7 +159,10 @@ fn simulate_nbody(s: &mut Simulation) -> Vec<Vec<Vec2>> {
 
             //std::print("new body x is " + cur_body.x.to_string());
             //std::print("new body y is " + cur_body.y.to_string());
-            sample_one.push(Vec2 { x: cur_body.x, y: cur_body.y });
+            sample_one.push(Vec2 {
+                x: cur_body.x,
+                y: cur_body.y,
+            });
         }
 
         results.push(sample_one);
@@ -175,13 +187,17 @@ pub fn entry() {
         b.push(body);
     }
 
-    let mut s = Simulation { bodies: b, samples: 100000, step_time: 0.1 };
+    let mut s = Simulation {
+        bodies: b,
+        samples: 100000,
+        step_time: 0.1,
+    };
 
     //s.samples = 1000000;
     //s.samples = 10000;
 
     //s.results = std::Vec::new();
-    
+
     //s.pr = std::print;
     //s.pr = usr::simulate_nbody;
 
@@ -197,12 +213,8 @@ pub fn entry() {
         //dur.print("Time to complete simulation");
         println!("{}", dur.as_secs_f64());
 
-        
         let mut stdn = std::io::sink();
         writeln!(stdn, "result of final state:").unwrap();
         writeln!(stdn, "{:?}", result.get(result.len() - 1)).unwrap();
     }
-
-
-
 }

@@ -50,17 +50,15 @@ pub mod ast;
 pub mod avec;
 pub mod compile;
 pub mod cst;
+pub mod errors;
 pub mod helper;
 pub mod lex;
 pub mod lir;
 pub mod mir;
-pub mod errors;
-pub mod parse;
 pub mod monitor;
+pub mod parse;
 
 fn main() {
-    //console_subscriber::init();
-    //tracing_subscriber::EnvFilter::builder().
     let ds = tracing_subscriber::fmt().finish();
 
     let ms = MySub {
@@ -71,8 +69,6 @@ fn main() {
     if limit {
         dispatcher::set_global_default(Dispatch::new(ms)).unwrap();
     } else {
-        //tracing::
-
         tracing_subscriber::fmt::init();
     }
 

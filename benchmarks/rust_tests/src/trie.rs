@@ -1,5 +1,5 @@
-use std::{time::Instant};
 use hashbrown::HashMap;
+use std::time::Instant;
 
 use crate::rand_i64;
 
@@ -18,9 +18,11 @@ impl TrieNode {
     pub fn contains(&self, remainder: &[u8]) -> bool {
         match remainder {
             [] => self.contains_str.is_some(),
-            [a, rest @ ..] => {
-                self.children.get(a).map(|c| c.contains(rest)).unwrap_or(false)
-            }
+            [a, rest @ ..] => self
+                .children
+                .get(a)
+                .map(|c| c.contains(rest))
+                .unwrap_or(false),
         }
     }
 
@@ -57,8 +59,6 @@ pub fn rand_of_len_fast(len: i64) -> String {
 }
 
 pub fn trie_entry() {
-
-
     let samples = 1000000;
 
     let total_iters = 100;
@@ -66,7 +66,6 @@ pub fn trie_entry() {
 
     //for(let o = 0; o < total_iters; o = o + 1) {
     for o in 0..total_iters {
-
         let mut rand_strings = vec![];
         //for (let i = 0; i < samples; i = i + 1) {
         for i in 0..samples {
@@ -82,7 +81,6 @@ pub fn trie_entry() {
 
         let before = Instant::now();
 
-
         let mut t = TrieNode::default();
 
         //for (let i = 0; i < rand_strings.len(); i = i + 1) {
@@ -94,7 +92,6 @@ pub fn trie_entry() {
                 t.insert(s.as_bytes(), s.clone());
             }
         }
-
 
         let after = Instant::now();
         let dur = after - before;
