@@ -423,7 +423,7 @@ impl<T: Clone + Debug + 'static> Clone for Thunk<T> {
     fn clone(&self) -> Self {
         Self {
             value: self.value.clone(),
-            compute_within: self.compute_within.clone(),
+            compute_within: self.compute_within,
             computation: self.computation.clone(),
         }
     }

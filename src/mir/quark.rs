@@ -244,7 +244,6 @@ impl Quark {
         let b = self.instances.borrow();
     }
 
-    #[track_caller]
     pub async fn resolved_type_of(&'static self, t: TypeID) -> ResolvedType {
         self.resolved_base_of(t).await; // just because this makes it less fragile for now (eek!)
 
@@ -252,7 +251,6 @@ impl Quark {
             .await
     }
 
-    #[track_caller]
     pub async fn resolved_base_of(&'static self, t: TypeID) -> CtxID {
         self.with_instance(t, |inst| unsafe { inst.once_base.clone().wait() })
             .await
