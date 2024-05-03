@@ -1,3 +1,5 @@
+For an in-depth overview of the language decisions behind Luma, and an overview of the inference algorithm that allows it to work, please see the [paper.pdf](https://github.com/szbergeron/luma/blob/master/paper.pdf) located in the root folder of the Luma repository
+
 # Luma
 is designed to provide the prototyping flexibility of Python and JavaScript, while being statically compiled to efficient, performant, code.
 
