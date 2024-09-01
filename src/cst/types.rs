@@ -238,6 +238,10 @@ impl SyntacticTypeReferenceRef {
         })
     }
 
+    pub fn is_nil(self) -> bool {
+        self.0.is_nil()
+    }
+
     /*pub fn resolve_mut(self) -> Option<dashmap::mapref::one::RefMut<'static, Self, SyntacticTypeReference>> {
         SYNTACTIC_FROM_REF.get_mut(&self)
     }*/

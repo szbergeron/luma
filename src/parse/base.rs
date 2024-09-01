@@ -9,7 +9,7 @@ use crate::ast::types::ParamInfo;
 //use crate::ast::{StaticVariableDeclaration, TopLevel};
 use crate::cst::cst_traits::NodeInfo;
 //use crate::cst::declarations::{OuterScope, TopLevel, Namespace, TypeReference, FunctionDefinition};
-use crate::cst::{self, FunctionBuiltin, ScopedName, SyntacticTypeReferenceRef};
+use crate::cst::{self, FunctionBuiltin, ScopedName, SyntacticTypeReference, SyntacticTypeReferenceRef};
 use crate::lex::{ParseResultError, Token};
 
 //use crate::helper::lex_wrap::LookaheadStream;
@@ -471,12 +471,17 @@ impl<'lexer> Parser<'lexer> {
         let mut rvec: Vec<_> = Vec::new();
 
         while let Some(i) = t.try_take(Token::Identifier) {
-            t.take(Token::Colon).join()?;
-            let tr = self
-                .parse_type_specifier(&t, with_generics)
-                .join_hard(&mut t)
-                .catch(&mut t)?
-                .intern();
+            let tr = if let Some(i) = t.try_take(Token::Colon) {
+                let tr = self
+                    .parse_type_specifier(&t, with_generics)
+                    .join_hard(&mut t)
+                    .catch(&mut t)?
+                    .intern();
+
+                tr
+            } else {
+                SyntacticTypeReference::unconstrained().intern()
+            };
 
             let br = t.try_take_in(&[Token::IsRef, Token::IsNoRef]);
 

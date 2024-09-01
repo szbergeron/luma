@@ -351,9 +351,10 @@ fn parse_args(args: &[&str]) -> Result<ArgResult, &'static str> {
     for s in args.iter() {
         let slice = &s[..];
         println!("got arg '{}'", slice);
-        match slice { // this isn't quite right since '-i' should itself be possible to provide as
-                      // an input file arg, so need to check state and then grab instead of just
-                      // matching directly
+        match slice {
+            // this isn't quite right since '-i' should itself be possible to provide as
+            // an input file arg, so need to check state and then grab instead of just
+            // matching directly
             "-o" | "--output" => state = State::ExpectOutput,
             "-i" | "--input" => state = State::ExpectSourceInput,
             "-s" | "--spec" => state = State::ExpectSpecInput,
@@ -411,6 +412,11 @@ fn parse_args(args: &[&str]) -> Result<ArgResult, &'static str> {
                 state = State::ExpectNothing;
             }
         }
+    }
+
+    // set defaults
+    if !OUTPUT_TYPE_ONCE.get().is_some() {
+        let _ = OUTPUT_TYPE_ONCE.set(OutputType::FullInf());
     }
 
     for p in source_files.iter() {

@@ -80,7 +80,7 @@ struct Vec2 noref {
     x: f64,
     y: f64,
 
-    fn scale(self: Vec2, by: f64) -> Vec2 {
+    fn scale(self: Vec2, by) -> Vec2 {
         struct usr::Vec2 { x: self.x * by, y: self.y * by }
     }
 
@@ -89,10 +89,14 @@ struct Vec2 noref {
     }
 }
 
-fn simulate_nbody(s: Simulation) -> Vec<Vec<Vec2>> {
+fn constrain(s: Simulation isref) {
+}
+
+fn simulate_nbody(s) -> Vec<Vec<Vec2>> {
     let results = std::Vec::with_capacity(s.samples);
     //let results = std::Vec::new();
     //let results = [];
+    usr::constrain(s);
 
     //std::print("simulating bodies");
     let bodies = s.bodies;
